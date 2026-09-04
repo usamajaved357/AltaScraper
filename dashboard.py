@@ -2734,8 +2734,52 @@ def _parse_listings_report(text):
             "brand": col(r, "brand", "brand-name"),
             "fulfillment": col(r, "fulfillment-channel", "fulfilment-channel"),
             "ship_group": col(r, "merchant-shipping-group", "merchant-shipping-group-name"),
+            # THE BARCODE, WHICH THIS REPORT HAS BEEN CARRYING ALL ALONG.
+            #
+            #     "my listings on all listings page shows ean none, this is not
+            #      possible, my every listing has ean"
+            #
+            # He is right, and the database agrees: 271 of 303 listings hold a
+            # UPC, and 86 of 86 on nestwell_goods. The rows saying "none" are
+            # the ones that come from THIS report rather than from a draft --
+            # Amazon's own catalogue -- and it was parsed without ever reading
+            # the identifier column.
+            #
+            # ONLY WHEN IT IS ACTUALLY A BARCODE. Amazon's product-id column
+            # holds whichever identifier the listing was created with, and
+            # product-id-type says which: 1 ASIN, 2 ISBN, 3 UPC, 4 EAN. An ASIN
+            # printed under the word EAN would be worse than the blank it
+            # replaces, so the type is checked and anything that is not a
+            # barcode is left out. A report with neither column simply yields
+            # "", which is what happened before this line existed.
+            "barcode": _report_barcode(col(r, "product-id", "product_id"),
+                                       col(r, "product-id-type", "product_id_type")),
         })
     return out
+
+
+# The values Amazon uses in product-id-type. 1 and 2 are an ASIN and an ISBN,
+# which are not barcodes and must never be shown as one.
+_REPORT_BARCODE_TYPES = {"3", "4", "UPC", "EAN", "GTIN", "GCID"}
+
+
+def _report_barcode(value, kind):
+    """The product id from a listings report, but only when it IS a barcode.
+
+    Returns "" for an ASIN, an ISBN, an unknown type, or a missing column --
+    the same empty string the parser produced before it read this at all, so a
+    report shaped differently from the ones seen here loses nothing.
+    """
+    v = str(value or "").strip()
+    if not v:
+        return ""
+    k = str(kind or "").strip().upper()
+    if not k:
+        # NO TYPE COLUMN AT ALL. A bare 12-14 digit number is a UPC or an EAN;
+        # an ASIN is ten characters and starts with a letter, so the two cannot
+        # be confused by length. Anything else is left alone.
+        return v if (v.isdigit() and 12 <= len(v) <= 14) else ""
+    return v if k in _REPORT_BARCODE_TYPES else ""
 
 
 

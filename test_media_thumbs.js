@@ -61,9 +61,29 @@ check("an Amazon CDN link still gets its _SL bucket",
 check("a CDN link that already carries a size is untouched",
       t("https://m.media-amazon.com/images/I/abc._SL75_.jpg", 88),
       "https://m.media-amazon.com/images/I/abc._SL75_.jpg");
-check("a foreign host is untouched",
-      t("https://i.ebayimg.com/images/g/abc/s-l500.jpg", 88),
-      "https://i.ebayimg.com/images/g/abc/s-l500.jpg");
+// EBAY IS NO LONGER A FOREIGN HOST. It was, and being left alone meant a
+// draft's source picture was fetched at s-l1600 -- 115.9 KB measured against
+// the live CDN -- to be drawn at 56px in a table row or 358px on a card.
+// eBay names the size in the FILE rather than in a directive, so the rule is
+// different from Amazon's but the arithmetic is the same one.
+check("an eBay link is sized down to what is drawn",
+      t("https://i.ebayimg.com/images/g/abc/s-l1600.jpg", 88),
+      "https://i.ebayimg.com/images/g/abc/s-l400.jpg");
+check("  a table row asks for less again",
+      t("https://i.ebayimg.com/images/g/abc/s-l1600.jpg", 44),
+      "https://i.ebayimg.com/images/g/abc/s-l225.jpg");
+// A PICTURE IS ONLY EVER MADE SMALLER. Asking for more than what was stored
+// would upscale somebody else's photo.
+check("  one already smaller than needed is left alone",
+      t("https://i.ebayimg.com/images/g/abc/s-l225.jpg", 358),
+      "https://i.ebayimg.com/images/g/abc/s-l225.jpg");
+// AND A SHAPE THIS RULE HAS NOT MET IS NOT GUESSED AT.
+check("  an eBay URL of an unfamiliar shape is untouched",
+      t("https://i.ebayimg.com/images/g/abc/photo.jpg", 88),
+      "https://i.ebayimg.com/images/g/abc/photo.jpg");
+check("a genuinely foreign host is untouched",
+      t("https://drive.google.com/thumb/abc.jpg", 88),
+      "https://drive.google.com/thumb/abc.jpg");
 check("a data URI is untouched", t("data:image/png;base64,AAA", 88),
       "data:image/png;base64,AAA");
 check("an empty value is untouched", t("", 88), "");

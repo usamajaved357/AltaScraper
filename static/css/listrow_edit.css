@@ -84,7 +84,7 @@
 .lr-sb-what{ font-size:11px; color:var(--ink3); font-weight:400; }
 .lr-savebar button{
   padding:5px 16px; border-radius:4px; cursor:pointer;
-  font-size:12.5px; font-family:inherit; line-height:1.35;
+  font-size:12px; font-family:inherit; line-height:1.35;
 }
 .lr-sb-cancel{
   background:transparent; border:1px solid var(--line2); color:var(--ink2);

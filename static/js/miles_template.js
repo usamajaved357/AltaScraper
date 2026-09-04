@@ -1773,7 +1773,12 @@ async function fetchLiveImages(){
           if(!url) return;
           const it=(LIVE_ITEMS||[]).find(x=>x.sku===sku); if(it){ it.img=url; }
           const slot=document.getElementById("liveimg_"+sid(sku));
-          if(slot){ const box=slot.parentNode; box.classList.remove("noimg"); box.innerHTML='<img src="'+url+'" loading="lazy">'; }
+          // THROUGH thumbUrl AND NOT LAZY. This is a picture arriving into a
+          // slot the reader is already looking at, so there is nothing to defer
+          // -- and it drew the raw URL, which meant the one image that lands
+          // LAST was also the largest one fetched.
+          if(slot){ const box=slot.parentNode; box.classList.remove("noimg");
+                    box.innerHTML='<img src="'+esc(thumbUrl(url,120))+'" decoding="async">'; }
           // A live listing that ALSO has a draft here is drawn as a normal card,
           // which has no liveimg_ slot to patch -- it reads Amazon's image
           // through _cardImages() at render time instead. Without this the card

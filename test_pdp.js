@@ -261,6 +261,10 @@ globalThis.__live = {state:"ok", values:{colour:"black", material:"steel"}, mult
                      amazon_status:"BUYABLE"};
 
 const ctx = vm.createContext(globalThis);
+// thumbs.js first: the hero picture asks it for a sized URL rather than
+// fetching the full-size original into a 120px square.
+vm.runInContext(fs.readFileSync("static/js/thumbs.js", "utf8"), ctx,
+                {filename:"thumbs.js"});
 vm.runInContext(PDPJS, ctx, {filename:"pdp.js"});
 const G = e => vm.runInContext(e, ctx);
 

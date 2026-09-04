@@ -4,7 +4,8 @@
     "last_reviewed": "2026-06-11",
     "marketplace": "Amazon UK",
     "applicable_law": "UK GPSR 2024, UKCA, CPSR, CLP, FSA, MHRA, FCM Regulations",
-    "note": "This file is a first-line keyword screen, not a substitute for professional compliance review. HIGH risk categories should never be auto-approved without seller verification."
+    "note": "This file is a first-line keyword screen, not a substitute for professional compliance review. HIGH risk categories should never be auto-approved without seller verification.",
+    "product_type_gate": "product_type_never lists Amazon product types a category cannot apply to. A match against one of them is DOWNGRADED to a note, never deleted, and a listing with no product_type is unaffected. See _product_type_allows in amazon_listing_generator.py."
   },
   "health_beauty": {
     "risk_level": "HIGH",
@@ -85,6 +86,24 @@
       "balm",
       "essence",
       "toner"
+    ],
+    "product_type_never": [
+      "TRIPOD",
+      "CAMERA",
+      "PHONE",
+      "MOUNT",
+      "STORAGE_BAG",
+      "LUGGAGE",
+      "HOSE",
+      "TOOL",
+      "LIGHT_FIXTURE",
+      "LAMP",
+      "FURNITURE",
+      "PET_",
+      "SPORTING_GOODS",
+      "AUTO_PART",
+      "KEYBOARD",
+      "MOUSE"
     ]
   },
   "teeth_whitening": {
@@ -301,6 +320,24 @@
       "voltage",
       "iron",
       "remote control"
+    ],
+    "product_type_never": [
+      "HOSE",
+      "TAP",
+      "PLUMBING",
+      "FAUCET",
+      "STORAGE_BAG",
+      "STORAGE_BOX",
+      "LUGGAGE",
+      "BACKPACK",
+      "THERMOS",
+      "DRINKING_CUP",
+      "COOKWARE",
+      "FOOD_PEELER",
+      "SPRING",
+      "CLAMP",
+      "HAND_TOOL",
+      "WRENCH"
     ]
   },
   "lithium_batteries": {
@@ -514,6 +551,14 @@
       "garlic press",
       "food storage",
       "non stick"
+    ],
+    "product_type_never": [
+      "AUTO_PART",
+      "TOY",
+      "PET_",
+      "SUNGLASSES",
+      "TRIPOD",
+      "CAMERA"
     ]
   },
   "toys_children": {
@@ -583,6 +628,12 @@
       "cot",
       "crib",
       "kids room"
+    ],
+    "product_type_never": [
+      "PET_TOY",
+      "PET_",
+      "AUTO_PART",
+      "TOOL"
     ]
   },
   "nightwear_children": {
@@ -655,6 +706,18 @@
       "razor",
       "kitchen knife",
       "chef knife"
+    ],
+    "product_type_never": [
+      "FAN",
+      "WIPER",
+      "AUTO_PART",
+      "TOY",
+      "PHONE",
+      "CAMERA",
+      "TRIPOD",
+      "LIGHT_FIXTURE",
+      "LAMP",
+      "STORAGE_BAG"
     ]
   },
   "tools_hardware": {
@@ -715,6 +778,13 @@
       "pliers",
       "spanner",
       "ratchet"
+    ],
+    "product_type_never": [
+      "TOY",
+      "PET_",
+      "SUNGLASSES",
+      "SKIN_",
+      "HAIR_"
     ]
   },
   "sports_fitness": {

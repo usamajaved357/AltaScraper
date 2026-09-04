@@ -46,13 +46,49 @@
  * like the most profitable one on the screen. */
 function _opBar(t, cur){
   const cost = _opNum(t.cogs), fee = _opNum(t.fees), profit = _opNum(t.profit);
-  if(cost === null || fee === null || profit === null) return "";
-  if(!(cost + fee + Math.abs(profit) > 0)) return "";
+  const paid = _opNum(t.revenue);
   const seg = function(cls, v, label){
-    if(v <= 0) return "";
+    if(!(v > 0)) return "";
     return '<div class="' + cls + '" style="flex:' + v + '" title="' + _oEsc(label)
          + '">' + _oEsc(_oMoney(v, cur)) + '</div>';
   };
+
+  /* WHAT IS KNOWN IS DRAWN, AND WHAT IS NOT IS DRAWN AS UNKNOWN.
+   *
+   *     "even when cost is unknown, still show the segments that ARE known
+   *      (buyer paid, Amazon fee). Only the profit segment should be
+   *      missing/grey. Don't show all dashes."
+   *
+   * The first version drew nothing at all unless every part was known, for a
+   * real reason: a stacked bar with a segment simply left out gives its width
+   * to the others, so an order with no recorded cost renders as the most
+   * profitable one on the screen.
+   *
+   * Both are satisfied by drawing the gap rather than omitting it. The bar is
+   * always the WHOLE of what the buyer paid; the fee and any known cost take
+   * their true share of it, and whatever is left over is a striped grey segment
+   * that says it is not known. Nothing is redistributed, and the widths stay
+   * true whichever parts are missing.
+   */
+  if(paid !== null && paid > 0 && (cost === null || profit === null)){
+    const known = (fee || 0) + (cost || 0);
+    const rest = Math.max(0, paid - known);
+    return '<div class="o-bar">'
+      + seg("bar-cost", cost, "What the stock cost you")
+      + seg("bar-fee", fee, "What Amazon took")
+      + (rest > 0
+          ? '<div class="bar-unknown" style="flex:' + rest + '" title="'
+            + (cost === null
+               ? "No cost is recorded for this order, so what is left of what the "
+                 + "buyer paid cannot be split into cost and profit."
+               : "There is not enough here to work the profit out.")
+            + '">' + _oEsc(_oMoney(rest, cur)) + ' ?</div>'
+          : "")
+      + '</div>';
+  }
+
+  if(cost === null || fee === null || profit === null) return "";
+  if(!(cost + fee + Math.abs(profit) > 0)) return "";
   return '<div class="o-bar">'
     + seg("bar-cost", cost, "What the stock cost you")
     + seg("bar-fee", fee, "What Amazon took")
@@ -73,7 +109,7 @@ function _opNum(v){
 /* The four cards. Every one of them is a figure the ROW also shows, so they
  * cannot disagree with it -- they are here because the row's version is 11px in
  * a 9% column and this is the reading you came in for. */
-function _opCards(r, t, cur, o){
+function _opCards(r, t, cur, o, items){
   const card = function(value, label, tone, title){
     return '<div class="o-card' + (tone ? " " + tone : "") + '" title="'
       + _oEsc(title || "") + '">'
@@ -87,17 +123,20 @@ function _opCards(r, t, cur, o){
     const n = _opNum(v);
     return n === null ? dash : _oEsc(n.toFixed(1) + "%");
   };
-  // THE FOURTH CARD IS NOT "HANDLING", and that is a correction to the brief
-  // rather than an omission. An ORDER carries no handling time: handling_days
-  // is a setting on the LISTING, and nothing on an order row or in the order
-  // detail holds one. MEASURED in a browser -- the card rendered a dash on
-  // every order, which is a card that can never say anything.
+  // THE FOURTH CARD IS THE LISTING'S HANDLING TIME.
   //
-  // What the order DOES carry is Amazon's post-by date, and days-left is the
-  // one number on this screen that costs money if it is ignored: dispatch after
-  // it and the order is late, which is a metric hit on the account. Same
-  // territory the brief wanted the card for, from data that exists.
-  const post = _opDaysLeft(o.ship_by);
+  //     "should be '2d HANDLING' (the listing's handling time), not '4 days
+  //      POST BY'. Post-by deadline belongs in the delivery line."
+  //
+  // The ORDER carries no handling time -- it is a setting on the LISTING -- and
+  // that is why this card read a dash on every order and was briefly filled
+  // with the post-by countdown instead. But the listing does have one and this
+  // app is holding it, on the row for the order's own SKU. It is fetched from
+  // there rather than left empty or quietly replaced by a different fact.
+  //
+  // The post-by deadline is not lost: it is in the delivery line, which is
+  // where a date belongs.
+  const hand = _opHandling(r, items);
   return '<div class="o-cards">'
     + card(profit === null ? dash : _oEsc(_oMoney(profit, cur)),
            paid === null ? "Profit" : ("Profit at " + _oMoney(paid, cur)),
@@ -109,9 +148,39 @@ function _opCards(r, t, cur, o){
            "Profit as a share of what the stock cost — whether the stock was worth buying.")
     + card(pct(r.margin_pct), "Margin", "",
            "Profit as a share of what the buyer paid — whether the price is any good.")
-    + card(post.text === "" ? dash : _oEsc(post.text), post.label, post.tone,
-           post.title)
+    + card(hand.text === "" ? dash : _oEsc(hand.text), "Handling", hand.tone,
+           hand.title)
     + '</div>';
+}
+
+/* The handling time of the LISTING this order is for.
+ *
+ * It comes off the app's own row for the SKU -- the same handling_days the
+ * listings screen edits -- because the order does not carry one. An order for a
+ * listing this app holds no row for has no answer, and gets a dash with the
+ * reason rather than a number borrowed from somewhere else. */
+function _opHandling(r, items){
+  const out = {text: "", tone: "",
+               title: "How many days this listing promises Amazon before "
+                    + "dispatch. It is a setting on the listing, not on the "
+                    + "order."};
+  let rows = [];
+  try{ rows = (typeof ROWS !== "undefined" && ROWS) ? ROWS : []; }catch(e){ rows = []; }
+  const skus = [];
+  (items || []).forEach(function(it){ if(it && it.sku) skus.push(String(it.sku)); });
+  if(r && r.sku) skus.push(String(r.sku));
+  for(let i = 0; i < skus.length; i++){
+    const row = rows.filter(function(x){ return String(x.sku) === skus[i]; })[0];
+    if(row && row.handling_days !== null && row.handling_days !== undefined
+       && String(row.handling_days) !== ""){
+      out.text = String(row.handling_days) + "d";
+      return out;
+    }
+  }
+  out.title = "This app holds no listing row for this order's SKU, so its "
+            + "handling time is not known here. Press Sync on the listings "
+            + "screen to pull the listing in.";
+  return out;
 }
 
 /* How long is left to post this, from Amazon's ship-by date.
@@ -206,29 +275,38 @@ function _opBestSource(d, items){
  * REPLACES A FIVE-COLUMN TABLE, and only where a table was overkill: a
  * single-line order. The multi-item case keeps the table -- see the note at the
  * top of this file. */
-function _opFlow(t, cur){
-  const step = function(v, label, cls){
+function _opFlow(t, cur, tail){
+  const step = function(v, label, cls, unknownHint){
     const n = _opNum(v);
-    return '<div class="o-step' + (cls ? " " + cls : "") + '">'
-      + '<div class="o-step-v">' + (n === null ? '<span class="cc">—</span>'
+    return '<div class="o-step' + (cls ? " " + cls : "") + '"'
+      + (n === null && unknownHint ? ' title="' + _oEsc(unknownHint) + '"' : "")
+      + '>'
+      + '<div class="o-step-v">' + (n === null ? '<span class="dash">—</span>'
                                                : _oEsc(_oMoney(v, cur))) + '</div>'
       + '<div class="o-step-l">' + _oEsc(label) + '</div></div>';
   };
   const arrow = '<div class="o-arrow">→</div>';
   const eq = '<div class="o-arrow">=</div>';
+  // A MISSING COST DOES NOT EMPTY THE LINE. Buyer paid and the Amazon fee are
+  // known whatever the cost is, so they are shown; the cost and the profit are
+  // a dash that says what would fill it.
+  const costKnown = !(t.cogs_complete === false
+                      || t.cogs === null || t.cogs === undefined);
   return '<div class="o-flow">'
     + step(t.revenue, "Buyer paid")
     + arrow
     + step(t.fees === null || t.fees === undefined ? null : -Math.abs(_opNum(t.fees) || 0),
            "Amazon fee", "neg")
     + arrow
-    + step(t.cogs_complete === false ? null
-           : (t.cogs === null || t.cogs === undefined
-              ? null : -Math.abs(_opNum(t.cogs) || 0)),
-           "Cost", "neg")
+    + step(costKnown ? -Math.abs(_opNum(t.cogs) || 0) : null, "Cost", "neg",
+           "No cost is recorded for this order. Set one at the end of this line "
+           + "and the profit follows.")
     + eq
     + step(t.profit, "Profit",
-           (_opNum(t.profit) !== null && _opNum(t.profit) < 0) ? "bad" : "good")
+           (_opNum(t.profit) !== null && _opNum(t.profit) < 0) ? "bad" : "good",
+           "There is no profit figure until the cost is known — it is left blank "
+           + "rather than counting the missing cost as nothing.")
+    + (tail || "")
     + '</div>';
 }
 
@@ -236,7 +314,20 @@ function _opFlow(t, cur){
  * one absent rather than blank when Amazon did not say. */
 function _opDelivery(o){
   const bits = [];
-  if(o.ship_by) bits.push("Post by " + _oWhen(o.ship_by));
+  if(o.ship_by){
+    // THE COUNTDOWN LIVES HERE, not on a summary card.
+    //
+    //     "Post-by deadline belongs in the delivery line, not in the summary
+    //      cards."
+    //
+    // Agreed, and it is worth keeping somewhere: the date alone makes you work
+    // out how long is left, and dispatching after it is a late order and a
+    // metric hit. So the line carries both -- the date, and how many days that
+    // is from today.
+    const left = _opDaysLeft(o.ship_by);
+    bits.push("Post by " + _oWhen(o.ship_by)
+              + (left.text ? " (" + left.text + ")" : ""));
+  }
   if(o.deliver_by) bits.push("Must arrive by " + _oWhen(o.deliver_by));
   if(o.region) bits.push("Going to " + o.region);
   if(!bits.length) return "";
@@ -298,7 +389,7 @@ function ordPanelHtml(r, d){
   let h = '<div class="opanel">';
 
   h += _opBar(t, cur);
-  h += _opCards(r, t, cur, o);
+  h += _opCards(r, t, cur, o, items);
   h += _opActions(r, d, items);
 
   // THE ITEM LINE. Not the old "What was ordered" block: the row above carries
@@ -326,14 +417,21 @@ function ordPanelHtml(r, d){
     if(why) h += '<div class="o-why">' + why + '</div>';
   });
 
-  // ---- where to buy it, compact ---------------------------------------
-  // The sources block's OWN compact view, which already exists and already
-  // decides which supplier is best. Not a second summary written here.
+  // ---- where to buy it, in full ---------------------------------------
+  //
+  //     "show the full table with columns (# / Supplier / You pay / Dispatch /
+  //      Stock / You keep) as in the mockup, not collapsed to one line. The
+  //      data is already there."
+  //
+  // It is, and _ordSourcesHtml draws exactly that table -- the compact flag was
+  // asking it for its one-line summary instead. Dropped. This is still the
+  // sources block's OWN rendering, not a second table written here: it is the
+  // one place that decides which supplier is best, and a copy would be free to
+  // disagree with the "Buy from supplier" button above (Rule 12).
   items.forEach(function(it){
     const block = (d.sources || {})[it.sku];
     if(!block || typeof _ordSourcesHtml !== "function") return;
-    const body = _ordSourcesHtml(block, items.length > 1 ? it.title : "",
-                                 {compact: true});
+    const body = _ordSourcesHtml(block, items.length > 1 ? it.title : "");
     if(body) h += body;
   });
 
@@ -345,8 +443,16 @@ function ordPanelHtml(r, d){
     h += (typeof _ordBreakdownHtml === "function")
       ? _ordBreakdownHtml(bd, cur, r.order_id, r.account_id, r.marketplace) : "";
   }else{
-    h += _opFlow(t, cur);
-    h += _opCostBox(bd, r);
+    // THE COST BOX SITS AT THE END OF THE FLOW, not on a row of its own.
+    //
+    //     "move it inline at the end of the earnings flow (same line), not on
+    //      a separate row below."
+    //
+    // It belongs there for a reason beyond the layout: the "Cost" step of the
+    // flow is the number the box changes, and a control on its own line under a
+    // sum reads as a separate action rather than as the way to correct the
+    // figure two inches to its left.
+    h += _opFlow(t, cur, _opCostBox(bd, r));
   }
 
   h += _opDelivery(o);
@@ -369,15 +475,19 @@ function _opCostBox(bd, r){
     : ((l.cogs !== null && l.cogs !== undefined && l.qty)
         ? (Number(l.cogs) / Number(l.qty)) : null);
   const id = "ordcogs_0";
-  return '<div class="o-costfix" onclick="event.stopPropagation()">'
-    + '<label for="' + id + '" title="Per unit, and for this order only — no '
-    + 'other order changes, and the product\'s own cost is left alone. Empty it '
-    + 'and Save to put this line back to &quot;not known&quot;.">Cost per unit</label>'
+  // AT THE END OF THE FLOW, so it reads as the way to fill the Cost step rather
+  // than as a separate thing to do. The label is the tooltip, not a word: the
+  // line already says "Cost" two steps to the left.
+  return '<div class="o-costfix" onclick="event.stopPropagation()"'
+    + ' title="Per unit, and for this order only — no other order changes, and '
+    + 'the product\'s own cost is left alone. Empty it and Save to put this line '
+    + 'back to &quot;not known&quot;.">'
+    + '<label for="' + id + '">Cost</label>'
     + '<input id="' + id + '" class="ed" placeholder="'
     + (unit === null ? "e.g. 15.10" : _oEsc(Number(unit).toFixed(2))) + '">'
-    + '<button class="ghost" onclick="ordSetOrderCogs('
+    + '<button class="o-save" onclick="ordSetOrderCogs('
     + jsArg(r.order_id) + ',' + jsArg(l.sku || "") + ',' + jsArg(id) + ','
     + jsArg(r.account_id || "") + ',' + jsArg(r.marketplace || "") + ')">Save</button>'
-    + (l.qty > 1 ? '<span class="cc">× ' + l.qty + ' units</span>' : "")
+    + (l.qty > 1 ? '<span class="cc">× ' + l.qty + '</span>' : "")
     + '</div>';
 }

@@ -222,6 +222,12 @@ globalThis.cogsOf=r=>({cost:(r.cogs!=null&&r.cogs!=="")?Number(r.cogs):null,
 // This is a REAL dependency, not a stub. The point of this probe is that the
 // renderer runs against the actual code, and faking lrEditBox would mean a
 // change to the box that broke the row would still pass here.
+// AND thumbs.js: every thumbnail on the row asks it for a sized URL, so the
+// renderer cannot draw without it. Real, not stubbed, for the same reason as
+// the boxes below -- a stub would let a change to the sizing rule break the row
+// and still pass here.
+vm.runInThisContext(fs.readFileSync("static/js/thumbs.js","utf8"),
+                    {filename:"thumbs.js"});
 vm.runInThisContext(fs.readFileSync("static/js/listrow_edit.js","utf8"),
                     {filename:"listrow_edit.js"});
 vm.runInThisContext(fs.readFileSync("static/js/listrow_detailed.js","utf8"),
