@@ -6,6 +6,7 @@
   "warning_template": "SOURCING RISK [{rule}]: Amazon will likely request {docs}. As a reseller you probably cannot provide these.",
   "matching_note": "Same corroborated-keyword discipline as the restricted checker. 'strong' fires alone. 'corroborating' is a common word (fan, iron, ring, plate, bar, light) that only counts WITH a 'context' word from the same rule -- 'curling iron' fires, 'iron supplement' does not; 'sterling silver ring' fires, 'ring binder' does not. 'exclude' is a hard veto checked first. Accessory adjacency ('patio heater COVER') is applied by listing/restricted.py's shared rule.",
   "doc_note": "Entries matching an id in required_docs.json render that catalogue's name; anything else renders verbatim. Mixing is intentional -- the catalogue stays the one source for shared documents, and product-specific requirements with no catalogue entry are written out in full.",
+  "mouthing_note": "A THING A BABY PUTS IN ITS MOUTH IS A FOOD-CONTACT MATERIAL. The brief's own worked example is 'a baby's silicone teething toy triggers CHILDREN_PRODUCT + FOOD_CONTACT_MATERIAL', and it did not: FOOD_CONTACT_MATERIAL's triggers were all kitchenware -- chopping boards, baking trays, mugs -- so a teether, a dummy, a sippy cup and a weaning spoon fired CHILDREN_PRODUCT alone. That matters because the two rules ask for DIFFERENT documents: EN 71 for the toy, and migration testing under the food-contact regulations for the silicone. Getting one and not the other is the exact position the whole check exists to prevent. The mouthing words are in the strong list rather than the corroborating one because none of them is ordinary English with another meaning.",
   "risk_classes": [
     {
       "id": "MAINS_ELECTRICAL",
@@ -319,7 +320,19 @@
         "toy storage",
         "toy box",
         "toy chest",
-        "cot bumper cover"
+        "cot bumper cover",
+        "dummy camera",
+        "dummy cctv",
+        "dummy security",
+        "dummy alarm",
+        "crash test dummy",
+        "dummy plug",
+        "dummy load",
+        "training dummy",
+        "boxing dummy",
+        "mannequin dummy",
+        "dressmaking dummy",
+        "tailors dummy"
       ],
       "product_types": [
         "TOY_FIGURE",
@@ -673,7 +686,18 @@
           "salad bowl",
           "mixing bowl",
           "muffin tray",
-          "baking sheet"
+          "baking sheet",
+          "teether",
+          "teething",
+          "pacifier",
+          "soother",
+          "sippy cup",
+          "baby bottle",
+          "weaning spoon",
+          "weaning set",
+          "feeding bowl",
+          "suction bowl",
+          "silicone bib"
         ],
         "context": [],
         "corroborating": [
@@ -696,7 +720,15 @@
         "hotplate",
         "plate carrier",
         "bowl brush",
-        "toilet bowl"
+        "toilet bowl",
+        "bottle warmer",
+        "bottle brush",
+        "bottle sterili",
+        "bottle rack",
+        "bottle holder",
+        "bottle bag",
+        "bottle opener",
+        "bottle cage"
       ]
     },
     {

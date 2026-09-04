@@ -434,7 +434,20 @@ function rqRenderPanel(){
           +'</div>';
       }).join("") : '<div class="rqempty">No recent runs.</div>');
 }
-function rqOpenJob(sku){ if(typeof openDrawer==="function"){ try{ openDrawer(sku); }catch(e){} } }
+/* Clicking a run in the queue opens the listing it is for.
+ *
+ * Through openListing, which is the one function that decides WHERE a listing
+ * opens -- the product page when this app holds a draft, the live optimiser
+ * when it does not. It called openDrawer directly, which was one of the six
+ * ways the side drawer could appear:
+ *
+ *     "These are completely different UIs showing the same data ... the user
+ *      doesn't know which one will appear when."
+ */
+function rqOpenJob(sku){
+  if(typeof openListing === "function"){ try{ openListing(sku); }catch(e){} }
+  else if(typeof openDrawer === "function"){ try{ openDrawer(sku); }catch(e){} }
+}
 function rqStopJob(jobId){ fetch("/preview/stop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job:jobId})}).then(()=>rqGlobalPollNow()).catch(()=>{}); }
 
 if(document.readyState!=="loading"){ rqStartGlobal(); }

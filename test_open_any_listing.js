@@ -56,12 +56,18 @@ function count(s, re) { return (s.match(re) || []).length; }
 // unopenable from the detailed view while the tile opened it fine.
 ok("the detailed view never calls pdpOpen itself", count(DET, /pdpOpen\(/g) === 0);
 ok("  nor do the live tiles", count(MIL, /pdpOpen\(/g) === 0);
-// In listings.js it appears three times and every one is accounted for: twice
-// inside openListing (after the draft check, and as the last-line fallback) and
-// once on the drawer's "open full screen" button, where the row is in ROWS by
-// definition because the drawer is already showing it.
-ok("in listings.js it is only inside openListing and the drawer button",
-   count(LIST, /pdpOpen\(/g) === 3);
+// In listings.js it appears four times and every one is accounted for:
+//
+//   twice inside openListing   after the draft check, and as its last line
+//   once on the drawer's       "open full screen" button, where the row is in
+//     header button            ROWS by definition -- the drawer is showing it
+//   once at the top of         the redirect that makes the side drawer
+//     openDrawer               unreachable -- see test_one_detail_view.js
+//
+// The fourth is what closes the last route to the old panel, so this count
+// going UP is not a regression by itself; a NEW one outside those four is.
+ok("in listings.js it is only inside openListing, openDrawer and the button",
+   count(LIST, /pdpOpen\(/g) === 4);
 const inOpen = LIST.slice(LIST.indexOf("function openListing(sku, asin)"));
 ok("  and the first of those is guarded by hasDraftRow",
    /hasDraftRow\(s\) && typeof pdpOpen === "function"\)\{ pdpOpen\(s\)/.test(inOpen));

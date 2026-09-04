@@ -233,6 +233,68 @@ check("a competitor's brand in the copy still holds",
                                "AltaboltaVoo", _rules,
                                ["Hozelock"])["has_violations"], True)
 
+print("\n=== SOURCING VIABILITY: the brief's own test cases ===")
+# claude_code_sourcing_viability_prompt.md ends with eighteen worked examples.
+# All eighteen pass; they are run here so a rule edit cannot quietly break one.
+for _t, _want in [
+        ("2000W Electric Patio Heater IP34", "MAINS_ELECTRICAL"),
+        ("USB-C Fast Charger 65W GaN", "LOW_VOLTAGE_ELECTRICAL"),
+        ("Wooden Toy Train Set Ages 3+", "CHILDREN_PRODUCT"),
+        ("Hyaluronic Acid Face Serum 30ml", "SKIN_CONTACT_COSMETIC"),
+        ("Silicone Baking Mat Non-Stick", "FOOD_CONTACT_MATERIAL"),
+        ("Sterling Silver Necklace Pendant", "JEWELLERY_ACCESSORIES"),
+        ("Men's Cotton Polo Shirt", "TEXTILES_CLOTHING"),
+        ("Camping Gas Stove Portable", "GAS_APPLIANCE"),
+        ("Chainsaw 16 inch Petrol", "MACHINERY"),
+        ("Oven Cleaner Spray 500ml", "CHEMICALS_CLEANING"),
+        ("Adjustable Weight Bench", "SPORTING_FITNESS")]:
+    _ids = [x["id"] for x in (chk(title=_t, marketplace="UK").get("risks") or [])]
+    check("  %-38s -> %s" % (_t[:38], _want), _want in _ids, True)
+
+print("\n  ...and the ones that must stay clean")
+for _t in ("Phone Case Silicone Clear", "Wall Art Canvas Print",
+           "Garden Hose Reel 30m", "Book Stand Holder Desktop",
+           "Patio Heater Cover Waterproof", "Iron Supplement Tablets",
+           "Ring Binder A4 Folder"):
+    _ids = [x["id"] for x in (chk(title=_t, marketplace="UK").get("risks") or [])]
+    check("  %-38s -> clean" % _t[:38], _ids, [])
+
+print("\n=== a thing a baby puts in its mouth is a FOOD-CONTACT material ===")
+# The brief's own worked example: "A baby's silicone teething toy triggers
+# CHILDREN_PRODUCT + FOOD_CONTACT_MATERIAL." It did not -- FOOD_CONTACT's
+# triggers were all kitchenware, so a teether fired CHILDREN_PRODUCT alone.
+# The two rules ask for DIFFERENT documents (EN 71 for the toy, migration
+# testing for the silicone), so getting one and not the other is the exact
+# position this check exists to prevent.
+_ids = [x["id"] for x in
+        (chk(title="Baby Silicone Teething Toy BPA Free",
+             marketplace="UK").get("risks") or [])]
+check("a teething toy fires both", sorted(_ids),
+      ["CHILDREN_PRODUCT", "FOOD_CONTACT_MATERIAL"])
+for _t in ("Silicone Sippy Cup Toddler", "Baby Weaning Spoon Set"):
+    _ids = [x["id"] for x in (chk(title=_t, marketplace="UK").get("risks") or [])]
+    check("  %-32s includes FOOD_CONTACT_MATERIAL" % _t[:32],
+          "FOOD_CONTACT_MATERIAL" in _ids, True)
+
+print("\n=== 'dummy' is not always a baby's dummy ===")
+# Found by probing the rules with plausible titles: "dummy" was a STRONG
+# trigger on CHILDREN_PRODUCT, so a dummy CCTV camera and a Crash Test Dummy
+# t-shirt both came back as children's products needing EN 71 testing. Excluded
+# by phrase rather than by dropping the word, which would lose the real ones.
+for _t, _want in [("Dummy Camera CCTV Deterrent", []),
+                  ("Crash Test Dummy T-Shirt", ["TEXTILES_CLOTHING"]),
+                  ("Baby Dummy Soother 0-6 Months",
+                   ["CHILDREN_PRODUCT", "FOOD_CONTACT_MATERIAL"])]:
+    _ids = sorted(x["id"] for x in
+                  (chk(title=_t, marketplace="UK").get("risks") or []))
+    check("  %-34s" % _t[:34], _ids, sorted(_want))
+
+# ...and a bottle that is not a bottle.
+for _t in ("Baby Bottle Warmer Bag", "Bottle Opener Stainless Steel",
+           "Bottle Brush Cleaning Set"):
+    _ids = [x["id"] for x in (chk(title=_t, marketplace="UK").get("risks") or [])]
+    check("  %-34s -> clean" % _t[:34], _ids, [])
+
 print("\n%d failed" % len(fails))
 for f in fails:
     print("  FAILED:", f)

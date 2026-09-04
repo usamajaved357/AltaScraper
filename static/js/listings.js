@@ -3095,7 +3095,7 @@ function viabilityBadge(r){
   const names=(v.risks||[]).map(x=>x.label).join(", ");
   // Own class/position: .tileflag sits bottom-RIGHT (restricted) and .tileclaim
   // bottom-LEFT (claims), so a third badge reusing either would land on top of it.
-  return `<span class="tiledocs ${high?'red':'amber'}" title="Compliance: ${esc(names)} — ${docs} document(s) Amazon can request. Click to see the list." onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-file-text"></i>${docs}</span>`;
+  return `<span class="tiledocs ${high?'red':'amber'}" title="Compliance: ${esc(names)} — ${docs} document(s) Amazon can request. Click to see the list." onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','compliance')"><i class="ti ti-file-text"></i>${docs}</span>`;
 }
 function viabilityPanel(r){
   const v = r.viability;
@@ -3199,7 +3199,7 @@ function needsCopy(r){
 }
 function needsCopyBadge(r){
   if(!needsCopy(r)) return "";
-  return `<span class="tilecopy" title="This draft has its source title and link but no copy yet — no bullets, no description, no product type. That is how Import Seller leaves things, so you can pick what is worth generating. Select it and press Regenerate copy, or open it and use Suggest." onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-pencil-off"></i></span>`;
+  return `<span class="tilecopy" title="This draft has its source title and link but no copy yet — no bullets, no description, no product type. That is how Import Seller leaves things, so you can pick what is worth generating. Select it and press Regenerate copy, or open it and use Suggest." onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','details')"><i class="ti ti-pencil-off"></i></span>`;
 }
 // The same fact, as a sentence with the action attached, inside the drawer.
 function needsCopyPanel(r){
@@ -3225,7 +3225,7 @@ function claimBadge(r){
   const red=f.some(x=>x.severity==="RED"); const lvl=red?"red":"amber";
   const rules=[...new Set(f.map(x=>x.rule+" ("+x.category+" category)"))].join("; ");
   const tip=f.length+" claim risk"+(f.length>1?"s":"")+": "+rules+" — click to review";
-  return `<span class="tileclaim ${lvl}" title="${esc(tip)}" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-alert-hexagon"></i>${f.length}</span>`;
+  return `<span class="tileclaim ${lvl}" title="${esc(tip)}" onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','compliance')"><i class="ti ti-alert-hexagon"></i>${f.length}</span>`;
 }
 function claimBox(r){
   const f=r.claim_flags||[]; if(!f.length) return "";
@@ -3399,7 +3399,58 @@ function openLiveListing(asin, sku){
   openListing(sku, asin);
 }
 
+/* Open a listing ON A PARTICULAR TAB.
+ *
+ * The compliance chip, the claim chip and the "no copy yet" chip all used to
+ * open the drawer, where everything was one scrolling column, so landing at the
+ * top was the same as landing anywhere. The product page has tabs, and a chip
+ * that says "3 documents Amazon can request" should land on the tab that lists
+ * them rather than on the title field.
+ *
+ * The tab is a preference, not a requirement: a listing with no draft goes to
+ * the live optimiser, which has no tabs, and that is still the right place. */
+function openListingAt(sku, tab){
+  openListing(sku);
+  if(typeof pdpTab === "function" && typeof PDP_SKU !== "undefined"
+     && String(PDP_SKU) === String(sku)){
+    pdpTab(tab);
+  }
+}
+
+/* ONE PRODUCT DETAIL VIEW. THE FULL-PAGE ONE.
+ *
+ *     "The app has TWO different product detail views that appear in different
+ *      contexts ... These are completely different UIs showing the same data.
+ *      This is confusing -- the user doesn't know which one will appear when.
+ *      Fix: pick ONE."
+ *
+ * THE REDIRECT IS HERE RATHER THAN AT THE CALL SITES, and that is the whole
+ * point. openDrawer is called from eighteen places across five files, and only
+ * six of them are a user opening something -- the other twelve are re-render
+ * guards shaped `if(DRAWER_SKU === sku) openDrawer(sku)`, which redraw a drawer
+ * that is ALREADY open after a schema load, a run finishing, or a mirror
+ * arriving. Editing eighteen call sites would mean finding all eighteen and
+ * getting all eighteen right; closing the one door they all go through means a
+ * nineteenth caller written next month is closed too (CLAUDE.md Rule 12).
+ *
+ * The guards become harmless on their own: DRAWER_SKU is never set now, so
+ * `DRAWER_SKU === sku` is never true and none of them fires.
+ *
+ * NOTHING IS DELETED. The drawer's builders are shared with the product page --
+ * _fullDataParts, dwTitleParts, dwBulletCards and the byte budget are the same
+ * code drawing both -- so removing the component would take the page's own
+ * contents with it. What is removed is the ROUTE to it.
+ *
+ * AND THE FALLBACK STAYS A FALLBACK. If pdp.js has not loaded there is no
+ * full-page view to send anyone to, and a listing that opens nothing at all is
+ * worse than one that opens the old panel. openListing() has always relied on
+ * this, so the condition is "is there a product page to use", not "always".
+ */
 function openDrawer(sku, jumpGen){
+  if(typeof pdpOpen === "function"){
+    pdpOpen(sku);
+    return;
+  }
   const r=ROWS.find(x=>String(x.sku)===String(sku));
   if(!r) return;
   // Multi-tab: make sure the workspace's active tab matches THIS card's tab before any
@@ -3537,7 +3588,7 @@ function tileMenu(ev, sku, row){
   m.innerHTML=`
     <button onclick="setStatus('${esc(sku)}','NEEDS_REVIEW',this);closeTileMenu()"><i class="ti ti-player-pause"></i> Hold</button>
     <button onclick="askAbout('${esc(sku)}');closeTileMenu()"><i class="ti ti-message-circle"></i> Ask Claude</button>
-    <button onclick="openDrawer('${esc(sku)}');closeTileMenu()"><i class="ti ti-edit"></i> Edit details</button>
+    <button onclick="openListing('${esc(sku)}');closeTileMenu()"><i class="ti ti-edit"></i> Edit details</button>
     <button class="danger" onclick="delRow('${esc(sku)}',${row},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete</button>`;
   document.body.appendChild(m);
   const rect=ev.target.closest("button").getBoundingClientRect();
