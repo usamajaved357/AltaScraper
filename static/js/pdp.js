@@ -169,6 +169,10 @@ function pdpOpen(sku){
     // without closing the page would otherwise carry the bar across, and it
     // would be reporting the last listing's work over this one's fields.
     PDP_DIRTY = false;
+    // Same reasoning, and it matters more here: carrying these across would
+    // mark ANOTHER listing's Amazon errors as "you have changed this", which is
+    // a claim about work that was never done.
+    PDP_EDITED_FIELDS = new Set();
   }
   // The drawer and this page are two views of one listing; having both open
   // means two title boxes saving to the same cell.
@@ -1043,10 +1047,84 @@ function pdpAutoGrow(){
  * Errors first and always; warnings folded, because "accepted with warnings" is
  * a success and a wall of amber on a listing that went live is noise.
  */
+/* WHICH FIELDS HAVE BEEN EDITED SINCE THE REPLY WAS STORED.
+ *
+ *     "After the user changed the brand to match Amazon's value, the error
+ *      banner still shows the old message with 'Nestwell Goods'. The stale
+ *      error message makes it impossible to know if your fix worked without
+ *      re-submitting to Amazon."
+ *
+ * THE MESSAGE IS NOT WRONG -- it is a record of what was sent LAST TIME, and it
+ * still names the value that was sent. Rewriting it to show the new value would
+ * be a lie about what Amazon was told. Deleting it would throw away the only
+ * account of why the listing was refused.
+ *
+ * So the reply stays exactly as Amazon wrote it, and the ones you have since
+ * changed are marked. Option (b) of the two the brief offered:
+ *
+ *     "Show a note: 'You've changed this field — Preview or Submit again to
+ *      verify the fix'"
+ *
+ * Per listing, and cleared when the panel opens on a different one: it is a
+ * statement about this editing session, not a stored fact.
+ */
+let PDP_EDITED_FIELDS = new Set();
+
+/* The Amazon attribute name a saved COLUMN lands in, for the few the banner can
+ * actually blame. Amazon complains about `brand`, not about "Brand" -- without
+ * this the two never match and nothing is ever marked.
+ *
+ * Deliberately short: only columns that map to one Amazon attribute go on it. A
+ * guess here would mark a message as answered when it was not, which is worse
+ * than not marking it at all. */
+const PDP_COL_TO_ATTR = {
+  "Title": "item_name",
+  "Brand": "brand",
+  "UPC": "externally_assigned_product_identifier",
+  "Description (HTML)": "product_description",
+  "Search Terms / KW": "generic_keyword",
+  "Bullet 1": "bullet_point", "Bullet 2": "bullet_point",
+  "Bullet 3": "bullet_point", "Bullet 4": "bullet_point",
+  "Bullet 5": "bullet_point",
+};
+
+/* Called by the saver when a write succeeds. Takes what the app calls the
+ * field; records what AMAZON calls it, which is what the reply is keyed on. */
+function pdpFieldEdited(sku, target, key){
+  if(!PDP_SKU || String(PDP_SKU) !== String(sku)) return;
+  const attr = (target === "attr") ? String(key)
+                                   : PDP_COL_TO_ATTR[String(key)];
+  if(!attr) return;
+  // topAttr, not `top`: this file already has a `const top` for the top BAR,
+  // and `top` is a window global besides. test_pdp_images.py reads the top bar
+  // by splitting on that name and found this one first.
+  const topAttr = String(attr).split(".")[0];
+  if(PDP_EDITED_FIELDS.has(topAttr)) return;  // already marked, nothing to redraw
+  PDP_EDITED_FIELDS.add(topAttr);
+  // THE BANNER HAS TO SAY IT NOW, not at the next render -- the whole point is
+  // to answer "did my fix land?" without submitting again. Swapped on its own
+  // like the hero, and for the same reason: this fires on blur, which is the
+  // moment you have tabbed into the next box.
+  const host = document.getElementById("pdp");
+  const old = host && host.querySelector(".pdp-errors");
+  if(!old) return;
+  const r = pdpRow();
+  if(!r) return;
+  try{
+    const tmp = document.createElement("div");
+    tmp.innerHTML = pdpApiIssues(r);
+    const fresh = tmp.firstElementChild;
+    if(fresh) old.replaceWith(fresh);
+  }catch(e){}
+}
+
 function pdpApiIssues(r){
   const rec = (r && r.api_issues) || null;
   const all = (rec && rec.issues) || [];
   if(!all.length) return "";
+  // An issue whose field you have edited since this reply was stored.
+  const answered = i => (i.fields || []).some(
+    f => PDP_EDITED_FIELDS.has(String(f).split(".")[0]));
 
   const errs  = all.filter(i => i.severity === "ERROR");
   const warns = all.filter(i => i.severity !== "ERROR");
@@ -1060,19 +1138,32 @@ function pdpApiIssues(r){
       '<button class="pdp-errfield" title="Go to this field"'
       + ' onclick="pdpGoToField(\'' + esc(f) + '\')">' + esc(f) + '</button>').join("");
 
-  const line = (i, cls) =>
-    '<div class="pdp-error ' + cls + '">'
-    + '<i class="ti ti-' + (cls === "warn" ? "alert-triangle" : "alert-circle") + '"></i>'
+  const line = (i, cls) => {
+    const done = answered(i);
+    return '<div class="pdp-error ' + cls + (done ? " answered" : "") + '">'
+    + '<i class="ti ti-' + (done ? "pencil"
+                                 : (cls === "warn" ? "alert-triangle" : "alert-circle")) + '"></i>'
     + '<div><div>' + esc(i.message || "Amazon reported a problem with this listing.") + '</div>'
+    // THE MESSAGE IS LEFT ALONE and the note goes under it. Amazon's sentence
+    // names the value that was SENT; it is a record, not a live reading, and
+    // editing it would misreport what Amazon was actually told.
+    + (done ? '<div class="pdp-errstale">You have changed this field since '
+              + 'Amazon said this. Preview or Submit again to check the fix.</div>' : "")
     + (i.fields && i.fields.length ? '<div class="pdp-errfields">' + chips(i) + '</div>' : "")
     + (i.code ? '<div class="pdp-error-code">Amazon code ' + esc(i.code) + '</div>' : "")
     + '</div></div>';
+  };
 
   let out = "";
   if(errs.length){
+    // HOW MANY ARE STILL UNANSWERED, said in the headline. "3 problems" over a
+    // list where two are already edited is the same stale reading one level up.
+    const open = errs.filter(i => !answered(i)).length;
+    const edited = errs.length - open;
     out += '<div class="pdp-errhead"><b>'
         +  (sub ? "Amazon refused this listing" : "Amazon would refuse this listing")
         +  '</b> — ' + errs.length + (errs.length === 1 ? " problem" : " problems")
+        +  (edited ? ' <span class="pdp-dim">· ' + edited + ' since edited</span>' : "")
         +  when + '</div>'
         +  errs.map(i => line(i, "err")).join("");
   }

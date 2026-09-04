@@ -309,6 +309,21 @@ body.pdp-on{ overflow:hidden; }
 }
 .pdp-error > i{ font-size:15px; color:var(--pdp-danger); flex-shrink:0; margin-top:1px; }
 .pdp-error b{ color:var(--pdp-danger); font-weight:600; }
+/* A COMPLAINT WHOSE FIELD HAS SINCE BEEN EDITED. Cooled to the neutral panel
+   rather than deleted: Amazon's sentence is a record of what was SENT, and it
+   is still the only account of why the listing was refused. What changes is how
+   loudly it is shouting -- an answered problem should not read as an open one.
+   "answered" here means "you have changed the field", never "Amazon is happy";
+   only another Preview or Submit can say that, and the note says so. */
+.pdp-error.answered{
+  background:var(--pdp-raise); border-color:var(--pdp-line);
+  opacity:.85;
+}
+.pdp-error.answered > i{ color:var(--pdp-ink3); }
+.pdp-errstale{
+  margin-top:4px; font-size:10px; color:var(--pdp-warn);
+  display:flex; align-items:center; gap:4px;
+}
 .pdp-error-code{
   font-size:9px; color:var(--pdp-dim); margin-top:4px;
   font-family:ui-monospace,Consolas,monospace;

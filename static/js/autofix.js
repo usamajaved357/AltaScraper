@@ -1155,6 +1155,14 @@ async function editField(sku, target, key, value){
        && String(PDP_SKU) === String(sku)){
       pdpMarkDirty();
     }
+    // AND A STORED AMAZON COMPLAINT ABOUT THIS FIELD IS NOW OUT OF DATE.
+    //
+    //     "The stale error message makes it impossible to know if your fix
+    //      worked without re-submitting to Amazon."
+    //
+    // The message is left exactly as Amazon wrote it -- it records what was
+    // SENT -- and the banner marks the ones whose field has since changed.
+    if(typeof pdpFieldEdited === "function") pdpFieldEdited(sku, target, key);
     return {ok:true};
   }catch(e){ return {ok:false, error:String((e && e.message) || e)}; }
 }
@@ -1378,14 +1386,49 @@ function _fullDataParts(r){
   // SPLIT IN TWO, because the product page has an Identity tab and an Offer
   // tab. Same thirteen rows, same controls, same order -- the join below is
   // what the drawer shows, and it is the identical string it was.
+  // WHO ALREADY OWNS THIS BARCODE, if Amazon has said so.
+  //
+  //     "The app should show a PROMINENT warning directly on the EAN/barcode
+  //      field ... Be the FIRST thing highlighted, not the brand field -- the
+  //      EAN is the cause, brand mismatch is just the symptom"
+  //
+  // Amazon blames `brand` in attributeNames for this refusal, which is why the
+  // Brand box was the one wearing the red border: correct as a report of what
+  // Amazon said, and the wrong field to send someone to. Changing the brand to
+  // match cannot work -- the catalogue entry belongs to another product -- and
+  // the barcode is the thing to change.
+  //
+  // Read through amzIdConflict, the one place that reads Amazon's prose
+  // (static/js/amazon_errors.js, CLAUDE.md Rule 12). It names the ASIN only in
+  // Amazon's own format, and the owning brand only if the message really
+  // contains it.
+  const _idc = (typeof amzIdConflict === "function")
+    ? amzIdConflict(((r.api_issues||{}).issues)||[], {barcode:r.barcode}) : null;
+  const _idcLine = (_idc && typeof amzIdConflictLine === "function")
+    ? amzIdConflictLine(_idc) : "";
+
   const idRows=[
     dwFieldRow("Product type", productTypeCell(sku, r), {hint:"Amazon-assigned from the catalogue. Changing it can cause rejection."}),
     dwFieldRow("SKU", dwRo(r.sku)),
-    dwFieldRow("Brand", editCell(sku,"col","Brand",r.brand,null,false,true), {prov:(rowProvenance(r)||{}).brand}),
+    // The brand gets a SECONDARY note, not the alarm: "The brand field can show
+    // a secondary note ... but the EAN field is where the user needs to act
+    // first." Only when Amazon actually named the catalogue's brand.
+    dwFieldRow("Brand", editCell(sku,"col","Brand",r.brand,null,false,true)
+      + ((_idc && _idc.brand)
+          ? '<div class="dw2-idnote">Amazon\'s catalogue has <b>' + esc(_idc.brand)
+            + '</b> for this barcode. Change the barcode, not this.</div>' : ""),
+      {prov:(rowProvenance(r)||{}).brand}),
     dwFieldRow("Condition", dwRo("New")),
     dwFieldRow("Category", dwRo((r.category||r.amazon_category||"")+(r.subcategory?(" › "+r.subcategory):""))),
     dwFieldRow("Browse node(s)", dwRo((r.attributes||{}).recommended_browse_nodes||(r.attributes||{}).browse_node||"")),
-    dwFieldRow("Barcode / GTIN", editCell(sku,"col","UPC",r.barcode)),
+    dwFieldRow("Barcode / GTIN",
+      '<div class="dw2-idwrap' + (_idc ? " bad" : "") + '">'
+      + editCell(sku,"col","UPC",r.barcode)
+      + (_idcLine
+          ? '<div class="dw2-idclash"><i class="ti ti-alert-triangle"></i>'
+            + '<span>' + _idcLine + '</span></div>'
+          : "")
+      + '</div>'),
   ].join("");
   const offerRows=[
     (function(){
