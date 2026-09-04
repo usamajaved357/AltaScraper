@@ -65,7 +65,13 @@ HTML = open(os.path.join(HERE, "templates", "dashboard.html"),
 
 print("=== 1. the page fills the page ===")
 # Three caps were leaving ~800px blank either side of a 720px column.
-_layout = CSS.split(".pdp-layout{")[1].split("}")[0]
+# THE FIRST MATCH IS NOT THE RULE. `.pdp-layout` is written twice -- the phone
+# override (flex-direction:column, inside @media max-width:700px) comes FIRST in
+# the file, so splitting on the name reads the one that does not apply on a
+# desktop. The same trap test_layout_density.py's rules() helper exists for.
+_layout = [b for b in re.findall(r"\.pdp-layout\{([^}]*)\}", CSS)
+           if "overflow-y" in b or "max-width" in b or "display:flex" in b]
+_layout = _layout[0] if _layout else ""
 falsy("the layout is no longer capped at 1100px", "max-width:1100px" in _layout)
 _content = CSS.split(".pdp-content{")[1].split("}")[0]
 falsy("  nor the content at 720px", "max-width:720px" in _content)
@@ -81,6 +87,13 @@ falsy("  the hero is not centred in a narrower column either",
       "max-width:900px" in _hero)
 truthy("the sidebar still sits directly against the content",
        "gap:0" in _layout)
+# AND THE LAYOUT IS NOW THE ONE THING THAT SCROLLS. The top bar, the hero, the
+# tabs and the footer are its flex siblings, so they cannot scroll away --
+# "the top bar and tabs ... should stay pinned at the top of the PDP panel
+# while the content below scrolls". min-height:0 is what lets a flex item
+# shrink below its content and actually scroll.
+truthy("  and it is the panel's scroller",
+       "overflow-y:auto" in _layout and "min-height:0" in _layout)
 
 print("\n=== 2. the checks rail reads the same warnings as the tab ===")
 truthy("there is one warnings-by-type reader", "function lsWarnTypes(" in LS)

@@ -1383,7 +1383,37 @@ function _fullDataParts(r){
        var pnum=String(r.profit==null?"":r.profit).replace(/[^0-9.\-]/g,"");
        return dwFieldRow("Profit ("+cur+")", dwRo(pnum?(cur+pnum):"", "green"));
     })(),
-    dwFieldRow("Handling days", editCell(sku,"col","Handling Days",r.handling_days)),
+    // HANDLING TIME IS EDITABLE ON EVERY LISTING, and on a listing this app
+    // holds no draft of it cannot be edited the usual way.
+    //
+    //     "Handling time editable on EVERY listing, including the ones that
+    //      are live on Amazon."
+    //
+    // editCell saves on blur through /edit, which finds a listing BY ITS ROW
+    // HERE and answers 404 no_row when there is none -- so on those the box
+    // took a number and then said "save refused", which reads as a broken
+    // button rather than a fact about the listing. Measured: 7 of jack_uk's 47
+    // live SKUs and 18 of nestwell_goods' 62 have no row here.
+    //
+    // Those get a box and a button instead of a box that saves itself, because
+    // the only place their number can go is AMAZON. See setHandlingOne in
+    // handling.js -- the same one endpoint the bulk bar uses.
+    (function(){
+       if(!r.catalogue_only)
+         return dwFieldRow("Handling days",
+                           editCell(sku,"col","Handling Days",r.handling_days));
+       const id = "hd_" + String(sku).replace(/[^A-Za-z0-9_]/g, "_");
+       const cur = String(r.handling_days == null ? "" : r.handling_days);
+       return dwFieldRow("Handling days",
+           '<input id="' + id + '" class="ed" type="number" min="0" max="30" step="1"'
+         + ' style="width:70px" value="' + esc(cur) + '" data-_was="' + esc(cur) + '">'
+         + ' <button class="btn" style="margin-left:6px"'
+         + ' onclick="setHandlingFromBox(\'' + esc(sku) + '\',\'' + id + '\')">'
+         + 'Send to Amazon</button>',
+           {hint: "This app holds no draft of this listing, so there is nowhere "
+                + "here to record a handling time — the change goes straight to "
+                + "Amazon."});
+    })(),
     dwFieldRow("Shipping group", dwRo(SHIP)),
   ].join("");
   const a=r.attributes||{};

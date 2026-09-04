@@ -833,15 +833,25 @@
      tick whichever way you are reading the list. */
   .lt tbody tr.rowon td{background:color-mix(in srgb, var(--accent) 12%, transparent)}
   .lt tbody tr.rowon:hover td{background:color-mix(in srgb, var(--accent) 18%, transparent)}
-  /* The table's action buttons carry the same icons as the cards' now, so they
-     need room to sit side by side without wrapping the column. */
-  .lt .acts{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-  .lt .acts .dotb{width:26px;height:26px;padding:0;display:inline-flex;
-                  align-items:center;justify-content:center;font-size:13px}
-  .lt .thumb{width:44px;height:44px;border-radius:6px;background:var(--panel2);
-             display:flex;align-items:center;justify-content:center;color:var(--ink4);
-             flex-shrink:0;overflow:hidden;border:none}
-  .lt .thumb img{width:100%;height:100%;object-fit:cover}
+  /* .lt .acts, .lt .acts .dotb and .lt .thumb WERE ALSO DEFINED HERE, three
+     rules that each had a second definition further down this file or in
+     datatable.css. CLAUDE.md Rule 12, and it was not cosmetic -- the cascade
+     was quietly picking a different winner for each one:
+
+       .lt .acts     kept flex-wrap:wrap from this copy, because the copy at
+                     the bottom never resets it. Five controls in a 150px
+                     column then wrapped onto two lines, the cell measured 58px
+                     and every row 73px. That is six rows a screen where
+                     datatable.css was written to give nine.
+       .lt .dotb     this copy was `.lt .acts .dotb` -- three classes, so it
+                     OUTRANKED the 28px `.lt .dotb` below however late that
+                     came, and the buttons stayed 26px.
+       .lt .thumb    44px here, 36px in datatable.css, which loads later and
+                     won. This one said 44 and had said nothing for months.
+
+     The surviving definitions are `.lt .acts` and `.lt .dotb` below, and the
+     shared thumb in datatable.css. The placeholder centring this rule
+     supplied went onto that shared rule, so it is not lost. */
   .lt .asin{color:var(--accent);font-size:12px;font-weight:500}
   .lt .sku{font-size:10px;color:var(--ink4);font-family:ui-monospace,Consolas,monospace}
   .lt .ttl{font-size:13px;font-weight:500;max-width:240px;white-space:nowrap;
@@ -849,7 +859,12 @@
   .lt .brand{color:var(--gold);font-size:11px}
   .lt .price{font-weight:500;color:var(--gold);font-variant-numeric:tabular-nums}
   .lt .comp{font-size:11px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-  .lt .acts{display:flex;gap:4px;align-items:center}
+  /* ONE LINE, ALWAYS. The prototype's actions column holds two controls; this
+     one holds five, and with wrapping allowed they folded and doubled the
+     height of every row. nowrap makes the sum the cell's min-content width, so
+     the auto table layout widens the column instead of stacking the buttons --
+     nothing is hidden and nothing is moved into a menu. */
+  .lt .acts{display:flex;gap:4px;align-items:center;flex-wrap:nowrap}
   .lt .dotb{width:28px;height:28px;padding:0;display:flex;align-items:center;
             justify-content:center;border-radius:var(--radius-sm);
             border:1px solid var(--line);background:var(--panel2);color:var(--ink3)}

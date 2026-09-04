@@ -59,7 +59,40 @@ yes("  shadow 0 8px 40px", "box-shadow:0 8px 40px rgba(0,0,0,.5)" in CSS)
 yes("  align-self flex-start", "align-self:flex-start" in CSS)
 # The panel used to be min-height:calc(100vh - 38px) -- full screen whatever it
 # held, so its bottom edge was always off screen. That is a sheet, not a card.
-yes("  and as tall as its contents, not the screen", "min-height:min-content" in CSS)
+# It is capped at the viewport now and has NO min-height at all: min-height
+# beats max-height in CSS, so min-content kept the cap from applying and the
+# panel still grew to 3,107px with nothing scrolling.
+yes("  and capped at the viewport, not stretched to it",
+    "max-height:calc(100vh - 80px)" in CSS)
+check("  with no min-height to override that cap", "min-height:min-content" in CSS, False)
+
+print("\n== the bars do not scroll away ==")
+#     "The top bar (Back to listings, Preview, Auto-fix, Submit) and the tabs
+#      bar scroll away when you scroll down in the content. They should stay
+#      pinned at the top of the PDP panel while the content below scrolls."
+#
+# They were position:sticky against the BACKDROP, which is what scrolled. A
+# sticky element can only stick within its own parent's box, so on a 3,000px
+# panel they stuck for a while and then travelled off with it.
+yes("the panel is a flex column that hides its own overflow",
+    "flex-direction:column" in CSS and "overflow:hidden;" in CSS)
+yes("the middle is the one scroller",
+    ".pdp-layout{" in CSS and "flex:1; min-height:0; overflow-y:auto" in CSS)
+yes("the bars are siblings outside it, and do not shrink",
+    ".pdp-top, .pdp-hero, .pdp-tabs, .pdp-footer{ flex-shrink:0; }" in CSS)
+check("  none of them is sticky any more",
+      "position:sticky; top:0; z-index:3" in CSS
+      or "position:sticky; top:41px" in CSS
+      or "position:sticky; bottom:0" in CSS, False)
+# position:fixed appears once and belongs to #pdp, the BACKDROP -- which has to
+# be fixed. What must not be fixed is anything inside the panel.
+check("  and none is fixed",
+      re.search(r"\.pdp-(top|tabs|footer|hero)\{[^}]*position:fixed", CSS) is not None,
+      False)
+# The rail is the exception, and it is INSIDE the scroller: sticky there keeps
+# a short list of actions in view without having to scroll back up for it.
+yes("the rail stays in view inside the scroller",
+    "position:sticky; top:0; align-self:flex-start;" in CSS)
 yes("the JS shows it as a flex box, not a block", 'host.style.display = "flex"' in JS)
 
 print("\n== STEP 3: four tabs, Amazon's names, no Attributes tab ==")
@@ -140,7 +173,55 @@ yes("padding 10px 16px", ".pdp-footer{" in CSS and "padding:10px 16px" in CSS)
 yes("Cancel and Save and finish", "pdp-footer-cancel" in JS and "pdp-footer-save" in JS)
 yes("  with the note on the left", "pdp-footer-note" in JS
     and "Edits save as you leave each box" in JS)
-yes("  and it is sticky", "position:sticky" in CSS)
+# It WAS sticky. Item 2 of CLAUDE_CODE_PROMPT_v3.md took that away -- it is the
+# last flex item of the panel now, which puts it at the bottom of the CARD
+# rather than tracking the viewport. See "the bars do not scroll away" above.
+
+print("\n== v3 item 1: the bar arrives with the first change ==")
+#     "It should only appear AFTER the user has modified any field. Same
+#      pattern as the Save All bar on the listings page -- hidden until a
+#      change is detected, then slides in.
+#      When no changes have been made: no bar visible."
+yes("the bar is always drawn, and hidden by a class", 'PDP_DIRTY ? " on" : ""' in JS)
+# Collapsed, not display:none -- nothing slides in from nothing.
+# ANCHORED, because ".pdp-top, .pdp-hero, .pdp-tabs, .pdp-footer{ flex-shrink:0 }"
+# is written first and contains ".pdp-footer{" too. This codebase's oldest test
+# trap: the first match is not the rule you mean.
+foot = re.search(r"^\.pdp-footer\{(.*?)\}", CSS, re.S | re.M)
+yes(".pdp-footer takes no height until then",
+    foot and "max-height:0" in foot.group(1)
+         and "padding-top:0" in foot.group(1)
+         and "border-top-width:0" in foot.group(1))
+yes("  and is off the bottom edge", foot and "transform:translateY(100%)" in foot.group(1))
+# ORDER MATTERS INSIDE THE RULE. padding and border-top are set as SHORTHANDS,
+# and a shorthand written after a longhand re-sets it. With the collapse first
+# the bar measured 21px on screen -- 0 of content plus the padding and border
+# the shorthands had put back.
+yes("  written after the padding/border shorthands, not before",
+    foot and foot.group(1).index("max-height:0") > foot.group(1).index("padding:10px 16px")
+         and foot.group(1).index("border-top-width:0") > foot.group(1).index("border-top:1px"))
+# A flex item's min-height defaults to its content, and min-height beats
+# max-height -- without this the cap does nothing at all.
+yes("  with min-height:0 so the cap can apply", foot and "min-height:0" in foot.group(1))
+yes("  with something to animate", foot and "transition:max-height" in foot.group(1))
+on = re.search(r"\.pdp-footer\.on\{(.*?)\}", CSS, re.S)
+yes(".pdp-footer.on brings it back", on and "transform:none" in on.group(1)
+    and "padding-top:10px" in on.group(1) and "border-top-width:1px" in on.group(1))
+yes("one delegated listener, bound once",
+    "function pdpWatchEdits()" in JS and "PDP_DIRTY_BOUND" in JS)
+yes("  on input and change", 'host.addEventListener("input", touched)' in JS
+    and 'host.addEventListener("change", touched)' in JS)
+# Two boxes inside the panel are NOT the listing: the auto-fix suggestion rows
+# and the footer's own controls. Typing in those must not raise the bar.
+yes("  ignoring the auto-fix rows", 't.closest(".pdp-afrow")' in JS)
+yes("  and the footer itself", 't.closest(".pdp-footer")' in JS)
+yes("marking dirty reveals it without a re-render",
+    'f.classList.add("on")' in JS)
+# "When saved or cancelled: bar disappears." Both buttons close the panel.
+yes("closing forgets the change", re.search(
+    r"function pdpClose\(\)\{(?:(?!\n\}).)*PDP_DIRTY = false", JS, re.S) is not None)
+yes("  and so does opening a different listing", re.search(
+    r"if\(changed\)\{(?:(?!\n  \}).)*PDP_DIRTY = false", JS, re.S) is not None)
 
 print("\n== STEP 9: no drawer (see test_one_detail_view.js) ==")
 LIST = nocomments_js(read("static", "js", "listings.js"))
