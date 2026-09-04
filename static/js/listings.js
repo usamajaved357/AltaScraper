@@ -2086,7 +2086,8 @@ function _dwShell(r, urls, priceStr, risks){
   // that function for why a second title box is never the answer.
   const tp = dwTitleParts(r, "dwtitlec_" + sv);
   const heroImg = (urls && urls.length)
-    ? `<div class="dw2-heroimg"><i class="ti ti-photo"></i><img src="${esc(urls[0])}" loading="lazy" onerror="this.remove()"></div>`
+    // 68px, which is what .dw2-heroimg draws. It was the raw URL.
+    ? `<div class="dw2-heroimg"><i class="ti ti-photo"></i><img src="${esc(thumbUrl(urls[0],68))}" loading="lazy" decoding="async" onerror="this.remove()"></div>`
     : `<div class="dw2-heroimg"><i class="ti ti-photo"></i></div>`;
   const cost = _dwCost(r);
   const heroBlock = `<div class="dw2-hero">
@@ -3331,10 +3332,28 @@ function openListing(sku){
  * the "Optimize live copy" action in the sidebar -- because the Custom AI
  * Rewrite and Diagnose features live there and are worth keeping.
  */
+/* DOES THIS APP HOLD A DRAFT FOR THIS SKU?
+ *
+ * Amazon's catalogue and this app's listings table are two different sets, and
+ * the overlap is not total: MEASURED on nestwell_goods, 18 of the 62 SKUs
+ * Amazon reports have no row here at all -- listings made in Seller Central, or
+ * by another tool, or whose draft was deleted. `floating_Duck` is one of them.
+ *
+ * Nothing that EDITS a listing can work on those: /edit finds a row by SKU and
+ * correctly refuses when there is none. So every screen that offers an edit has
+ * to ask this first, and it is one function because two answers to "is this
+ * ours to edit" is how a control comes to be offered where it cannot work
+ * (CLAUDE.md Rule 12).
+ */
+function hasDraftRow(sku){
+  const s = String(sku || "");
+  if(!s || typeof ROWS === "undefined" || !ROWS) return false;
+  return ROWS.some(r => String(r.sku) === s);
+}
+
 function openLiveListing(asin, sku){
   const s = String(sku || "");
-  const known = s && typeof ROWS !== "undefined"
-                && ROWS.some(r => String(r.sku) === s);
+  const known = hasDraftRow(s);
   if(known && typeof pdpOpen === "function"){ pdpOpen(s); return; }
   if(typeof optimizeLive === "function"){ optimizeLive(asin || "", s); return; }
   if(s) openListing(s);

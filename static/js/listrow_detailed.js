@@ -351,7 +351,20 @@ function lrStatus(r){
       + (st === "SUBMITTED" ? " sent" : st === "QUEUED" ? " queued"
          : st === "PARENT" ? " parent" : "")
       + '">' + esc(st || "—") + '</span>';
+  // ON AMAZON, BUT THIS APP HOLDS NO DRAFT OF IT. The fact that explains why
+  // this row has read-only figures and empty compliance columns while the one
+  // above it does not -- the same badge, and the same words, the table view has
+  // carried for exactly this since it was reported as "two different types on
+  // buttons, some have review option some dont".
+  const noDraft = (typeof hasDraftRow === "function") && !hasDraftRow(r.sku);
   return badge
+       + (noDraft
+           ? '<span class="badge b-NODRAFT" title="On Amazon, but this app '
+             + 'holds no draft of it — so there is nothing to edit here and no '
+             + 'compliance check of our own. Press Sync to pull the full '
+             + 'listing in; it can then be changed like any other.">'
+             + 'no draft here</span>'
+           : "")
        + (stale
            ? '<div class="status-stale" title="Amazon has this listing, so it is '
              + 'live. This app’s own record still says ' + esc(stale)
@@ -553,7 +566,13 @@ function lrProduct(r){
   return '<div class="prod-wrap">'
     + '<div class="prod-img">'
     +   (img
-        ? '<img src="' + esc(img) + '" loading="lazy" onerror="this.remove()">'
+        // THROUGH thumbUrl, LIKE EVERY OTHER THUMBNAIL. This drew the raw URL
+        // into a 56px box -- so the DEFAULT view fetched a full-size picture,
+        // 116 KB from eBay or several hundred from Amazon, forty times over, to
+        // fill something the size of a fingernail. That is what "the images
+        // take too long to appear" was.
+        ? '<img src="' + esc(thumbUrl(img, 56)) + '" loading="lazy"'
+          + ' decoding="async" onerror="this.remove()">'
         : '<i class="ti ti-photo"></i>')
     + '</div>'
     + '<div>'
@@ -1375,7 +1394,10 @@ function lrFamilyRow(g){
     + '<td colspan="6">'
     +   '<div class="prod-wrap">'
     +     '<span class="var-img">'
-    +       (img ? '<img src="' + esc(img) + '" loading="lazy" onerror="this.remove()">'
+          // 40px, the size .var-img actually draws -- see the note on the row's
+          // own thumbnail above.
+    +       (img ? '<img src="' + esc(thumbUrl(img, 40)) + '" loading="lazy"'
+                   + ' decoding="async" onerror="this.remove()">'
                  : '<i class="ti ti-photo"></i>')
     +     '</span>'
     +     '<div>'

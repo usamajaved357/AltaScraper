@@ -15,6 +15,20 @@
      than with the bar's gradient because at 16px a gradient is one muddy
      colour; the accent and the dark ground are the app's own tokens' values. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232dd4bf'/%3E%3Cpath d='M8.6 24.2 L16 8.2 L23.4 24.2 M12.1 18.6 H19.9' fill='none' stroke='%230a1628' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<!-- OPEN THE CONNECTIONS BEFORE THE FIRST PICTURE NEEDS THEM.
+     Every product image on every listings screen comes from one of these two
+     hosts, and the FIRST one from each pays for a DNS lookup, a TCP handshake
+     and a TLS negotiation before a single byte of image arrives -- on a cold
+     load that is most of what "the images take a moment" is.
+     preconnect does exactly that work, in parallel with the page's own scripts,
+     so by the time a row is drawn the socket is already open. Two hosts only:
+     each one costs a connection whether or not it is used, and these are the
+     two that always are.
+     No CDN is being added here -- these are the hosts the pictures already come
+     from. Scripts and stylesheets are still this server's own; see the note on
+     the icon font below. -->
+<link rel="preconnect" href="https://m.media-amazon.com" crossorigin>
+<link rel="preconnect" href="https://i.ebayimg.com" crossorigin>
 <!-- THE ICON FONT IS OURS NOW, not a CDN's.
      It used to be fetched TWICE, from jsdelivr and from unpkg -- a fallback
      that was always paid for whether or not it was ever needed. Measured on a

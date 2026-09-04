@@ -176,7 +176,12 @@ function pdpHero(r){
   return '<div class="pdp-hero"><div class="pdp-hero-in">'
     + '<div class="pdp-heroimg">'
     +   (urls && urls.length
-        ? '<img src="' + esc(urls[0]) + '" loading="lazy" onerror="this.remove()">'
+        // 120px, the size .pdp-heroimg draws. It was the raw URL, so opening a
+        // listing fetched the full-size picture to fill a small square.
+        // EAGER, not lazy: this is the one image on the screen you just asked
+        // for, and it is above the fold by definition.
+        ? '<img src="' + esc(thumbUrl(urls[0], 120)) + '" decoding="async"'
+          + ' fetchpriority="high" onerror="this.remove()">'
         : '<i class="ti ti-photo"></i>')
     + '</div>'
     + '<div class="pdp-heroinfo">'

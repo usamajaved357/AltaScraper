@@ -82,6 +82,34 @@ function lrEditTouchesAmazon(){
  */
 function lrEditBox(o){
   const orig = String(o.value == null ? "" : o.value);
+
+  /* A LISTING THIS APP HOLDS NO DRAFT OF CANNOT BE EDITED, and the box is not
+   * drawn for one.
+   *
+   *     "The Save All bar fails for some SKUs with 'no listing with this SKU in
+   *      this workspace'. Example: floating_Duck."
+   *
+   * That SKU is real and the message is right: it is on Amazon, and there is no
+   * row here to write to. MEASURED on nestwell_goods, 18 of the 62 SKUs Amazon
+   * reports have no row in `listings` -- made in Seller Central, or by another
+   * tool, or their draft was deleted.
+   *
+   * The detailed view drew them anyway, because listBlocks flattens the app's
+   * rows and Amazon's catalogue into one block, and every row in that block got
+   * an editable box. /edit then refused, correctly, AFTER the value was typed
+   * and Save pressed.
+   *
+   * So the box is replaced by the value, read-only, with the reason on hover --
+   * the same distinction the table view has always drawn with its "no draft
+   * here" badge. A control that cannot work is worse than no control: this one
+   * took a number, held it, counted it in "1 SKU edited", and then lost it.
+   */
+  if(o.sku && typeof hasDraftRow === "function" && !hasDraftRow(o.sku)){
+    return '<span class="lr-ro" title="This listing is on Amazon and this app '
+      + 'holds no draft of it, so there is nothing here to edit. Press Sync to '
+      + 'pull it in, and then it can be changed like any other.">'
+      + (orig === "" ? '<span class="dash">—</span>' : esc(orig)) + '</span>';
+  }
   return '<input class="lr-edit' + (o.cls ? " " + o.cls : "") + '"'
     + ' type="text" inputmode="decimal"'
     + ' value="' + esc(orig) + '"'

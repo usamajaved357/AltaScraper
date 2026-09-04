@@ -62,6 +62,11 @@ const ctx = vm.createContext(globalThis);
 // cost, handling and stock cells all call lrEditBox, so the row cannot be
 // rendered without it -- and stubbing it would mean a change that broke the box
 // still passed here, which is the opposite of what running the renderer is for.
+// thumbs.js too: every picture on the row asks it for a sized URL, so the
+// renderer cannot draw without it. Real rather than stubbed, for the same
+// reason as the edit boxes below.
+vm.runInContext(fs.readFileSync("static/js/thumbs.js", "utf8"), ctx,
+                {filename:"thumbs.js"});
 vm.runInContext(fs.readFileSync("static/js/listrow_edit.js", "utf8"), ctx,
                 {filename:"listrow_edit.js"});
 vm.runInContext(SRC, ctx, {filename:"listrow_detailed.js"});
