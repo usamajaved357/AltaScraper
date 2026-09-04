@@ -166,6 +166,104 @@ async function bulkHandling(){
 }
 
 
+/* ONE LISTING, FROM ITS OWN PAGE.
+ *
+ *     "Handling time editable on EVERY listing, including the ones that are
+ *      live on Amazon."
+ *
+ * The Offer tab's Handling days box saves through /edit, which finds a listing
+ * BY ITS ROW IN THIS APP and returns 404 no_row when there isn't one. Measured
+ * on his own accounts: 7 of jack_uk's 47 live SKUs and 18 of nestwell_goods' 62
+ * have no row here -- made in Seller Central, made by another tool, or their
+ * draft was deleted. On those the box accepted a number and then said "save
+ * refused", which reads as a broken button rather than a fact about the
+ * listing.
+ *
+ * This is the path for exactly those. It goes through _handlingPost, the same
+ * one call the bulk bar uses (CLAUDE.md Rule 12) -- one endpoint, one
+ * validation, one account scope, one set of words for what happened.
+ *
+ * IT ASKS FIRST, and it says what it is about to do. A blur-save cannot be the
+ * control here: for a listing with no row the only place the number can go is
+ * AMAZON, and sending a promise to customers is not something a text box should
+ * do quietly on the way past. Everywhere else the field still saves on blur,
+ * because there the value lands in this app and nowhere else.
+ */
+async function setHandlingOne(sku, days, opts){
+  sku = String(sku || "").trim();
+  opts = opts || {};
+  if(!sku){ toast("No listing to update"); return false; }
+  const n = parseInt(String(days).trim(), 10);
+  if(isNaN(n) || n < 0 || n > 30){
+    toast("Handling time must be a whole number, 0–30 days");
+    return false;
+  }
+  if(!opts.silent){
+    const ok = await uiConfirm(
+      `Set handling time to ${n} day(s) on ${sku}?\n\n`
+      + `This app holds no draft of this listing, so there is nowhere here to `
+      + `record it — the change goes straight to Amazon, and shoppers see the `
+      + `new dispatch promise.`);
+    if(!ok) return false;
+  }
+  try{
+    const j = await _handlingPost({skus:[sku], days:n, push:true, sheet:true});
+    const res = (j && j.push_results || [])[0];
+    if(!j || (j.ok === false && !j.push_results)){
+      toast("Update failed: " + ((j && j.error) || "unknown"));
+      return false;
+    }
+    if(res && !res.ok){
+      // NOT LIVE is not a failure -- it is a listing Amazon has never seen,
+      // and the number will go with it when it is submitted.
+      if(/no listing with this sku|not_found/i.test(res.error || "")){
+        toast("Not live on Amazon yet — this will apply when it is submitted");
+        return false;
+      }
+      await uiAlert(`Amazon refused the change on ${sku}:\n\n${res.error || "error"}`);
+      return false;
+    }
+    toast(`Handling time set to ${n} day(s) on Amazon`);
+    // Same two fields, from the same two answers, as the bulk path: what we
+    // RECORD and what AMAZON holds are different columns on the row.
+    if(typeof applyPushedLocally === "function"){
+      const saved = j.sheet_updated || [];
+      if(saved.length) applyPushedLocally(saved, {handling_days: n}, null);
+      applyPushedLocally([sku], {handling_time: n}, {handling: n});
+    }
+    // THE CACHED COPY OF WHAT AMAZON HOLDS IS NOW ONE EDIT OUT OF DATE, and for
+    // a listing with no row that cache is the ONLY source the page has -- a
+    // redraw would put the old number back into the box that just changed it.
+    //
+    // Patched rather than refetched. lvRefresh drops the entry and asks again,
+    // which is right when we do not know the answer; here the push has just
+    // told us, and a refetch would blank the page for a second to be told the
+    // same thing. Written through lvGet, the accessor that module already
+    // exposes, rather than by reaching into LIVE_ATTRS from here.
+    const lv = (typeof lvGet === "function") ? lvGet(sku) : null;
+    if(lv && lv.values){
+      lv.values["fulfillment_availability.lead_time_to_ship_max_days"] = String(n);
+    }
+    if(typeof pdpRebuild === "function") pdpRebuild(sku);
+    return true;
+  }catch(e){
+    toast("Handling update failed: " + e);
+    return false;
+  }
+}
+
+/* The box in the Offer tab hands its value over. Separate from the function
+ * above so the button has something to call with no arguments to get wrong. */
+async function setHandlingFromBox(sku, id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const before = el.dataset._was;
+  const ok = await setHandlingOne(sku, el.value);
+  if(!ok && before !== undefined) el.value = before;
+  else el.dataset._was = el.value;
+}
+
+
 // ---- Bulk stock quantity ----------------------------------------------------
 //
 // Same shape as handling time, and deliberately so: one confirmation, then

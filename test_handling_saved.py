@@ -91,6 +91,49 @@ check("it prints sheet_note", "if(j.sheet_note) msg += ` — ${j.sheet_note}`;" 
 check("  and no longer guesses from sheet_has_column",
       "nowhere to record it" not in js, True)
 
+print("\n== editable on EVERY listing, including the ones with no row here ==")
+#     "Handling time editable on EVERY listing, including the ones that are
+#      live on Amazon."
+#
+# The Offer tab's box saves through /edit, which finds a listing BY ITS ROW HERE
+# and answers 404 no_row when there is none -- so on those it took a number and
+# then said "save refused", which reads as a broken button rather than a fact
+# about the listing. Measured: 7 of jack_uk's 47 live SKUs and 18 of
+# nestwell_goods' 62 have no row in this app.
+check("there is a single-listing path", "async function setHandlingOne(" in js, True)
+# ONE ENDPOINT, ONE VALIDATION, ONE ACCOUNT SCOPE (CLAUDE.md Rule 12). A second
+# fetch to /handling/bulk_update would be a second set of all three.
+check("  going through the SAME poster the bulk bar uses",
+      "_handlingPost({skus:[sku], days:n, push:true, sheet:true})" in js, True)
+check("  which is still the only thing that calls the endpoint",
+      js.count('fetch("/handling/bulk_update"') == 1, True)
+# For a listing with no row the only place the number can go is AMAZON, and a
+# text box must not send a customer-facing promise on the way past.
+check("  it asks before sending", "await uiConfirm(" in js, True)
+check("  and says where the number is going",
+      "the change goes straight to Amazon" in js, True)
+check("  a SKU Amazon has never seen is not called a failure",
+      "no listing with this sku|not_found" in js, True)
+# The cache the page reads for such a listing is the ONLY source it has, so a
+# redraw would put the old number back into the box that just changed it.
+check("  the cached live value is patched, not refetched",
+      'lv.values["fulfillment_availability.lead_time_to_ship_max_days"]' in js, True)
+
+af = read("static", "js", "autofix.js")
+af = re.sub(r"(?s:/\*.*?\*/)", "", af)
+af = re.sub(r"(?m:^[ \t]*//[^\n]*)", "", af)
+check("the Offer tab picks the control by whether there is a row",
+      "if(!r.catalogue_only)" in af and 'editCell(sku,"col","Handling Days"' in af, True)
+check("  the other one is a box and a button, not a blur-save",
+      "setHandlingFromBox(" in af and "Send to Amazon" in af, True)
+check("  bounded 0-30, the same range the server enforces",
+      'min="0" max="30"' in af, True)
+# Measured in Chrome on 10.06_3Days_B0081ZHHTS (live on nestwell_goods, no draft
+# row): the control renders, carries no onblur, and its button posts
+# {"id":"nestwell_goods","marketplace":"UK","skus":["10.06_3Days_B0081ZHHTS"],
+#  "days":4,"push":true,"sheet":true} to /handling/bulk_update. The box still
+# reads 4 after a redraw. No page errors.
+
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:
     print("  - " + f)
