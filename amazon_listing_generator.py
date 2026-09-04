@@ -2133,7 +2133,33 @@ def load_compliance_rules() -> dict:
 _RISK_PRIORITY = {"HIGH": 3, "MEDIUM": 2, "BASELINE": 1, "": 0}
 
 
-def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
+def _product_type_allows(cat_key, rule, product_type):
+    """Can this category apply to a product Amazon files under `product_type`?
+
+    True  -- yes, or there is nothing here that says otherwise.
+    False -- no: the rules file names this type as one the category cannot
+             cover, or names the only types it can and this is not one.
+
+    RETURNS TRUE ON EVERY UNCERTAINTY. No product type, no rule, a type nobody
+    has written a rule about: all of them mean "carry on as before". This
+    function can only ever turn a flag DOWN, and only when a person has written
+    down, in compliance_rules.json, that it does not apply. A compliance check
+    that guesses its way to silence is worse than one that is noisy.
+    """
+    pt = str(product_type or "").strip().upper()
+    if not pt:
+        return True
+    never = [str(x).upper() for x in (rule.get("product_type_never") or []) if x]
+    if any(n and n in pt for n in never):
+        return False
+    only = [str(x).upper() for x in (rule.get("product_type_only") or []) if x]
+    if only:
+        return any(o and o in pt for o in only)
+    return True
+
+
+def check_compliance(item_name: str, listing: dict, rules: dict,
+                     product_type: str = "") -> dict:
     """
     Match the product's title + bullets + description against compliance keywords.
     Returns {
@@ -2244,6 +2270,43 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
                 _title_hay) is not None
             if not _in_title:
                 mentioned.append((cat_key, _matched_kw))
+                continue
+            # AND DOES AMAZON'S OWN PRODUCT TYPE AGREE?
+            #
+            #     "the compliance checker is matching categories like
+            #      health_beauty, knives_blades, tools_hardware against products
+            #      that don't belong to those categories."
+            #
+            # It does, and the mechanism is a strong keyword that is ordinary
+            # English out of context. MEASURED on the stored listings, every one
+            # a title match that the rules above happily assign:
+            #
+            #   "Universal MIXER Tap to Garden Hose"    -> electrical  (plumbing)
+            #   "No-Pump VACUUM Storage Bags"           -> electrical  (says no pump)
+            #   "Coil Spring COMPRESSOR 380mm"          -> electrical  (a hand tool)
+            #
+            # product_type is Amazon's OWN answer to "what is this", chosen from
+            # its taxonomy rather than written by us, so it settles all three:
+            # OUTDOOR_LIVING, STORAGE_BAG and AUTO_PART are not electrical goods
+            # whatever word is in the title.
+            #
+            # THE GATE CAN ONLY DOWNGRADE, AND ONLY ON EVIDENCE:
+            #   * no product_type at all -> nothing changes. A missing field must
+            #     never turn a flag off; unknown means flag, as it did before.
+            #   * the category names types it can NEVER apply to, and this is one
+            #     -> downgraded.
+            #   * the category names the ONLY types it can apply to, and this is
+            #     not one -> downgraded.
+            # Anything else flags exactly as it did.
+            #
+            # DOWNGRADED, NOT DELETED. It moves to the same `mentioned` list the
+            # body-only matches use -- reported, with the word that fired, and
+            # not raising the risk level. A compliance check that silently drops
+            # evidence is worse than one that is noisy, so nothing here can.
+            _pt_verdict = _product_type_allows(cat_key, rule, product_type)
+            if _pt_verdict is False:
+                mentioned.append((cat_key, _matched_kw + " -- but Amazon calls "
+                                  "this a " + str(product_type or "?")))
                 continue
             matched.append(cat_key)
             all_reqs.extend(rule.get("requirements", []))
@@ -4330,7 +4393,11 @@ async def process_row(row: dict, client, ws_out,
     console.print("[bold]STEP 3/3:[/bold] Writing to Google Sheet")
 
     # --- Compliance check: keyword-match listing against compliance_rules ----
-    comp_result = check_compliance(item_name, listing, compliance_rules)
+    # The product type the listing is being built for. Amazon's own word for
+    # what this is, and a better witness than the title -- see
+    # _product_type_allows.
+    comp_result = check_compliance(item_name, listing, compliance_rules,
+                                   listing.get("product_type", ""))
     if comp_result["matched_categories"]:
         notes_parts.append(comp_result["summary"])
         # Append a short version of requirements (max 3 lines, full list in JSON for reference)
@@ -7106,6 +7173,11 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     col     = lambda h: (headers.index(h) + 1) if h in headers else None
     status_col, notes_col = col("Status"), col("Notes")
     payload_col = col("API Payload JSON")   # exact body sent to Amazon (debug view)
+    # ...and what Amazon said back about it. The Notes sentence keeps the prose;
+    # this keeps the structure, so the listing page can show which FIELD each
+    # complaint is about. listing/api_issues.py owns the shape (Rule 12).
+    issues_col  = col("API Issues JSON")
+    from listing import api_issues as _api_issues
 
     try:
         from sp_api.api import ListingsItemsV20210801
@@ -7320,6 +7392,20 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             issues  = payload.get("issues", []) or []
             errors  = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
             msgs    = _issue_str(issues, attrs)
+
+            # KEEP AMAZON'S REPLY, NOT JUST OUR SENTENCE ABOUT IT. Written on
+            # every outcome including the clean ones: pack() returns "" for an
+            # empty issues array, which CLEARS the column, so a listing that
+            # previews clean stops showing yesterday's rejection.
+            if issues_col:
+                try:
+                    queue(i, issues_col, _api_issues.pack(
+                        issues,
+                        mode=("submit" if submit else "preview"),
+                        status=str(payload.get("status", "") or ""),
+                    ))
+                except Exception:
+                    pass
 
             if submit:
                 # THE SUBMIT RESPONSE IS THE VERDICT. putListingsItem returns status ACCEPTED

@@ -1339,7 +1339,8 @@ const TITLE_OPTS = {
  * exactly what _fullDataInner's was -- this is a move, not a rewrite. */
 function _fullDataParts(r){
   const sku=r.sku;
-  const sc=SCHEMAS[r.product_type]||{opts:{},req:[],attrs:[],subs:{},titles:{}};
+  const sc=SCHEMAS[r.product_type]||{opts:{},req:[],attrs:[],subs:{},titles:{},
+                                     help:{},maxitems:{},readonly:[]};
   const enums=sc.opts||{}, reqList=sc.req||[], allAttrs=sc.attrs||[];
   const titles=sc.titles||{};
   // Amazon's REAL field label (matches Seller Central) -> falls back to prettified key
@@ -1875,9 +1876,20 @@ function _fullDataParts(r){
           // lvVerdict(), so a field the drawer marks required cannot be
           // unmarked here, and neither view can drift from the other about
           // what Amazon is asking for (CLAUDE.md Rule 12).
+          // help / maxitems / readonly ride along with the rest of the schema.
+          // The product page draws its (?) bubbles, its "add more" and its locks
+          // from them, and every one is Amazon's own answer rather than a list
+          // kept here -- see the note in dashboard._load_schema.
           attrModel: {sku: sku, a: a, aKeys: aKeys, missing: missing,
                       enums: enums, reqList: reqList, allAttrs: allAttrs,
                       titles: titles, flagged: flagged, subs: subsView,
+                      help: (sc.help || {}), maxitems: (sc.maxitems || {}),
+                      readonly: (sc.readonly || []),
+                      // Amazon's reply to the last Preview/Submit travels with
+                      // the model so the attribute table can mark the rows it
+                      // named. Passed whole, not pre-digested: pdpAttrTable
+                      // decides how to show it, this decides nothing.
+                      row: r,
                       prov: _prov, addable: addable, productType: r.product_type}};
 }
 

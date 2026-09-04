@@ -63,6 +63,30 @@ TTL_DAYS = 14
 # though it were an answer.
 _SUBSTANCE = ("attrs", "enums", "required", "subfields")
 
+# EVERY KEY A CURRENT SCHEMA CARRIES.
+#
+# A CACHE THAT PREDATES A FIELD IS A CACHE THAT HIDES IT. Three things were
+# added to what _load_schema keeps -- `help` (Amazon's own description, for the
+# (?) bubble), `maxitems` (how many values a field takes, which decides whether
+# a field gets Add More) and `readonly` (fields Amazon refuses to let anyone
+# set, which get a padlock). Ninety-eight schemas were already stored WITHOUT
+# them, and a stored copy is trusted for a fortnight -- so on those product
+# types all three features would have quietly done nothing, with no error and
+# nothing on screen to say why. Whether a cached copy is USABLE is this
+# module's job, so the check belongs here and not in the caller.
+#
+# A copy missing any of these is treated as a miss: it is re-fetched once, and
+# the fresh answer replaces it. Nothing is deleted -- a fetch that fails still
+# falls back to the old copy (see `get`), because an out-of-date help string is
+# better than an empty drawer.
+_SHAPE = ("enums", "required", "attrs", "subfields", "titles",
+          "help", "maxitems", "readonly")
+
+
+def is_current_shape(info):
+    """Does this stored copy carry every key the app now reads?"""
+    return isinstance(info, dict) and all(k in info for k in _SHAPE)
+
 
 def _now():
     return _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -85,12 +109,17 @@ def _age_days(stamp):
     return (_dt.datetime.utcnow() - then).total_seconds() / 86400.0
 
 
-def read(config_path, product_type, marketplace, max_age_days=TTL_DAYS):
+def read(config_path, product_type, marketplace, max_age_days=TTL_DAYS,
+         require_current=True):
     """The stored schema, or None if there is not a usable one.
 
-    None covers all three of "never fetched", "too old to trust" and "stored
-    copy is unreadable" -- the caller does the same thing for each: go and ask
-    Amazon.
+    None covers all four of "never fetched", "too old to trust", "stored copy
+    is unreadable" and "stored copy predates a field the app now reads" -- the
+    caller does the same thing for each: go and ask Amazon.
+
+    `require_current=False` accepts an older shape. Only the stale fallback in
+    get() uses it: when Amazon will not answer at all, yesterday's schema
+    without its help text is still worth far more than nothing.
     """
     if not product_type:
         return None
@@ -110,7 +139,11 @@ def read(config_path, product_type, marketplace, max_age_days=TTL_DAYS):
         info = _json.loads(row["payload"])
     except Exception:
         return None
-    return info if has_substance(info) else None
+    if not has_substance(info):
+        return None
+    if require_current and not is_current_shape(info):
+        return None
+    return info
 
 
 def write(config_path, product_type, marketplace, info):
@@ -155,7 +188,8 @@ def get(config_path, product_type, marketplace, fetch, force=False,
     # the edit drawer and hides required fields, which looks like the product
     # type has no fields rather than like a failed call.
     if not has_substance(info):
-        stale = read(config_path, product_type, marketplace, max_age_days=36500)
+        stale = read(config_path, product_type, marketplace, max_age_days=36500,
+                     require_current=False)
         if stale is not None:
             return stale, "stale"
         return info, "failed"

@@ -527,15 +527,25 @@ console.log("\n  ...the panel is bounded, and the READING column inside it is to
 // PANEL is bounded rather than edge-to-edge, and that the prose inside it has a
 // reading measure rather than running the full width. Both are still true, and
 // those are what is checked now.
+// 1240 -> 680, asked for by number in PDP_REDESIGN_TASK.md:
+//
+//     "The PDP overlay currently stretches full-width across the screen. It
+//      should be a centered panel with dark backdrop visible on both sides."
+//
+// The point of the check is unchanged -- the panel is BOUNDED and the page
+// shows around it -- so only the number moved.
 truthy("the panel is bounded, not full-bleed",
-       /\.pdp\{[^}]*width:min\(1240px/.test(PDPCSS));
+       /\.pdp\{[^}]*width:min\(680px/.test(PDPCSS));
 truthy("  with the listings page visible around it",
        /#pdp\{[^}]*background:rgba/.test(PDPCSS));
 check("the prose keeps a reading measure",
       capOf(/\.pdp-body\{[^}]*max-width:\s*([^;]+);/), "900px");
 truthy("  and is centred in whatever room it has",
        /\.pdp-body\{[^}]*margin:0 auto/.test(PDPCSS));
-check("the rail is 180", /\.pdp-side\{[^}]*width:180px/.test(PDPCSS), true);
+// 180 -> 130, also asked for by number ("Sidebar: 12px 10px, width 130px").
+// Inside a 680px panel every pixel the rail takes is one the fields do not get,
+// and the rail carries action words and tick marks, not prose.
+check("the rail is 130", /\.pdp-side\{[^}]*width:130px/.test(PDPCSS), true);
 check("no full-bleed ceiling variable is left", /--pdp-max/.test(PDPCSS), false);
 check("the attribute columns are the mockup's again",
       /\.pdp-aval\{[^}]*max-width:220px/.test(PDPCSS), true);

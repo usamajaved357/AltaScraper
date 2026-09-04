@@ -475,12 +475,20 @@ async function _loadOneSchema(pt, q, mp, force){
     try{
       const r = await fetch("/schema/"+encodeURIComponent(pt)+q);
       const j = await r.json();
+      // help / maxitems / readonly: Amazon's own description per field, how many
+      // values it takes, and whether it can be set. The product page draws its
+      // (?) bubbles, its "Add more" and its locks from these -- see the note in
+      // dashboard._load_schema for why nothing was reading them before.
       SCHEMAS[pt] = j.ok ? {opts:(j.enums||{}), req:(j.required||[]), attrs:(j.attrs||[]),
                             subs:(j.subfields||{}), titles:(j.titles||{}),
+                            help:(j.help||{}), maxitems:(j.maxitems||{}),
+                            readonly:(j.readonly||[]),
                             _mkt:(j.marketplace||mp)}
-                         : {opts:{}, req:[], attrs:[], subs:{}, titles:{}};
+                         : {opts:{}, req:[], attrs:[], subs:{}, titles:{},
+                            help:{}, maxitems:{}, readonly:[]};
     }catch(e){
-      SCHEMAS[pt] = {opts:{}, req:[], attrs:[], subs:{}, titles:{}};
+      SCHEMAS[pt] = {opts:{}, req:[], attrs:[], subs:{}, titles:{},
+                     help:{}, maxitems:{}, readonly:[]};
     }finally{
       delete _SCHEMA_INFLIGHT[key];
     }

@@ -70,6 +70,12 @@ function lvEnsure(r){
       LIVE_ATTRS[sku] = {state:"ok", values:j.values||{}, multi:j.multi||{},
                          content:j.content||{}, issues:j.issues||[],
                          skipped:j.skipped||[], product_type:j.product_type||"",
+                         // THE CATALOGUE RECORD, kept apart from `values`.
+                         // `values` is what THIS seller submitted, read back.
+                         // `summary` is what Amazon actually shows shoppers,
+                         // which on a shared ASIN can be another seller's
+                         // contribution. Two different facts, so two fields.
+                         summary:j.summary||{},
                          amazon_status:j.amazon_status||""};
     }
   }).catch(e => {

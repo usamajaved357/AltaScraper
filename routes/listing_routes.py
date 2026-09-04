@@ -336,13 +336,35 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                                   else list(i.get("attributeNames") or []))}
                   for i in (got.get("issues") or []) if isinstance(i, dict)]
         _sum = (got.get("summaries") or [{}])[0]
-        _st = _sum.get("status") if isinstance(_sum, dict) else []
+        if not isinstance(_sum, dict):
+            _sum = {}
+        _st = _sum.get("status")
+        # WHAT AMAZON IS SHOWING SHOPPERS, which is not always what we sent.
+        #
+        # `values` above is the seller's own submission read back. `summaries`
+        # is the CATALOGUE record -- Amazon merges contributions from every
+        # seller on an ASIN and picks what to display, so a title we submitted
+        # and the title on the product page can differ, and until now nothing
+        # in the app could show that they had.
+        #
+        # Only what Amazon actually puts in summaries is passed on, under the
+        # names Amazon uses. Inventing a per-attribute catalogue value here
+        # would be a guess, and CLAUDE.md Rule 4 is exactly about not making
+        # one: the summaries object carries an item name, an ASIN, a main image
+        # and a few status fields, and that is what it carries.
+        summary = {k: _sum.get(k) for k in
+                   ("itemName", "asin", "brand", "productType", "conditionType",
+                    "createdDate", "lastUpdatedDate", "fnSku")
+                   if _sum.get(k) not in (None, "")}
+        _img = _sum.get("mainImage")
+        if isinstance(_img, dict) and _img.get("link"):
+            summary["mainImage"] = _img.get("link")
         return jsonify({"ok": True, "on_amazon": True, "sku": sku,
                         "marketplace": mkt,
                         "product_type": got.get("product_type") or "",
                         "values": flat["values"], "content": flat["content"],
                         "multi": flat["multi"], "skipped": flat["skipped"],
-                        "issues": issues,
+                        "issues": issues, "summary": summary,
                         "amazon_status": (", ".join(_st) if isinstance(_st, list)
                                           else str(_st or ""))})
 
@@ -1559,9 +1581,17 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         _sc.forget(CONFIG_PATH, pt, _mkt)
                     except Exception:
                         pass
+                _sch = _load_schema(pt)
                 payload = {"ok": True, "enums": _options_for(pt), "required": _schema_required(pt),
                            "attrs": _schema_attrs(pt), "subfields": _schema_subfields(pt),
-                           "titles": _load_schema(pt).get("titles", {}),
+                           "titles": _sch.get("titles", {}),
+                           # Amazon's own words for what a field means, how many
+                           # values it takes, and whether it can be set at all.
+                           # The product page needs all three and had none of
+                           # them -- see the note in dashboard._load_schema.
+                           "help": _sch.get("help", {}),
+                           "maxitems": _sch.get("maxitems", {}),
+                           "readonly": _sch.get("readonly", []),
                            "marketplace": str(_state.get("active_marketplace", "") or "UK").upper(),
                            "enum_count": len(_options_for(pt)),
                            "schema_error": _load_schema(pt).get("_error", "")}
