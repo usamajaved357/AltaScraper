@@ -359,7 +359,7 @@ function showSecondaryResults(images, skus, live){
   let host=document.getElementById("secresults");
   if(!host){
     host=document.createElement("div"); host.id="secresults";
-    host.style.cssText="position:fixed;right:18px;bottom:18px;width:340px;max-height:70vh;overflow:auto;background:var(--card,#0f1722);border:1px solid var(--line,#22304a);border-radius:12px;padding:14px;z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,.5)";
+    host.style.cssText="position:fixed;right:18px;bottom:18px;width:340px;max-height:70vh;overflow:auto;background:var(--card,var(--panel2));border:1px solid var(--line,var(--accent-line));border-radius:12px;padding:14px;z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,.5)";
     document.body.appendChild(host);
   }
   const note = live
@@ -369,7 +369,7 @@ function showSecondaryResults(images, skus, live){
     + '<b style="font-size:13px">Secondary images ('+images.length+')</b>'
     + '<button onclick="document.getElementById(\'secresults\').remove()" style="background:none;border:none;color:var(--accent2);cursor:pointer;font-size:16px">✕</button></div>'
     + '<div style="font-size:11px;color:var(--ink2);margin-bottom:10px">'+note+'</div>'
-    + images.map((u,i)=>'<div style="margin-bottom:10px"><img src="'+u+'" style="width:100%;border-radius:8px;border:1px solid var(--line,#22304a)"><a href="#" onclick="_downloadAsJpeg(\''+u+'\',\'secondary_'+(i+1)+'\');return false;" style="display:inline-block;margin-top:4px;font-size:12px;color:var(--accent2)">⬇ Download image '+(i+1)+'</a></div>').join("");
+    + images.map((u,i)=>'<div style="margin-bottom:10px"><img src="'+u+'" style="width:100%;border-radius:8px;border:1px solid var(--line,var(--accent-line))"><a href="#" onclick="_downloadAsJpeg(\''+u+'\',\'secondary_'+(i+1)+'\');return false;" style="display:inline-block;margin-top:4px;font-size:12px;color:var(--accent2)">⬇ Download image '+(i+1)+'</a></div>').join("");
 }
 async function loadBrandPanel(){
   const host=document.getElementById('brandpanel');
@@ -485,7 +485,7 @@ function locateFlags(sku, btn){
       const v=String(fields[fn]||'');
       if(v && re.test(v)){
         any=true;
-        const hl=esc(v).replace(re,'<mark style="background:var(--warn-line);color:#ffe9a8">$1</mark>');
+        const hl=esc(v).replace(re,'<mark style="background:var(--warn-line);color:var(--warn)">$1</mark>');
         html+='<div style="margin:4px 0"><b style="color:var(--warn)">'+esc(t)+'</b> in <b>'+fn+'</b>: <span style="color:var(--ink)">'+hl+'</span></div>';
       }
     });
@@ -1534,12 +1534,9 @@ function _warnChip(r){
   const w = lsWarnings(r);
   if(!w.n) return "";
   const tone = w.high ? "red" : (w.medium ? "amber" : "low");
-  const worst = w.high ? "high" : (w.medium ? "medium" : "low");
-  const tip = String(w.n) + " warning" + (w.n === 1 ? "" : "s")
-    + " (worst: " + worst + ")\n"
-    + w.list.slice(0, 4).map(function(x){
-        return "• " + String((x && x.message) || "");
-      }).join("\n");
+  // The hover text is lsWarnTip's, shared with the detailed row and the product
+  // page's hero, so the three marks cannot start saying different things.
+  const tip = (typeof lsWarnTip === "function") ? lsWarnTip(w) : String(w.n);
   return `<span class="tilewarn ${tone}" title="${esc(tip)}"`
        + ` onclick="event.stopPropagation();openListing('${esc(r.sku)}')">`
        + `<i class="ti ti-alert-triangle"></i>${w.n}</span>`;
@@ -2011,7 +2008,7 @@ function _dwAplus(r){
       <div class="aplusdoc">
         <div class="aplushead">
           <b>${esc(d.name||'(untitled)')}</b>
-          <span class="livestatus" style="background:#123021;color:var(--ok)">${esc(d.status||'')}</span>
+          <span class="livestatus" style="background:var(--ok-bg);color:var(--ok)">${esc(d.status||'')}</span>
           <span class="cc">${d.module_count} module(s) · ${(d.images||[]).length} image(s)</span>
         </div>
         <div class="aplusimgs">
@@ -3207,7 +3204,7 @@ function needsCopyBadge(r){
 // The same fact, as a sentence with the action attached, inside the drawer.
 function needsCopyPanel(r){
   if(!needsCopy(r)) return "";
-  return `<div class="restclear" style="border-color:#4a3a23;background:#2a2112">`
+  return `<div class="restclear" style="border-color:var(--warn-line);background:var(--warn-bg)">`
     + `<i class="ti ti-pencil-off"></i> <b>The copy has not been written yet.</b> `
     + `This draft carries the title and the link it was imported with, and nothing `
     + `else — no bullets, no description, no product type. That is deliberate: `
@@ -3303,9 +3300,53 @@ async function applyRewrite(sku, i){
  *
  * Falls back to the drawer if pdp.js has not loaded, so a failure to fetch one
  * file cannot make the listings grid unclickable. */
-function openListing(sku){
-  if(typeof pdpOpen === "function"){ pdpOpen(sku); return; }
-  openDrawer(sku);
+/* CLICKING A LISTING -- ANY LISTING -- OPENS IT. ONE DECISION, ONE PLACE.
+ *
+ *     "when i click on many listings on live on amazon page inside all
+ *      listings page, a message appears the listing is not on this screen, i
+ *      should be able to open all the listings"
+ *
+ * Exactly right, and the cause was that the decision had two homes. The live
+ * TILE and the live TABLE row called openLiveListing(), which asks whether this
+ * app holds a draft first and sends the ones it does not to the live optimiser.
+ * The DETAILED view's row, its warning chip and its product cell called
+ * openListing() straight, which went to pdpOpen(), which is built from a row in
+ * ROWS and refuses when there is none -- "That listing is not on this screen."
+ * So the same listing opened from one view and refused from another.
+ *
+ * Measured on nestwell_goods: 18 of the 62 SKUs Amazon reports have no row in
+ * this app at all -- made in Seller Central, made by another tool, or their
+ * draft was deleted. Those are the ones that refused, which is why it was
+ * "many listings" and not one.
+ *
+ * Now openListing() itself asks. Every caller -- and there are eight, across
+ * three files -- gets the same answer (CLAUDE.md Rule 12), and there is no
+ * route left that can reach pdpOpen with a SKU it cannot draw.
+ *
+ * `asin` is optional and is only a hint for the optimiser. It is looked up from
+ * Amazon's own catalogue when not given, NEVER taken from r.asin: on a row this
+ * app generated, r.asin is the COMPETITOR reference embedded in the SKU, and
+ * opening the optimiser on a competitor's ASIN would be worse than refusing.
+ */
+function openListing(sku, asin){
+  const s = String(sku || "");
+  if(!s) return;
+  if(hasDraftRow(s) && typeof pdpOpen === "function"){ pdpOpen(s); return; }
+  // No draft here. The live optimiser pulls the listing down from Amazon, which
+  // is the only thing that CAN show a listing this app never made.
+  if(typeof optimizeLive === "function"){ optimizeLive(asin || liveAsinFor(s), s); return; }
+  if(typeof pdpOpen === "function"){ pdpOpen(s); return; }
+  openDrawer(s);
+}
+
+/* This account's OWN ASIN for a SKU, from Amazon's catalogue. "" when the
+ * catalogue has not been loaded or does not have it -- the optimiser takes the
+ * SKU alone, so an empty ASIN costs nothing and a wrong one would cost a lot. */
+function liveAsinFor(sku){
+  const s = String(sku || "");
+  if(!s || typeof LIVE_ITEMS === "undefined" || !LIVE_ITEMS) return "";
+  const hit = LIVE_ITEMS.find(x => String(x && x.sku) === s);
+  return (hit && String(hit.asin || "")) || "";
 }
 
 /* CLICKING A ROW IN THE LIVE VIEW.
@@ -3351,12 +3392,11 @@ function hasDraftRow(sku){
   return ROWS.some(r => String(r.sku) === s);
 }
 
+/* The live view's own name for the same gesture. Kept because it is written
+ * into the tile and table markup, and because it has the catalogue's ASIN to
+ * hand; it decides nothing of its own any more. */
 function openLiveListing(asin, sku){
-  const s = String(sku || "");
-  const known = hasDraftRow(s);
-  if(known && typeof pdpOpen === "function"){ pdpOpen(s); return; }
-  if(typeof optimizeLive === "function"){ optimizeLive(asin || "", s); return; }
-  if(s) openListing(s);
+  openListing(sku, asin);
 }
 
 function openDrawer(sku, jumpGen){

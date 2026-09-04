@@ -36,7 +36,7 @@
             return '<div class="rc-match '+cls+'"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+act+' <b>'+_esc(m.label)+'</b><span class="rc-src">'+_esc(m.source||"")+'</span></div><div class="cc" style="margin-top:5px">'+_esc(m.reason||"")+(m.regulator?(' · '+_esc(m.regulator)):"")+'</div>'+docs+'</div>';
           }).join("");
         } else {
-          html += '<div class="rc-clear"><b>No known restriction matched.</b><div class="cc" style="color:#9ec9ad;margin-top:4px">'+_esc(d.message||"")+'</div></div>';
+          html += '<div class="rc-clear"><b>No known restriction matched.</b><div class="cc" style="color:var(--ok);margin-top:4px">'+_esc(d.message||"")+'</div></div>';
         }
         /* 2. SOURCING VIABILITY — a DIFFERENT question: nothing may block this
               listing today, yet Amazon can demand safety documents months later.

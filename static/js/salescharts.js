@@ -624,7 +624,7 @@ function salesChart(points, opts){
   // this period yet" for the second is the same claim as plotting a zero.
   if(!vals.length && !cmpVals.length){
     const unknown = points.length > 0;
-    return '<div class="cc" style="padding:18px;border:1px dashed #2a3446;border-radius:8px;'
+    return '<div class="cc" style="padding:18px;border:1px dashed var(--line2);border-radius:8px;'
          + 'font-size:12px">' + _scEsc(o.title || "")
          + (unknown
              ? ' — no figures for these ' + _scEsc((o.units || (o.unit || "day") + "s"))
@@ -934,7 +934,7 @@ function salesChart(points, opts){
        + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
                style="display:block;height:${H}px;${compact
                  ? "background:transparent;border:0"
-                 : "background:#0d1220;border:1px solid #1e2733;border-radius:8px"}">`
+                 : "background:var(--sidebar);border:1px solid var(--line2);border-radius:8px"}">`
        + defs + grid + gaps + paths + dots + xl + hits + '</svg>'
        + `<div id="${cid}_tip" class="charttip"></div>`
        + '</div></div>';
@@ -1367,7 +1367,7 @@ function salesCombo(o){
   };
   let key = '<div class="sc-keys">';
   if(bars){
-    key += item('<span class="sc-key-sq" style="background:#fbbf24"></span>',
+    key += item('<span class="sc-key-sq" style="background:var(--warn-bg)"></span>',
                 bars.label || "Orders", "__bars", !!barsOn);
   }
   // THE SWATCH SHOWS WHAT WAS DRAWN, not what the series is supposed to look

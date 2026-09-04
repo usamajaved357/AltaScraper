@@ -2046,15 +2046,42 @@ _PT_INFER_RULES = [
     (r"\bscrew|\bbolt|\bnut\b|\bbracket|\bhinge|\bfastener|\bhardware", "HARDWARE"),
     (r"\bart\s?(kit|set)|\bcraft\s?(kit|set)|\bpainting\s?set", "ART_CRAFT_KIT"),
     (r"\bfigure\b|\baction\s?figure|\bcollectible|\bfigurine", "TOY_FIGURE"),
+    # ADDED FROM THE ROWS THAT HAD NO TYPE AT ALL -- and only where Amazon has
+    # actually given this app a schema for the type, which is the evidence that
+    # the name is real (CLAUDE.md Rule 4: do not guess what Amazon calls
+    # something). The 96 confirmed names are in the schema_cache table.
+    #
+    # Found by listing the 32 blank listings and reading their titles:
+    #
+    #   "Miles Lubricants POE Refrigeration Oil"     -> MACHINE_LUBRICANT ✓
+    #   "12V 10A AC to DC Adapter 120W Power Supply" -> no confirmed name
+    #   "10X Magnifying Glass Desk Light Magnifier"  -> no confirmed name
+    #   "1m x1m Artificial Plant Flower Wall Panel"  -> no confirmed name
+    #
+    # Only the first gets a rule. The others stay blank on purpose: an invented
+    # product type is worse than none, because Amazon refuses it at submit and
+    # the compliance gate believes it in the meantime. listing/product_type.py
+    # raises a warning on what is left, so a blank is visible and fixable
+    # instead of silent.
+    (r"\blubricant|\bcompressor\s?oil|\brefrigerat\w*\s?oil"
+     r"|\bhydraulic\s?oil|\bgear\s?oil|\bgrease\b", "MACHINE_LUBRICANT"),
 ]
 
 
 def infer_product_type(comp_data: dict, item_name: str = "",
-                       valid_types: dict = None) -> str:
+                       valid_types: dict = None, default: str = "HOME") -> str:
     """Best-effort product type when none came from SP-API or the scrape.
     Matches keywords from the title + item_type_keyword + breadcrumbs against
     known Amazon types. Returns a valid product type, or 'HOME' as a safe
-    generic that exists in the schema (never the invalid literal 'PRODUCT')."""
+    generic that exists in the schema (never the invalid literal 'PRODUCT').
+
+    `default` IS WHAT COMES BACK WHEN NOTHING MATCHED, and it matters where the
+    answer is being STORED rather than used once. "HOME" is the right fallback
+    for a submit -- Amazon needs some type and HOME is a real one. It is the
+    wrong thing to write onto a row: the compliance gate reads the stored type
+    and would take "HOME" as a fact about the product, which for a 12V power
+    supply would turn its electrical check OFF. listing/product_type.py passes
+    "" so that a guess it did not actually make stays blank."""
     haystack = " ".join(str(x) for x in [
         item_name,
         comp_data.get("title", ""),
@@ -2071,7 +2098,7 @@ def infer_product_type(comp_data: dict, item_name: str = "",
             if not valid_types or ptype in valid_types or ptype == "HOME":
                 return ptype
             return ptype
-    return "HOME"
+    return default
 
 
 def load_model_counter() -> dict:
@@ -2133,7 +2160,46 @@ def load_compliance_rules() -> dict:
 _RISK_PRIORITY = {"HIGH": 3, "MEDIUM": 2, "BASELINE": 1, "": 0}
 
 
-def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
+def _product_type_allows(cat_key, rule, product_type):
+    """Can this category apply to a product Amazon files under `product_type`?
+
+    True  -- yes, or there is nothing here that says otherwise.
+    False -- no: the rules file names this type as one the category cannot
+             cover, or names the only types it can and this is not one.
+
+    RETURNS TRUE ON EVERY UNCERTAINTY. No product type, no rule, a type nobody
+    has written a rule about: all of them mean "carry on as before". This
+    function can only ever turn a flag DOWN, and only when a person has written
+    down, in compliance_rules.json, that it does not apply. A compliance check
+    that guesses its way to silence is worse than one that is noisy.
+
+    THIS WAS BRIEFLY THE OPPOSITE. REMAINING_FIXES_HANDOFF.md asked for "if no
+    product type is cached, skip category-specific compliance checks entirely",
+    and it was built that way -- measured: 32 of 303 listings have no product
+    type, and skipping withheld 10 electrical (HIGH) and 4 cookware (MEDIUM)
+    flags. The owner then settled it the other way:
+
+        "but why are we having products with no product type, the app should be
+         able to pull the product type of the items, dont skip compliance checks"
+
+    Which is the right answer to the right question: a missing product type is a
+    gap to FILL, not a reason to stop checking. See listing/product_type.py,
+    which fills it in.
+    """
+    pt = str(product_type or "").strip().upper()
+    if not pt:
+        return True
+    never = [str(x).upper() for x in (rule.get("product_type_never") or []) if x]
+    if any(n and n in pt for n in never):
+        return False
+    only = [str(x).upper() for x in (rule.get("product_type_only") or []) if x]
+    if only:
+        return any(o and o in pt for o in only)
+    return True
+
+
+def check_compliance(item_name: str, listing: dict, rules: dict,
+                     product_type: str = "") -> dict:
     """
     Match the product's title + bullets + description against compliance keywords.
     Returns {
@@ -2183,6 +2249,7 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
 
     matched     = []
     mentioned   = []          # found in the copy only -- a note, never a hold
+    unchecked   = []          # gated on a product type this listing has not got
     all_reqs    = []
     highest     = ""
     # WEAK KEYWORDS -- why almost every listing used to flag.
@@ -2244,6 +2311,45 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
                 _title_hay) is not None
             if not _in_title:
                 mentioned.append((cat_key, _matched_kw))
+                continue
+            # AND DOES AMAZON'S OWN PRODUCT TYPE AGREE?
+            #
+            #     "the compliance checker is matching categories like
+            #      health_beauty, knives_blades, tools_hardware against products
+            #      that don't belong to those categories."
+            #
+            # It does, and the mechanism is a strong keyword that is ordinary
+            # English out of context. MEASURED on the stored listings, every one
+            # a title match that the rules above happily assign:
+            #
+            #   "Universal MIXER Tap to Garden Hose"    -> electrical  (plumbing)
+            #   "No-Pump VACUUM Storage Bags"           -> electrical  (says no pump)
+            #   "Coil Spring COMPRESSOR 380mm"          -> electrical  (a hand tool)
+            #
+            # product_type is Amazon's OWN answer to "what is this", chosen from
+            # its taxonomy rather than written by us, so it settles all three:
+            # OUTDOOR_LIVING, STORAGE_BAG and AUTO_PART are not electrical goods
+            # whatever word is in the title.
+            #
+            # THE GATE CAN ONLY DOWNGRADE, AND ONLY ON EVIDENCE:
+            #   * no product_type at all -> nothing changes. A missing field must
+            #     never turn a flag off; unknown means flag. (This was briefly
+            #     the other way round -- see _product_type_allows for why it is
+            #     not any more, and for what fills the gap instead.)
+            #   * the category names types it can NEVER apply to, and this is one
+            #     -> downgraded.
+            #   * the category names the ONLY types it can apply to, and this is
+            #     not one -> downgraded.
+            # Anything else flags exactly as it did.
+            #
+            # DOWNGRADED, NOT DELETED. It moves to the same `mentioned` list the
+            # body-only matches use -- reported, with the word that fired, and
+            # not raising the risk level. A compliance check that silently drops
+            # evidence is worse than one that is noisy, so nothing here can.
+            _pt_verdict = _product_type_allows(cat_key, rule, product_type)
+            if _pt_verdict is False:
+                mentioned.append((cat_key, _matched_kw + " -- but Amazon calls "
+                                  "this a " + str(product_type or "?")))
                 continue
             matched.append(cat_key)
             all_reqs.extend(rule.get("requirements", []))
@@ -2315,6 +2421,11 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
             # Named separately so a caller can tell the two apart without
             # parsing the sentence above.
             "mentioned_categories": [c for c, _ in mentioned],
+            # Always empty now. Kept in the shape because a caller that learned
+            # to read it during the brief period the gate skipped must not start
+            # raising KeyError -- and because "nothing was skipped" is a true
+            # and useful thing for this function to keep saying.
+            "unchecked_categories": [c for c, _ in unchecked],
             "highest_risk":       highest,
             "summary":            summary,
             "requirements":       deduped_reqs}
@@ -4330,7 +4441,11 @@ async def process_row(row: dict, client, ws_out,
     console.print("[bold]STEP 3/3:[/bold] Writing to Google Sheet")
 
     # --- Compliance check: keyword-match listing against compliance_rules ----
-    comp_result = check_compliance(item_name, listing, compliance_rules)
+    # The product type the listing is being built for. Amazon's own word for
+    # what this is, and a better witness than the title -- see
+    # _product_type_allows.
+    comp_result = check_compliance(item_name, listing, compliance_rules,
+                                   listing.get("product_type", ""))
     if comp_result["matched_categories"]:
         notes_parts.append(comp_result["summary"])
         # Append a short version of requirements (max 3 lines, full list in JSON for reference)
@@ -7106,6 +7221,11 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     col     = lambda h: (headers.index(h) + 1) if h in headers else None
     status_col, notes_col = col("Status"), col("Notes")
     payload_col = col("API Payload JSON")   # exact body sent to Amazon (debug view)
+    # ...and what Amazon said back about it. The Notes sentence keeps the prose;
+    # this keeps the structure, so the listing page can show which FIELD each
+    # complaint is about. listing/api_issues.py owns the shape (Rule 12).
+    issues_col  = col("API Issues JSON")
+    from listing import api_issues as _api_issues
 
     try:
         from sp_api.api import ListingsItemsV20210801
@@ -7320,6 +7440,20 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             issues  = payload.get("issues", []) or []
             errors  = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
             msgs    = _issue_str(issues, attrs)
+
+            # KEEP AMAZON'S REPLY, NOT JUST OUR SENTENCE ABOUT IT. Written on
+            # every outcome including the clean ones: pack() returns "" for an
+            # empty issues array, which CLEARS the column, so a listing that
+            # previews clean stops showing yesterday's rejection.
+            if issues_col:
+                try:
+                    queue(i, issues_col, _api_issues.pack(
+                        issues,
+                        mode=("submit" if submit else "preview"),
+                        status=str(payload.get("status", "") or ""),
+                    ))
+                except Exception:
+                    pass
 
             if submit:
                 # THE SUBMIT RESPONSE IS THE VERDICT. putListingsItem returns status ACCEPTED

@@ -188,8 +188,8 @@ function _varSteps(now){
       // step you are ON was the least readable thing on the screen.
       // --accent-bg is the dark teal made for exactly this pairing: 7.7:1.
       (on ? 'background:var(--accent);color:var(--accent-bg);font-weight:600'
-            : done ? 'border:1px solid var(--ok,#8fd694);color:var(--ok,#8fd694)'
-                   : 'border:1px solid #26303f;opacity:.6')
+            : done ? 'border:1px solid var(--ok,var(--ok-line));color:var(--ok,var(--ok))'
+                   : 'border:1px solid var(--line2);opacity:.6')
       +  '">' + (done ? '✓' : n) + ' ' + _vesc(t) + '</span>';
     if(n < VAR_STEPS.length) h += '<span class="cc" style="opacity:.4">→</span>';
   });
@@ -221,7 +221,7 @@ function variationsRender(q){
   // list of SKUs. Someone who has not met the concept cannot act on that. So:
   // one concrete example first, then numbered steps, then the list.
   h += '<div style="font-size:12.5px;margin:2px 0 12px;padding:11px 13px;'
-    + 'border:1px solid #26303f;border-radius:8px;line-height:1.55">'
+    + 'border:1px solid var(--line2);border-radius:8px;line-height:1.55">'
     + '<b>What this does.</b> If you sell the same product in several colours or '
     + 'sizes, each one is its own listing and they compete with each other — '
     + 'reviews and sales split between them. Joining them makes Amazon show '
@@ -250,12 +250,12 @@ function variationsRender(q){
     + '</div>';
 
   if(VARS.note){
-    h += '<div class="cc" style="padding:14px;border:1px dashed #2a3446;border-radius:6px;font-size:12px">'
+    h += '<div class="cc" style="padding:14px;border:1px dashed var(--line2);border-radius:6px;font-size:12px">'
       + _vesc(VARS.note)+'</div>';
     host.innerHTML = h; return;
   }
 
-  h += '<div style="max-height:360px;overflow:auto;border:1px solid #1c2531;border-radius:6px">';
+  h += '<div style="max-height:360px;overflow:auto;border:1px solid var(--line2);border-radius:6px">';
   // ONCE ONE IS PICKED, ONLY ITS OWN KIND CAN JOIN IT.
   //
   // Amazon only groups products of the same type, and the screen let you tick a
@@ -275,8 +275,8 @@ function variationsRender(q){
                          && it.product_type !== pickedType && !on);
     const inFamily = !!it.parent_sku || wrongType;
     h += '<label style="display:flex;gap:9px;align-items:center;font-size:11.5px;'
-      +  'padding:6px 8px;border-top:1px solid #1c2531;cursor:'+(inFamily?'not-allowed':'pointer')+';'
-      +  (on?'background:#12222c':'')+'">'
+      +  'padding:6px 8px;border-top:1px solid var(--line2);cursor:'+(inFamily?'not-allowed':'pointer')+';'
+      +  (on?'background:var(--panel)':'')+'">'
       +  '<input type="checkbox" '+(on?'checked':'')+' '+(inFamily?'disabled':'')
       +  ' onchange="variationsPick('+jsArg(it.sku)+', this.checked)">'
       // Deciding two products are the same thing in different colours is a
@@ -284,10 +284,10 @@ function variationsRender(q){
       // guesswork, and a wrong family does not fail loudly.
       +  (it.img
           ? '<img src="'+_vesc(it.img)+'" loading="lazy" alt="" '
-            + 'style="width:40px;height:40px;object-fit:contain;background:#0d1220;'
+            + 'style="width:40px;height:40px;object-fit:contain;background:var(--sidebar);'
             + 'border-radius:5px;flex:0 0 auto">'
           : '<span style="width:40px;height:40px;border-radius:5px;flex:0 0 auto;'
-            + 'background:#0d1220;display:inline-block"></span>')
+            + 'background:var(--sidebar);display:inline-block"></span>')
       +  '<span style="flex:1;min-width:0">'
       +  '<span style="display:block;overflow:hidden;text-overflow:ellipsis;'
       +  'white-space:nowrap" title="'+_vesc(it.title)+'">'
@@ -401,13 +401,13 @@ async function variationsStep2(){
   let h = '<div id="var_steps">' + _varSteps(2) + '</div>';
   h += '<div style="margin-bottom:10px"><button class="db-chip" onclick="variationsRender(\'\')">'
         + '← back to the list</button></div>';
-  h += '<div style="border:1px solid #26303f;border-radius:8px;padding:12px;margin-bottom:12px">'
+  h += '<div style="border:1px solid var(--line2);border-radius:8px;padding:12px;margin-bottom:12px">'
     + '<div style="font-weight:600;font-size:13px;margin-bottom:8px">'
     + VARS.picked.length+' products, '+_vesc(pt||"unknown type")+'</div>';
 
   if(th.note){
     h += '<div class="cc" style="font-size:12px;margin-bottom:10px;padding:8px 10px;'
-      + 'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
+      + 'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
       + '<i class="ti ti-alert-triangle"></i> '+_vesc(th.note)+'</div>';
   }
 
@@ -508,7 +508,7 @@ async function variationsPreview(quiet){
     // do on the step you are standing on -- most often "you have not chosen
     // what differs yet", which is the question the step is asking. Red says
     // something went wrong; amber says you are not finished.
-    h += '<div style="border:1px solid #3a3320;background:#241f10;border-radius:6px;padding:10px 12px;margin-bottom:10px">'
+    h += '<div style="border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px;padding:10px 12px;margin-bottom:10px">'
       + '<div style="font-weight:600;font-size:12.5px;margin-bottom:5px">'
       + '<i class="ti ti-info-circle"></i> Still to do before these can be joined'
       + '</div><ul style="margin:0;padding-left:18px;font-size:12px">'
@@ -518,7 +518,7 @@ async function variationsPreview(quiet){
 
   if(j.payload && j.can_apply){
     const p = j.payload;
-    h += '<div style="border:1px solid #26403a;background:#10231f;border-radius:6px;padding:10px 12px;margin-bottom:10px">'
+    h += '<div style="border:1px solid var(--ok-line);background:var(--ok-bg);border-radius:6px;padding:10px 12px;margin-bottom:10px">'
       + '<div style="font-weight:600;font-size:12.5px;margin-bottom:6px">'
       + '<i class="ti ti-check"></i> Every check passed. This is exactly what would be sent</div>'
       + '<div style="font-size:11.5px;margin-bottom:4px"><b>Parent</b> <code>'+_vesc(p.parent.sku)+'</code> '
@@ -553,7 +553,7 @@ function _varParentAttrs(j){
   const inh = (j.parent_inherited || []).length;
   if(!inh && !names.length) return "";
   let s = '<div style="font-size:11px;margin-top:7px;padding-top:7px;'
-        + 'border-top:1px solid #26403a" class="cc">';
+        + 'border-top:1px solid var(--ok-line)" class="cc">';
   if(inh){
     s += 'The parent takes <b>' + inh + '</b> details both products already agree '
        + 'on — brand, country of origin, safety declarations.';

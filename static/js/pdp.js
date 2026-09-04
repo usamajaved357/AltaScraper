@@ -57,7 +57,17 @@ function pdpIsOpen(){ return !!PDP_SKU; }
 function pdpOpen(sku){
   sku = String(sku || "");
   const r = (typeof ROWS !== "undefined") ? ROWS.find(x => String(x.sku) === sku) : null;
-  if(!r){ if(typeof toast === "function") toast("That listing is not on this screen."); return; }
+  // NO ROW MEANS NO PRODUCT PAGE -- this page is built from one. Callers are
+  // meant to have asked openListing(), which sends a listing with no draft to
+  // the live optimiser instead; this is the last line, and it says what is
+  // actually true rather than "not on this screen", which reads like the row
+  // scrolled off.
+  if(!r){
+    if(typeof toast === "function")
+      toast("This app holds no draft of " + sku + ", so there is nothing to open here. "
+            + "Press Sync to pull it in from Amazon.");
+    return;
+  }
   if(!PDP_SKU){                                  // entering from the grid, not
     try{ PDP_BACK_SCROLL = window.scrollY || 0; }catch(e){ PDP_BACK_SCROLL = 0; }
   }                                              // moving between listings
@@ -198,9 +208,15 @@ function pdpHero(r){
     +     pdpStatusBadge(r)
     +     (profit ? '<span class="pdp-hb profit">Profit ' + esc(cur + profit) + '</span>' : "")
     +     (cost ? '<span class="pdp-hb cost">Cost ' + esc(cost) + '</span>' : "")
+    // The icon and the count, not the sentence -- the same shape the card's
+    // badge and the detailed row's chip use, with lsWarnTip's hover text so all
+    // three say the same thing (Rule 12). The word "warning" is in the tooltip.
     +     (w.n ? '<span class="pdp-hb warn" onclick="pdpTab(\'compliance\')" '
-              + 'title="Open the Compliance tab"><i class="ti ti-alert-triangle"></i> '
-              + w.n + ' warning' + (w.n === 1 ? '' : 's') + '</span>' : "")
+              + 'title="' + esc((typeof lsWarnTip === "function")
+                                ? lsWarnTip(w) + "\n\nOpen the Compliance tab"
+                                : "Open the Compliance tab")
+              + '"><i class="ti ti-alert-triangle"></i>'
+              + w.n + '</span>' : "")
     +   '</div>'
     + '</div></div></div>';
 }
@@ -324,17 +340,81 @@ function pdpSidebar(r){
 
 function pdpAttrFilter(f){ PDP_ATTR_FILTER = String(f || "all"); pdpRender(); }
 
+/* THE (?) BUBBLE, IN AMAZON'S OWN WORDS.
+ *
+ *     "Amazon shows a (?) circle next to every field label. ... Do NOT hardcode
+ *      tooltip text. Read it from the cached product type schema."
+ *
+ * There was nothing to read it from: dashboard._load_schema pulled `title` out
+ * of each property and dropped `description` on the floor. It keeps it now, the
+ * /schema route serves it, and this draws it verbatim -- no rewording, because
+ * the wording is the part that distinguishes two attributes whose names sound
+ * the same.
+ *
+ * NO BUBBLE WHERE THERE IS NO TEXT. An empty (?) is a promise of an explanation
+ * that does not exist, which is worse than not offering one.
+ */
+function pdpHelp(m, key){
+  const h = (m && m.help) ? (m.help[key] || m.help[String(key).split(".")[0]] || "") : "";
+  if(!h) return "";
+  return '<span class="pdp-help" tabindex="0">?<span class="tip">'
+       + esc(h) + '</span></span>';
+}
+
 function pdpAttrTable(m){
   if(!m) return '<div class="pdp-note">No attributes yet.</div>';
   const sku = m.sku;
   const L = (typeof lvGet === "function") ? lvGet(sku) : null;
   const live = (L && L.state === "ok") ? (L.values || {}) : {};
   const lbl = k => m.titles[k] || (typeof _cleanLabel === "function" ? _cleanLabel(String(k)) : String(k));
+  // WHICH FIELDS AMAZON BLAMED, by name. Built once from the stored reply so
+  // each row can carry its own complaint instead of sending the reader back to
+  // the banner to work out which box the message is about. Keyed on the top
+  // level ("item_dimensions"), because Amazon names the parent even when the
+  // fault is in a child ("item_dimensions.length.value").
+  const rowIssues = {};
+  const _rec = (m.row && m.row.api_issues) || null;
+  ((_rec && _rec.issues) || []).forEach(function(i){
+    (i.fields || []).forEach(function(f){
+      const t = String(f).split(".")[0];
+      (rowIssues[t] = rowIssues[t] || []).push(i);
+    });
+  });
   // The same order the grid uses: what the listing has, then what Amazon is
   // still asking for.
-  const keys = [...m.aKeys, ...m.missing.filter(k => m.aKeys.indexOf(k) < 0)];
+  const keys0 = [...m.aKeys, ...m.missing.filter(k => m.aKeys.indexOf(k) < 0)];
+
+  // A GROUP IS ONE AMAZON ATTRIBUTE WITH PARTS, NOT A CATEGORY WE INVENTED.
+  //
+  // Amazon's definition gives some attributes sub-properties: battery is one
+  // attribute holding average_life, capacity, cell_composition, iec_code and
+  // weight, and each of those is itself a value+unit pair. The app already
+  // stores them flattened -- "battery.capacity.value" -- and the table listed
+  // all thirteen as thirteen unrelated rows between `barcode` and `brand`,
+  // because the keys were only in whatever order they were written.
+  //
+  // So the keys are put in order here: singles keep their place, and every
+  // dotted key is pulled up to sit with the first of its family, under a
+  // heading. Nothing is added, removed or renamed -- only ordered.
+  const keys = (function(){
+    const seen = {}, out = [];
+    keys0.forEach(function(k){
+      const fam = String(k).split(".")[0];
+      if(String(k).indexOf(".") < 0){ out.push(k); return; }
+      if(seen[fam] === undefined){ seen[fam] = out.length; out.push(k); return; }
+      // Insert after the last key already in this family, so the order inside
+      // a group is the order Amazon's schema gave it.
+      let at = seen[fam] + 1;
+      while(at < out.length && String(out[at]).split(".")[0] === fam) at++;
+      out.splice(at, 0, k);
+    });
+    return out;
+  })();
 
   let nMatch = 0, nDiff = 0, nOnlyAmz = 0, nOnlyUs = 0;
+  // Which group heading has been drawn, so one is drawn per family and only
+  // when a member of it actually survived the filter.
+  let openGroup = "";
   const rows = keys.map(function(k){
     const isMissing = m.missing.indexOf(k) >= 0 && !(k in m.a);
     const val = isMissing ? "" : (m.a[k] == null ? "" : m.a[k]);
@@ -366,18 +446,74 @@ function pdpAttrTable(m){
 
     const multi = (L && L.multi) ? (L.multi[String(k).split(".")[0]] || 0) : 0;
     const hasEnum = !!(m.enums[k] && m.enums[k].length);
-    const ctrl = multi
-      ? '<span class="pdp-ro" title="Amazon holds ' + multi + ' values for this attribute. '
-        + 'Editing it here would drop the rest on the next submit — change it in Seller Central.">'
+    // AMAZON SAYS THIS ONE CANNOT BE SET. readOnly comes off the product type
+    // definition; before now nothing read it, so a field Amazon would refuse
+    // looked exactly like one it would accept.
+    const locked = (m.readonly || []).indexOf(k) >= 0;
+    // HOW MANY VALUES AMAZON ALLOWS HERE. From the product type definition, so
+    // it is right for THIS type -- see pdpMaxItems. A free-text field whose
+    // schema allows more than one gets a box per value instead of one box the
+    // user has to remember to comma-separate. A dropdown never does: picking
+    // from an enum twice is a different control and Amazon's own page does not
+    // offer it either.
+    const maxItems = pdpMaxItems(m, k);
+    const wantsMulti = !hasEnum && (maxItems === 0 || maxItems > 1);
+
+    const ctrl = locked
+      ? '<span class="pdp-ro" title="Amazon marks this attribute read-only for '
+        + 'this product type — it cannot be set from here.">'
         + esc(String(val) || "—") + '</span>'
-      : editCell(sku, "attr", k, val, hasEnum ? m.enums[k] : null, false, !hasEnum);
+        + '<i class="ti ti-lock pdp-lock" title="Read-only on Amazon"></i>'
+      : (multi
+        ? '<span class="pdp-ro" title="Amazon holds ' + multi + ' values for this attribute. '
+          + 'Editing it here would drop the rest on the next submit — change it in Seller Central.">'
+          + esc(String(val) || "—") + '</span>'
+        : (wantsMulti
+          ? pdpMvCell(sku, k, val, maxItems)
+          : editCell(sku, "attr", k, val, hasEnum ? m.enums[k] : null, false, !hasEnum)));
 
     const amzVal = Object.prototype.hasOwnProperty.call(live, k) ? String(live[k]) : "";
     const canUse = (v === "differs" || v === "live_only") && !multi;
-    return '<tr' + (amazonFlagged ? ' class="flagged"' : '') + '>'
+    // WHAT AMAZON SAID ABOUT THIS FIELD, against the field. One line under the
+    // box, in Amazon's words -- the banner at the top says the same thing, but
+    // finding the box from the banner is the reader's job otherwise.
+    const mine = rowIssues[String(k).split(".")[0]] || [];
+    const said = mine.length
+      ? '<div class="pdp-afield' + (mine.some(x => x.severity === "ERROR") ? " err" : " warn") + '">'
+        + mine.map(x => '<div>' + esc(x.message || "") + '</div>').join("")
+        + '</div>'
+      : "";
+
+    // THE HEADING, ONCE PER FAMILY. Drawn from here rather than in a first pass
+    // so that a filter which hides every member of a group hides its heading
+    // too -- an empty "Battery" heading over nothing would read as a group with
+    // no fields rather than as a group filtered out.
+    const topKey = String(k).split(".")[0];
+    const inGroup = String(k).indexOf(".") >= 0;
+    let head = "";
+    if(inGroup && openGroup !== topKey){
+      openGroup = topKey;
+      head = '<tr class="pdp-agrouphead"><td></td><td colspan="4">'
+           + esc(lbl(topKey)) + pdpHelp(m, topKey) + '</td></tr>';
+    }else if(!inGroup){
+      openGroup = "";
+    }
+    // Inside a group the leaf is the label: under "Battery", "capacity.value"
+    // reads better than "Battery Capacity Value" repeated five times.
+    const shown = inGroup
+      ? (m.titles[k] || (typeof _cleanLabel === "function"
+          ? _cleanLabel(String(k).slice(topKey.length + 1))
+          : String(k).slice(topKey.length + 1)))
+      : lbl(k);
+
+    return head
+      + '<tr class="' + (mine.some(x => x.severity === "ERROR") ? "flagged apierr"
+                    : (amazonFlagged ? "flagged" : ""))
+      + (inGroup ? " pdp-asub" : "") + '">'
       + '<td class="pdp-c1">' + icon + '</td>'
-      + '<td class="pdp-aname" title="' + esc(k) + '">' + esc(lbl(k)) + req + '</td>'
-      + '<td class="pdp-aval">' + ctrl + '</td>'
+      + '<td class="pdp-aname" title="' + esc(k) + '">' + esc(shown) + req
+      +   pdpHelp(m, k) + '</td>'
+      + '<td class="pdp-aval">' + ctrl + said + '</td>'
       + '<td class="pdp-aamz" title="' + esc(amzVal) + '">'
       +   (amzVal ? esc(amzVal) : '<span class="pdp-dim">—</span>')
       +   (multi ? ' <span class="pdp-dim">(' + multi + ')</span>' : '')
@@ -421,6 +557,391 @@ function pdpAttrTable(m){
     + (m.productType ? '<div class="pdp-more amber" onclick="saveDefault(\'' + esc(sku) + '\',\''
         + esc(m.productType) + '\',this)"><i class="ti ti-star"></i> Remember these as defaults for all '
         + esc(m.productType) + ' listings</div>' : "");
+}
+
+/* ---- what Amazon is showing shoppers ------------------------------------ */
+
+/* THE GREY LINE ABOVE A BOX IS NOT A COPY OF THE BOX.
+ *
+ * Amazon holds two different things for a live listing and they are easy to
+ * confuse:
+ *
+ *   attributes   what THIS seller submitted, read back. That is what the box
+ *                already contains, and repeating it above would say nothing.
+ *   summaries    the CATALOGUE record -- what a shopper actually sees. On an
+ *                ASIN with more than one seller Amazon merges contributions and
+ *                picks what to display, so a title submitted and a title shown
+ *                can be different, and nothing in this app could show that.
+ *
+ * So the line prefers the catalogue value and falls back to the submitted one,
+ * and says which it is. It is drawn only for a listing that IS on Amazon: on a
+ * draft there is no live value, and an empty grey line above every box would be
+ * furniture that means nothing.
+ */
+function pdpLiveLine(sku, kind){
+  const L = (typeof lvGet === "function") ? lvGet(sku) : null;
+  if(!L || L.state !== "ok") return "";
+  const S = L.summary || {}, C = L.content || {};
+  let text = "", from = "on Amazon now";
+  if(kind === "title"){
+    text = String(S.itemName || "");
+    if(!text){ text = String((C.item_name || [])[0] || ""); from = "your last submission"; }
+  }else if(kind === "bullets"){
+    text = (C.bullet_point || []).join("  •  ");
+    from = "your last submission";
+  }else if(kind === "desc"){
+    text = String((C.product_description || [])[0] || "");
+    from = "your last submission";
+  }else if(kind === "search"){
+    text = (C.generic_keyword || []).join(" ");
+    from = "your last submission";
+  }
+  if(!String(text).trim()) return "";
+  return '<div class="pdp-live" title="' + esc(from) + '">'
+       + '<span class="pdp-livetag">' + esc(from) + '</span>'
+       + esc(text) + '</div>';
+}
+
+/* ---- attributes that hold more than one value --------------------------- */
+
+/* HOW MANY VALUES AMAZON ALLOWS, AND WHERE THAT NUMBER COMES FROM.
+ *
+ * The product type definition, and nothing else. maxItems is per attribute AND
+ * per product type -- a field that takes five values on a shaker bottle takes
+ * one on a power tool -- so a list kept here would be wrong for most listings.
+ * dashboard._load_schema reads it off Amazon's definition; 0 means the schema
+ * says "array" without a ceiling.
+ *
+ * Returns 1 for anything that takes a single value, which is most of them.
+ */
+function pdpMaxItems(m, key){
+  const mi = (m && m.maxitems) ? m.maxitems[key] : undefined;
+  if(mi === undefined || mi === null) return 1;
+  const n = Number(mi);
+  if(!isFinite(n) || n < 0) return 1;
+  return n;                       // 0 = no ceiling
+}
+
+/* THE SEPARATOR IS ", " BECAUSE THAT IS WHAT IS ALREADY IN THE DATA.
+ *
+ * Measured before choosing it: across 6,425 stored attribute values there is
+ * not one array -- every multi-value field is a single comma-separated string
+ * ("1x Wireless Car Charger, 1x Air Vent Clip, 1x USB Cable"). Splitting on
+ * ", " and re-joining with ", " round-trips byte for byte, so opening a
+ * listing and closing it again cannot alter a value that was not typed in.
+ *
+ * This is a VIEW of the stored string, not a new storage shape. Nothing about
+ * what is sent to Amazon changes here -- see the note in the report.
+ */
+const PDP_MV_SEP = ", ";
+
+function pdpMvParts(val){
+  const s = String(val == null ? "" : val);
+  if(!s.trim()) return [""];
+  return s.split(PDP_MV_SEP);
+}
+
+/* One box per value, stacked, with Add More / Remove Last underneath. */
+function pdpMvCell(sku, key, val, max){
+  const parts = pdpMvParts(val);
+  const id = "mv_" + sid(sku) + "_" + String(key).replace(/[^A-Za-z0-9]/g, "_");
+  const boxes = parts.map(p =>
+      // class "ed" is the app's own input, styled once in the shared sheet --
+      // a second class here would be a second look for the same control.
+      '<input class="ed pdp-mv" value="' + esc(p) + '"'
+    + ' onchange="pdpMvSave(\'' + esc(id) + '\',\'' + esc(sku) + '\',\'' + esc(key) + '\')">'
+  ).join("");
+
+  // "Add More" disappears at the ceiling; "Remove Last" only exists once there
+  // is a second box to remove.
+  const canAdd = (max === 0) || (parts.length < max);
+  const links = '<div class="pdp-addmore">'
+    + (canAdd ? '<a onclick="pdpMvAdd(\'' + esc(id) + '\')">Add More</a>' : "")
+    + (canAdd && parts.length > 1 ? '<span>|</span>' : "")
+    + (parts.length > 1
+        ? '<a class="remove" onclick="pdpMvRemove(\'' + esc(id) + '\',\''
+          + esc(sku) + '\',\'' + esc(key) + '\')">Remove Last</a>' : "")
+    + (max ? '<span class="pdp-mvcap">' + parts.length + '/' + max + '</span>'
+           : '<span class="pdp-mvcap">' + parts.length + '</span>')
+    + '</div>';
+
+  // MORE VALUES THAN AMAZON ALLOWS IS NOT A DISPLAY DETAIL.
+  //
+  // Found by opening a real listing: special_features held seven entries
+  // against a schema maxItems of five, from a value written as one long
+  // comma-separated line before anything counted them. The count alone ("7/5")
+  // states it without saying it means the submit will be refused, and this is
+  // the only screen where it can be seen at all.
+  const over = (max && parts.length > max)
+    ? '<div class="pdp-mvover">Amazon allows ' + max + ' here and this has '
+      + parts.length + '. Remove ' + (parts.length - max)
+      + ' or the submit will be refused.</div>'
+    : "";
+
+  return '<div class="pdp-multi" id="' + esc(id) + '" data-max="' + max + '">'
+       + boxes + over + links + '</div>';
+}
+
+function _pdpMvBoxes(id){
+  const host = document.getElementById(id);
+  return host ? Array.prototype.slice.call(host.querySelectorAll("input.pdp-mv")) : [];
+}
+
+/* Every box, joined back into the one string the row stores. Blank boxes are
+ * dropped: an empty entry in the middle would become ", ," on the way out and
+ * Amazon would be sent an empty value it never asked for. */
+function pdpMvSave(id, sku, key){
+  const vals = _pdpMvBoxes(id).map(b => String(b.value || "").trim()).filter(Boolean);
+  const joined = vals.join(PDP_MV_SEP);
+  if(typeof editField !== "function") return;
+  editField(sku, "attr", key, joined).then(function(res){
+    if(res && res.ok){
+      if(typeof toast === "function") toast("Saved");
+    }else if(typeof toast === "function"){
+      toast("Could not save: " + ((res && res.error) || "unknown"));
+    }
+  });
+}
+
+/* Add an empty box. Nothing is saved until something is typed into it and the
+ * box is left -- an empty entry has nothing to record. */
+function pdpMvAdd(id){
+  const host = document.getElementById(id);
+  if(!host) return;
+  const max = Number(host.getAttribute("data-max") || 0);
+  const boxes = _pdpMvBoxes(id);
+  if(max && boxes.length >= max) return;
+  const last = boxes[boxes.length - 1];
+  if(!last) return;
+  const el = last.cloneNode(true);
+  el.value = "";
+  last.parentNode.insertBefore(el, last.nextSibling);
+  el.focus();
+  _pdpMvCount(host);
+}
+
+function pdpMvRemove(id, sku, key){
+  const boxes = _pdpMvBoxes(id);
+  if(boxes.length < 2) return;
+  const gone = boxes[boxes.length - 1];
+  const had  = String(gone.value || "").trim();
+  gone.parentNode.removeChild(gone);
+  const host = document.getElementById(id);
+  if(host) _pdpMvCount(host);
+  // Only write when the box being dropped actually held something. Removing an
+  // empty box changes nothing, and a save would be a write with no edit behind
+  // it -- which shows up in the row's history as a change that never happened.
+  if(had) pdpMvSave(id, sku, key);
+}
+
+/* Keep the "3/5" and the two links honest after an add or a remove, without
+ * re-rendering the whole page and losing what is in the other boxes. */
+function _pdpMvCount(host){
+  const n = host.querySelectorAll("input.pdp-mv").length;
+  const max = Number(host.getAttribute("data-max") || 0);
+  const cap = host.querySelector(".pdp-mvcap");
+  if(cap){
+    cap.textContent = max ? (n + "/" + max) : String(n);
+    cap.classList.toggle("over", !!(max && n > max));
+  }
+  const over = host.querySelector(".pdp-mvover");
+  if(over){
+    if(max && n > max){
+      over.style.display = "";
+      over.textContent = "Amazon allows " + max + " here and this has " + n
+        + ". Remove " + (n - max) + " or the submit will be refused.";
+    }else{
+      over.style.display = "none";
+    }
+  }
+  const add = host.querySelector(".pdp-addmore a:not(.remove)");
+  if(add) add.style.display = (max && n >= max) ? "none" : "";
+  const rem = host.querySelector(".pdp-addmore a.remove");
+  if(rem) rem.style.display = (n > 1) ? "" : "none";
+  const bar = host.querySelector(".pdp-addmore span:not(.pdp-mvcap)");
+  if(bar) bar.style.display = (n > 1 && !(max && n >= max)) ? "" : "none";
+}
+
+/* ---- textareas that grow to fit ----------------------------------------- */
+
+/* THE FALLBACK FOR field-sizing:content.
+ *
+ * Chrome 123+ sizes a textarea to its own text with one CSS line; everything
+ * else still needs to be told. This measures scrollHeight and sets the height
+ * to match, which is the same result by the older route.
+ *
+ * Bound ONCE, by delegation, on the page host -- a listener per textarea would
+ * be re-attached on every pdpRender and every one of those renders replaces the
+ * whole innerHTML, so the old listeners would pile up on detached nodes.
+ *
+ * Capped at the same 60vh the stylesheet uses. Past that it scrolls, because a
+ * 2,000-character description that grew without limit would push the panel's
+ * own controls off the bottom of the screen.
+ */
+let PDP_GROW_BOUND = false;
+
+function pdpGrow(ta){
+  if(!ta || ta.tagName !== "TEXTAREA") return;
+  // Native support already did it -- measuring would fight the browser.
+  if(window.CSS && CSS.supports && CSS.supports("field-sizing", "content")) return;
+  const cap = Math.round(window.innerHeight * 0.6);
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight + 2, cap) + "px";
+}
+
+function pdpAutoGrow(){
+  const host = document.getElementById("pdp");
+  if(!host) return;
+  if(!PDP_GROW_BOUND){
+    host.addEventListener("input", function(ev){
+      if(ev.target && ev.target.tagName === "TEXTAREA") pdpGrow(ev.target);
+    });
+    // A COLLAPSED BOX MEASURES ZERO. The bullet cards open on click, and a
+    // textarea inside a hidden panel has no scrollHeight to read, so the first
+    // measurement has to happen after it is shown.
+    host.addEventListener("click", function(){
+      setTimeout(function(){ host.querySelectorAll("textarea").forEach(pdpGrow); }, 0);
+    });
+    PDP_GROW_BOUND = true;
+  }
+  host.querySelectorAll("textarea").forEach(pdpGrow);
+}
+
+/* ---- what Amazon said back ---------------------------------------------- */
+
+/* THE REPLY, NOT OUR SUMMARY OF IT.
+ *
+ * Every Preview and every Submit gets an `issues` array back from Amazon. Until
+ * now only the sentences survived, joined into the Notes column -- so a rejected
+ * listing could say WHAT Amazon objected to but never WHICH FIELD, and on this
+ * page it said nothing at all. dashboard._card now serves the array whole
+ * (listing/api_issues.py owns the shape); this draws it.
+ *
+ * Errors first and always; warnings folded, because "accepted with warnings" is
+ * a success and a wall of amber on a listing that went live is noise.
+ */
+function pdpApiIssues(r){
+  const rec = (r && r.api_issues) || null;
+  const all = (rec && rec.issues) || [];
+  if(!all.length) return "";
+
+  const errs  = all.filter(i => i.severity === "ERROR");
+  const warns = all.filter(i => i.severity !== "ERROR");
+  const sub   = String(rec.mode || "") === "submit";
+  const when  = rec.at ? ' <span class="pdp-dim">· ' + esc(rec.at) + '</span>' : "";
+
+  // A FIELD NAME IS A DESTINATION, not decoration. attributeNames is the whole
+  // reason for keeping the structure, so each one is a button that opens the
+  // Attributes tab and scrolls to that row.
+  const chips = i => (i.fields || []).map(f =>
+      '<button class="pdp-errfield" title="Go to this field"'
+      + ' onclick="pdpGoToField(\'' + esc(f) + '\')">' + esc(f) + '</button>').join("");
+
+  const line = (i, cls) =>
+    '<div class="pdp-error ' + cls + '">'
+    + '<i class="ti ti-' + (cls === "warn" ? "alert-triangle" : "alert-circle") + '"></i>'
+    + '<div><div>' + esc(i.message || "Amazon reported a problem with this listing.") + '</div>'
+    + (i.fields && i.fields.length ? '<div class="pdp-errfields">' + chips(i) + '</div>' : "")
+    + (i.code ? '<div class="pdp-error-code">Amazon code ' + esc(i.code) + '</div>' : "")
+    + '</div></div>';
+
+  let out = "";
+  if(errs.length){
+    out += '<div class="pdp-errhead"><b>'
+        +  (sub ? "Amazon refused this listing" : "Amazon would refuse this listing")
+        +  '</b> — ' + errs.length + (errs.length === 1 ? " problem" : " problems")
+        +  when + '</div>'
+        +  errs.map(i => line(i, "err")).join("");
+  }
+  if(warns.length){
+    out += '<details class="pdp-errwarns"' + (errs.length ? "" : " open") + '>'
+        +  '<summary>' + warns.length
+        +  (warns.length === 1 ? " warning" : " warnings")
+        +  (errs.length ? "" : ' — Amazon accepted this, with notes' + when)
+        +  '</summary>'
+        +  warns.map(i => line(i, "warn")).join("")
+        +  '</details>';
+  }
+  return '<div class="pdp-errors">' + out + '</div>';
+}
+
+/* Open the Attributes tab and put the named field in view, highlighted.
+ * The scroll waits a frame because the tab's table does not exist until the
+ * re-render has run. */
+function pdpGoToField(key){
+  const base = String(key || "").split(".")[0];
+  if(PDP_TAB !== "attributes"){ PDP_TAB = "attributes"; pdpRender(); }
+  setTimeout(function(){
+    const rows = document.querySelectorAll("#pdp .pdp-at .pdp-aname");
+    for(let i = 0; i < rows.length; i++){
+      const t = String(rows[i].getAttribute("title") || "");
+      if(t === key || t.split(".")[0] === base){
+        const tr = rows[i].closest("tr");
+        if(tr){
+          tr.scrollIntoView({block: "center", behavior: "smooth"});
+          tr.classList.add("pdp-hit");
+          setTimeout(function(){ tr.classList.remove("pdp-hit"); }, 2200);
+        }
+        return;
+      }
+    }
+    if(typeof toast === "function")
+      toast("Amazon named “" + base + "”, but this listing has no such field yet.");
+  }, 60);
+}
+
+/* ---- the footer --------------------------------------------------------- */
+
+/* Cancel | Save and finish, stuck to the bottom of the panel.
+ *
+ * WHAT THESE TWO BUTTONS HONESTLY DO, which is not quite what the brief's
+ * wording suggests:
+ *
+ *   "Cancel — discards all unsaved changes"
+ *   "Save and finish — saves all attribute changes via putListingsItem"
+ *
+ * Neither is possible as written, and pretending otherwise would be worse than
+ * not having the buttons. Every box on this page saves the moment you leave it
+ * (saveEdit -> /edit), so by the time a Cancel is pressed there is nothing left
+ * unsaved to discard -- a button that claimed to undo would silently do
+ * nothing. And "save via putListingsItem" is SUBMIT: it publishes to Amazon.
+ * Putting that behind a button called "Save and finish" would send a listing
+ * live from a control that reads like closing a dialog.
+ *
+ * So: Cancel closes, and says in its tooltip that edits are already saved.
+ * Save and finish commits whatever box still has focus, then closes -- the one
+ * thing that genuinely can be lost is a value typed and never blurred. Sending
+ * to Amazon stays on the Submit button at the top, where it is labelled.
+ */
+function pdpFooter(r){
+  const ro = !!window.WS_READONLY;
+  return '<div class="pdp-footer">'
+    + '<span class="pdp-footer-note">'
+    +   (ro ? 'Read-only workspace — nothing here can be changed.'
+          : 'Edits save as you leave each box. Nothing reaches Amazon until Submit.')
+    + '</span>'
+    + '<button class="pdp-footer-cancel" onclick="pdpClose()"'
+    +   ' title="Close this page and go back to the list. Your edits are already saved.">'
+    +   'Cancel</button>'
+    + '<button class="pdp-footer-save" onclick="pdpSaveAndFinish()"'
+    +   ' title="Save whatever box you are still in, then close. Use Submit at the top to send the listing to Amazon.">'
+    +   'Save and finish</button>'
+    + '</div>';
+}
+
+/* Commit the field still under the cursor, then close.
+ *
+ * blur() is what triggers the onchange the boxes save on, so this is the same
+ * save the user would get by clicking anywhere else -- not a second, parallel
+ * save path (Rule 12). The close waits a beat so that request is on the wire
+ * before the page it came from is torn down.
+ */
+function pdpSaveAndFinish(){
+  try{
+    const a = document.activeElement;
+    if(a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT")) a.blur();
+  }catch(e){}
+  setTimeout(pdpClose, 120);
 }
 
 /* ---- render ------------------------------------------------------------ */
@@ -479,16 +1000,27 @@ function pdpRender(){
   // Rule 1 requires a clash to be REPORTED, and a report you have to go
   // looking for has not been made. Same two panels the drawer never folds.
   const blocking = ((typeof identifierPanel === "function") ? identifierPanel(r) : "")
-                 + ((typeof complianceBanner === "function") ? complianceBanner(r) : "");
+                 + ((typeof complianceBanner === "function") ? complianceBanner(r) : "")
+                 // Amazon's own reply to the last Preview/Submit. Above the tabs
+                 // for the same reason as the two panels above it: a rejection
+                 // you have to go looking for has not been reported.
+                 + pdpApiIssues(r);
 
   let tab = "";
   if(PDP_TAB === "details"){
+    // The grey line above each box is what Amazon has, not a second copy of
+    // what is in the box -- see pdpLiveLine. Empty for a listing that has never
+    // been on Amazon, which is most of them.
     tab = '<div class="pdp-field">'
         +   '<div class="pdp-flabel">Item name'
         +     '<span class="pdp-fmeta">' + tp.count + tp.indexTag + '</span></div>'
+        +   pdpLiveLine(sku, "title")
         +   tp.editor + tp.warnNote
         + '</div>'
-        + p.highlights + p.bullets + p.desc + p.search;
+        + p.highlights
+        + pdpLiveLine(sku, "bullets") + p.bullets
+        + pdpLiveLine(sku, "desc")    + p.desc
+        + pdpLiveLine(sku, "search")  + p.search;
   } else if(PDP_TAB === "images"){
     // The four-section slot editor, which lives in its own file (Rule 7). The
     // old strip of source thumbnails is kept underneath it: it carries the AI
@@ -508,11 +1040,14 @@ function pdpRender(){
     + '<div class="pdp-layout">'
     +   pdpSidebar(r)
     +   '<div class="pdp-content">' + blocking + tab + '</div>'
-    + '</div></div>';
+    + '</div>' + pdpFooter(r) + '</div>';
 
   // The bullets' shared byte budget is measured from the DOM once the cards
   // exist -- the same call openDrawer makes, for the same reason.
-  setTimeout(function(){ if(typeof bulletMeter === "function") bulletMeter(); }, 40);
+  setTimeout(function(){
+    if(typeof bulletMeter === "function") bulletMeter();
+    pdpAutoGrow();
+  }, 40);
 }
 
 /* Redraw after a structural edit (a field deleted, an optional one added, a

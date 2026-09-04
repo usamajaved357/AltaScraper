@@ -132,7 +132,13 @@ async function bulkHandling(){
     const realFail = failArr.length - notLive;
     let msg = `Handling time set to ${days} day(s).`;
     msg += `\n• Saved: ${savedN}`;
-    if(j.sheet_has_column===false) msg += " (nowhere to record it on these listings — saving skipped)";
+    // WHY SOME WERE NOT SAVED, in the server's own words rather than a guess
+    // here. It used to say "nowhere to record it" for every reason there was,
+    // including a bug that stopped it from ever looking for the column -- so
+    // "Pushed live to Amazon: 36 / Saved: 0" read like the listings were at
+    // fault. sheet_note now distinguishes an error, a missing column, and a
+    // listing this app simply has no draft of.
+    if(j.sheet_note) msg += ` — ${j.sheet_note}`;
     msg += `\n• Pushed live to Amazon: ${okN}`;
     if(notLive) msg += `\n• Not live yet (will apply on submit): ${notLive}`;
     if(realFail) msg += `\n• Failed: ${realFail} (see details below)`;

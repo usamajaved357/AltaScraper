@@ -79,6 +79,15 @@ HEADER_TO_COL = {
     # the owner and the rule file changed with it. Empty or "no" means no
     # exemption is claimed and a listing with no barcode is refused instead.
     "GTIN Exemption":         "gtin_exemption",
+    # AMAZON'S REPLY, KEPT WHOLE. "API Payload JSON" above is the body we sent;
+    # this is the issues array that came back -- code, severity, message and the
+    # attributeNames each one blames. It used to be flattened into the Notes
+    # sentence ("API SUBMIT REJECTED by Amazon (3 error(s)): ..."), which loses
+    # the field names, so a rejected listing could say what was wrong but never
+    # WHERE. Appended last, like GTIN Exemption: ORDERED_HEADERS is derived from
+    # this dict in column order and positional writes follow it, so a new key
+    # goes on the end and never shifts an existing column.
+    "API Issues JSON":        "api_issues_json",
 }
 
 COL_TO_HEADER = {v: k for k, v in HEADER_TO_COL.items()}

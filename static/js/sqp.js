@@ -52,7 +52,7 @@ function sqpRender() {
   const box = document.getElementById("sqp_body");
   if (!box) return;
   if (SQP.loading) { box.innerHTML = '<div class="cc" style="padding:14px">Asking Amazon for the report — these are built on request and can take a minute…</div>'; return; }
-  if (SQP.note) { box.innerHTML = '<div class="issuesbox" style="background:#241f10;border:1px solid #3a3320;color:#e6d9b8">' + esc(SQP.note) + "</div>"; return; }
+  if (SQP.note) { box.innerHTML = '<div class="issuesbox" style="background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--gold)">' + esc(SQP.note) + "</div>"; return; }
   const d = SQP.data;
   if (!d) {
     // NOT A BLANK SCREEN. Amazon BUILDS this report on request, roughly one a
@@ -88,8 +88,8 @@ function sqpRender() {
     "</div></div></div>";
 
   if (d.note) {
-    html += '<div class="issuesbox" style="background:#241f10;border:1px solid #3a3320;' +
-            'color:#e6d9b8;margin-bottom:12px">' + esc(d.note) + "</div>";
+    html += '<div class="issuesbox" style="background:var(--warn-bg);border:1px solid var(--warn-line);' +
+            'color:var(--gold);margin-bottom:12px">' + esc(d.note) + "</div>";
   }
 
   // ---- where the funnel breaks, across all queries ------------------------

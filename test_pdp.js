@@ -112,9 +112,14 @@ check("nor re-parses Amazon's flagged-field notes",
 console.log("\nclicking a listing goes through one function");
 // ---------------------------------------------------------------------------
 truthy("openListing exists", /function openListing\(/.test(LISTINGS));
-truthy("it prefers the full-screen page", /pdpOpen\(sku\)/.test(LISTINGS));
+// openListing now asks whether this app HOLDS a draft before it sends anything
+// to the product page, because the product page is built from a row and refuses
+// without one -- which is what made "many listings" on the live view refuse to
+// open. See test_open_any_listing.js for the whole of that behaviour.
+truthy("it prefers the full-screen page, for a listing we have a row for",
+       /hasDraftRow\(s\) && typeof pdpOpen === "function"\)\{ pdpOpen\(s\)/.test(LISTINGS));
 truthy("and falls back to the drawer when pdp.js has not loaded",
-       /typeof pdpOpen === "function"[\s\S]{0,80}openDrawer\(sku\)/.test(LISTINGS));
+       /typeof pdpOpen === "function"\)\{ pdpOpen\(s\); return; \}\s*openDrawer\(s\)/.test(LISTINGS));
 // A COUNT, NOT A LIST, so a new caller has to be a deliberate act. It was 4 and
 // is 6: the warnings chip on the detailed row, and "Edit listing" in the
 // three-dot overflow, both go through the same function rather than reaching
@@ -221,6 +226,14 @@ globalThis.SCHEMAS = {};
 globalThis.CUR_SYMBOL = "£";
 globalThis.lsStatusOf = r => String(r.status||"").toUpperCase();
 globalThis.lsWarnings = r => ({n:(r.warnings||[]).length, high:1, list:r.warnings||[]});
+// The REAL lsWarnTip: since the hero badge dropped the word "warning", its
+// hover text is the only place that wording survives, and a stub would let a
+// change to it pass. Pure function of the object above.
+{
+  const LS = fs.readFileSync("static/js/liststatus.js", "utf8");
+  const i = LS.indexOf("function lsWarnTip(");
+  globalThis.lsWarnTip = new Function("return " + LS.slice(i, LS.indexOf("\n}", i) + 2))();
+}
 globalThis.rowAsin = r => ({own: r.asin || "", source: ""});
 globalThis.rowMkt = () => "UK";
 globalThis.isAmazonLive = () => true;
@@ -293,7 +306,11 @@ truthy("the brand",          html.indexOf("Nestwell") >= 0);
 truthy("a status badge that includes what Amazon says",
        html.indexOf("LIVE · BUYABLE") >= 0);
 truthy("the profit badge",   html.indexOf("Profit £8.57") >= 0);
-truthy("a warning badge",    html.indexOf("1 warning") >= 0);
+// The badge is the triangle and the count; "1 warning (worst: ...)" and the
+// messages are the hover text now, shared with the card and the detailed row.
+truthy("a warning badge",
+       /pdp-hb warn[\s\S]{0,260}<\/i>1<\/span>/.test(html));
+truthy("  with the sentence on hover",  html.indexOf("1 warning (worst:") >= 0);
 
 console.log("\n  ...the top bar and the rail");
 truthy("back, Preview, Auto-fix, Submit and More",
@@ -453,10 +470,15 @@ check("no live ROW opens optimizeLive directly",
       /onclick="optimizeLive\('\$\{esc\(it\./.test(LISTINGS + MILES), false);
 truthy("but the deliberate button still does",
        /onclick="optimizeLive\('\$\{esc\(ownAsin\)/.test(LISTINGS));
+// The decision moved OUT of openLiveListing and INTO openListing, so that the
+// detailed view's rows -- which called openListing straight -- get the same
+// answer as the live tiles. openLiveListing is now a two-line wrapper.
 truthy("a SKU this app has a row for goes to the product page",
-       /known && typeof pdpOpen === "function"[\s\S]{0,40}pdpOpen\(s\)/.test(LISTINGS));
+       /hasDraftRow\(s\) && typeof pdpOpen === "function"[\s\S]{0,40}pdpOpen\(s\)/.test(LISTINGS));
 truthy("  and one it does not still opens optimizeLive, so nothing is lost",
        /if\(typeof optimizeLive === "function"\)[\s\S]{0,60}optimizeLive\(asin/.test(LISTINGS));
+truthy("  and openLiveListing just forwards to it now",
+       /function openLiveListing\(asin, sku\)\{\s*openListing\(sku, asin\);\s*\}/.test(LISTINGS));
 truthy("optimizeLive is still reachable from inside the product page",
        /optimizeLive\(/.test(PDPJS));
 
@@ -527,15 +549,25 @@ console.log("\n  ...the panel is bounded, and the READING column inside it is to
 // PANEL is bounded rather than edge-to-edge, and that the prose inside it has a
 // reading measure rather than running the full width. Both are still true, and
 // those are what is checked now.
+// 1240 -> 680, asked for by number in PDP_REDESIGN_TASK.md:
+//
+//     "The PDP overlay currently stretches full-width across the screen. It
+//      should be a centered panel with dark backdrop visible on both sides."
+//
+// The point of the check is unchanged -- the panel is BOUNDED and the page
+// shows around it -- so only the number moved.
 truthy("the panel is bounded, not full-bleed",
-       /\.pdp\{[^}]*width:min\(1240px/.test(PDPCSS));
+       /\.pdp\{[^}]*width:min\(680px/.test(PDPCSS));
 truthy("  with the listings page visible around it",
        /#pdp\{[^}]*background:rgba/.test(PDPCSS));
 check("the prose keeps a reading measure",
       capOf(/\.pdp-body\{[^}]*max-width:\s*([^;]+);/), "900px");
 truthy("  and is centred in whatever room it has",
        /\.pdp-body\{[^}]*margin:0 auto/.test(PDPCSS));
-check("the rail is 180", /\.pdp-side\{[^}]*width:180px/.test(PDPCSS), true);
+// 180 -> 130, also asked for by number ("Sidebar: 12px 10px, width 130px").
+// Inside a 680px panel every pixel the rail takes is one the fields do not get,
+// and the rail carries action words and tick marks, not prose.
+check("the rail is 130", /\.pdp-side\{[^}]*width:130px/.test(PDPCSS), true);
 check("no full-bleed ceiling variable is left", /--pdp-max/.test(PDPCSS), false);
 check("the attribute columns are the mockup's again",
       /\.pdp-aval\{[^}]*max-width:220px/.test(PDPCSS), true);

@@ -364,7 +364,7 @@ function financeRender(){
     // three was wrong for two of them.
     const why = (FIN.meta && FIN.meta.empty_note) || '';
     const have = (FIN.meta && FIN.meta.have) || {};
-    h += '<div class="cc" style="padding:18px;border:1px dashed #2a3446;border-radius:6px;'
+    h += '<div class="cc" style="padding:18px;border:1px dashed var(--line2);border-radius:6px;'
       +  'font-size:12.5px;line-height:1.6">'
       +  (why ? _fesc(why)
              : 'Nothing in this period yet. Finance data is pulled per day — press '
@@ -383,7 +383,7 @@ function financeRender(){
   if(!visible.length){
     // The period HAS products; this filter has none. Two different facts, and
     // the empty-period wording above would have said the wrong one.
-    h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'
+    h += '<div class="cc" style="padding:20px;border:1px dashed var(--line2);border-radius:6px">'
       +  'None of the '+FIN.rows.length+' products in this period are '
       +  _fesc(((FIN_FILTERS.filter(x=>x.k===FIN.filter)[0])||{}).t||"").toLowerCase()
       +  '. Pick <b>All</b> to see them.</div>';
@@ -419,7 +419,7 @@ function financeRender(){
     const _today = new Date().toISOString().slice(0, 10);
     if(FIN.meta.end && FIN.meta.end >= _today){
       h += '<div class="cc" style="font-size:11.5px;margin:-6px 0 12px;'
-        + 'padding:7px 10px;border:1px solid #3a3320;background:#241f10;'
+        + 'padding:7px 10px;border:1px solid var(--warn-line);background:var(--warn-bg);'
         + 'border-radius:6px;max-width:760px">'
         + '<i class="ti ti-clock"></i> This period includes <b>today</b>, which '
         + 'is not over. Amazon also posts fees and refunds for a day after it — '
@@ -514,7 +514,7 @@ function financeRender(){
     h += '</tr>';
   });
 
-  h += '</tbody><tfoot><tr style="border-top:2px solid #26303f;font-weight:600">';
+  h += '</tbody><tfoot><tr style="border-top:2px solid var(--line2);font-weight:600">';
   FIN_COLS.forEach(function(c){
     let cell;
     if(c.kind === "text") cell = t.products + " product" + (t.products===1?"":"s");

@@ -29,7 +29,7 @@ function sellerImportRender(){
   const host = document.getElementById("simpbody");
   if(!host) return;
   let h = '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
-    + 'border:1px solid #26303f;border-radius:6px">'
+    + 'border:1px solid var(--line2);border-radius:6px">'
     + 'Find everything an eBay seller lists, look through it with the pictures, '
     + 'and draft the ones you want. <b>Nothing is sent to Amazon</b> — the ones '
     + 'you keep become drafts here, and you publish them the usual way.</div>';
@@ -104,7 +104,7 @@ function sellerImportResults(){
   // What "found" means. Said plainly, every time, because it is a floor and not
   // a total and the difference is how items go missing unnoticed.
   h += '<div class="cc" style="font-size:12px;margin-bottom:10px;padding:9px 11px;'
-    + 'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
+    + 'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
     + '<i class="ti ti-info-circle"></i> '+_siEsc(m.note||"")+'</div>';
 
   // THE SCREENING RESULT, STANDING. Stays until the next check replaces it.
@@ -118,7 +118,7 @@ function sellerImportResults(){
       {k:"unknown", t:"could not be checked", col:"#8b949e"},
       {k:"clear",   t:"nothing against them", col:"#8fd694"},
     ].filter(x => c[x.k]);
-    h += '<div style="border:1px solid #26303f;border-radius:8px;padding:10px 12px;'
+    h += '<div style="border:1px solid var(--line2);border-radius:8px;padding:10px 12px;'
       +  'margin-bottom:10px;background:var(--panel2,rgba(255,255,255,.02))">'
       +  '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'
       +  '<b style="font-size:12.5px"><i class="ti ti-shield-check"></i> '
@@ -152,11 +152,11 @@ function sellerImportResults(){
     // Where the count moves while a long check runs. Outside the button, because
     // the button is re-rendered as results come in and would lose its own text.
     + '<div id="simp_progress" class="cc" style="display:none;font-size:11.5px;'
-    + 'margin:-4px 0 10px;padding:7px 10px;border:1px solid #26303f;'
+    + 'margin:-4px 0 10px;padding:7px 10px;border:1px solid var(--line2);'
     + 'border-radius:6px"></div>';
 
   if(!SIMP.rows.length){
-    h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'
+    h += '<div class="cc" style="padding:20px;border:1px dashed var(--line2);border-radius:6px">'
       + 'Nothing found for that seller. Check the username — it is the eBay '
       + 'user id, not their shop name.</div>';
     out.innerHTML = h; return;
@@ -171,7 +171,7 @@ function sellerImportResults(){
       + 'display:flex;flex-direction:column">'
       + '<div style="position:relative">'
       + '<img src="'+_siEsc(r.image)+'" loading="lazy" '
-      + 'style="width:100%;height:130px;object-fit:contain;background:#0d1220;display:block">'
+      + 'style="width:100%;height:130px;object-fit:contain;background:var(--sidebar);display:block">'
       + '<input type="checkbox" '+(r.selected?'checked':'')
       + ' onchange="sellerPick('+i+',this.checked)" '
       + 'style="position:absolute;top:7px;left:7px;width:17px;height:17px">'
@@ -201,7 +201,7 @@ function sellerImportResults(){
                 ? ' <b>(' + (r.screen.notes.length) + ')</b>' : '')
             + '</div>'
             + '<div id="siwhy_'+i+'" style="display:none;font-size:10.5px;'
-            + 'border-top:1px solid #26303f;margin-top:4px;padding-top:4px;'
+            + 'border-top:1px solid var(--line2);margin-top:4px;padding-top:4px;'
             + 'line-height:1.5">'
             + (((r.screen||{}).notes||[]).length
                 ? r.screen.notes.map(function(n){

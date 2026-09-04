@@ -140,7 +140,7 @@ function _aiEmpty(d){
   // Nothing recorded is a legitimate state, and it must not look like a
   // failure. It is also worth saying WHY it can be empty, because recording
   // started on a particular day and older spend is genuinely not in here.
-  return '<div style="padding:20px;border:1px dashed #2a3446;border-radius:10px">'
+  return '<div style="padding:20px;border:1px dashed var(--line2);border-radius:10px">'
     + '<div style="font-size:14px;margin-bottom:6px">No AI calls recorded between '
     + _aiEsc(d.start) + ' and ' + _aiEsc(d.end) + '.</div>'
     + '<div class="cc" style="font-size:12px;line-height:1.6">'
@@ -161,7 +161,7 @@ function _aiTotals(d){
   ];
   return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px">'
     + cards.map(function(c){
-        return '<div style="flex:1;min-width:150px;border:1px solid #2a3446;'
+        return '<div style="flex:1;min-width:150px;border:1px solid var(--line2);'
           + 'border-radius:10px;padding:10px 12px">'
           + '<div class="cc" style="font-size:11px;text-transform:uppercase;'
           + 'letter-spacing:.04em">' + _aiEsc(c[0]) + '</div>'
@@ -175,7 +175,7 @@ function _aiTotals(d){
 function _aiNotes(d){
   const notes = d.notes || [];
   if(!notes.length) return "";
-  return '<div style="border:1px solid #3d3520;background:#221d10;border-radius:10px;'
+  return '<div style="border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:10px;'
     + 'padding:10px 12px;margin:0 0 14px;font-size:12px;line-height:1.7">'
     + notes.map(function(n){ return '<div>• ' + _aiEsc(n) + '</div>'; }).join("")
     + '</div>';
@@ -236,7 +236,7 @@ function _aiBars(title, rows, labelKey, note){
       + '<div style="width:190px;font-size:12px;overflow:hidden;'
       + 'text-overflow:ellipsis;white-space:nowrap" title="' + _aiEsc(label) + '">'
       + _aiEsc(label) + '</div>'
-      + '<div style="flex:1;background:#161d28;border-radius:5px;height:16px;'
+      + '<div style="flex:1;background:var(--panel);border-radius:5px;height:16px;'
       + 'position:relative;overflow:hidden">'
       + '<div style="width:' + pct.toFixed(1) + '%;height:100%;background:'
       + col + ';opacity:.75"></div></div>'
@@ -250,7 +250,7 @@ function _aiBars(title, rows, labelKey, note){
   // 390px phone a flat 420 is 30px wider than the screen itself, so the panel
   // sat outside its own container. min() keeps the floor where there is room
   // for it and drops it where there is not.
-  return '<div style="flex:1;min-width:min(420px,100%);border:1px solid #2a3446;'
+  return '<div style="flex:1;min-width:min(420px,100%);border:1px solid var(--line2);'
     + 'border-radius:10px;padding:12px 14px">'
     + '<div style="font-size:13px;font-weight:600;margin-bottom:2px">'
     + _aiEsc(title) + '</div>'
@@ -269,13 +269,13 @@ function _aiTable(title, rows, cols, note){
   if(!rows || !rows.length) return "";
   const head = cols.map(function(c){
     return '<th style="text-align:' + (c.right ? "right" : "left")
-      + ';padding:5px 8px;font-size:11px;font-weight:600;border-bottom:1px solid #2a3446">'
+      + ';padding:5px 8px;font-size:11px;font-weight:600;border-bottom:1px solid var(--line2)">'
       + _aiEsc(c.title) + '</th>';
   }).join("");
   const body = rows.map(function(r){
     return '<tr>' + cols.map(function(c){
       return '<td style="text-align:' + (c.right ? "right" : "left")
-        + ';padding:5px 8px;font-size:12px;border-bottom:1px solid #1b2330">'
+        + ';padding:5px 8px;font-size:12px;border-bottom:1px solid var(--line2)">'
         + c.cell(r) + '</td>';
     }).join("") + '</tr>';
   }).join("");
@@ -340,7 +340,7 @@ function aiUsageRender(){
     {title: "Unpriced", right: true, cell: function(r){
       // Named plainly: these are the calls the total below cannot include.
       const u = Number(r.unpriced || 0);
-      return u ? '<span style="color:var(--amber,#f5a623)">' + _aiEsc(_aiNum(u))
+      return u ? '<span style="color:var(--amber,var(--warn))">' + _aiEsc(_aiNum(u))
                  + '</span>' : '—';
     }},
     {title: "Cost", right: true, cell: function(r){ return _aiEsc(_aiMoney(r.cost)); }},

@@ -67,9 +67,9 @@ async function ppcRunBuilder(){
   const headterms=(document.getElementById("pb_headterms").value||"").split(",").map(s=>s.trim()).filter(Boolean);
   const fileEl=document.getElementById("pb_file");
   const resBox=document.getElementById("pb_result");
-  if(!asin||!sku||!name){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">ASIN, SKU, and product short name are all required.</div>'; return; }
-  if(asin===sku){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">SKU cannot equal ASIN. Use the seller SKU from Seller Central.</div>'; return; }
-  if(!fileEl.files||!fileEl.files[0]){ resBox.innerHTML='<div style="color:var(--warn);font-size:12px;padding:8px;border:1px solid #4d3712;border-radius:6px;background:#241a10">Attach a keyword file (CSV from DataDive, Helium 10, or SQP).</div>'; return; }
+  if(!asin||!sku||!name){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">ASIN, SKU, and product short name are all required.</div>'; return; }
+  if(asin===sku){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">SKU cannot equal ASIN. Use the seller SKU from Seller Central.</div>'; return; }
+  if(!fileEl.files||!fileEl.files[0]){ resBox.innerHTML='<div style="color:var(--warn);font-size:12px;padding:8px;border:1px solid var(--warn-line);border-radius:6px;background:var(--warn-bg)">Attach a keyword file (CSV from DataDive, Helium 10, or SQP).</div>'; return; }
   resBox.innerHTML='<div class="cc"><span class="genspin"></span> Bucketing keywords + building bulk file…</div>';
   const fd=new FormData();
   fd.append("file", fileEl.files[0]);
@@ -84,7 +84,7 @@ async function ppcRunBuilder(){
   fd.append("marketplace", WS_MARKET||"UK");
   try{
     const j=await (await fetch("/ppc/build_campaigns",{method:"POST", body:fd})).json();
-    if(!j.ok){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"build failed")+'</div>'; return; }
+    if(!j.ok){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">'+esc(j.error||"build failed")+'</div>'; return; }
     const v=j.validation||{};
     let html='<div style="padding:10px;border:1px solid var(--line);border-radius:8px">';
     html+='<div style="font-weight:600;margin-bottom:6px;color:'+(v.ok?'var(--ok)':'var(--warn)')+'">'+(v.ok?'✓ Built + validated':'⚠ Built but validation flagged issues')+'</div>';
@@ -125,9 +125,9 @@ async function ppcRunHarvest(){
   const fileEl=document.getElementById("ph_file");
   const tgtEl=document.getElementById("ph_targeted");
   const resBox=document.getElementById("ph_result");
-  if(!asin||!sku||!name){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">ASIN, SKU, and product short name are all required.</div>'; return; }
-  if(asin===sku){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">SKU cannot equal ASIN.</div>'; return; }
-  if(!fileEl.files||!fileEl.files[0]){ resBox.innerHTML='<div style="color:var(--warn);font-size:12px;padding:8px;border:1px solid #4d3712;border-radius:6px;background:#241a10">Upload the SP Search Term Report CSV.</div>'; return; }
+  if(!asin||!sku||!name){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">ASIN, SKU, and product short name are all required.</div>'; return; }
+  if(asin===sku){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">SKU cannot equal ASIN.</div>'; return; }
+  if(!fileEl.files||!fileEl.files[0]){ resBox.innerHTML='<div style="color:var(--warn);font-size:12px;padding:8px;border:1px solid var(--warn-line);border-radius:6px;background:var(--warn-bg)">Upload the SP Search Term Report CSV.</div>'; return; }
   resBox.innerHTML='<div class="cc"><span class="genspin"></span> Classifying every term, applying $10 rule + break-even ACOS…</div>';
   const fd=new FormData();
   fd.append("file", fileEl.files[0]);
@@ -141,7 +141,7 @@ async function ppcRunHarvest(){
   if(tgtEl&&tgtEl.files&&tgtEl.files[0]) fd.append("targeted_file", tgtEl.files[0]);
   try{
     const j=await (await fetch("/ppc/harvest",{method:"POST", body:fd})).json();
-    if(!j.ok){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"harvest failed")+'</div>'; return; }
+    if(!j.ok){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">'+esc(j.error||"harvest failed")+'</div>'; return; }
     const t=j.totals||{}, c=j.counts||{};
     let html='<div style="padding:10px;border:1px solid var(--line);border-radius:8px">';
     html+='<div style="font-weight:600;margin-bottom:6px;color:var(--ok)">✓ Harvest complete</div>';
@@ -201,7 +201,7 @@ async function ppcRunDeliv(){
   const skill = PPC_DELIV_SKILL;
   if(!skill){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px">No capability selected — try again from a shortcut.</div>'; return; }
   const files = filesEl && filesEl.files ? Array.from(filesEl.files) : [];
-  if(!files.length){ resBox.innerHTML='<div style="color:var(--warn);font-size:12px;padding:8px;border:1px solid #4d3712;border-radius:6px;background:#241a10">Attach at least one file so I can detect its family and act on real data.</div>'; return; }
+  if(!files.length){ resBox.innerHTML='<div style="color:var(--warn);font-size:12px;padding:8px;border:1px solid var(--warn-line);border-radius:6px;background:var(--warn-bg)">Attach at least one file so I can detect its family and act on real data.</div>'; return; }
   resBox.innerHTML='<div class="cc"><span class="genspin"></span> Detecting file families + building deliverable…</div>';
   const fd=new FormData();
   fd.append("skill", skill);
@@ -211,7 +211,7 @@ async function ppcRunDeliv(){
   files.forEach((f,i)=>fd.append("files", f, f.name));
   try{
     const j=await (await fetch("/ppc/deliverable",{method:"POST", body:fd})).json();
-    if(!j.ok){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"failed")+'</div>'; return; }
+    if(!j.ok){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">'+esc(j.error||"failed")+'</div>'; return; }
     let html='<div style="padding:10px;border:1px solid var(--line);border-radius:8px">';
     // Files detected
     html+='<div style="font-weight:600;margin-bottom:6px;color:var(--accent2)">Files detected</div>';
@@ -223,7 +223,7 @@ async function ppcRunDeliv(){
     html+='</ul>';
     // Missing inputs
     if(j.missing && j.missing.length){
-      html+='<div style="margin-top:10px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:var(--warn);font-size:12px">';
+      html+='<div style="margin-top:10px;padding:8px;border-radius:6px;background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn);font-size:12px">';
       html+='<b>Still needed to build the deliverable:</b><ul style="margin:6px 0 0 18px">';
       j.missing.forEach(m=>html+='<li>'+esc(m)+'</li>');
       html+='</ul></div>';

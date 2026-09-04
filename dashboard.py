@@ -26,6 +26,8 @@ import json
 import re
 import sys
 import os
+# Amazon's own reply to the last Preview/Submit, kept in one shape (Rule 12).
+from listing import api_issues as _api_issues
 import subprocess
 import threading
 import base64
@@ -701,7 +703,11 @@ def _load_schema(pt: str) -> dict:
     """Fetch+cache {'enums', 'required', 'attrs', 'subfields'} for a product type
     from Amazon getDefinitions, for the active marketplace. Empties on failure."""
     if not pt:
-        return {"enums": {}, "required": [], "attrs": [], "subfields": {}, "titles": {}}
+        return {"enums": {}, "required": [], "attrs": [], "subfields": {}, "titles": {},
+            # help: Amazon's own description per field, for the (?) bubble.
+            # maxitems: how many values a field takes (0 = unbounded array).
+            # readonly: fields Amazon says cannot be set.
+            "help": {}, "maxitems": {}, "readonly": []}
     # marketplace-aware: US brands must get US sub-field schemas, not UK
     _mkt = str(_state.get("active_marketplace", "") or "UK").upper()
     _ck = f"{pt}::{_mkt}"
@@ -724,7 +730,11 @@ def _load_schema(pt: str) -> dict:
             return _hit
     except Exception:
         pass                    # a cache must never be the reason this fails
-    info = {"enums": {}, "required": [], "attrs": [], "subfields": {}, "titles": {}}
+    info = {"enums": {}, "required": [], "attrs": [], "subfields": {}, "titles": {},
+            # help: Amazon's own description per field, for the (?) bubble.
+            # maxitems: how many values a field takes (0 = unbounded array).
+            # readonly: fields Amazon says cannot be set.
+            "help": {}, "maxitems": {}, "readonly": []}
     try:
         import urllib.request
         from sp_api.api import ProductTypeDefinitions
@@ -804,6 +814,38 @@ def _load_schema(pt: str) -> dict:
                 _ttl = prop.get("title") or ""
                 if _ttl:
                     info["titles"][field] = str(_ttl)
+                # THREE MORE THINGS THE SCHEMA ALREADY SAYS AND NOTHING READ.
+                #
+                # The product page needs a help bubble on every field, an "Add
+                # more" on the fields that take several values, and a lock on
+                # the ones that cannot be changed. All three are IN Amazon's own
+                # definition and were being thrown away here, which is why the
+                # brief for that page keeps saying "do NOT hardcode this, read
+                # it from the schema" -- there was nothing to read it from.
+                #
+                # description  the help text, verbatim from Amazon.
+                # maxItems     how many values the field takes. An array with no
+                #              maxItems is unbounded, recorded as 0, and only a
+                #              field that is genuinely an array gets an entry --
+                #              a single-value field must never grow an "Add
+                #              more" that Amazon would then refuse.
+                # readOnly     Amazon says this one cannot be set.
+                _desc = prop.get("description") or ""
+                if _desc:
+                    info["help"][field] = str(_desc)[:600]
+                if prop.get("type") == "array" or isinstance(prop.get("items"), dict):
+                    try:
+                        info["maxitems"][field] = int(prop.get("maxItems") or 0)
+                    except (TypeError, ValueError):
+                        info["maxitems"][field] = 0
+                if prop.get("readOnly") is True:
+                    info["readonly"].append(field)
+                # Sub-fields carry their own help, and a nested value is where
+                # the wording most often matters (aspect, unit, dimension).
+                for _sk, _sv in (prop.get("items", {}) or {}).get("properties", {}).items() \
+                        if isinstance(prop.get("items"), dict) else []:
+                    if isinstance(_sv, dict) and _sv.get("description"):
+                        info["help"]["%s.%s" % (field, _sk)] = str(_sv["description"])[:600]
                 items   = prop.get("items", {})
                 ip      = items.get("properties", {}) if isinstance(items, dict) else {}
                 # Enum from the merged (usually ENFORCED) def. If empty, fall back
@@ -857,6 +899,35 @@ def _load_schema(pt: str) -> dict:
             _sc.write(CONFIG_PATH, pt, _mkt, info)
         except Exception:
             pass
+        return info
+
+    # THE FETCH FAILED. FALL BACK TO WHAT IS ON DISK, EVEN IF IT IS AN OLD SHAPE.
+    #
+    # schema_cache.read now treats a copy stored before help/maxitems/readonly
+    # existed as a miss, so those product types come back here to be re-fetched.
+    # On an account whose SP-API roles are not granted that fetch answers
+    # "Unauthorized" -- and without this, ninety-eight product types would go
+    # from "dropdowns, required stars and nested sub-fields, minus three new
+    # decorations" to "no schema at all". A missing help bubble is a small loss;
+    # an empty attribute editor is not.
+    #
+    # The empty keys are filled in so every caller can read info["help"] without
+    # checking whether this copy predates it.
+    try:
+        from domain import schema_cache as _sc
+        stale = _sc.read(CONFIG_PATH, pt, _mkt, max_age_days=36500,
+                         require_current=False)
+        if stale:
+            for _k, _blank in (("help", {}), ("maxitems", {}), ("readonly", []),
+                               ("titles", {}), ("subfields", {}), ("enums", {})):
+                stale.setdefault(_k, _blank if not isinstance(_blank, dict) else dict(_blank))
+            stale.setdefault("required", [])
+            if info.get("_error"):
+                stale["_error"] = info["_error"]
+            _state["schemas"][_ck] = stale
+            return stale
+    except Exception:
+        pass
     return info
 
 
@@ -1117,6 +1188,13 @@ def _card(r: dict) -> dict:
         "attributes":   attrs,
         "attrs":        json.dumps(attrs),
         "api_payload":  g("API Payload JSON"),   # exact body sent to Amazon (debug viewer)
+        # WHAT AMAZON SAID BACK about that payload -- its own issues array, kept
+        # structured so the listing page can put each complaint against the
+        # field it names. The Notes column still holds the flattened sentence;
+        # this is the same information with the field names still attached.
+        # Parsed here, not in the browser, so every screen gets a list
+        # (listing/api_issues.py owns the shape -- Rule 12).
+        "api_issues":   _api_issues.parse(g("API Issues JSON")),
         # WHAT IS WRONG WITH THIS LISTING, said rather than enforced.
         #
         # A list of {type, severity, message, details} worked out by

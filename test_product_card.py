@@ -166,8 +166,12 @@ print("\n== clicking a card opens the listing, whichever kind of card ==")
 truthy("a live tile opens the listing", "onclick=\"openLiveListing(" in MT)
 truthy("a live table row does too",
        "const _open = `openLiveListing(" in LJ)
+# The decision moved into openListing so the detailed view's rows get the same
+# answer as the tiles -- the ASIN it hands over now comes from Amazon's own
+# catalogue rather than being blank, because r.asin on a generated row is the
+# COMPETITOR reference in the SKU. See test_open_any_listing.js.
 truthy("  and the live editor is still the fallback for a row we do not have",
-       "optimizeLive(asin || \"\", s)" in LJ)
+       "optimizeLive(asin || liveAsinFor(s), s)" in LJ)
 falsy("  and no longer renders itself un-clickable",
       '<tr style="cursor:default"' in LJ)
 

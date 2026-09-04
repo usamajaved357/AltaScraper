@@ -398,6 +398,11 @@ CREATE TABLE IF NOT EXISTS listings (
     attributes_json TEXT,
     item_highlights TEXT,
     api_payload_json TEXT,
+    -- WHAT AMAZON SAID BACK. api_payload_json is the body we SENT; this is the
+    -- issues array Amazon returned with it, kept structured (code, severity,
+    -- message, attributeNames) rather than flattened into the Notes prose, so
+    -- the listing page can show the failing field next to the field itself.
+    api_issues_json TEXT,
     listing_marketplace TEXT DEFAULT 'UK',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -846,6 +851,9 @@ CREATE TABLE IF NOT EXISTS schema_cache (
 _ADDED_COLUMNS = [
     # Opt-in, per listing, for the GTIN exemption. See column_map.py.
     ("listings", "gtin_exemption", "TEXT"),
+    # Amazon's own reply to the last Preview/Submit. In SCHEMA too; here so a
+    # database that already exists gains it without being rebuilt.
+    ("listings", "api_issues_json", "TEXT"),
     ("sales_daily", "parent_asin", "TEXT"),
     ("finance_daily", "units", "INTEGER"),
     ("finance_daily", "cogs", "REAL"),

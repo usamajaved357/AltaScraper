@@ -69,8 +69,13 @@ _layout = CSS.split(".pdp-layout{")[1].split("}")[0]
 falsy("the layout is no longer capped at 1100px", "max-width:1100px" in _layout)
 _content = CSS.split(".pdp-content{")[1].split("}")[0]
 falsy("  nor the content at 720px", "max-width:720px" in _content)
-truthy("  and the padding is the 24-32px asked for",
-       re.search(r"padding:24px (2[4-9]|3[0-2])px", _content) is not None)
+# 24-32px was right for a full-bleed page. PDP_REDESIGN_TASK.md narrowed the
+# panel to 680px and named the new padding itself ("Main content area: 12px
+# 16px") -- at that width, 28px of padding either side is a tenth of the panel
+# spent on nothing. The check that matters is unchanged: the content is not
+# capped, and it is not flush against the edge.
+truthy("  and the padding is the 12px 16px asked for",
+       re.search(r"padding:12px 16px", _content) is not None)
 _hero = CSS.split(".pdp-hero-in{")[1].split("}")[0]
 falsy("  the hero is not centred in a narrower column either",
       "max-width:900px" in _hero)

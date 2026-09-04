@@ -47,7 +47,7 @@
     var imgs=(d.images||[]);
     var imgHtml = imgs.length
       ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">'+imgs.slice(0,8).map(function(u){
-          return '<a href="'+_esc(u)+'" target="_blank" rel="noopener" title="Open full size on Amazon’s CDN"><img src="'+_esc(u)+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#fff"></a>';
+          return '<a href="'+_esc(u)+'" target="_blank" rel="noopener" title="Open full size on Amazon’s CDN"><img src="'+_esc(u)+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:var(--paper)"></a>';
         }).join("")+'</div>'
       : '<div class="cc" style="margin:8px 0;color:var(--muted)">No images returned for this ASIN.</div>';
     var specs=Object.keys(d.attributes||{});

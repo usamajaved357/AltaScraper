@@ -413,7 +413,7 @@ function salesDrawBreakdown(){
     + '</span></div>';
 
   if(!SALES_BD.rows.length){
-    h += '<div class="cc" style="padding:14px;border:1px dashed #2a3446;border-radius:6px;font-size:12px">'
+    h += '<div class="cc" style="padding:14px;border:1px dashed var(--line2);border-radius:6px;font-size:12px">'
       + _sEsc(m.note || "Nothing yet.") + '</div>';
     host.innerHTML = h; return;
   }
@@ -441,9 +441,9 @@ function salesDrawBreakdown(){
     };
     const d = cov.days_without_products || 0;
     h += '<div class="cc" style="padding:8px 10px;margin-bottom:8px;'
-      +  'border:1px solid #3a3120;background:#1a1710;border-radius:6px;'
+      +  'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px;'
       +  'font-size:11.5px;line-height:1.5">'
-      +  '<i class="ti ti-alert-triangle" style="color:#e8c66a"></i> '
+      +  '<i class="ti ti-alert-triangle" style="color:var(--gold)"></i> '
       +  'These products account for <b>' + _sEsc(mny(cov.covered)) + '</b> of the '
       +  '<b>' + _sEsc(mny(cov.total)) + '</b> sold in this period'
       +  (cov.pct !== null && cov.pct !== undefined
@@ -484,9 +484,9 @@ function salesDrawBreakdown(){
         // cards and the Orders screen use.
         const pic = r.img
           ? '<img src="'+_sEsc(thumbUrl(r.img, 30))+'" loading="lazy" decoding="async" alt="" style="width:30px;'
-            + 'height:30px;object-fit:contain;background:#0d1220;border-radius:5px;'
+            + 'height:30px;object-fit:contain;background:var(--sidebar);border-radius:5px;'
             + 'flex:0 0 30px">'
-          : '<span style="width:30px;height:30px;border-radius:5px;background:#0d1220;'
+          : '<span style="width:30px;height:30px;border-radius:5px;background:var(--sidebar);'
             + 'display:inline-flex;align-items:center;justify-content:center;'
             + 'flex:0 0 30px"><i class="ti ti-photo" style="opacity:.4"></i></span>';
         cell = '<div style="display:flex;gap:8px;align-items:center">' + pic
@@ -931,7 +931,7 @@ function salesDrawCharts(ser){
   });
   if(zeroed.length){
     h += '<div class="cc" style="font-size:11.5px;margin-top:10px;padding:9px 11px;'
-      +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
+      +  'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
       +  '<i class="ti ti-info-circle"></i> ' + _sEsc(zeroed.join(", "))
       +  ': every value Amazon has sent for this period is zero. That is what a '
       +  'feed which has not arrived looks like, so it is left off the chart '
@@ -1625,15 +1625,15 @@ function salesDrawOrgPpc(ser){
   // The share bar Orbit puts above the chart.
   const bar = '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;'
     + 'background:var(--panel2);margin:0 0 6px">'
-    + '<div style="width:' + oPct + '%;background:#10b981"></div>'
-    + '<div style="width:' + pPct + '%;background:#8b5cf6"></div></div>'
+    + '<div style="width:' + oPct + '%;background:var(--ok-bg)"></div>'
+    + '<div style="width:' + pPct + '%;background:var(--ai-bg)"></div></div>'
     + '<div style="display:flex;gap:16px;font-size:12px;margin:0 0 10px"'
     + (sample ? ' class="ri-sample"' : '') + '>'
     + '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
-    + 'background:#10b981;margin-right:6px"></span>Organic <b>' + oPct + '%</b>'
+    + 'background:var(--ok-bg);margin-right:6px"></span>Organic <b>' + oPct + '%</b>'
     + ' <span class="cc">' + _sShort(o, "money", ser && ser.currency) + '</span></span>'
     + '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
-    + 'background:#8b5cf6;margin-right:6px"></span>PPC <b>' + pPct + '%</b>'
+    + 'background:var(--ai-bg);margin-right:6px"></span>PPC <b>' + pPct + '%</b>'
     + ' <span class="cc">' + _sShort(p, "money", ser && ser.currency) + '</span></span>'
     + '</div>';
 
@@ -2145,7 +2145,7 @@ function salesDrawCards(sum, av){
     const neg = isProfit && Number(c.value) < 0;
     const col = missing ? "" :
       (neg ? ";color:var(--red)" :
-       isProfit ? ";color:var(--ok,#8fd694)" : "");
+       isProfit ? ";color:var(--ok,var(--ok))" : "");
     // LABEL FIRST, then the number, then the comparison -- Orbit's order,
     // measured: the label sits above the figure, not under it. Ours had it the
     // other way round and centred, which is why the two never looked alike

@@ -41,7 +41,17 @@ globalThis.CUR_SYMBOL = "£";
 globalThis.SELECTED = new Set();
 globalThis.lsStatusOf = r => String(r.status||"").toUpperCase();
 globalThis.lsWasSentToAmazon = r => ["LIVE","SUBMITTED"].indexOf(globalThis.lsStatusOf(r)) >= 0;
-globalThis.lsWarnings = r => ({n:(r.warnings||[]).length});
+globalThis.lsWarnings = r => ({n:(r.warnings||[]).length, high:false, medium:false,
+                               list:(r.warnings||[])});
+// lsWarnTip is the REAL one, not a stub: the chip's hover text is the only
+// place the word "warning" survives now, and a stub here would let a change to
+// the wording pass. It is a pure function of the object above, so it needs
+// nothing else from liststatus.js.
+{
+  const LS = fs.readFileSync("static/js/liststatus.js", "utf8");
+  const i = LS.indexOf("function lsWarnTip(");
+  globalThis.lsWarnTip = new Function("return " + LS.slice(i, LS.indexOf("\n}", i) + 2))();
+}
 globalThis.rowAsin = r => r._asin || {own:"", source:""};
 globalThis._rowImages = r => r._imgs || [];
 globalThis._dwCost = r => r.cogs ? ("£" + r.cogs) : "";
@@ -219,9 +229,23 @@ truthy("a selected row is marked", /class="inv-row sel"/.test(ctx.detailedRow(LI
 globalThis.SELECTED.clear();
 
 console.log("\n  ...warnings are surfaced on the row");
-truthy("counted",  draftHtml.indexOf("2 warnings") >= 0);
-check("and one warning is singular",
-      ctx.detailedRow(Object.assign({}, DRAFT, {warnings:[{}]})).indexOf("1 warning") >= 0, true);
+// THE WORD WENT, THE NUMBER STAYED.
+//
+//     "The '1 warning' / '2 warnings' text is redundant -- the warning icons
+//      already show the count. Remove the text line entirely."
+//
+// So the chip is the triangle and the count, and the sentence -- with the worst
+// severity and the first four messages -- is the hover text, built by
+// lsWarnTip() so the card badge, this chip and the product page's hero cannot
+// drift apart.
+truthy("counted", /prod-warn[^>]*>\s*<i class="ti ti-alert-triangle"><\/i>2</.test(draftHtml));
+truthy("  and the sentence is on hover instead",
+       draftHtml.indexOf("2 warnings (worst:") >= 0);
+check("and one warning is singular there",
+      ctx.detailedRow(Object.assign({}, DRAFT, {warnings:[{}]}))
+         .indexOf("1 warning (worst:") >= 0, true);
+truthy("  but the row itself no longer prints the word",
+       !/<\/i>\s*\d+ warnings?</.test(draftHtml));
 
 console.log("\n  ...dates are readable, and bad ones do not print 'Invalid Date'");
 check("an ISO date",        ctx.lrDate("2026-08-15"), "15 Aug 2026");

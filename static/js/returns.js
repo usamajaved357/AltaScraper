@@ -300,7 +300,7 @@ function _retBars(obj, colourFn, total){
       + 'margin-bottom:2px"><span>' + _rEsc(k.replace(/_/g, " ").toLowerCase())
       + '</span><span class="cc">' + n
       + (total ? ' · ' + pct.toFixed(0) + '%' : '') + '</span></div>'
-      + '<div style="height:6px;background:#0d1220;border-radius:3px;overflow:hidden">'
+      + '<div style="height:6px;background:var(--sidebar);border-radius:3px;overflow:hidden">'
       + '<div style="height:100%;width:' + (max ? (n / max * 100) : 0) + '%;'
       + 'background:' + col + '"></div></div></div>';
   }).join("");
@@ -316,7 +316,7 @@ function _retSpark(daily){
   const y = v => H - pad - (v / max) * (H - 2*pad);
   const d = days.map((k,i) => (i?"L":"M") + x(i).toFixed(1) + " " + y(daily[k]).toFixed(1)).join(" ");
   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="height:auto;display:block;'
-    + 'background:#0d1220;border:1px solid #1e2733;border-radius:8px">'
+    + 'background:var(--sidebar);border:1px solid var(--line2);border-radius:8px">'
     + '<path d="'+d+'" fill="none" stroke="#ef5350" stroke-width="2" stroke-linejoin="round"/>'
     + days.map(function(k,i){
         return '<rect x="'+(x(i)-6)+'" y="'+pad+'" width="12" height="'+(H-2*pad)+'" '

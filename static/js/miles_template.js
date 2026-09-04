@@ -8,7 +8,7 @@ async function _loadMilesTpls(){
 }
 function milesTemplatePanel(sku, sidv){
   return `<div class="genimg" id="milestpl_${sidv}">
-    <div class="kvsec" style="color:#7fd0ff;margin-top:14px"><i class="ti ti-stack"></i> Miles template main image</div>
+    <div class="kvsec" style="color:var(--accent2);margin-top:14px"><i class="ti ti-stack"></i> Miles template main image</div>
     <div class="genpanel" style="display:block">
       <div class="cc" style="margin-bottom:6px">Overlay product text onto your blank Miles template — pixel-faithful, no AI. <a href="#" onclick="openMilesTplManager();return false" style="color:var(--accent2)">Manage templates</a></div>
       <div class="genrow">
@@ -181,7 +181,7 @@ function renderZoneEditor(){
         <button class="genimgbtn ${ZE_STATE.tool==='move'?'apply':''}" onclick="zeTool('move')">Move/Resize</button>
         <button class="genimgbtn ${ZE_STATE.tool==='erase'?'apply':''}" onclick="zeTool('erase')">Eraser (drag to cover badge)</button>
       </div>
-      <div id="zewrap" style="position:relative;display:inline-block;max-width:100%;user-select:none;border:1px solid #2a3344">
+      <div id="zewrap" style="position:relative;display:inline-block;max-width:100%;user-select:none;border:1px solid var(--line2)">
         <img id="zeimg" src="/miles_template/preview/${esc(tid)}" style="display:block;max-width:100%;max-height:56vh">
       </div>
       <div class="genrow" style="margin-top:10px">
@@ -337,7 +337,7 @@ async function zonePreview(){
     body:JSON.stringify({template_id:ZE_STATE.tid, sku:'_zonetest',
       spec:{title:'INDUSTIAL GEAR OIL', subtitles:[{text:'80W-90',lines:1}],
         application:{text:'HYDRAULIC FLUID',lines:2}, zones:_zonesToSave(), erase:ZE_STATE.erase}})})).json();
-  if(box) box.innerHTML = j.ok ? '<img src="'+(j.data_url||j.url)+'" style="max-width:300px;border:1px solid #2a3344">'
+  if(box) box.innerHTML = j.ok ? '<img src="'+(j.data_url||j.url)+'" style="max-width:300px;border:1px solid var(--line2)">'
     : '<span style="color:var(--red)">'+esc(j.error||'failed')+'</span>';
 }
 async function openMilesTplManager(){
@@ -676,7 +676,7 @@ function render(){
          + 'title="Download every field of these listings as a CSV before you remove them">'
          + '<i class="ti ti-download"></i> Save a backup</button> '
          + '<button class="mktbtn" onclick="removeDeletedRows()" '
-         + 'style="border-color:var(--red-line);color:#fca5a5">'
+         + 'style="border-color:var(--red-line);color:var(--red)">'
          + '<i class="ti ti-trash"></i> Clear ' + (goneRows.length > 1 ? 'them' : 'it')
          + ' ' + storeFrom() + '</button></div></div>'
          + listBlock(goneRows))
@@ -1438,7 +1438,7 @@ async function runSpDiagnose(){
     <button class="x" onclick="this.closest('.modalwrap').remove()">×</button>
     <h3><i class="ti ti-stethoscope"></i> SP-API diagnostic — ${esc(mkt)}${acct?(' · '+esc(acct)):''}</h3>
     <div class="cc" style="margin:2px 0 10px">Testing DNS → TCP → TLS → LWA auth → every SP-API operation. This takes ~15–45 seconds. The output tells you exactly which layer is broken and how to fix it.</div>
-    <pre id="spdiagout" style="background:#0d1220;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;max-height:65vh;overflow:auto;white-space:pre-wrap;color:#cfe0ff"><span class="genspin"></span> Running…</pre>
+    <pre id="spdiagout" style="background:var(--sidebar);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;max-height:65vh;overflow:auto;white-space:pre-wrap;color:var(--accent2)"><span class="genspin"></span> Running…</pre>
   </div>`;
   document.body.appendChild(dlg);
   try{
@@ -2107,7 +2107,7 @@ function optReview(){
     <div class="cc" style="margin-bottom:10px"><b>Review every change.</b> Only the fields you tick will be sent to Amazon. Unticked fields stay exactly as they are on the live listing.</div>
     ${rows}
     <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:sticky;bottom:0;background:var(--panel);padding:12px 0;border-top:1px solid var(--line)">
-      <button id="optpushbtn" disabled onclick="optPush()" style="background:#3a1d1d;border:1px solid var(--red-line);color:var(--red);padding:9px 16px;border-radius:8px;cursor:pointer;font-weight:600">Push approved fields to LIVE Amazon</button>
+      <button id="optpushbtn" disabled onclick="optPush()" style="background:var(--red-bg);border:1px solid var(--red-line);color:var(--red);padding:9px 16px;border-radius:8px;cursor:pointer;font-weight:600">Push approved fields to LIVE Amazon</button>
       <span id="optapprovedcount" class="cc">0 fields approved</span>
       <button onclick="renderOptEditor(OPT_CURRENT)">← Back to edit</button>
       <button onclick="closeOpt()">Cancel</button>

@@ -44,29 +44,29 @@ function asBuild() {
   w.id = 'aswrap';
   w.style.cssText = 'position:fixed;right:18px;bottom:80px;width:430px;'
     + 'max-width:calc(100vw - 36px);height:min(620px,calc(100vh - 140px));'
-    + 'display:none;flex-direction:column;background:#0d1220;'
-    + 'border:1px solid #22304d;border-radius:14px;z-index:9600;'
+    + 'display:none;flex-direction:column;background:var(--sidebar);'
+    + 'border:1px solid var(--accent-line);border-radius:14px;z-index:9600;'
     + 'box-shadow:0 18px 50px rgba(0,0,0,.55);overflow:hidden';
   w.innerHTML =
     '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;'
-    + 'border-bottom:1px solid #1b2740;background:#111a2e">'
+    + 'border-bottom:1px solid var(--line2);background:var(--panel)">'
     + '<b style="font-size:13px">Ask about this account</b>'
     + '<span id="asscope" class="cc" style="font-size:11px"></span>'
     + '<span style="flex:1"></span>'
     + '<button onclick="asToggle()" title="Close" style="background:none;'
-    + 'border:0;color:#8fa3c8;font-size:19px;cursor:pointer;line-height:1">'
+    + 'border:0;color:var(--ink2);font-size:19px;cursor:pointer;line-height:1">'
     + '&times;</button></div>'
     + '<div id="aslog" style="flex:1;overflow-y:auto;padding:12px;'
     + 'font-size:12.5px;line-height:1.55"></div>'
-    + '<div style="padding:10px 12px;border-top:1px solid #1b2740;'
-    + 'background:#0b1020">'
+    + '<div style="padding:10px 12px;border-top:1px solid var(--line2);'
+    + 'background:var(--sidebar)">'
     + '<div style="display:flex;gap:7px">'
     + '<textarea id="asinput" rows="1" placeholder="e.g. how did last month go?"'
-    + ' onkeydown="asKey(event)" style="flex:1;resize:none;background:#0d1526;'
-    + 'border:1px solid #22304d;border-radius:8px;color:#dbe6ff;padding:8px 10px;'
+    + ' onkeydown="asKey(event)" style="flex:1;resize:none;background:var(--panel);'
+    + 'border:1px solid var(--accent-line);border-radius:8px;color:var(--accent2);padding:8px 10px;'
     + 'font-size:12.5px;font-family:inherit"></textarea>'
-    + '<button id="assend" onclick="asSend()" style="background:#1f6feb;'
-    + 'border:0;border-radius:8px;color:#fff;padding:0 14px;cursor:pointer;'
+    + '<button id="assend" onclick="asSend()" style="background:var(--accent-bg);'
+    + 'border:0;border-radius:8px;color:var(--paper);padding:0 14px;cursor:pointer;'
     + 'font-size:12.5px">Ask</button></div>'
     + '<div class="cc" style="font-size:10.5px;margin-top:7px">It reads this '
     + 'account\'s own screens and says which ones. It cannot change anything, '
@@ -79,7 +79,7 @@ function asBuild() {
   b.title = 'Ask a question about this account’s sales, stock and profit';
   b.onclick = asToggle;
   b.style.cssText = 'position:fixed;right:18px;bottom:22px;z-index:9599;'
-    + 'background:#16203a;border:1px solid #2a3b5e;color:#cfe0ff;'
+    + 'background:var(--accent-bg);border:1px solid var(--accent-line);color:var(--accent2);'
     + 'border-radius:22px;padding:9px 16px;cursor:pointer;font-size:12.5px;'
     + 'box-shadow:0 8px 24px rgba(0,0,0,.4)';
   document.body.appendChild(b);
@@ -123,7 +123,7 @@ function asEmpty() {
        'Anything I need to do today?']
       .map(function (q) {
         return '<button onclick="asAsk(this.textContent)" style="background:'
-          + '#16203a;border:1px solid #2a3b5e;color:#cfe0ff;border-radius:14px;'
+          + '#16203a;border:1px solid var(--accent-line);color:var(--accent2);border-radius:14px;'
           + 'padding:5px 11px;cursor:pointer;font-size:11.5px">'
           + asEsc(q) + '</button>';
       }).join('')
@@ -145,13 +145,13 @@ function asRender() {
   log.innerHTML = AS.msgs.map(function (m) {
     if (m.role === 'user') {
       return '<div style="margin:0 0 12px;text-align:right"><span style="'
-        + 'display:inline-block;background:#1b2a47;border-radius:12px 12px 2px '
+        + 'display:inline-block;background:var(--accent-bg);border-radius:12px 12px 2px '
         + '12px;padding:7px 11px;max-width:85%;text-align:left">'
         + asEsc(m.text) + '</span></div>';
     }
     if (m.role === 'error') {
-      return '<div style="margin:0 0 12px;background:#2a1620;border:1px solid '
-        + '#5c2a33;border-radius:10px;padding:9px 11px;color:#ffb3b3">'
+      return '<div style="margin:0 0 12px;background:var(--red-bg);border:1px solid '
+        + '#5c2a33;border-radius:10px;padding:9px 11px;color:var(--red)">'
         + asEsc(m.text) + '</div>';
     }
     var trace = '';
@@ -159,20 +159,20 @@ function asRender() {
       /* The receipts. Named so they can be opened, not as endpoint paths --
        * "/inventory/coverage" means nothing to the person reading. */
       trace = '<div class="cc" style="margin-top:9px;padding-top:8px;'
-        + 'border-top:1px solid #1b2740;font-size:10.5px">Read: '
+        + 'border-top:1px solid var(--line2);font-size:10.5px">Read: '
         + m.trace.map(function (t) {
             var nice = String(t.tool).replace(/_/g, ' ');
             return t.ok
               ? asEsc(nice)
-              : '<span style="color:#ffb3b3">' + asEsc(nice)
+              : '<span style="color:var(--red)">' + asEsc(nice)
                 + ' (could not read'
                 + (t.error ? ': ' + asEsc(String(t.error).slice(0, 90)) : '')
                 + ')</span>';
           }).join(', ')
         + '</div>';
     }
-    return '<div style="margin:0 0 14px"><div style="background:#111a2e;'
-      + 'border:1px solid #1b2740;border-radius:12px 12px 12px 2px;'
+    return '<div style="margin:0 0 14px"><div style="background:var(--panel);'
+      + 'border:1px solid var(--line2);border-radius:12px 12px 12px 2px;'
       + 'padding:10px 12px"><p style="margin:0">' + asText(m.text)
       + '</p>' + trace + '</div></div>';
   }).join('')

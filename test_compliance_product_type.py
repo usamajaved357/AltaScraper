@@ -93,6 +93,16 @@ def gate(cat, pt):
 print("=== the gate can only ever turn a flag DOWN ===")
 # EVERY UNCERTAINTY FLAGS. These four are the ones that matter: a missing field
 # must never be read as permission to go quiet.
+#
+# THIS WAS BRIEFLY THE OTHER WAY ROUND. REMAINING_FIXES_HANDOFF.md asked for
+# "if no product type is cached, skip category-specific compliance checks
+# entirely", and it was built that way. The owner then settled it:
+#
+#     "but why are we having products with no product type, the app should be
+#      able to pull the product type of the items, dont skip compliance checks"
+#
+# Which is the right answer to the right question: a missing product type is a
+# gap to FILL, not a reason to stop checking. See test_product_type_fill.py.
 truthy("no product type at all -> unchanged", gate("electrical", ""))
 truthy("  a None product type -> unchanged", gate("electrical", None))
 truthy("  a type nobody has written a rule about -> unchanged",
@@ -101,6 +111,7 @@ truthy("  a category with no gate at all -> unchanged",
        gate("supplements", "TRIPOD"))
 truthy("and the direction is written down",
        "can only ever turn a flag DOWN" in GEN)
+truthy("  along with why it is not the other way", "dont skip compliance checks" in GEN)
 
 print("\n=== the false flags that were measured ===")
 for cat, pt, what in (("electrical", "STORAGE_BAG", "No-Pump Vacuum Storage Bags"),
@@ -197,6 +208,43 @@ check("whitespace is not a difference",
 check("nothing in, nothing out", dd([]), [])
 check("an empty message is not treated as a duplicate of another empty one",
       len(dd([{"type": "a", "message": ""}, {"type": "b", "message": ""}])), 2)
+
+print("\n== NO PRODUCT TYPE: the check still runs ==")
+# The gap is filled, not worked around -- see test_product_type_fill.py.
+import json as _json                                          # noqa: E402
+import amazon_listing_generator as _g                          # noqa: E402
+
+_RULES = _json.load(open(r"D:\AltaScraper\compliance_rules.json", encoding="utf-8"))
+_LED = {"bullets": [], "description": ""}
+_TITLE = "LED Strip Light 240v Mains Powered"
+
+_none = _g.check_compliance(_TITLE, _LED, _RULES, "")
+_pt = _g.check_compliance(_TITLE, _LED, _RULES, "POWER_SUPPLY")
+_ruled = _g.check_compliance(_TITLE, _LED, _RULES, "HOSE")
+check("with no product type, electrical STILL flags",
+      "electrical" in _none["matched_categories"], True)
+check("  nothing is recorded as unchecked",
+      _none.get("unchecked_categories") or [], [])
+check("with a product type, it flags too",
+      "electrical" in _pt["matched_categories"], True)
+check("and a type that rules it out downgrades it, as before",
+      "electrical" in _ruled["matched_categories"], False)
+check("  to a mention, not a deletion",
+      "electrical" in (_ruled.get("mentioned_categories") or []), True)
+
+# _product_type_allows' answers, directly.
+_gate = _g._product_type_allows
+check("gated + no product type  -> True (keep checking)",
+      _gate("electrical", {"product_type_never": ["STORAGE_BAG"]}, ""), True)
+check("gated + a listed type    -> False",
+      _gate("electrical", {"product_type_never": ["STORAGE_BAG"]}, "STORAGE_BAG"), False)
+check("gated + another type     -> True",
+      _gate("electrical", {"product_type_never": ["STORAGE_BAG"]}, "POWER_SUPPLY"), True)
+check("no gate + no product type -> True", _gate("x", {}, ""), True)
+check("whitelist, not on it     -> False",
+      _gate("x", {"product_type_only": ["BEAUTY"]}, "RAKE"), False)
+check("whitelist, on it         -> True",
+      _gate("x", {"product_type_only": ["BEAUTY"]}, "BEAUTY_TOOL"), True)
 
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:

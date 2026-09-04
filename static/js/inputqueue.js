@@ -56,8 +56,8 @@ function _iqField(c, val, id){
        + 'placeholder="'+_iqEsc(c.ph||"")+'" '
        + (id ? 'onchange="inputQueueSave('+id+',this)" ' : '')
        + 'style="width:100%;box-sizing:border-box;padding:5px 7px;font-size:11.5px;'
-       + 'border:1px solid var(--line,#2a2f3a);border-radius:6px;'
-       + 'background:var(--bg,#0e1116);color:inherit'
+       + 'border:1px solid var(--line,var(--line2));border-radius:6px;'
+       + 'background:var(--bg,var(--panel2));color:inherit'
        + (c.num ? ';text-align:right' : '') + '">';
 }
 
@@ -89,8 +89,8 @@ function inputQueueRender(){
       +  '<input id="iq_new_'+c.k+'" placeholder="'+_iqEsc(c.ph||"")+'" '
       +  'onkeydown="if(event.key===\'Enter\')inputQueueAdd()" '
       +  'style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:12px;'
-      +  'border:1px solid var(--line,#2a2f3a);border-radius:6px;'
-      +  'background:var(--bg,#0e1116);color:inherit'+(c.num?';text-align:right':'')+'">'
+      +  'border:1px solid var(--line,var(--line2));border-radius:6px;'
+      +  'background:var(--bg,var(--panel2));color:inherit'+(c.num?';text-align:right':'')+'">'
       +  '</div>';
   });
   h += '</div>'
@@ -103,7 +103,7 @@ function inputQueueRender(){
 
   // ---- what is queued -------------------------------------------------
   if(!IQ.rows.length){
-    h += '<div class="cc" style="padding:18px;border:1px dashed #2a3446;border-radius:8px;'
+    h += '<div class="cc" style="padding:18px;border:1px dashed var(--line2);border-radius:8px;'
       +  'font-size:12.5px">Nothing queued yet. Add a product above, or bring in a '
       +  'spreadsheet with <b>Import from sheet</b> — both fill the same queue.</div>';
     body.innerHTML = h + '</div>';

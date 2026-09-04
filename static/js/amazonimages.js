@@ -115,7 +115,7 @@ function amazonImagesHtml(){
     // listing with an empty gallery look identical on screen unless one of them
     // says so, and only one of them means "try again".
     return '<div class="cc" style="font-size:11.5px;padding:10px;'
-         + 'border:1px solid #4a2323;background:#2a1212;border-radius:6px">'
+         + 'border:1px solid var(--red-line);background:var(--red-bg);border-radius:6px">'
          + '<i class="ti ti-alert-triangle"></i> Could not read this listing’s '
          + 'images from Amazon: ' + _aiEsc(AIMG.err)
          + ' <button class="db-chip" style="margin-left:6px" '
@@ -150,9 +150,9 @@ function amazonImagesHtml(){
   // them side by side without saying that invites "these do not match".
   if(d.shopper_image){
     h += '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;'
-      +  'padding-bottom:10px;border-bottom:1px solid #26303f">'
+      +  'padding-bottom:10px;border-bottom:1px solid var(--line2)">'
       +  '<img src="' + _aiEsc(d.shopper_image) + '" alt="" loading="lazy" '
-      +  'style="width:56px;height:56px;object-fit:contain;background:#0d1220;'
+      +  'style="width:56px;height:56px;object-fit:contain;background:var(--sidebar);'
       +  'border-radius:6px">'
       +  '<div style="min-width:0"><div style="font-size:12px;font-weight:600">'
       +  'The picture on the product page</div>'
@@ -165,7 +165,7 @@ function amazonImagesHtml(){
   if(d.issues && d.issues.length){
     // An image Amazon accepted and then rejected appears here and nowhere else.
     h += '<div style="font-size:11.5px;margin-bottom:10px;padding:8px 10px;'
-      +  'border:1px solid #4a3a23;background:#2a2112;border-radius:6px">'
+      +  'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
       +  '<b>Amazon has something to say about this listing</b>'
       +  '<ul style="margin:5px 0 0 16px;padding:0;line-height:1.5">'
       +  d.issues.map(function(i){
@@ -184,18 +184,18 @@ function amazonImagesHtml(){
           ? '<a href="' + _aiEsc(s.current) + '" target="_blank" rel="noopener" '
             + 'title="Open the full-size image Amazon holds for ' + _aiEsc(tag) + '">'
             + '<img src="' + _aiEsc(s.current) + '" alt="" loading="lazy" '
-            + 'style="width:96px;height:96px;object-fit:contain;background:#0d1220;'
+            + 'style="width:96px;height:96px;object-fit:contain;background:var(--sidebar);'
             + 'border-radius:6px;border:1px solid '
-            + (mine ? 'var(--ok,#8fd694);box-shadow:0 0 0 1px var(--ok,#8fd694)'
+            + (mine ? 'var(--ok,#8fd694);box-shadow:0 0 0 1px var(--ok,var(--ok-line))'
                     : '#26303f') + '"></a>'
           : '<div style="width:96px;height:96px;border-radius:6px;'
-            + 'background:#0d1220;border:1px dashed #2a3446;display:flex;'
+            + 'background:var(--sidebar);border:1px dashed var(--line2);display:flex;'
             + 'align-items:center;justify-content:center">'
             + '<span class="cc" style="font-size:10px">empty</span></div>')
       + '<div style="font-size:10px;margin-top:4px;font-weight:600">'
       + _aiEsc(tag) + '</div>'
       + '<div class="cc" style="font-size:9.5px;line-height:1.3'
-      + (mine ? ';color:var(--ok,#8fd694)' : '') + '">'
+      + (mine ? ';color:var(--ok,var(--ok))' : '') + '">'
       + (mine ? 'you just sent this'
               : (s.current ? 'was already here' : 'nothing sent'))
       + '</div></div>';

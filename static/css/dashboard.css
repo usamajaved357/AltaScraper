@@ -121,6 +121,12 @@
     /* Radius */
     --radius-sm:6px;  --radius:10px;  --radius-lg:14px;
 
+    /* LITERAL WHITE, NAMED. Charts, a QR code, an image canvas and a print
+       view all need real white rather than --ink, which is #e8eaed. It was
+       written as #ffffff in seven JavaScript files; login.css already had the
+       name, so the same name is defined here and those seven now use it. */
+    --paper:#ffffff;
+
     /* ---- compatibility aliases (see the note above) ---- */
     --muted:var(--ink2);
     --green:var(--ok);      --greenbg:var(--ok-bg);

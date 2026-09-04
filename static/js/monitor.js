@@ -146,7 +146,7 @@ function monLabelSeller(id, mkt){
     <button class="x" onclick="closeLabelModal()">×</button>
     <h3><i class="ti ti-tag"></i> Label seller</h3>
     <div class="cc" style="margin:2px 0 8px">Seller ID <b>${esc(id)}</b> — this label applies to this ID <b>everywhere</b> (all ASINs &amp; marketplaces), not just here.</div>
-    <div id="lbl_footprint" class="cc" style="margin-bottom:10px;padding:7px 9px;border:1px solid var(--bd,#333);border-radius:6px"><span class="genspin"></span> checking where this seller appears…</div>
+    <div id="lbl_footprint" class="cc" style="margin-bottom:10px;padding:7px 9px;border:1px solid var(--bd,var(--line2));border-radius:6px"><span class="genspin"></span> checking where this seller appears…</div>
     <input type="hidden" id="lbl_id" value="${esc(id)}"><input type="hidden" id="lbl_mkt" value="${esc(mkt||'')}">
     <label class="pl-lbl">Business name</label>
     <input id="lbl_name" class="pl-in" placeholder="e.g. Woux LLC" autocomplete="off">
@@ -179,7 +179,7 @@ function monLabelSeller(id, mkt){
                  " across <b>"+esc(String(fp.marketplace_count||0))+"</b> marketplace"+((fp.marketplace_count||0)!==1?'s':'')+
                  (mkts.length?" ("+mkts.map(esc).join(", ")+")":"")+".";
         const fb=ev.feedback_count;
-        if(fb===0) html+=' <span style="color:#e0a800">⚠ 0 feedback</span>';
+        if(fb===0) html+=' <span style="color:var(--gold)">⚠ 0 feedback</span>';
         else if(fb!=null) html+=" · "+esc(String(fb))+" feedback";
         if(ev.fba) html+=" · FBA";
         fpEl.innerHTML=html;
@@ -900,7 +900,7 @@ function showBulkPreview(j){
   dlg.innerHTML=`<div class="modal" style="max-width:800px;position:relative">
     <button class="x" onclick="closeBulk()">×</button>
     <h3><i class="ti ti-upload"></i> Import ASINs</h3>
-    <div class="cc" style="margin:2px 0 8px"><b style="color:#e8eaed">Found ${j.found||0}</b> ASIN(s)${scText}${invalid.length?`, <b style="color:var(--warn)">${invalid.length}</b> invalid`:''}.</div>
+    <div class="cc" style="margin:2px 0 8px"><b style="color:var(--ink)">Found ${j.found||0}</b> ASIN(s)${scText}${invalid.length?`, <b style="color:var(--warn)">${invalid.length}</b> invalid`:''}.</div>
     ${filterRow}
     ${invalidHtml}
     <div id="bulk_table" style="max-height:330px;overflow:auto;margin-top:10px"></div>
