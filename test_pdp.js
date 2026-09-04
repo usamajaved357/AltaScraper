@@ -92,10 +92,17 @@ const titleSaves = (DRAWER + LISTINGS + PDPJS + AUTOFIX).match(/col.{0,2},.{0,2}
 check("only one control in the app saves to the Title column", titleSaves.length, 1);
 
 // ---------------------------------------------------------------------------
-console.log("\nthe attribute table decides nothing of its own");
+console.log("\nthe attribute section decides nothing of its own");
 // ---------------------------------------------------------------------------
+// It was a TABLE on a TAB. PDP_MATCH_MOCKUP.md removed both:
+//     "There is NO 'Attributes' tab. All attributes ... are displayed on the
+//      Product Details tab, below the title/highlights/bullets/description."
+// Same builder, same model, same editCell -- a section under the description
+// instead of five columns behind a tab.
 truthy("it is handed the model rather than deriving one",
-       /function pdpAttrTable\(m\)/.test(PDPJS));
+       /function pdpAttrRows\(m\)/.test(PDPJS));
+truthy("  and is wrapped as a section of Product Details",
+       /function pdpAttrSection\(m, addCtrl\)/.test(PDPJS));
 truthy("required comes from the model's reqList / flagged, not a new rule",
        /m\.reqList/.test(PDPJS) && /m\.flagged\[k\]/.test(PDPJS));
 truthy("allowed values come from the model's enums",   /m\.enums\[k\]/.test(PDPJS));
@@ -104,7 +111,7 @@ truthy("the comparison is the shared lvVerdict()",     /lvVerdict\(sku, k, val\)
 truthy("and 'use' is the shared lvUse()",              /lvUse\(/.test(PDPJS));
 // The table must not build its own list of which fields exist.
 check("it never re-reads the schema itself",
-      /SCHEMAS\[/.test(PDPJS.slice(PDPJS.indexOf("function pdpAttrTable"))), false);
+      /SCHEMAS\[/.test(PDPJS.slice(PDPJS.indexOf("function pdpAttrRows"))), false);
 check("nor re-parses Amazon's flagged-field notes",
       /parseFlagged\(/.test(PDPJS), false);
 
@@ -294,7 +301,9 @@ check("and it has no address while closed", ctx.pdpPath(), "");
 globalThis.scrollY = 742;
 ctx.pdpOpen(SKU);
 check("opening records the listing", G("PDP_SKU"), SKU);
-truthy("the panel is shown",  el("pdp").style.display === "block");
+// flex, not block: the backdrop centres the panel and holds it to the top,
+// and an inline display:block silently undid that (see pdpOpen).
+truthy("the panel is shown",  el("pdp").style.display === "flex");
 truthy("and slides in",       el("pdp").classList.contains("in"));
 truthy("the body is locked so the grid cannot scroll behind it", bodyCls.has("pdp-on"));
 truthy("the drawer is closed, so there is only one title box on screen",
@@ -329,10 +338,18 @@ truthy("the four checks",
        /pdp-ck/.test(html) && html.indexOf("Restricted") >= 0
        && html.indexOf("Amazon feedback") >= 0);
 truthy("a claim risk is counted, not just named", html.indexOf("1 claim risk") >= 0);
-truthy("all five tabs", PDP_TABS_ok(html));
+// FOUR, and Amazon's own names. There is no Attributes tab: its contents
+// moved under the description on Product Details.
+truthy("the four tabs, in Amazon's words", PDP_TABS_ok(html));
 function PDP_TABS_ok(h){
-  return ["Product details","Images","Attributes","Offer","Compliance"]
-    .every(t => h.indexOf(t) >= 0);
+  const has = t => h.indexOf(t) >= 0;
+  // The TAB, not the word. "Attributes" is still on the page -- it is the
+  // heading of the section under the description, which is exactly where the
+  // brief moved it to. What must not exist is a tab called that.
+  const attrTab = /class="pdp-tab[^"]*"[^>]*>Attributes</.test(h);
+  return ["Product Details", "Images", "Offer"].every(has)
+      && (has("Safety &amp; Compliance") || has("Safety & Compliance"))
+      && !attrTab;
 }
 
 console.log("\n  ...a blocking problem is never put behind a tab (Rule 1)");
@@ -340,26 +357,38 @@ truthy("the identifier panel is on every tab", html.indexOf("<IDPANEL>") >= 0);
 truthy("and so is the compliance banner",      html.indexOf("<COMPBANNER>") >= 0);
 
 console.log("\n  ...each tab shows its own blocks and not the others'");
+// FOUR TABS, AND ATTRIBUTES IS NOT ONE OF THEM. PDP_MATCH_MOCKUP.md:
+//     "Normal listing (no variations): Product Details | Images | Offer |
+//      Safety & Compliance ... There is NO 'Attributes' tab."
 const tabHas = {};
-["details","images","attributes","offer","compliance"].forEach(function(t){
+["details","images","offer","compliance"].forEach(function(t){
   ctx.pdpTab(t); tabHas[t] = el("pdp").innerHTML;
 });
 truthy("details: title, highlights, bullets, description, search terms",
        ["<TITLE-EDITOR>","<HI>","<BUL>","<DESC>","<SRCH>"].every(m => tabHas.details.indexOf(m) >= 0));
-check("  and not the attributes grid", tabHas.details.indexOf("<ATTRSGRID>") >= 0, false);
+check("  and not the drawer's own attribute grid",
+      tabHas.details.indexOf("<ATTRSGRID>") >= 0, false);
 truthy("images: the image block", tabHas.images.indexOf("<IMG>") >= 0);
 truthy("offer: the offer rows, then identity",
        tabHas.offer.indexOf("<OFFERONLY>") >= 0
        && tabHas.offer.indexOf("<IDENTONLY>") > tabHas.offer.indexOf("<OFFERONLY>"));
 truthy("compliance: warnings, the verdicts, then the tools",
        ["<WARNINGS>","<COMPLIANCE>","<TOOLS>"].every(m => tabHas.compliance.indexOf(m) >= 0));
-truthy("attributes: the add-optional picker is kept",
-       tabHas.attributes.indexOf("<ADDCTRL>") >= 0);
 
-console.log("\n  ...the attributes table");
-const at = tabHas.attributes;
-truthy("a row per attribute, with Amazon's value beside ours",
+console.log("\n  ...the attributes, on Product Details under the description");
+const at = tabHas.details;
+truthy("the add-optional picker is kept", at.indexOf("<ADDCTRL>") >= 0);
+truthy("  and they sit BELOW the description, not above it",
+       at.indexOf("<DESC>") < at.indexOf("<EDIT:colour:black>"));
+truthy("the section is labelled", /pdp-attrsec/.test(at));
+truthy("a row per attribute, with Amazon's value above ours",
        at.indexOf("<EDIT:colour:black>") >= 0 && at.indexOf("<EDIT:size:small>") >= 0);
+// The mockup's shape: a 110px right-aligned label, the value beside it, and
+// what Amazon holds in grey ABOVE the box rather than in a column of its own.
+truthy("  as label + value rows, not a five-column table",
+       /pdp-attr-label/.test(at) && /pdp-attr-value/.test(at)
+       && !/pdp-atwrap/.test(at));
+truthy("  with Amazon's value on its own line", /pdp-attr-amazon/.test(at));
 truthy("a required field Amazon has not been asked about still appears",
        at.indexOf("<EDIT:material:>") >= 0);
 truthy("  marked as required",  at.indexOf("pdp-req") >= 0 || at.indexOf("pdp-reqsoft") >= 0);
@@ -373,7 +402,7 @@ truthy("and bulk fill when Amazon has fields we do not",
        at.indexOf("lvFillEmpty(") >= 0);
 
 console.log("\n  ...filtering hides rows without changing the counts");
-ctx.pdpTab("attributes");            // the loop above left us on Compliance
+ctx.pdpTab("details");            // the loop above left us on Compliance
 ctx.pdpAttrFilter("differs");
 const filtered = el("pdp").innerHTML;
 check("a filter with no matches says so, rather than showing an empty box",
@@ -383,7 +412,7 @@ ctx.pdpAttrFilter("all");
 
 console.log("\n  ...a multi-valued attribute is read-only here too");
 globalThis.__live = {state:"ok", values:{colour:"black"}, multi:{colour:3}, amazon_status:""};
-ctx.pdpTab("attributes");
+ctx.pdpTab("details");
 const multi = el("pdp").innerHTML;
 check("no editor is offered for it", multi.indexOf("<EDIT:colour:") >= 0, false);
 truthy("and it says how many Amazon holds", multi.indexOf("pdp-ro") >= 0);
@@ -392,7 +421,7 @@ globalThis.__live = {state:"ok", values:{colour:"black", material:"steel"}, mult
 
 console.log("\n  ...a failed read is never reported as \"Amazon has nothing\"");
 globalThis.__live = {state:"error", values:{}, multi:{}, error:"timed out"};
-ctx.pdpTab("attributes");
+ctx.pdpTab("details");
 truthy("the reason is shown", el("pdp").innerHTML.indexOf("could not read Amazon: timed out") >= 0);
 globalThis.__live = {state:"ok", values:{colour:"black", material:"steel"}, multi:{},
                      amazon_status:"BUYABLE"};
@@ -525,12 +554,17 @@ truthy("the backdrop covers the viewport", /position:fixed;\s*inset:0/.test(pdpR
 truthy("  but is TRANSLUCENT, so the page below shows through",
        /background:\s*rgba\([^)]*?,\s*\.?\d/.test(pdpRule));
 check("  and is not a solid fill", /background:var\(--pdp-bg\)/.test(pdpRule), false);
-truthy("  with a gap at the top where that page stays visible",
-       /padding:\s*38px/.test(pdpRule));
+// 38px at the top only -> a gap all the way round. The panel was a bottom
+// sheet; the mockup is a card on a backdrop:
+//     "The dark backdrop MUST be visible on both sides of the panel."
+truthy("  with a gap all round, where that page stays visible",
+       /padding:40px 60px/.test(pdpRule));
+truthy("  and it centres the card rather than stacking it",
+       /#pdp\.in\{[^}]*justify-content:center/.test(PDPCSS));
 
 const panel = capOf(/\n\.pdp\{([\s\S]*?)\}/);
 truthy("the panel is inset from the backdrop, not edge to edge",
-       /width:min\(/.test(panel));
+       /max-width:680px/.test(panel));
 truthy("  and reads as a layer: rounded, bordered, raised",
        /border-radius/.test(panel) && /box-shadow/.test(panel));
 truthy("clicking the page behind closes it", /host\.onclick = function/.test(PDPJS));
@@ -564,7 +598,7 @@ console.log("\n  ...the panel is bounded, and the READING column inside it is to
 // The point of the check is unchanged -- the panel is BOUNDED and the page
 // shows around it -- so only the number moved.
 truthy("the panel is bounded, not full-bleed",
-       /\.pdp\{[^}]*width:min\(680px/.test(PDPCSS));
+       /\.pdp\{[^}]*max-width:680px/.test(PDPCSS));
 truthy("  with the listings page visible around it",
        /#pdp\{[^}]*background:rgba/.test(PDPCSS));
 check("the prose keeps a reading measure",
@@ -576,8 +610,18 @@ truthy("  and is centred in whatever room it has",
 // and the rail carries action words and tick marks, not prose.
 check("the rail is 130", /\.pdp-side\{[^}]*width:130px/.test(PDPCSS), true);
 check("no full-bleed ceiling variable is left", /--pdp-max/.test(PDPCSS), false);
-check("the attribute columns are the mockup's again",
-      /\.pdp-aval\{[^}]*max-width:220px/.test(PDPCSS), true);
+// The five-column table is gone. PDP_MATCH_MOCKUP.md:
+//     "Label is right-aligned in a 110px column on the left. Input fills
+//      the rest."
+// At 548px of content the old "Yours" column was 220px -- too narrow to
+// read a title in -- and two of the five columns were empty on most rows.
+check("the label column is the mockup's 110px",
+      /\.pdp-attr-label\{[^}]*width:110px/.test(PDPCSS), true);
+check("  right-aligned, as the mockup has it",
+      /\.pdp-attr-label\{[^}]*text-align:right/.test(PDPCSS), true);
+check("  and the value takes the rest",
+      /\.pdp-attr-value\{ flex:1/.test(PDPCSS), true);
+check("no scrolling table is left", /\.pdp-atwrap\{/.test(PDPCSS), false);
 
 console.log("\nthe rebuild path reaches both views");
 // ---------------------------------------------------------------------------

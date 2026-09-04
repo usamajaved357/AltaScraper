@@ -43,7 +43,12 @@ RT = read("routes", "listing_routes.py")
 DASH = read("dashboard.py")
 
 print("\n== item 1: the panel is 680px ==")
-yes("width is min(680px, 94vw)", "width:min(680px, 94vw)" in CSS)
+# width:min(680px,94vw) -> width:100% + max-width:680px. PDP_MATCH_MOCKUP.md
+# spells the panel out, and the difference matters: min() made the panel size
+# itself against the VIEWPORT, so on a narrow window it shrank while the
+# backdrop's own padding was already reserving the same space twice.
+yes("the panel is 680 at most", "max-width:680px" in CSS and "width:100%;" in CSS)
+yes("  and the backdrop keeps a gap all round", "padding:40px 60px" in CSS)
 yes("the rail is 130px", re.search(r"\.pdp-side\{[^}]*width:130px", CSS, re.S))
 yes("content padding is 12px 16px", ".pdp-content{ flex:1; min-width:0; padding:12px 16px; }" in CSS)
 
@@ -125,7 +130,10 @@ print("\n== item 12: grouped attributes ==")
 yes("dotted keys are pulled together", "const keys = (function(){" in PDP)
 yes("  a heading is drawn once per family", "pdp-agrouphead" in PDP)
 yes("  only when a member survived the filter", "openGroup !== top" in PDP)
-yes("  members are indented", ".pdp-at tr.pdp-asub > .pdp-aname{ padding-left:14px; }" in CSS)
+# The rows are not table rows any more -- see test_pdp.js. A member of a group
+# is set in from the label column rather than indented inside a cell.
+yes("  members are set in from the label column",
+    ".pdp-attr.sub > .pdp-attr-label{ padding-right:10px; }" in CSS)
 yes("  and labelled by their leaf", "String(k).slice(topKey.length + 1)" in PDP)
 
 print("\n== the cache cannot hide a newly-read field ==")
