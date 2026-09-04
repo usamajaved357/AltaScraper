@@ -3328,13 +3328,29 @@ async function applyRewrite(sku, i){
  * app generated, r.asin is the COMPETITOR reference embedded in the SKU, and
  * opening the optimiser on a competitor's ASIN would be worse than refusing.
  */
+/* EVERY LISTING OPENS THE SAME PAGE.
+ *
+ *     "Most live listings open the 'Optimize live listing' modal instead of the
+ *      PDP overlay. Only listings that were originally created by this app open
+ *      the PDP. ... Fix: ALL listings open the PDP overlay regardless of
+ *      origin. A listing synced from Amazon is still a listing you manage."
+ *
+ * The condition was `hasDraftRow(s)`, and it was the right condition for a page
+ * that could only be built from a row. It no longer is: pdpOpen draws a listing
+ * with no draft from Amazon's own catalogue and attributes -- see
+ * pdpCatalogueRow -- so there is nothing left for the branch to protect.
+ *
+ * Measured: 7 of jack_uk's 47 live SKUs and 18 of nestwell_goods' 62 have no
+ * row here, which is why it was "most live listings" and not a few.
+ *
+ * The Optimize modal is not gone; it is no longer AUTOMATIC. It carries the
+ * Custom AI Rewrite, and it stays on the button that says so -- in the product
+ * page's own sidebar, and in the row's overflow menu -- where it is a thing you
+ * chose rather than a different UI you were given.
+ */
 function openListing(sku, asin){
   const s = String(sku || "");
   if(!s) return;
-  if(hasDraftRow(s) && typeof pdpOpen === "function"){ pdpOpen(s); return; }
-  // No draft here. The live optimiser pulls the listing down from Amazon, which
-  // is the only thing that CAN show a listing this app never made.
-  if(typeof optimizeLive === "function"){ optimizeLive(asin || liveAsinFor(s), s); return; }
   if(typeof pdpOpen === "function"){ pdpOpen(s); return; }
   openDrawer(s);
 }

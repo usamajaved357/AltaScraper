@@ -170,8 +170,14 @@ truthy("a live table row does too",
 # answer as the tiles -- the ASIN it hands over now comes from Amazon's own
 # catalogue rather than being blank, because r.asin on a generated row is the
 # COMPETITOR reference in the SKU. See test_open_any_listing.js.
-truthy("  and the live editor is still the fallback for a row we do not have",
-       "optimizeLive(asin || liveAsinFor(s), s)" in LJ)
+# IT IS NO LONGER A FALLBACK. Every listing opens the product page, which
+# draws a catalogue-only one from Amazon's own data
+# (CLAUDE_CODE_PROMPT_amazon_listings.md). The live editor keeps its own
+# button, because it carries the Custom AI Rewrite.
+truthy("  and every listing goes to the product page instead",
+       "if(typeof pdpOpen === \"function\"){ pdpOpen(s); return; }" in LJ)
+truthy("  with the live editor still on a button of its own",
+       'onclick="optimizeLive(' in LJ)
 falsy("  and no longer renders itself un-clickable",
       '<tr style="cursor:default"' in LJ)
 

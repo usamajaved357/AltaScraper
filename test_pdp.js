@@ -123,8 +123,10 @@ truthy("openListing exists", /function openListing\(/.test(LISTINGS));
 // to the product page, because the product page is built from a row and refuses
 // without one -- which is what made "many listings" on the live view refuse to
 // open. See test_open_any_listing.js for the whole of that behaviour.
-truthy("it prefers the full-screen page, for a listing we have a row for",
-       /hasDraftRow\(s\) && typeof pdpOpen === "function"\)\{ pdpOpen\(s\)/.test(LISTINGS));
+// EVERY listing now, not only one we have a row for -- the page builds a
+// catalogue-only listing from Amazon's own data. See test_every_listing_opens.py.
+truthy("it opens the full-screen page for every listing",
+       /function openListing\(sku, asin\)\{[\s\S]{0,200}?pdpOpen\(s\); return;/.test(LISTINGS));
 truthy("and falls back to the drawer when pdp.js has not loaded",
        /typeof pdpOpen === "function"\)\{ pdpOpen\(s\); return; \}\s*openDrawer\(s\)/.test(LISTINGS));
 // A COUNT, NOT A LIST, so a new caller has to be a deliberate act. It was 4,
@@ -147,7 +149,7 @@ const _pdpCalls = (_lsCode.match(/pdpOpen\(/g) || []).length;
 // the side drawer unreachable. prompt_orbit_ux.docx:
 //     "These are completely different UIs showing the same data ... pick ONE."
 check("only openListing, openDrawer's redirect and the expand button call it",
-      _pdpCalls, 4);
+      _pdpCalls, 3);
 truthy("  and the drawer's is the expand button",
        /dw2-ib" onclick="pdpOpen\(/.test(LISTINGS));
 truthy("the drawer keeps its own way back to full screen",
@@ -510,9 +512,13 @@ truthy("but the deliberate button still does",
 // detailed view's rows -- which called openListing straight -- get the same
 // answer as the live tiles. openLiveListing is now a two-line wrapper.
 truthy("a SKU this app has a row for goes to the product page",
-       /hasDraftRow\(s\) && typeof pdpOpen === "function"[\s\S]{0,40}pdpOpen\(s\)/.test(LISTINGS));
-truthy("  and one it does not still opens optimizeLive, so nothing is lost",
-       /if\(typeof optimizeLive === "function"\)[\s\S]{0,60}optimizeLive\(asin/.test(LISTINGS));
+       /function openListing\(sku, asin\)\{[\s\S]{0,200}?pdpOpen\(s\); return;/.test(LISTINGS));
+// ...and so does one it does not. The optimize modal is still REACHABLE -- it
+// carries the Custom AI Rewrite -- but only from a button that says so.
+truthy("  and so does one it does not",
+       /function pdpCatalogueRow\(sku\)/.test(PDPJS));
+truthy("  the optimize modal stays on its own button",
+       /onclick="optimizeLive\(/.test(LISTINGS));
 truthy("  and openLiveListing just forwards to it now",
        /function openLiveListing\(asin, sku\)\{\s*openListing\(sku, asin\);\s*\}/.test(LISTINGS));
 truthy("optimizeLive is still reachable from inside the product page",
