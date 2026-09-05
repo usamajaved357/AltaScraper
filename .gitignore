@@ -170,3 +170,16 @@ trackers.json
 notify.json
 compliance_scans.json
 categories.json
+
+# Sheets the app hands out and takes back: the per-order COSTS and the parcel
+# TRACKING. Both are downloaded filled with real order numbers, real supplier
+# prices and real tracking ids for one named account -- the owner's business
+# data, not source, and the tracking file additionally identifies parcels.
+# Named by account and marketplace, so the wildcard covers every account.
+order-costs-*.csv
+tracking-*.csv
+
+# Agent worktrees: a full second checkout of this repo under .claude/. Its own
+# dashboard.py and *.baseline.py would otherwise be committed as new files in
+# the real one.
+.claude/worktrees/

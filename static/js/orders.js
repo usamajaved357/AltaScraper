@@ -104,6 +104,90 @@ const _ORD_STATUS = {
      + "warehouse, or the item is not sellable."},
 };
 
+/* WHERE THE PARCEL IS, as opposed to whether we have marked it shipped.
+ *
+ * The colours say the same thing the words do, and three of these are not about
+ * the parcel at all -- "Not checked" means nobody has asked, "Carrier has no
+ * record" means somebody asked and the carrier does not know the number, and
+ * those need doing different things about. A mistyped tracking number looks
+ * exactly like an unchecked one unless the two are told apart.
+ *
+ * The server owns the words (domain/tracking.STATUS_LABEL); this owns only how
+ * they look, so the two can never drift into naming a status differently. */
+const _ORD_PARCEL = {
+  pre_transit:        {c:"#8b949e", i:"ti-tag",
+    m:"A label exists. The carrier has not had the parcel yet."},
+  collected:          {c:"#7fb4e0", i:"ti-package",
+    m:"The carrier has it."},
+  in_transit:         {c:"#7fb4e0", i:"ti-truck",
+    m:"On its way."},
+  out_for_delivery:   {c:"#e8c66a", i:"ti-truck-delivery",
+    m:"Out with the driver today."},
+  awaiting_collection:{c:"#e8c66a", i:"ti-building-store",
+    m:"At a pickup point, waiting for the buyer to collect it."},
+  delivered:          {c:"#8fd694", i:"ti-circle-check",
+    m:"The carrier says it has been delivered."},
+  exception:          {c:"#e88a8a", i:"ti-alert-triangle",
+    m:"Something went wrong — a failed delivery, a hold, or a return."},
+  not_found:          {c:"#e88a8a", i:"ti-help-circle",
+    m:"The carrier was asked and has no record of this number. It is usually "
+     + "mistyped, or belongs to a different order."},
+  unknown:            {c:"#8b949e", i:"ti-clock",
+    m:"Nobody has asked the carrier about this one yet."},
+};
+
+/* One order's parcels, as one cell.
+ *
+ * NO TRACKING AND NOT CHECKED ARE DIFFERENT and are drawn differently: an order
+ * with no number uploaded says so, because the thing to do about it is upload
+ * one, and showing it as "Not checked" would send somebody to press a button
+ * that could never help it. */
+function _ordParcelCell(r){
+  const t = (r && r.tracking) || [];
+  if(!t.length){
+    return '<span class="cc" style="opacity:.45" title="No tracking number has '
+         + 'been uploaded for this order. Use the Tracking sheet buttons above.">'
+         + '—</span>';
+  }
+  const s = (r.tracking_status || {});
+  const d = _ORD_PARCEL[s.status] || _ORD_PARCEL.unknown;
+  // WHEN IT WAS LAST ASKED, on the label itself. "Delivered" and "it said
+  // delivered four days ago and nobody has asked since" are different claims
+  // about now, and the second one is the one that gets argued over.
+  const when = s.checked_at ? (" · checked " + _oEsc(_oWhen(s.checked_at)))
+                            : " · not checked yet";
+  let h = '<span style="color:' + d.c + ';white-space:nowrap" title="'
+        + _oEsc((d.m || "") + when) + '">'
+        + '<i class="ti ' + d.i + '"></i> ' + _oEsc(s.label || "Not checked")
+        + (s.count > 1 ? ' <span class="cc">×' + s.count + '</span>' : '')
+        + '</span>';
+  if(s.stale && s.status !== "unknown"){
+    h += '<span class="cc" style="font-size:10px" title="This was last checked '
+       + 'more than twelve hours ago, so it may have moved since."> ·  old</span>';
+  }
+  // THE NUMBERS THEMSELVES, which is what was actually asked for. Wrapped, not
+  // truncated: a tracking number with the end cut off cannot be typed into a
+  // carrier's website, which is the one thing anybody wants to do with it.
+  h += '<div class="cc" style="font-size:10px;line-height:1.5;'
+     + 'overflow-wrap:anywhere;margin-top:2px">'
+     + t.map(function(x){
+         return (x.carrier ? _oEsc(x.carrier) + " " : "")
+              + '<code style="font-size:10px">' + _oEsc(x.tracking_number || "")
+              + '</code>'
+              // The carrier's own words, kept beside our word for them. Every
+              // carrier invents its own vocabulary and grouping loses detail
+              // the seller sometimes needs.
+              + (x.raw_status && x.raw_status !== (s.label || "")
+                   ? ' <span title="what the carrier itself said">('
+                     + _oEsc(x.raw_status) + ')</span>' : "")
+              + (x.check_error
+                   ? ' <span style="color:var(--red)" title="' + _oEsc(x.check_error)
+                     + '">could not be checked</span>' : "");
+       }).join("<br>")
+     + '</div>';
+  return h;
+}
+
 /* The buyer has ASKED to cancel. This is not a status of its own -- it rides on
  * top of one -- so it gets its own entry. It is the single most expensive thing
  * on this screen to misread: the order still reads as a live sale, and posting
@@ -605,11 +689,13 @@ function ordersRender(){
   const _COLSUB = {
     Item: "product, SKU", Order: "ID, units", Account: "which company",
     Placed: "date, fulfilment", Status: "and what is left to ship",
+    Parcel: "carrier, tracking",
     Total: "buyer paid", Profit: "after fees and cost",
     Margin: "of the price", ROI: "on the cost",
   };
   const cols = ['Item', 'Order'].concat(_multi ? ['Account'] : [])
-               .concat(['Placed', 'Status', 'Total', 'Profit', 'Margin', 'ROI']);
+               .concat(['Placed', 'Status', 'Parcel', 'Total', 'Profit',
+                        'Margin', 'ROI']);
   // The Item column gets the room. The money columns need four characters each
   // and were taking a ninth of the screen apiece, which is why the product name
   // -- the thing the column exists for -- was cut to nothing.
@@ -680,6 +766,10 @@ function ordersRender(){
       +  (r.unshipped ? '<div class="cc" style="font-size:10px;white-space:nowrap">'
                         + r.unshipped + ' to ship</div>' : '')
       +  '</td>'
+      // WHERE THE PARCEL IS. Amazon's status beside it answers a different
+      // question -- "have I marked this shipped" is about us, "out for
+      // delivery" is about the parcel -- so they are two columns, not one.
+      +  '<td style="font-size:11.5px">' + _ordParcelCell(r) + '</td>'
       +  '<td style="font-size:11.5px;white-space:nowrap">'
       +  _oEsc(_oMoney(r.total, r.currency)) + '</td>'
       // WHAT IT EARNED. Blank rather than zero when a cost is unknown -- a
@@ -1245,7 +1335,129 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
     h += '<div class="cc">Leave the box empty and press Save to clear a cost '
       +  'and put that line back to “not known”.</div></div>';
   }
+
   return h + '</div>';
+}
+
+/* THIS ORDER'S PARCEL, ADDED BY HAND.
+ *
+ * The sheet on the toolbar is for a hundred of them; this is for the one you
+ * are looking at, which is the shape a single missing number actually has --
+ * the same reasoning as the cost box, and the same place: where the gap is
+ * visible.
+ *
+ * Amazon does not hand these back, so there is no "refresh from Amazon" that
+ * could fill it in. It is typed or it is not there.
+ *
+ * ONE FUNCTION, called by both the compact panel and the long fallback, so the
+ * two layouts cannot end up offering different things (CLAUDE.md Rule 12). */
+function ordParcelPanel(r){
+  const orderId = (r && r.order_id) || "";
+  const accountId = (r && r.account_id) || "";
+  const marketplace = (r && r.marketplace) || "";
+  let h = "";
+  if(orderId){
+    const parcels = (r && r.tracking) || [];
+    h += '<div class="odp-note">'
+      +  '<div style="margin-bottom:4px"><b>Parcel tracking.</b> Amazon does not '
+      +  'give back the tracking numbers you upload to it, so they are recorded '
+      +  'here.</div>';
+    parcels.forEach(function(p){
+      const d = _ORD_PARCEL[p.status] || _ORD_PARCEL.unknown;
+      h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'
+        +  'margin:3px 0">'
+        +  '<span style="color:' + d.c + '" title="' + _oEsc(d.m || "") + '">'
+        +  '<i class="ti ' + d.i + '"></i> '
+        +  _oEsc(p.status_label || "Not checked") + '</span>'
+        +  '<code style="font-size:10.5px">' + _oEsc(p.tracking_number || "")
+        +  '</code>'
+        +  (p.carrier ? '<span class="cc" style="font-size:10.5px">'
+                        + _oEsc(p.carrier) + '</span>' : '')
+        // WHAT THE CARRIER ITSELF SAID, kept beside our word for it. Every
+        // carrier invents its own vocabulary and the mapped word loses detail
+        // the seller sometimes needs.
+        +  (p.raw_status ? '<span class="cc" style="font-size:10.5px" '
+                           + 'title="the carrier\'s own words">“'
+                           + _oEsc(p.raw_status) + '”</span>' : '')
+        +  (p.check_error ? '<span class="cc" style="font-size:10.5px;'
+                            + 'color:var(--red)">' + _oEsc(p.check_error)
+                            + '</span>' : '')
+        +  '<button class="ghost" onclick="ordRemoveTracking('
+        +  jsArg(orderId) + ',' + jsArg(p.tracking_number || '') + ','
+        +  jsArg(accountId || '') + ',' + jsArg(marketplace || '')
+        +  ')" title="Forget this number. Only this one — a split shipment '
+        +  'keeps its others.">Remove</button>'
+        +  '</div>';
+    });
+    h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'
+      +  'margin:3px 0">'
+      +  '<input id="ordtrk_num" class="ed" style="width:170px" '
+      +  'placeholder="tracking number">'
+      +  '<input id="ordtrk_car" class="ed" style="width:110px" '
+      +  'placeholder="carrier">'
+      +  '<button class="ghost" onclick="ordAddTracking('
+      +  jsArg(orderId) + ',' + jsArg(accountId || '') + ','
+      +  jsArg(marketplace || '') + ')">Add</button>'
+      +  '</div>'
+      +  '<div class="cc">A parcel is only checked with the carrier when you '
+      +  'press <b>Check parcels</b>, and only once a tracking service is set '
+      +  'up in Settings. Until then it reads “Not checked” rather than showing '
+      +  'a status nobody asked anyone about.</div>'
+      +  '</div>';
+  }
+  return h;
+}
+
+/* Record or forget ONE order's tracking number.
+ *
+ * The account and the marketplace are the ROW'S, passed down, exactly as the
+ * cost box does it and for the same reason: writing against whichever workspace
+ * happens to be open would put the number on a different company's order.
+ *
+ * Not optimistic. The panel is redrawn from what came BACK, so a refused save
+ * cannot look like a successful one. */
+async function ordAddTracking(orderId, accountId, marketplace){
+  const num = ((document.getElementById("ordtrk_num") || {}).value || "").trim();
+  const car = ((document.getElementById("ordtrk_car") || {}).value || "").trim();
+  if(!num){
+    if(typeof toast === "function") toast("Type a tracking number first.");
+    return;
+  }
+  await _ordTrackWrite({account: accountId || "", marketplace: marketplace || "",
+                        order_id: orderId, tracking_number: num, carrier: car},
+                       orderId, accountId,
+                       "Tracking recorded for this order.");
+}
+
+async function ordRemoveTracking(orderId, number, accountId, marketplace){
+  await _ordTrackWrite({account: accountId || "", marketplace: marketplace || "",
+                        order_id: orderId, tracking_number: number,
+                        remove: true},
+                       orderId, accountId, "That number has been forgotten.");
+}
+
+async function _ordTrackWrite(body, orderId, accountId, okMsg){
+  try{
+    const j = await (await fetch("/tracking/set", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)})).json();
+    if(!j || !j.ok){
+      if(typeof toast === "function")
+        toast("Could not save that: " + ((j && j.error) || "unknown"));
+      return;
+    }
+    // WHETHER IT WILL EVER BE CHECKED, said at the moment the number is stored
+    // rather than left to be discovered as a column of "Not checked".
+    if(typeof toast === "function")
+      toast(okMsg + (j.note ? " " + j.note : ""));
+    delete ORD.details[orderId];
+    ORD.open = "";
+    ordersRender();
+    if(typeof ordersLoad === "function") await ordersLoad();
+    ordersToggle(orderId, accountId || "");
+  }catch(e){
+    if(typeof toast === "function") toast("Could not save that: " + e);
+  }
 }
 
 /* Write one order line's cost, then redraw from the server's answer.
@@ -1392,6 +1604,9 @@ function _ordDetailHtml(r){
   // key name is Amazon's, not ours.
   h += _ordBreakdownHtml(d.breakdown, o.currency, r.order_id,
                          r.account_id, r.marketplace);
+
+  // ---- where the parcel is ---------------------------------------------
+  h += ordParcelPanel(r);
 
   // ---- delivery --------------------------------------------------------
   h += '<div class="odp-sec">'

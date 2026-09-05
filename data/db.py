@@ -294,6 +294,60 @@ CREATE INDEX IF NOT EXISTS idx_returns_order
    Failures are kept too, with Amazon's own words in `error`. A message that was
    refused is a thing somebody has to know about, and a log of successes only
    would show a customer as contacted when they were not. */
+/* WHERE THE PARCEL IS.
+   -----------------------------------------------------------------------
+   AMAZON DOES NOT GIVE BACK THE TRACKING YOU UPLOAD. Measured, not assumed:
+
+       getOrder                     no tracking number, no carrier. It carries
+                                    OrderStatus, NumberOfItemsShipped/Unshipped,
+                                    ShipServiceLevel and the ship-by dates
+       getOrderItems                QuantityShipped only
+       All Orders report            33 columns, none of them tracking or carrier
+       MerchantFulfillment          get_shipment needs a shipmentId, and SP-API
+                                    publishes no "list my shipments" call -- so
+                                    it can read back a label THIS app bought and
+                                    cannot discover tracking for anything else
+
+   So the number has to come from the seller, the same way the per-order costs
+   do: a sheet out, a sheet back. `source` records which -- 'upload' for that,
+   'amazon' for a label bought through Amazon Buy Shipping, so the two can never
+   be confused.
+
+   THE CARRIER'S STATUS IS A SEPARATE QUESTION AND A SEPARATE FAILURE.
+   `status` is what the carrier last said; `checked_at` is when it was asked.
+   Those two together are the whole difference between "delivered" and "it said
+   delivered four days ago and nobody has asked since". A status with no
+   checked_at beside it is a claim about the present made from the past.
+
+   `raw_status` keeps the carrier's own wording. Every carrier invents its own
+   vocabulary -- "Delivered", "DELIVERED", "Signed for", "Parcel delivered" --
+   and mapping them onto a common word loses information the seller sometimes
+   needs. Both are kept: the mapped one to group by, the original to read. */
+CREATE TABLE IF NOT EXISTS order_tracking (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id    TEXT NOT NULL,
+    marketplace     TEXT NOT NULL,
+    order_id        TEXT NOT NULL,
+    sku             TEXT,                -- a multi-line order can ship separately
+    carrier         TEXT,                -- as the seller wrote it
+    carrier_code    TEXT,                -- normalised, for the lookup
+    tracking_number TEXT NOT NULL,
+    status          TEXT,                -- mapped: in_transit, delivered, ...
+    raw_status      TEXT,                -- the carrier's own words
+    last_event      TEXT,                -- the newest scan, in words
+    last_event_at   TEXT,                -- when that scan happened
+    checked_at      TEXT,                -- when WE last asked the carrier
+    check_error     TEXT,                -- why the last check failed, if it did
+    source          TEXT,                -- 'upload' | 'amazon'
+    added_at        TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tracking_key
+    ON order_tracking(workspace_id, marketplace, order_id, tracking_number);
+CREATE INDEX IF NOT EXISTS idx_tracking_order
+    ON order_tracking(workspace_id, order_id);
+CREATE INDEX IF NOT EXISTS idx_tracking_status
+    ON order_tracking(workspace_id, status);
+
 CREATE TABLE IF NOT EXISTS buyer_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,

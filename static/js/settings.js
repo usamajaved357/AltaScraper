@@ -254,6 +254,11 @@ async function openAISettings(){
                                has_secret:false,secret_tail:"",
                                has_refresh:false,refresh_tail:"",
                                account_id:"",scope:"none",connected:false};
+  // The parcel-tracking key. GLOBAL, unlike the advertising login above: it is
+  // a subscription to a service rather than an identity at Amazon, and asking
+  // it where a parcel is reveals nothing about any other account.
+  let tk; try{ tk=await (await fetch("/settings/tracking")).json(); }catch(e){ tk={ok:false}; }
+  const tkSafe=(tk&&tk.ok)?tk:{has_key:false,key_tail:"",connected:false,why:""};
   const keyNote = s.has_key
     ? (s.discover_ok ? `<span class="cc" style="color:var(--ok)">\u2713 OpenRouter connected \u2014 ${ (s.text_models||[]).length } text models, ${ (s.image_models||[]).length } image models available</span>`
                      : `<span class="cc" style="color:var(--warn)">Key present, but model discovery failed: ${esc(s.discover_error||'')} (showing fallback list)</span>`)
@@ -325,6 +330,38 @@ async function openAISettings(){
         <span id="ads_status" class="cc"></span>
       </div>
       <div id="ads_result" style="margin-top:8px"></div>
+    </div>
+    <div class="adminbox" style="margin-top:12px">
+      <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-truck-delivery"></i> Parcel tracking <span class="cc">(one key for every account)</span></div>
+      <div class="cc" style="font-size:11.5px;margin-bottom:8px">
+        <b>Amazon does not give back the tracking numbers you upload to it.</b> That was
+        checked against every endpoint that could carry one — the order, the order items,
+        the 33-column All Orders report and Merchant Fulfillment — and none of them does.
+        So the numbers go in through the <b>Tracking sheet</b> buttons on the Orders page,
+        and this key is what lets the app then ask the carrier where each parcel actually is.
+        <br><br>One 17TRACK key covers Royal Mail, Evri, DPD, Yodel, Parcelforce and the
+        rest, so you do not need an account with each carrier. Get one at
+        <a href="https://api.17track.net/" target="_blank" rel="noopener">api.17track.net</a>.
+        <br><br><b>Without a key nothing is guessed.</b> Every parcel reads “Not checked”
+        rather than showing a status worked out from the posting date — “Delivered” is the
+        word that decides whether a refund gets argued or paid, and a guess dressed as a
+        fact is worse than no status at all.
+      </div>
+      <div class="reqnote" style="margin-bottom:8px">
+        ${ tkSafe.connected
+             ? '<span style="color:var(--ok)">✓ A tracking key is saved. Press <b>Check parcels</b> on the Orders page to use it.</span>'
+             : esc(tkSafe.why || 'No tracking service is set up yet.') }
+      </div>
+      <table class="kv">
+        <tr><td class="k">17TRACK API key</td><td class="v"><input class="ed" id="track17_key" type="password" placeholder="${tkSafe.has_key?('•••• '+esc(tkSafe.key_tail||'')+' — leave blank to keep'):'paste your 17TRACK security key'}"></td></tr>
+        <tr><td class="k">Test it <span class="cc">(a real tracking number of yours)</span></td><td class="v"><input class="ed" id="track17_test" placeholder="a number you know exists — a made-up one says 'not found' whether the key works or not"></td></tr>
+      </table>
+      <div style="margin-top:8px">
+        <button class="primary" onclick="saveTrackingSettings()"><i class="ti ti-check"></i> Save tracking key</button>
+        <button onclick="testTrackingSettings()"><i class="ti ti-plug-connected"></i> Test connection</button>
+        <span id="track_status" class="cc"></span>
+      </div>
+      <div id="track_result" style="margin-top:8px"></div>
     </div>
     <div class="adminbox">
       <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-shield-lock"></i> Admin — transparency &amp; access</div>
@@ -414,6 +451,91 @@ async function saveAdsSettings(){
   }catch(e){
     if(st) st.innerHTML = '<span style="color:var(--red)">' + esc(String(e)) + '</span>';
   }
+}
+
+/* ---- the PARCEL TRACKING key ----
+ *
+ * Global on purpose. The advertising login above is per account because it IS
+ * one advertiser, and sharing it files one seller's spend under another's name.
+ * This is the opposite: a tracking subscription is not an identity at Amazon,
+ * and asking it where a parcel is tells it nothing about any account.
+ *
+ * A blank key KEEPS the stored one, so opening this panel and pressing Save
+ * cannot silently switch every parcel check off.
+ */
+async function saveTrackingSettings(){
+  const v = id => ((document.getElementById(id) || {}).value || "").trim();
+  const st = document.getElementById("track_status");
+  if(st) st.textContent = "Saving…";
+  try{
+    const j = await (await fetch("/settings/tracking", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({track17_key: v("track17_key")})
+    })).json();
+    if(j.ok){
+      if(st) st.innerHTML = '<span style="color:var(--ok)">✓ saved</span>';
+      const out = document.getElementById("track_result");
+      // WHETHER IT IS ACTUALLY ON, not just whether the write succeeded.
+      // Saving a blank into an empty key stores nothing and would otherwise
+      // report a cheerful tick over a feature that is still off.
+      if(out) out.innerHTML = '<div class="odp-note'
+        + (j.connected ? '' : ' warn') + '" style="padding:10px 12px">'
+        + esc(j.note || "") + '</div>';
+      toast(j.connected ? "Parcel tracking is on"
+                        : "Saved — but no tracking key is stored yet");
+    }else{
+      if(st) st.innerHTML = '<span style="color:var(--red)">'
+        + esc(j.error || "failed") + '</span>';
+    }
+  }catch(e){
+    if(st) st.innerHTML = '<span style="color:var(--red)">' + esc(String(e)) + '</span>';
+  }
+}
+
+/* One real lookup, on a number the seller knows exists.
+ *
+ * Deliberately NOT a made-up number: a wrong key and an unknown number both
+ * come back "not found", and only a real parcel tells those two apart. */
+async function testTrackingSettings(){
+  const st = document.getElementById("track_status");
+  const out = document.getElementById("track_result");
+  const num = ((document.getElementById("track17_test") || {}).value || "").trim();
+  if(st) st.textContent = "Asking the tracking service…";
+  if(out) out.innerHTML = "";
+  let j;
+  try{
+    j = await (await fetch("/settings/tracking/test", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({tracking_number: num})})).json();
+  }catch(e){
+    if(st) st.innerHTML = '<span style="color:var(--red)">' + esc(String(e)) + '</span>';
+    return;
+  }
+  if(st) st.textContent = "";
+  if(!j || !j.ok){
+    if(out) out.innerHTML = '<div class="odp-note warn" style="padding:10px 12px">'
+      + '<b>Not connected.</b> ' + esc((j && j.error) || "Unknown error") + '</div>';
+    return;
+  }
+  // "not_found" WITH A WORKING KEY IS STILL AN ANSWER, and a different one from
+  // a refused call. Said plainly, because the obvious reading of "not found" is
+  // that the key is wrong.
+  const bad = (j.status === "not_found" || !j.status);
+  if(out) out.innerHTML = '<div class="odp-note' + (bad ? ' warn' : '')
+    + '" style="padding:10px 12px">'
+    + '<b style="color:var(--' + (bad ? 'warn' : 'ok') + ')">'
+    + (bad ? 'The key works, but that number was not found.'
+           : 'Connected.') + '</b> '
+    + esc(j.label || "") + (j.raw_status ? ' — the carrier said “'
+                                           + esc(j.raw_status) + '”' : '')
+    + (j.last_event ? '<div class="cc" style="margin-top:5px">Latest scan: '
+                      + esc(j.last_event)
+                      + (j.last_event_at ? ' (' + esc(j.last_event_at) + ')' : '')
+                      + '</div>' : '')
+    + (bad ? '<div class="cc" style="margin-top:5px">Check the number was typed '
+             + 'correctly. A real parcel that the carrier knows about will come '
+             + 'back with a status.</div>' : '')
+    + '</div>';
 }
 
 /* Makes ONE real call: the token exchange, then the profiles this login can

@@ -331,6 +331,224 @@ def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at,
 # live report or from the tables (CLAUDE.md Rule 12).
 
 
+ACCOUNT_TOTAL = "*"          # the asin value the day's account-wide row uses
+
+
+def marketplace_for(config_path, account):
+    """The ONE marketplace this account's advertising profile covers.
+
+    AN ADVERTISING PROFILE IS ONE ADVERTISER IN ONE MARKETPLACE. Its id is what
+    every report call is scoped to, so a report fetched with it describes that
+    marketplace and no other -- whatever marketplace name the caller happened to
+    pass alongside it.
+
+    The scheduler was looping over every marketplace on the account and
+    commissioning a report for each, with the same profile id each time. So one
+    profile's figures were filed once per marketplace, under a different name
+    every time. MEASURED on nestwell_goods, whose account lists eleven
+    marketplaces: ads_daily and ads_campaign_daily each held two byte-identical
+    copies, UK and IT -- 705 of 705 rows and 5019 of 5019 rows the same, same
+    campaign names ("SP_AUTO_BugZapper_DISC"), different fetched_at. Nine more
+    copies were still to come. An account-wide read that spanned marketplaces
+    would have reported eleven times the real spend.
+
+    The profile itself says which marketplace it is: /v2/profiles returns
+    marketplaceStringId, which reverse-maps exactly onto this app's own codes.
+    No country-code guessing -- a UK profile reports countryCode "GB", and this
+    app calls that marketplace "UK".
+
+    -> (marketplace, note). The note is empty when Amazon answered; when it did
+    not, the account's default marketplace is used and the note says so. Even a
+    wrong single marketplace writes ONE set of rows, which is recoverable; the
+    loop wrote eleven, which is not distinguishable from real data afterwards.
+    """
+    from domain import accounts as _accts
+
+    acc = account or {}
+    default = str(acc.get("default_marketplace") or "").strip().upper()
+    if not default:
+        ms = [str(m or "").strip().upper() for m in (acc.get("marketplaces") or [])]
+        ms = [m for m in ms if m and m != "__ALL__"]
+        default = ms[0] if ms else "UK"
+
+    want = str(acc.get("ads_profile_id") or "").strip()
+    try:
+        from api import amazon_ads as _ads
+        cfg = _settings_cfg(config_path)
+        creds = _ads.creds_for(cfg, acc)
+        if not want:
+            want = str(creds.get("ads_profile_id") or "").strip()
+        if not want:
+            return default, ("No advertising profile id is set, so the account's "
+                             "default marketplace was used.")
+        # Asked against the default only to reach an endpoint; /v2/profiles is
+        # not scoped to a profile and returns every one this login can see.
+        found = _ads.profiles(creds, default) or []
+    except Exception as e:
+        return default, ("Could not ask Amazon which marketplace this "
+                         "advertising profile is for (%s), so the account's "
+                         "default was used." % str(e)[:120])
+
+    p = next((x for x in found if str(x.get("profile_id")) == want), None)
+    if not p:
+        return default, ("The configured advertising profile is not one this "
+                         "login can see, so the account's default marketplace "
+                         "was used. Reports would come back empty.")
+    mid = str(p.get("marketplace_id") or "")
+    for code, val in (_accts.MARKETPLACE_IDS or {}).items():
+        if val == mid:
+            return code, ""
+    return default, ("Amazon reports this advertising profile in marketplace %s, "
+                     "which this app has no code for, so the account's default "
+                     "was used." % (mid or p.get("country") or "?"))
+
+
+def _settings_cfg(config_path):
+    from config import settings as _s
+    return _s.read_raw(config_path)
+
+
+def stray_marketplaces(config_path, workspace_id, keep):
+    """Advertising rows filed under a marketplace this account does not advertise in.
+
+    The counterpart to marketplace_for: that stops NEW copies being written,
+    this reports the ones already stored. Read-only, and deliberately separate
+    from the delete -- what to do about somebody's stored figures is their
+    decision, not a side effect of fixing the writer.
+
+    `keep` is the marketplace the profile actually covers. Everything else in
+    these two tables came from the loop and is a copy of it.
+    """
+    conn = _db.get_db(config_path)
+    keep = str(keep or "").strip().upper()
+    out = []
+    for mkt, in conn.execute(
+            "SELECT DISTINCT marketplace FROM ads_daily WHERE workspace_id=?",
+            (workspace_id,)):
+        m = str(mkt or "").upper()
+        if m == keep:
+            continue
+        d = conn.execute(
+            "SELECT COUNT(*) n, ROUND(SUM(spend),2) s FROM ads_daily "
+            "WHERE workspace_id=? AND marketplace=?", (workspace_id, m)).fetchone()
+        c = conn.execute(
+            "SELECT COUNT(*) n, ROUND(SUM(spend),2) s FROM ads_campaign_daily "
+            "WHERE workspace_id=? AND marketplace=?", (workspace_id, m)).fetchone()
+        # IS IT ACTUALLY A COPY? Said as a measurement rather than assumed. A
+        # marketplace this account really does advertise in separately would
+        # NOT match the kept one row for row, and must not be swept up.
+        same = conn.execute(
+            "SELECT COUNT(*) FROM ads_daily a JOIN ads_daily b "
+            "ON a.date=b.date AND a.asin=b.asin AND a.spend IS b.spend "
+            "WHERE a.workspace_id=? AND b.workspace_id=? "
+            "AND a.marketplace=? AND b.marketplace=?",
+            (workspace_id, workspace_id, keep, m)).fetchone()[0]
+        out.append({
+            "marketplace": m,
+            "ads_daily_rows": d["n"], "ads_daily_spend": d["s"],
+            "campaign_rows": c["n"], "campaign_spend": c["s"],
+            "rows_identical_to_%s" % keep.lower(): same,
+            "looks_like_a_copy": bool(d["n"] and same >= d["n"]),
+        })
+    return out
+
+
+def drop_marketplace(config_path, workspace_id, marketplace, dry_run=True):
+    """Delete one marketplace's advertising rows for one account.
+
+    DRY RUN BY DEFAULT. Deleting stored figures is not reversible from inside
+    the app, so the caller has to ask for it in as many words. The rows are
+    re-fetchable -- the sync pulls a thirty-day window each pass -- but only for
+    a marketplace the profile actually covers, which is exactly what these are
+    not.
+    """
+    conn = _db.get_db(config_path)
+    mkt = str(marketplace or "").strip().upper()
+    counts = {}
+    for t in ("ads_daily", "ads_campaign_daily"):
+        counts[t] = conn.execute(
+            "SELECT COUNT(*) FROM %s WHERE workspace_id=? AND marketplace=?" % t,
+            (workspace_id, mkt)).fetchone()[0]
+    if dry_run:
+        return {"dry_run": True, "marketplace": mkt, "would_delete": counts}
+    for t in ("ads_daily", "ads_campaign_daily"):
+        conn.execute("DELETE FROM %s WHERE workspace_id=? AND marketplace=?" % t,
+                     (workspace_id, mkt))
+    conn.commit()
+    return {"dry_run": False, "marketplace": mkt, "deleted": counts}
+
+
+def totals(config_path, workspace_id, marketplace, start, end):
+    """This account's advertising for a window. THE ONE READER OF THE TOTAL.
+
+    ads_daily deliberately holds TWO GRAINS in one table -- the day's
+    account-wide figure at asin='*', and the same money broken out per product --
+    and the module docstring says they are never added together. A reader that
+    sums the table without naming a grain gets EXACTLY DOUBLE, and nothing about
+    the number looks wrong: it is plausible, it moves the right way day to day,
+    and it is twice the truth.
+
+    MEASURED on nestwell_goods/UK, 2026-08-08..09-04: the '*' rows come to
+    256.93 and the per-ASIN rows to 256.93, and an unfiltered SUM returns
+    513.86 -- against a campaign-grain total of 256.93. All 28 of 28 days
+    carried both grains, so the doubling was total rather than occasional.
+    domain/weekly_brief.py and routes/daily_routes.py were both summing the
+    table that way, so the weekly brief's ad spend and the daily check's
+    "yesterday" were both twice what was actually spent.
+
+    So the grain stops being something each caller has to remember. Callers that
+    want the per-product breakdown ask contribution.py or ads_routes, which have
+    always said asin<>'*' explicitly.
+
+    Returns None for a metric when there is no row at all -- a window with no
+    advertising data is not a window with zero spend, and only one of those is
+    safe to put in a P&L.
+    """
+    conn = _db.get_db(config_path)
+    r = conn.execute(
+        "SELECT COUNT(*) n, SUM(spend) spend, SUM(ad_sales) sales, "
+        "       SUM(clicks) clicks, SUM(impressions) impressions, "
+        "       SUM(ad_orders) orders "
+        "FROM ads_daily WHERE workspace_id=? AND marketplace=? "
+        "AND date>=? AND date<=? AND asin=?",
+        (workspace_id, marketplace, start, end, ACCOUNT_TOTAL)).fetchone()
+    days = conn.execute(
+        "SELECT COUNT(DISTINCT date) d FROM ads_daily WHERE workspace_id=? "
+        "AND marketplace=? AND date>=? AND date<=? AND asin=?",
+        (workspace_id, marketplace, start, end, ACCOUNT_TOTAL)).fetchone()
+    n = int((r["n"] if r else 0) or 0)
+    if not n:
+        return {"has_data": False, "days": 0, "spend": None, "sales": None,
+                "clicks": None, "impressions": None, "orders": None,
+                "acos_pct": None, "roas": None}
+    spend = _num(r["spend"])
+    sales = _num(r["sales"])
+    return {
+        "has_data": True,
+        "days": int((days["d"] if days else 0) or 0),
+        "spend": spend, "sales": sales,
+        "clicks": _num(r["clicks"]), "impressions": _num(r["impressions"]),
+        "orders": _num(r["orders"]),
+        # NONE, NEVER ZERO. An ACOS with no sales is undefined, not 0%, and a
+        # printed 0% invites somebody to act on it.
+        "acos_pct": (round(100.0 * spend / sales, 1)
+                     if (spend is not None and sales) else None),
+        "roas": (round(sales / spend, 2)
+                 if (sales is not None and spend) else None),
+    }
+
+
+def _num(v):
+    """A stored metric, or None. NULL means Amazon did not send it."""
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return round(f, 2)
+
+
 def campaign_rows(config_path, workspace_id, marketplace, start, end):
     """Stored campaign performance, summed over the window, in _row() shape."""
     conn = _db.get_db(config_path)

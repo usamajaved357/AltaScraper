@@ -111,7 +111,10 @@ check("the global never moved during either request",
 print("\n== the browser half: named on the way out, dropped on the way back ==")
 js = open(os.path.join(r"D:\AltaScraper", "static", "js", "sales.js"),
           encoding="utf-8").read()
-check_true("_sQuery attaches the account", "account_id=" in js and "_sAcct()" in js)
+# `account` is the one name the browser sends now; the routes still
+# accept the older spellings so a missed call site cannot silently
+# answer for the wrong seller. See request_account.ACCOUNT_KEYS.
+check_true("_sQuery attaches the account", "account=" in js and "_sAcct()" in js)
 check_true("_sFetch exists as the one way this screen talks to the server",
            "async function _sFetch(" in js)
 check_true("_sFetch drops a reply whose account has changed",

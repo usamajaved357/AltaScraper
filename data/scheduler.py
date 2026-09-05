@@ -337,14 +337,32 @@ def ads_sync(workspace_id=None):
         if why:
             skipped.append(aid)
             continue
-        for mkt in (a.get("marketplaces") or []):
-            mkt = str(mkt or "").strip().upper()
-            if not mkt or mkt == "__ALL__":
-                continue
-            res = _as.request_reports(aid, mkt, days=30, config_path=config_path)
-            asked.append({"workspace": aid, "marketplace": mkt,
-                          "requested": len(res.get("requested") or []),
-                          "errors": res.get("errors") or []})
+        # ONE MARKETPLACE PER ACCOUNT, AND IT IS THE PROFILE'S OWN.
+        #
+        # This looped every marketplace on the account and commissioned a report
+        # for each -- with the SAME advertising profile id every time, because
+        # that is the only one there is. An advertising profile is one advertiser
+        # in one marketplace, so all eleven requests described the same
+        # marketplace and were filed under eleven different names.
+        #
+        # MEASURED on nestwell_goods before the fix: ads_daily and
+        # ads_campaign_daily each held two byte-identical copies, UK and IT --
+        # 705 of 705 and 5019 of 5019 rows the same, same campaign names. Nine
+        # more were still to come. ads_sync.marketplace_for asks Amazon which
+        # marketplace the profile is actually for (Rule 12: it owns that rule,
+        # this job does not repeat it).
+        mkt, why = _as.marketplace_for(config_path, a)
+        if not mkt:
+            skipped.append(aid)
+            continue
+        res = _as.request_reports(aid, mkt, days=30, config_path=config_path)
+        asked.append({"workspace": aid, "marketplace": mkt,
+                      "requested": len(res.get("requested") or []),
+                      # SAID, NOT SWALLOWED. Falling back to the account's
+                      # default is a guess, and a guess that goes unmentioned is
+                      # how the wrong marketplace's name ends up on real spend.
+                      "marketplace_note": why,
+                      "errors": res.get("errors") or []})
     return {"collected": len(got.get("collected") or []),
             "still_building": got.get("still_building"),
             "failed": got.get("failed") or [],
@@ -503,6 +521,62 @@ def sourcing_fees(workspace_id=None):
     return {"asked": asked, "quoted": quoted, "skipped": skipped}
 
 
+def tracking_check(workspace_id=None):
+    """Ask the carriers where the parcels are.
+
+    OFF UNLESS A TRACKING SERVICE IS SET UP, and it says so rather than
+    reporting a successful run that checked nothing. There is no free universal
+    carrier API and Amazon does not hand back the tracking a seller uploads, so
+    without a key there is nothing this job could do except invent a status --
+    and "Delivered" is the word that decides whether a refund is argued or paid.
+
+    SIX-HOURLY, NOT HOURLY. A parcel moves a handful of times in its life and
+    every check costs a call against a metered quota; four passes a day catches
+    each move within a few hours, which is as precise as "out for delivery" ever
+    needs to be. domain/tracking.refresh already skips anything delivered and
+    takes the least-recently-checked first, so a quiet day costs almost nothing
+    and a backlog drains in order rather than starving the oldest parcels.
+    """
+    from domain import tracking as _trk
+    _app, config_path, cfg = _need("app", "config_path", "cfg")
+    try:
+        import accounts as _acc
+    except Exception as e:
+        raise RuntimeError("accounts module unavailable: %s" % e)
+
+    conf = cfg() if callable(cfg) else cfg
+    fn, why = _trk.provider_for(conf)
+    if not fn:
+        # NOT AN ERROR. A missing setting is a thing to go and do, not a fault
+        # to be woken up about every six hours -- but it is recorded, so the
+        # jobs screen says why every parcel still reads "Not checked".
+        return {"checked": 0, "note": why}
+
+    checked = failed = 0
+    accounts = []
+    for a in (_acc.load_accounts(conf, config_path) or []):
+        aid = str(a.get("id") or "")
+        if workspace_id and aid != workspace_id:
+            continue
+        if not aid:
+            continue
+        for mkt in (a.get("marketplaces") or []):
+            mkt = str(mkt or "").strip().upper()
+            if not mkt or mkt == "__ALL__":
+                continue
+            res = _trk.refresh(config_path, cfg, aid, mkt, limit=100)
+            if not res.get("ok"):
+                continue
+            checked += res.get("checked") or 0
+            failed += res.get("failed") or 0
+            if res.get("checked") or res.get("failed"):
+                accounts.append("%s/%s" % (aid, mkt))
+    return {"checked": checked, "failed": failed, "accounts": accounts}
+
+
+register_job("tracking_check", tracking_check, hours=6,
+             description="Ask the carriers where each uploaded parcel is "
+                         "(does nothing until a tracking key is set)")
 register_job("sourcing_listings", sourcing_listings, hours=24,
              description="Drop SKUs Amazon no longer has out of the repricer "
                          "(daily)")

@@ -1271,10 +1271,37 @@
             <i class="ti ti-file-upload"></i> Upload costs</button>
           <input type="file" id="ordcost_file" accept=".csv,.tsv,.txt,.xlsx,.xls"
                  style="display:none" onchange="orderCostsUpload(this)">
+          <!-- WHERE THE PARCELS ARE.
+               Amazon does not hand back the tracking a seller uploads --
+               measured against every endpoint that could carry it, see
+               domain/tracking.py -- so the numbers come in on a sheet, in
+               exactly the shape the costs above already use. Same download-
+               first reason: the sheet arrives with the orders and whatever
+               tracking is already recorded, so a blank row means "leave this
+               alone" and an unedited upload changes nothing.
+
+               Check now is SEPARATE and deliberate: it is the only button here
+               that contacts anyone outside this app, and it does nothing at
+               all until a tracking service is set up in Settings. -->
+          <button class="db-chip" onclick="trackingTemplate(false)"
+                  title="Download every order in this window as a sheet, with any tracking already recorded beside it. Fill in the 'tracking' and 'carrier' columns and upload it back.">
+            <i class="ti ti-download"></i> Tracking sheet</button>
+          <button class="db-chip" onclick="trackingTemplate(true)"
+                  title="The same sheet, but only the orders with no tracking recorded yet.">
+            <i class="ti ti-download"></i> Untracked only</button>
+          <button class="db-chip" onclick="trackingUploadOpen()"
+                  title="Upload the filled-in tracking sheet. Rows with the tracking left blank are skipped, so an unedited file changes nothing.">
+            <i class="ti ti-file-upload"></i> Upload tracking</button>
+          <input type="file" id="ordtrack_file" accept=".csv,.tsv,.txt,.xlsx,.xls"
+                 style="display:none" onchange="trackingUpload(this)">
+          <button class="db-chip" id="ord_trackcheck" onclick="trackingCheck()"
+                  title="Ask the carrier where each parcel is now. Needs a tracking service key in Settings — without one, nothing is checked and it says so rather than showing a made-up status.">
+            <i class="ti ti-truck-delivery"></i> Check parcels</button>
           <button class="db-chip" onclick="ordersLoad()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
       </div>
       <div id="ordcost_result" style="margin:0 0 8px"></div>
+      <div id="ordtrack_result" style="margin:0 0 8px"></div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
         <div id="ord_days" style="display:flex;gap:4px;flex-wrap:wrap">
           <button class="db-chip" onclick="ordersSetDays(7)">7 days</button>
@@ -2197,6 +2224,7 @@
      screen lists orders, and costing them in bulk is its own feature with its
      own template, its own parser on the server and its own per-row report. -->
 <script src="/static/js/ordercosts.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ordertracking.js?v={{ ASSET_V }}"></script>
 <!-- The compact expanded-order panel. orders.js checks for it at DRAW time and
      falls back to its own long version, so a load failure costs the layout
      rather than the order details. -->

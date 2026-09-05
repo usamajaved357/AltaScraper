@@ -299,6 +299,104 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
             or (_state or {}).get("active_marketplace") or "UK"
         return jsonify(_ads.test(_cfg, acc, mkt))
 
+    @app.route("/settings/tracking", methods=["GET", "POST"])
+    def settings_tracking():
+        """The parcel-tracking key. GLOBAL, and deliberately so.
+
+        The advertising credentials above are per-account because an
+        advertising login IS one advertiser and sharing it files one seller's
+        spend under another's name. This is the opposite: a 17TRACK key is a
+        subscription to a service, not an identity at Amazon, and asking it
+        where a parcel is reveals nothing about any other account. One key
+        covers Royal Mail, Evri, DPD, Yodel and the rest, so making it
+        per-account would mean buying the same subscription several times.
+
+        GET never returns the key -- only whether one is stored and its last
+        four characters, the same rule as every other secret on this screen.
+        """
+        from domain import tracking as _trk
+
+        cfg = _cfg()
+        if request.method == "GET":
+            key = str(cfg.get("track17_key", "") or "")
+            fn, why = _trk.provider_for(cfg)
+            return jsonify({
+                "ok": True,
+                "has_key": bool(key),
+                "key_tail": (key[-4:] if len(key) >= 4 else "•" * len(key)),
+                "provider": str(cfg.get("tracking_provider") or
+                                ("17track" if key else "")),
+                "known_providers": _trk.providers(),
+                "connected": bool(fn),
+                # WHY IT IS OFF, in the words the screen will show. Read from
+                # the same resolver the refresh button uses, so this cannot say
+                # "connected" while the button says it is not (Rule 12).
+                "why": "" if fn else why,
+                "statuses": dict(_trk.STATUS_LABEL),
+            })
+
+        b = request.get_json(force=True) or {}
+        try:
+            raw = _settings.read_raw(CONFIG_PATH)
+            v = str(b.get("track17_key") or "").strip()
+            # A blank KEEPS the stored key, so opening the screen and saving
+            # cannot wipe it. Same rule as the eBay cert and the ads secret.
+            if v and not v.startswith(("•", "*", "PUT_", "ROTATE")):
+                raw["track17_key"] = v
+            if b.get("clear"):
+                # Removing it is explicit, and says so, because the effect is
+                # that every parcel silently stops being checked.
+                raw.pop("track17_key", None)
+                raw.pop("tracking_provider", None)
+            elif "tracking_provider" in b:
+                p = str(b.get("tracking_provider") or "").strip()
+                if p:
+                    raw["tracking_provider"] = p
+                else:
+                    raw.pop("tracking_provider", None)
+            _settings.write_raw(raw, CONFIG_PATH)
+            _state["cfg"] = None
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+        fn, why = _trk.provider_for(_cfg())
+        return jsonify({"ok": True, "connected": bool(fn),
+                        "note": ("Parcels will be checked from now on. Nothing "
+                                 "is checked until you press Check, or the "
+                                 "daily sweep runs." if fn else why)})
+
+    @app.route("/settings/tracking/test", methods=["POST"])
+    def settings_tracking_test():
+        """Does the key work? One real lookup, on a number you give it.
+
+        Deliberately asks about a REAL parcel of the seller's choosing rather
+        than a made-up number: a bad key and an unknown number both come back
+        as "not found", and only a number known to exist tells those apart.
+        """
+        from domain import tracking as _trk
+
+        b = request.get_json(silent=True) or {}
+        number = str(b.get("tracking_number") or "").strip()
+        fn, why = _trk.provider_for(_cfg())
+        if not fn:
+            return jsonify({"ok": False, "error": why}), 400
+        if not number:
+            return jsonify({"ok": False, "error": (
+                "type a tracking number you know is real — a made-up one comes "
+                "back 'not found' whether the key works or not")}), 400
+        try:
+            got = fn("", number) or {}
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "the tracking service refused: %s"
+                                     % str(e)[:200]}), 502
+        status = str(got.get("status") or "")
+        return jsonify({"ok": True, "status": status,
+                        "label": _trk.STATUS_LABEL.get(status, "Not checked"),
+                        "raw_status": got.get("raw_status") or "",
+                        "last_event": got.get("last_event") or "",
+                        "last_event_at": got.get("last_event_at") or ""})
+
     @app.route("/settings/ebay", methods=["GET", "POST"])
     def settings_ebay():
         """View / update the GLOBAL eBay Browse-API credentials (used to scrape the

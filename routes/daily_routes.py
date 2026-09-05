@@ -172,16 +172,16 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         # Search Term Report covers a whole window, so filling this from it
         # would put a week's spend under yesterday's heading.
         try:
-            from data import db as _db
+            # THE SHARED READER. ads_daily holds the day's account-wide row and
+            # the same day's per-product breakdown in one table; this summed
+            # both and reported yesterday's spend as exactly double. See
+            # ads_sync.totals for the measurement (CLAUDE.md Rule 12).
+            from domain import ads_sync as _as
             y = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
-            row = _db.get_db(CONFIG_PATH).execute(
-                "SELECT SUM(COALESCE(spend,0)) AS sp, SUM(COALESCE(ad_sales,0)) AS sa,"
-                "       SUM(COALESCE(ad_orders,0)) AS o "
-                "FROM ads_daily WHERE workspace_id=? AND marketplace=? AND date=?",
-                (wsid, mkt, y)).fetchone()
-            if row and row["sp"] is not None:
-                ctx["ads"] = {"spend": row["sp"], "sales": row["sa"],
-                              "orders": row["o"]}
+            got = _as.totals(CONFIG_PATH, wsid, mkt, y, y)
+            if got and got["has_data"]:
+                ctx["ads"] = {"spend": got["spend"], "sales": got["sales"],
+                              "orders": got["orders"]}
         except Exception:
             pass
 
