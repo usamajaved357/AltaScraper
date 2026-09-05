@@ -578,7 +578,35 @@ function matchesSearch(r){
   // Digits only for the barcode, so "5060 5415 10005" off a box finds the
   // listing that stores it as 5060541510005.
   const qDigits = q.replace(/\D/g, "");
-  const fields = [r.sku, r.asin, r.competitor_asin, r.upc, r.title,
+  // OUR OWN ASIN, WHICH IS NOT IN THE ROW.
+  //
+  //     "searching for ASIN B0HHSBPW8H returns 0 matches but the listing
+  //      exists on Amazon and was submitted through this app"
+  //
+  // It did, and the row for it was there the whole time. A draft row's `asin`
+  // is the COMPETITOR reference out of its SKU (13.02_3Days_B0D25XZLMJ); the
+  // ASIN Amazon gave the listing when it published -- B0HHSBPW8H, the one
+  // printed in Seller Central and the only one the owner has in hand -- lives
+  // in the live catalogue, keyed by SKU. So the one identifier you actually go
+  // looking with was the one field the search could not see.
+  //
+  // ownLiveAsin() is the existing lookup for exactly this and is asked here so
+  // there is one answer to "which ASIN is ours" (Rule 12).
+  const own = (typeof ownLiveAsin === "function") ? ownLiveAsin(r) : "";
+  // `barcode` and `ean` are what a LIVE CATALOGUE item calls its identifiers;
+  // `upc` is what an app row calls its. Both shapes go through this one
+  // predicate now, so the Live view and the Drafts view cannot disagree about
+  // what counts as a match.
+  // ORDER IS PRESENTATION ONLY -- every field below is tried, so this is a
+  // list and not a precedence. It is written with `r.asin, r.competitor_asin`
+  // and `r.upc, r.title` adjacent because test_listings_asin.py and
+  // test_bookmarks_and_search.js read those two pairs out of this source to
+  // prove the source ASIN and the title are still searched. Splitting the pairs
+  // up broke both tests while changing no behaviour at all, which is a bad
+  // trade: the pairs cost nothing to keep and the tests are how anyone later
+  // finds out they dropped a field.
+  const fields = [r.sku, r.asin, r.competitor_asin, own,
+                  r.upc, r.title, r.ean, r.barcode, r.brand,
                   r.model_number, r.source_url];
   for(const f of fields){
     if(!f) continue;
@@ -779,8 +807,40 @@ function renderTabFilter(){
   // The value is read back from SEARCH_Q rather than left in the DOM, because
   // render() rebuilds this strip and a box that empties itself as you type is
   // worse than no box.
-  const _hits = (SEARCH_Q.trim() && Array.isArray(ROWS))
-    ? ROWS.filter(matchesSearch).length : -1;
+  // THE COUNT MUST COUNT WHAT THIS VIEW IS SHOWING.
+  //
+  // It counted ROWS -- the app's own draft rows -- on every tab. On the Live on
+  // Amazon tab the list is Amazon's catalogue, so the box reported "0 matches"
+  // about a set the screen was not displaying, directly above 37 listings that
+  // included the one being searched for. The number was not wrong about the
+  // drafts; it was answering a question nobody had asked.
+  //
+  // On the Live tab it counts catalogue items, on Drafts it counts rows, and on
+  // All it counts both -- minus the catalogue items already represented by an
+  // app row, so a listing that appears once is not counted twice.
+  let _hits = -1;
+  if(SEARCH_Q.trim()){
+    const _live = (typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS) ? LIVE_ITEMS : [];
+    const _rows = (Array.isArray(ROWS) ? ROWS : []).filter(matchesSearch);
+    const _n = v => String(v == null ? "" : v).trim().toUpperCase();
+    // Which of the matching app rows this view actually lists.
+    const _shownRows = draftsView()
+      ? _rows.filter(r => !isPublishedRow(r))
+      : (LIST_SOURCE === "all" ? _rows : _rows.filter(isPublishedRow));
+    if(draftsView()){
+      _hits = _shownRows.length;
+    }else{
+      // The catalogue items, minus the ones already standing on screen as an
+      // app row -- the same de-duplication liveCatalog itself does, so the
+      // count and the list agree.
+      const seenSku  = new Set(_shownRows.map(r => _n(r.sku)).filter(Boolean));
+      const seenAsin = new Set(_shownRows.map(_matchableAsin).filter(Boolean));
+      const _liveHits = _live.filter(it => matchesSearch(it)
+        && !(_n(it.sku) && seenSku.has(_n(it.sku)))
+        && !(_n(it.asin) && seenAsin.has(_n(it.asin))));
+      _hits = _shownRows.length + _liveHits.length;
+    }
+  }
   host.style.display="";
   host.innerHTML =
     `<div class="lsearch">
@@ -1199,15 +1259,36 @@ function summary(){
     // listing with a warning is not in a different state -- it is generated,
     // and someone should look at it.
     //
-    // APPROVED, API_READY and NEEDS_REVIEW are folded into Generated so a
-    // database that has not been migrated yet still shows its rows somewhere
-    // rather than counting them into nothing.
-    const _gen = c.GENERATED + c.NEEDS_REVIEW + c.APPROVED + c.API_READY
-               + c.HOLD + c.ERROR;
+    // NEEDS_REVIEW is folded into Generated so a database that has not been
+    // migrated yet still shows its rows somewhere rather than counting them
+    // into nothing.
+    //
+    // THE FOURTH TILE IS APPROVED, NOT LIVE.
+    //
+    //     "on the all listings page and draft page inside it i see there are 4
+    //      filter boxes, Queued, Generated, Submitted, Live. It does not make
+    //      sense to keep the live filter on the drafts page, so please replace
+    //      the live filter in the draft page with approved filter"
+    //
+    // Right, and for a stronger reason than it reads: this view REMOVES
+    // published rows before counting anything (_tabRows above drops
+    // isPublishedRow), so the Live tile was counting live listings in a set
+    // that has had the live listings taken out of it. It could only ever say 0,
+    // and clicking it could only ever empty the grid. The listings it claimed
+    // to count are on the Live on Amazon tab, which the line under the tiles
+    // already offers.
+    //
+    // Approved answers a question this view CAN answer and is the step between
+    // Generated and Submitted: the ones you have said yes to and not yet sent.
+    // APPROVED and API_READY both count, matching passFilter('approved')
+    // exactly, and they come OUT of Generated -- a listing must not be counted
+    // in two tiles above one list.
+    const _gen = c.GENERATED + c.NEEDS_REVIEW + c.HOLD + c.ERROR;
+    const _approved = c.APPROVED + c.API_READY;
     tiles = tile(_n(c.QUEUED), "Queued", "queued", "var(--ink3)")
           + tile(_n(_gen), "Generated", "generated", "var(--gold)")
-          + tile(_n(c.SUBMITTED), "Submitted", "submitted", "var(--ok)")
-          + tile(_n(c.LIVE), "Live", "live", "var(--ok)");
+          + tile(_n(_approved), "Approved", "approved", "var(--ok)")
+          + tile(_n(c.SUBMITTED), "Submitted", "submitted", "var(--ok)");
   }else{
     // THREE OF THESE FOUR TILES USED TO SEND THE SAME FILTER.
     //

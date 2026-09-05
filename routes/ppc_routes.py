@@ -713,6 +713,20 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                         "note": "Kept %d row%s. Nothing was sent to Amazon."
                                 % (kept, "" if kept == 1 else "s")})
 
+    def _ppc_ads_connected(aid):
+        """Does this account have an Advertising API login? Never raises.
+
+        Asked of domain/ads_sync, which is the one place that answers it for
+        the sync, the Sales page and Dr PPC as well (CLAUDE.md Rule 12) -- so a
+        screen cannot say "not connected" while the sync is happily pulling.
+        """
+        try:
+            from domain import ads_sync as _as
+            creds, why = _as.creds_or_why(aid, CONFIG_PATH)
+            return not why
+        except Exception:
+            return False
+
     @app.route("/ppc/analytics")
     def ppc_analytics():
         """Everything the advertising screen draws, from the stored report."""
@@ -731,13 +745,34 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                 "ok": True, "account": aid, "marketplace": mkt,
                 "report": None, "totals": None, "terms": [],
                 "match_types": [], "branded": None, "brand_terms": [],
-                "note": ("No Search Term Report has been uploaded for this "
-                         "account yet. Download one from Seller Central "
-                         "(Advertising > Measurement & Reporting > Sponsored "
-                         "Products > Search Term Report) and upload it here. "
-                         "Amazon's Advertising API is a separate connection "
-                         "this app does not have, so the report is how the "
-                         "figures get in."),
+                # WHICH OF THE TWO ANSWERS IS TRUE DEPENDS ON THE ACCOUNT.
+                #
+                # This used to say flatly that "Amazon's Advertising API is a
+                # separate connection this app does not have, so the report is
+                # how the figures get in", and send the owner to Seller Central
+                # to download a CSV. That is still right for an account with no
+                # advertising login, and it is now WRONG for one that has: the
+                # scheduled sync pulls the Search Term Report itself.
+                #
+                # Telling a connected account to go and fetch a file by hand
+                # would be asking for work the app has already been told to do.
+                "connected": _ppc_ads_connected(aid),
+                "note": (
+                    ("This account is connected to Amazon's Advertising API, "
+                     "and the Search Term Report is pulled automatically. "
+                     "Amazon takes about ten minutes to build one, so if the "
+                     "connection is new the first report is still on its way — "
+                     "press Refresh PPC data on the Sales page to ask for it "
+                     "now. You can still upload a report by hand if you want a "
+                     "different window.")
+                    if _ppc_ads_connected(aid) else
+                    ("No Search Term Report has been uploaded for this "
+                     "account yet. Download one from Seller Central "
+                     "(Advertising > Measurement & Reporting > Sponsored "
+                     "Products > Search Term Report) and upload it here. This "
+                     "account has no Amazon Advertising login connected — that "
+                     "is a separate authorisation from SP-API — so the upload "
+                     "is how the figures get in.")),
             })
 
         rows = _pv.load_rows(CONFIG_PATH, aid, mkt, meta["report_id"])

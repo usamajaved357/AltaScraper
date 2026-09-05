@@ -403,6 +403,13 @@ MAPPING = {
     "search_term": ("searchTerm", "query", "search_term"),
     "keyword": ("keywordText", "targeting", "keyword", "matchedTarget"),
     "match_type": ("matchType", "match_type"),
+    # The Search Term Report's other two columns. ppc_search_terms keeps an
+    # ad_group and a units column and a hand-uploaded report fills both, so an
+    # API pull that left them empty would make the same screen worse depending
+    # on where its rows came from.
+    "ad_group": ("adGroupName", "adGroup", "ad_group"),
+    "units": ("unitsSoldClicks30d", "unitsSoldClicks14d", "unitsSoldClicks1d",
+              "units", "unitsSold"),
     "asin": ("advertisedAsin", "asin", "promotedAsin"),
 }
 
@@ -418,10 +425,12 @@ def _row(d):
     for key, names in MAPPING.items():
         v = _pick(d, *names)
         out[key] = v
-    for k in ("impressions", "clicks", "spend", "orders", "sales", "budget"):
+    for k in ("impressions", "clicks", "spend", "orders", "sales", "budget",
+              "units"):
         out[k] = _num(out.get(k))
     for k in ("campaign_id", "campaign_name", "state", "target_type",
-              "search_term", "keyword", "match_type", "asin", "date"):
+              "search_term", "keyword", "match_type", "asin", "date",
+              "ad_group"):
         out[k] = str(out[k]) if out.get(k) is not None else ""
     return out
 
@@ -488,12 +497,18 @@ REPORT_TYPES = {
                     "cost", "purchases30d", "sales30d", "campaignStatus",
                     "campaignBudgetAmount"],
     },
+    # The Search Term Report, which until now could only be downloaded from
+    # Seller Central by hand and uploaded. adGroupName and unitsSoldClicks30d
+    # are asked for because domain/ppc_view.store_rows keeps an ad_group and a
+    # units column and a hand-uploaded report fills both -- an API pull that
+    # left them empty would make the same screen worse depending on where its
+    # rows came from.
     "search_term": {
         "reportTypeId": "spSearchTerm",
         "groupBy": ["searchTerm"],
-        "columns": ["campaignId", "campaignName", "searchTerm", "keyword",
-                    "matchType", "impressions", "clicks", "cost",
-                    "purchases30d", "sales30d"],
+        "columns": ["campaignId", "campaignName", "adGroupName", "searchTerm",
+                    "keyword", "matchType", "impressions", "clicks", "cost",
+                    "purchases30d", "sales30d", "unitsSoldClicks30d"],
     },
     "advertised_product": {
         "reportTypeId": "spAdvertisedProduct",
@@ -535,7 +550,10 @@ REPORT_TYPES = {
 # product report in the same shape as the other two, so it is absent rather than
 # guessed at.
 KINDS_BY_PRODUCT = {
-    "SPONSORED_PRODUCTS": ("campaign", "advertised_product"),
+    # search_term is here so a sync feeds the PPC screens too. Until now that
+    # report could only reach the app as a CSV somebody downloaded from Seller
+    # Central by hand, which is why every PPC screen sat empty.
+    "SPONSORED_PRODUCTS": ("campaign", "advertised_product", "search_term"),
     "SPONSORED_BRANDS": ("sb_campaign",),
     "SPONSORED_DISPLAY": ("sd_campaign", "sd_advertised_product"),
 }

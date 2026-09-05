@@ -118,11 +118,24 @@ def window(days=30, end=None):
     return start.isoformat(), end.isoformat()
 
 
+def time_unit_for(kind):
+    """DAILY for anything stored per day, SUMMARY for the search terms.
+
+    ads_daily and ads_campaign_daily are keyed on the date, so those reports
+    have to come back a day at a time. ppc_search_terms is not: it keeps ONE
+    report over a window, with date_from and date_to on every row, and asking
+    for it daily would multiply every term by thirty for a screen that adds them
+    straight back up.
+    """
+    return "SUMMARY" if kind == "search_term" else "DAILY"
+
+
 def _rows_for(creds, marketplace, kind, start, end, wait, on_wait=None):
-    """One DAILY report, or an explanation. Never raises."""
+    """One report, at the grain its table needs. Never raises."""
     try:
         got = _ads.report(creds, marketplace, kind, start, end,
-                          wait=wait, on_wait=on_wait, time_unit="DAILY")
+                          wait=wait, on_wait=on_wait,
+                          time_unit=time_unit_for(kind))
     except Exception as e:
         return {"ok": False, "kind": kind, "rows": [], "error": str(e)[:400]}
     got["kind"] = kind
@@ -226,7 +239,8 @@ def _int(v):
     return None if v is None else int(round(v))
 
 
-def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at):
+def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at,
+               window=None, config_path=None):
     """Put one report's rows where they belong. THE ONE PLACE THAT DECIDES THAT.
 
     Both the blocking sync and the two-pass collector come through here, so a
@@ -241,6 +255,43 @@ def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at):
     """
     prod = _ads.ad_product_of(kind)
     out = {"ad_product": prod}
+    # THE SEARCH TERM REPORT GOES WHERE THE UPLOADED ONE ALREADY GOES.
+    #
+    # ppc_search_terms has had exactly one writer since it was created --
+    # domain/ppc_view.store_rows -- and every PPC screen reads what that writer
+    # put there. An API pull is a new SOURCE for those rows, not a new kind of
+    # row, so it is handed to the same function in the same canonical shape
+    # rather than given a second INSERT of its own (CLAUDE.md Rule 12).
+    #
+    # data/db.py's own note on that table says the Advertising API "is not
+    # connected on any account (measured 18 Aug 2026)" and that the report has
+    # to be downloaded from Seller Central by hand. That is what changes here.
+    #
+    # The report_id is the WINDOW, not the moment of the pull: store_rows
+    # replaces a report id wholesale, so re-syncing the same thirty days
+    # corrects those rows instead of doubling every figure.
+    if kind == "search_term":
+        from domain import ppc_view as _pv
+        canon = []
+        for r in rows:
+            canon.append({
+                "search_term": r.get("search_term"),
+                "keyword": r.get("keyword"),
+                "match_type": r.get("match_type"),
+                "campaign": r.get("campaign_name"),
+                "ad_group": r.get("ad_group"),
+                "impressions": r.get("impressions"), "clicks": r.get("clicks"),
+                "spend": r.get("spend"), "sales": r.get("sales"),
+                "orders": r.get("orders"), "units": r.get("units"),
+            })
+        w = window or ("", "")
+        rid = ("ads_api_%s_%s" % (w[0], w[1])) if w[0] else "ads_api"
+        _rid, n = _pv.store_rows(config_path, workspace_id, marketplace, canon,
+                                 report_id=rid,
+                                 date_from=w[0], date_to=w[1])
+        out["ppc_search_terms"] = n
+        out["report_id"] = _rid
+        return out
     if kind.endswith("campaign"):
         n = 0
         for (date,), m in sorted(_fold(rows, ("date",)).items()):
@@ -263,6 +314,53 @@ def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at):
                     prod)
             n += 1
         out["ads_daily"] = n
+    return out
+
+
+# ---------------------------------------------------------------------------
+# READING BACK WHAT WAS STORED
+# ---------------------------------------------------------------------------
+#
+# A screen must never commission its own report. Amazon takes 9-14 minutes to
+# build one, which is longer than any web request should live, and Dr PPC did
+# exactly that with a 90-second wait -- so it timed out and showed errors on an
+# account whose figures were already in the database.
+#
+# These return the shape api/amazon_ads._row() produces, because that is what
+# domain/dr_ppc.py was written against. One shape, whether the rows came from a
+# live report or from the tables (CLAUDE.md Rule 12).
+
+
+def campaign_rows(config_path, workspace_id, marketplace, start, end):
+    """Stored campaign performance, summed over the window, in _row() shape."""
+    conn = _db.get_db(config_path)
+    out = []
+    for r in conn.execute(
+            "SELECT campaign_id, MAX(campaign_name) campaign_name, "
+            "MAX(status) state, MAX(budget) budget, SUM(impressions) impressions, "
+            "SUM(clicks) clicks, SUM(spend) spend, SUM(ad_orders) orders, "
+            "SUM(ad_sales) sales FROM ads_campaign_daily "
+            "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
+            "GROUP BY campaign_id",
+            (workspace_id, marketplace, start, end)):
+        out.append(dict(r))
+    return out
+
+
+def term_rows(config_path, workspace_id, marketplace):
+    """Stored search terms, in _row() shape.
+
+    ppc_search_terms calls the campaign `campaign`; dr_ppc reads
+    `campaign_name`. Renamed here rather than in either of them, because the
+    table's column and the checker's key are both already right for their own
+    side and neither should be bent to suit the other.
+    """
+    from domain import ppc_view as _pv
+    out = []
+    for r in _pv.load_rows(config_path, workspace_id, marketplace):
+        d = dict(r)
+        d["campaign_name"] = d.get("campaign") or ""
+        out.append(d)
     return out
 
 
@@ -339,7 +437,8 @@ def sync(workspace_id, marketplace="UK", days=30, wait=300, config_path=None,
 
         rows = got.get("rows") or []
         stored = store_rows(conn, workspace_id, marketplace, kind, rows,
-                            fetched_at)
+                            fetched_at, window=(start, end),
+                            config_path=config_path)
         out["written"][kind] = {"report_rows": len(rows), "stored": stored,
                                 "report_id": got.get("report_id")}
     conn.commit()
@@ -435,7 +534,7 @@ def request_reports(workspace_id, marketplace="UK", days=30, config_path=None):
     for kind in kinds_for(products):
         try:
             rid = _ads.report_request(creds, marketplace, kind, start, end,
-                                      "DAILY")
+                                      time_unit_for(kind))
         except Exception as e:
             # A report product that Amazon rejects must be VISIBLE, not skipped.
             # Sponsored Brands and Display columns have never been verified
@@ -514,7 +613,10 @@ def collect_pending(config_path=None, workspace_id=None, limit=12):
             out["errors"].append({"report_id": j["report_id"], "error": str(e)[:300]})
             continue
 
-        stored = store_rows(conn, ws, mkt, j["kind"], rows, fetched_at)
+        stored = store_rows(conn, ws, mkt, j["kind"], rows, fetched_at,
+                            window=(j.get("start_date") or "",
+                                    j.get("end_date") or ""),
+                            config_path=config_path)
         _job_finish(conn, j["id"], "done")
         touched.add((ws, mkt))
         out["collected"].append({"report_id": j["report_id"], "kind": j["kind"],

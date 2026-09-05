@@ -372,7 +372,31 @@ function lrStatus(r){
   // would be wrong. So: the truth, with the disagreement named on hover.
   const stored = (typeof lsStatusOf === "function") ? lsStatusOf(r)
                                                     : String(r.status||"").toUpperCase();
-  const stale = (st !== stored) ? stored : "";
+  // ...BUT ONLY WHEN THE STORED WORD IS ACTUALLY OURS.
+  //
+  //     "Multiple listings show LIVE / we still record NEEDS_REVIEW ... Sync
+  //      says synced 6m ago but status hasn't changed — why?"
+  //
+  // Because on those rows there was nothing to correct. A CATALOGUE-ONLY item
+  // -- one Amazon returned that this app holds no draft of -- carries Amazon's
+  // OWN state word in `status`: "Active", "Suppressed", "Incomplete". The
+  // shown status maps that to LIVE, then this compared LIVE against ACTIVE,
+  // found them different, and announced "we still record ACTIVE — nothing
+  // wrote the status back after it published. A Sync corrects it."
+  //
+  // Both words were Amazon's. There was no stale record, no missing write-back,
+  // and no Sync could ever change it -- which is exactly what the owner
+  // observed. The note was reporting the app's own mapping as a fault.
+  //
+  // ACTIVE, SUPPRESSED, INCOMPLETE and INACTIVE are Amazon's vocabulary and are
+  // never written by this app; QUEUED, GENERATED, NEEDS_REVIEW, APPROVED,
+  // API_READY and SUBMITTED are ours. Only ours can be stale, and only a row we
+  // actually hold a draft of can have a record to be stale.
+  const AMAZON_WORDS = ["ACTIVE", "SUPPRESSED", "INCOMPLETE", "INACTIVE"];
+  const _noDraftHere = (typeof hasDraftRow === "function") && !hasDraftRow(r.sku);
+  const _amazonsWord = AMAZON_WORDS.indexOf(String(stored || "").toUpperCase()) >= 0;
+  const stale = (st !== stored) && stored && !_amazonsWord && !_noDraftHere
+              ? stored : "";
   // The date the listing was last worked on. date_processed is what the
   // generator stamps; updated_at is the row's own. Neither is invented here.
   const d = r.date_processed || r.updated_at || r.created_at || "";
@@ -389,7 +413,42 @@ function lrStatus(r){
   // carried for exactly this since it was reported as "two different types on
   // buttons, some have review option some dont".
   const noDraft = (typeof hasDraftRow === "function") && !hasDraftRow(r.sku);
+  // AMAZON HAS IT BUT IS NOT SHOWING IT. Its own words, said plainly.
+  //
+  //     "Then got search-suppressed today due to missing main image ... Amazon
+  //      Seller Central shows it as Search Suppressed"
+  //
+  // A suppressed listing is still on Amazon and still costs money to advertise;
+  // it is simply not being shown to customers, which is the most urgent thing
+  // that can be true of a live listing. The word was stored the whole time --
+  // live_notshowing counts it, which is what the "Not showing" tile is -- but no
+  // ROW ever printed it. The only place it surfaced was the "we still record
+  // SUPPRESSED" note, which framed Amazon's own answer as this app's stale
+  // record and, with that note now correctly suppressed for Amazon's
+  // vocabulary, would have left it invisible altogether.
+  //
+  // Same three words liveItemIs("live_notshowing") tests, so the tile that
+  // counts them and the badge that names them cannot disagree (Rule 12).
+  const _amz = String(stored || "").toUpperCase();
+  const _notShowing = ["SUPPRESSED", "INACTIVE", "INCOMPLETE"]
+    .find(w => _amz.indexOf(w) >= 0);
+  const WHY = {
+    SUPPRESSED: "Amazon is hiding this listing from search results — usually a "
+              + "missing main image, or a missing required attribute. It is "
+              + "still on Amazon and can still be advertised, but customers "
+              + "cannot find it. Fix what Amazon names in Seller Central.",
+    INACTIVE:   "Amazon has this listing but is not offering it — commonly out "
+              + "of stock, or the offer was ended.",
+    INCOMPLETE: "Amazon accepted the listing but is missing information it "
+              + "needs before it will show it.",
+  };
   return badge
+       + (_notShowing
+           ? '<span class="badge b-COMPLIANCE_HOLD" title="'
+             + esc(WHY[_notShowing] || "") + '">'
+             + esc(_notShowing.charAt(0) + _notShowing.slice(1).toLowerCase())
+             + '</span>'
+           : "")
        + (noDraft
            ? '<span class="badge b-NODRAFT" title="On Amazon, but this app '
              + 'holds no draft of it — so there is nothing to edit here and no '
