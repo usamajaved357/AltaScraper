@@ -449,9 +449,19 @@ def ensure_tab(book, title, headers=None, rows=2000, cols=100,
 
 
 def delete_row(ws, row):
-    """Remove a row. Named here because a database backend must implement it."""
-    ws.delete_rows(int(row))
-    return True
+    """Remove a row. Named here because a database backend must implement it.
+
+    Returns HOW MANY rows went, not True. The database backend's delete_rows
+    already counts them (data/store.py), and returning a bare True threw that
+    away -- so a delete that matched nothing was indistinguishable from one that
+    worked, and the caller reported success either way. A count of 0 is the only
+    thing that can tell those two apart.
+
+    The sheet backend returns None from delete_rows; there is nothing to count
+    there, so it is reported as 1 -- the row it was asked to remove.
+    """
+    n = ws.delete_rows(int(row))
+    return 1 if n is None else int(n)
 
 
 def col_letter(col_0):

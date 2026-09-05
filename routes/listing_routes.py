@@ -1865,8 +1865,36 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     target = None
             if not target or target < 2:
                 return jsonify({"ok": False, "error": "row not found"}), 404
-            _repo.delete_row(ws, target)
-            return jsonify({"ok": True})
+            gone = _repo.delete_row(ws, target)
+            # BUST THE READ CACHE. THIS IS WHY DELETED DRAFTS CAME BACK.
+            #
+            #     "i have deleted a listing like 10 times now but it is not
+            #      removed from the draft page"
+            #
+            # The delete always worked. _records() holds a 12-second cache to
+            # keep repeated reads off Google's quota, and every other writing
+            # route in this file clears it -- /edit does, two lines above this
+            # one. /delete never did.
+            #
+            # static/js/miles_template.js delRow() calls loadRows() the instant
+            # the delete returns, which is comfortably inside those 12 seconds,
+            # so the reload was always served the cached list with the row still
+            # in it. Deleting again re-read the same cache and put it back
+            # again. The row would have vanished on its own after twelve
+            # seconds of not touching it -- which is not a thing anyone would
+            # discover while clicking Delete for the tenth time.
+            _bust_records_cache()
+            # AND SAY WHETHER ANYTHING ACTUALLY WENT. A miss used to return
+            # {"ok": true} and the screen said "Row deleted", which looks
+            # exactly like the bug above and is a different fault entirely.
+            if not gone:
+                return jsonify({
+                    "ok": False,
+                    "error": "Nothing was deleted — no row in this workspace "
+                             "matched that SKU. It may belong to another "
+                             "account, or have been removed already.",
+                }), 404
+            return jsonify({"ok": True, "deleted": gone})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -1888,6 +1916,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     blanks.append(r + 1)                        # 1-based sheet row
             for rownum in sorted(blanks, reverse=True):         # bottom-up keeps indices valid
                 _repo.delete_row(ws, rownum)
+            # Same 12-second read cache as /delete above. Without this the rows
+            # come straight back on the reload that follows.
+            if blanks:
+                _bust_records_cache()
             return jsonify({"ok": True, "deleted": len(blanks)})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
