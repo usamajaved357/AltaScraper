@@ -337,14 +337,32 @@ def ads_sync(workspace_id=None):
         if why:
             skipped.append(aid)
             continue
-        for mkt in (a.get("marketplaces") or []):
-            mkt = str(mkt or "").strip().upper()
-            if not mkt or mkt == "__ALL__":
-                continue
-            res = _as.request_reports(aid, mkt, days=30, config_path=config_path)
-            asked.append({"workspace": aid, "marketplace": mkt,
-                          "requested": len(res.get("requested") or []),
-                          "errors": res.get("errors") or []})
+        # ONE MARKETPLACE PER ACCOUNT, AND IT IS THE PROFILE'S OWN.
+        #
+        # This looped every marketplace on the account and commissioned a report
+        # for each -- with the SAME advertising profile id every time, because
+        # that is the only one there is. An advertising profile is one advertiser
+        # in one marketplace, so all eleven requests described the same
+        # marketplace and were filed under eleven different names.
+        #
+        # MEASURED on nestwell_goods before the fix: ads_daily and
+        # ads_campaign_daily each held two byte-identical copies, UK and IT --
+        # 705 of 705 and 5019 of 5019 rows the same, same campaign names. Nine
+        # more were still to come. ads_sync.marketplace_for asks Amazon which
+        # marketplace the profile is actually for (Rule 12: it owns that rule,
+        # this job does not repeat it).
+        mkt, why = _as.marketplace_for(config_path, a)
+        if not mkt:
+            skipped.append(aid)
+            continue
+        res = _as.request_reports(aid, mkt, days=30, config_path=config_path)
+        asked.append({"workspace": aid, "marketplace": mkt,
+                      "requested": len(res.get("requested") or []),
+                      # SAID, NOT SWALLOWED. Falling back to the account's
+                      # default is a guess, and a guess that goes unmentioned is
+                      # how the wrong marketplace's name ends up on real spend.
+                      "marketplace_note": why,
+                      "errors": res.get("errors") or []})
     return {"collected": len(got.get("collected") or []),
             "still_building": got.get("still_building"),
             "failed": got.get("failed") or [],

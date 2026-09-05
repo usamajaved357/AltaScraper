@@ -313,27 +313,27 @@ def _ads_section(config_path, accounts, end):
         if not a["marketplace"]:
             continue
         try:
-            got = _db.get_db(config_path).execute(
-                "SELECT COALESCE(SUM(spend),0) spend, "
-                "       COALESCE(SUM(ad_sales),0) sales, "
-                "       COALESCE(SUM(clicks),0) clicks, COUNT(*) n "
-                "FROM ads_daily WHERE workspace_id=? AND marketplace=? "
-                "  AND date>=? AND date<=?",
-                (a["id"], a["marketplace"], start, end)).fetchone()
+            # THE SHARED READER, because ads_daily holds two grains in one
+            # table. This summed it without naming one, which adds the day's
+            # account-wide row to the per-product breakdown of the same day and
+            # reports exactly twice the money -- measured at 513.86 against a
+            # true 256.93 on nestwell_goods. See ads_sync.totals (Rule 12).
+            from domain import ads_sync as _as
+            got = _as.totals(config_path, a["id"], a["marketplace"], start, end)
         except Exception as e:
             notes.append("%s: could not read advertising (%s)."
                          % (a["label"], str(e)[:90]))
             continue
-        if not got or not got["n"]:
+        if not got or not got["has_data"]:
             continue
         connected = True
-        spend, sales = float(got["spend"]), float(got["sales"])
+        spend, sales = got["spend"], got["sales"]
         rows.append({
             "account": a["label"], "id": a["id"],
-            "spend": round(spend, 2), "ad_sales": round(sales, 2),
+            "spend": spend, "ad_sales": sales,
             # NONE, NEVER ZERO -- an ACOS with no sales is not 0%, it is
             # undefined, and printing 0% invites somebody to act on it.
-            "acos_pct": (round(100.0 * spend / sales, 1) if sales else None),
+            "acos_pct": got["acos_pct"],
         })
     if not connected:
         notes.append(
