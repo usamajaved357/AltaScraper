@@ -324,26 +324,166 @@ function returnsListRenderDetail(){
   }
 
   // WHAT AMAZON WOULD LET US SEND. Asked per order, because the answer really
-  // does differ between orders. Listed, not offered: nothing here sends
-  // anything yet, and a button that looks live and is not is worse than none.
+  // does differ between orders, and each action carries Amazon's OWN schema --
+  // so the form below is drawn from what Amazon says it wants, never from a
+  // shape assumed here.
   h += '<div style="margin-top:12px;padding:10px;border:1px solid var(--line2);'
     + 'border-radius:6px">'
-    + '<div style="font-size:11.5px;font-weight:600;margin-bottom:4px">'
+    + '<div style="font-size:11.5px;font-weight:600;margin-bottom:6px">'
     + 'Contacting the customer</div>';
-  if((j.permitted_actions || []).length){
-    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">';
-    j.permitted_actions.forEach(function(a){
-      h += '<span class="db-chip" style="cursor:default">' + _rlEsc(a) + '</span>';
+
+  const acts = j.actions || [];
+  if(acts.length){
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+    acts.forEach(function(a){
+      const on = (RETL.action === a.name);
+      // An action Amazon has disabled, or one this app has no verified
+      // endpoint for, is shown and NOT offered -- with the reason on hover.
+      // Hiding it would leave somebody wondering why Seller Central offers
+      // something this screen does not.
+      h += '<button class="db-chip' + (on ? ' on' : '') + '"'
+        + (a.sendable ? ' onclick="returnsPick(' + jsArg(a.name) + ')"'
+                      : ' disabled style="opacity:.5;cursor:not-allowed"')
+        + ' title="' + _rlEsc(a.sendable ? (a.description || a.title)
+                                         : a.why_not) + '">'
+        + _rlEsc(a.title || a.name) + '</button>';
     });
     h += '</div>';
+
+    const picked = acts.filter(function(a){ return a.name === RETL.action
+                                                   && a.sendable; })[0];
+    if(picked){
+      h += '<div style="border-top:1px solid var(--line2);padding-top:8px">'
+        + '<div class="cc" style="font-size:11px;margin-bottom:6px">'
+        + _rlEsc(picked.description || "") + '</div>';
+      (picked.fields || []).forEach(function(f){
+        h += '<div style="margin-bottom:6px">'
+          + '<div style="font-size:11px;margin-bottom:3px">' + _rlEsc(f.title)
+          + (f.required ? ' <span style="color:var(--red)">*</span>' : '')
+          + (f.max_length ? ' <span class="cc">(up to ' + f.max_length
+                            + ' characters)</span>' : '')
+          + '</div>'
+          + '<textarea id="retmsg_' + _rlEsc(f.name) + '" class="ed" rows="4" '
+          + 'style="width:100%;font-size:12px"'
+          + (f.max_length ? ' maxlength="' + f.max_length + '"' : '')
+          + '></textarea></div>';
+      });
+      if(!(picked.fields || []).length){
+        h += '<div class="cc" style="font-size:11px;margin-bottom:6px">'
+          + 'This message has no text — Amazon sends its own wording.</div>';
+      }
+      h += '<button class="mktbtn on" onclick="returnsSend()">'
+        + '<i class="ti ti-send"></i> Send to the customer</button>'
+        + '<span id="retmsg_status" class="cc" style="margin-left:8px;'
+        + 'font-size:11px"></span>'
+        // SAID BEFORE THE BUTTON IS PRESSED, not after. A message to a buyer
+        // cannot be recalled, and Amazon does not give it back afterwards.
+        + '<div class="cc" style="font-size:10.5px;margin-top:6px">'
+        + 'This goes to the buyer through Amazon and cannot be unsent. Amazon '
+        + 'does not return it afterwards, so this app\'s own record is the '
+        + 'only copy.</div></div>';
+    }
   }
-  h += '<div class="cc" style="font-size:11px;line-height:1.5">'
+
+  h += '<div class="cc" style="font-size:11px;line-height:1.5;margin-top:6px">'
     + _rlEsc(j.actions_note || "")
     + (j.actions_error ? ' <span style="color:var(--red)">'
                          + _rlEsc(j.actions_error) + '</span>' : '')
-    + '<br>Sending is not built yet — these are the messages Amazon says it '
-    + 'would accept for this order.</div></div>';
+    + '</div>';
+
+  // WHAT WAS ALREADY SENT ABOUT THIS ORDER. Amazon publishes no sent-message
+  // history at all, so without this there is no way to answer "have we already
+  // replied to them?" -- and the answer decides whether to write again.
+  if((j.sent || []).length){
+    h += '<div style="margin-top:10px;border-top:1px solid var(--line2);'
+      + 'padding-top:8px"><div style="font-size:11.5px;font-weight:600">'
+      + 'Already sent about this order</div>';
+    j.sent.forEach(function(s){
+      let body = "";
+      try{ const o = JSON.parse(s.body || "{}");
+           body = Object.keys(o).map(function(k){ return o[k]; }).join(" "); }
+      catch(e){ body = s.body || ""; }
+      h += '<div style="margin-top:6px;font-size:11px">'
+        + '<span style="' + (s.ok ? '' : 'color:var(--red)') + '">'
+        + _rlEsc(s.action) + '</span> <span class="cc">'
+        + _rlEsc(s.sent_at || "") + (s.sent_by ? ' · ' + _rlEsc(s.sent_by) : '')
+        + (s.ok ? '' : ' · refused') + '</span>'
+        + (body ? '<div class="cc" style="font-size:10.5px;white-space:pre-wrap">'
+                  + _rlEsc(body.slice(0, 400)) + '</div>' : '')
+        + (s.error ? '<div style="color:var(--red);font-size:10.5px">'
+                     + _rlEsc(s.error) + '</div>' : '')
+        + '</div>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
 
   h += '</div>';
   host.innerHTML = h;
+}
+
+function returnsPick(action){
+  RETL.action = (RETL.action === action) ? "" : action;
+  returnsListRenderDetail();
+}
+
+async function returnsSend(){
+  const j = RETL.detail;
+  if(!j || !j.ok || !RETL.action) return;
+  const act = (j.actions || []).filter(function(a){
+    return a.name === RETL.action; })[0];
+  if(!act || !act.sendable) return;
+
+  const values = {};
+  let missing = "";
+  (act.fields || []).forEach(function(f){
+    const el = document.getElementById("retmsg_" + f.name);
+    const v = el ? String(el.value || "").trim() : "";
+    if(f.required && !v) missing = f.title;
+    if(v) values[f.name] = v;
+  });
+  if(missing){
+    const st = document.getElementById("retmsg_status");
+    if(st) st.innerHTML = '<span style="color:var(--red)">' + _rlEsc(missing)
+      + ' is required.</span>';
+    return;
+  }
+
+  // ASKED BEFORE IT GOES. This is the one action in the returns screen that
+  // reaches another person and cannot be undone, so it is never one click.
+  const preview = Object.keys(values).map(function(k){ return values[k]; })
+                        .join("\n\n");
+  const ok = await uiConfirm(
+    "Send this to the customer?\n\n" + (act.title || RETL.action)
+    + "\nOrder " + ((j["return"] || {}).order_id || "")
+    + (preview ? "\n\n" + preview : "")
+    + "\n\nIt goes through Amazon and cannot be unsent.");
+  if(!ok) return;
+
+  const st = document.getElementById("retmsg_status");
+  if(st) st.innerHTML = '<span class="genspin"></span> Sending…';
+  try{
+    const qs = [];
+    const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+              ? CUR_ACCOUNT.id : "";
+    const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
+    if(a) qs.push("id=" + encodeURIComponent(a));
+    if(m && m !== "__all__") qs.push("marketplace=" + encodeURIComponent(m));
+    const r = await fetch("/returns/message?" + qs.join("&"), {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({order_id: (j["return"] || {}).order_id,
+                            action: RETL.action, values: values})});
+    const res = await r.json();
+    if(!res || !res.ok){
+      if(st) st.innerHTML = '<span style="color:var(--red)">'
+        + _rlEsc((res && res.error) || "Amazon refused it.") + '</span>';
+      return;
+    }
+    if(typeof toast === "function") toast("Message sent");
+    RETL.action = "";
+    // Re-open so the sent-message record below is the server's, not ours.
+    returnsListOpen(RETL.open);
+  }catch(e){
+    if(st) st.innerHTML = '<span style="color:var(--red)">Could not send.</span>';
+  }
 }

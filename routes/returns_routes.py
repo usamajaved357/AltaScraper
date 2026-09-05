@@ -458,37 +458,128 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                     % ((acc or {}).get("label") or wsid or "This workspace")),
             })
 
-        actions, actions_error = [], ""
+        # WHAT MAY BE SENT, asked of the one module that knows -- which also
+        # carries each action's schema and whether this app has a VERIFIED
+        # endpoint for it. Amazon offers an action called "updateFeedback"
+        # whose endpoint the client library does not implement under that name;
+        # api/amazon_messaging.py refuses to send it through the
+        # similarly-named negativeFeedbackRemoval rather than guessing, and
+        # says so. One place decides that (Rule 12).
+        from api import amazon_messaging as _msg
+        perm = {"ok": False, "actions": [], "error": "no order on this return"}
         if row.get("order_id"):
-            try:
-                from domain import accounts as _acc_mod
-                from sp_api.api import Messaging
-                from sp_api.base import Marketplaces
-                enum = getattr(Marketplaces, str(mkt).upper(), Marketplaces.UK)
-                m = Messaging(credentials=_acc_mod.account_creds(acc),
-                              marketplace=enum)
-                got = m.get_messaging_actions_for_order(row["order_id"])
-                payload = got.payload if hasattr(got, "payload") else got
-                for a in ((payload or {}).get("_links") or {}).get("actions") or []:
-                    if a.get("name"):
-                        actions.append(a["name"])
-            except Exception as e:
-                actions_error = "%s: %s" % (type(e).__name__, str(e)[:200])
+            from domain import accounts as _acc_mod
+            perm = _msg.actions_for(_acc_mod.account_creds(acc), mkt,
+                                    row["order_id"])
+        actions = perm.get("actions") or []
 
         return jsonify({
             "ok": True, "workspace": wsid, "marketplace": mkt,
             "return": row, "same_order": siblings,
-            "permitted_actions": actions,
-            "actions_error": actions_error,
+            "actions": actions,
+            "sent": _messages_for(wsid, row.get("order_id")),
+            "actions_error": ("" if perm.get("ok") else (perm.get("error") or "")),
             "actions_note": (
                 "Amazon decides which messages may be sent about an order, and "
-                "the list differs between orders. These are the ones it "
-                "permits for this one. Free-form messages are not possible "
-                "through the API." if actions else
+                "the list differs between orders. Free-form messages are not "
+                "possible through the API — each of these is one of Amazon's "
+                "own templates." if actions else
                 ("Amazon could not be asked what may be sent about this order."
-                 if actions_error else
+                 if not perm.get("ok") else
                  "Amazon permits no messages about this order.")),
         })
+
+    def _messages_for(wsid, order_id):
+        """What this app has already sent about that order. [] on any failure."""
+        if not order_id:
+            return []
+        try:
+            from data import db as _db
+            return [dict(r) for r in _db.get_db(CONFIG_PATH).execute(
+                "SELECT action, body, ok, error, sent_by, sent_at "
+                "FROM buyer_messages WHERE workspace_id=? AND order_id=? "
+                "ORDER BY id DESC LIMIT 20", (wsid, str(order_id)))]
+        except Exception:
+            return []
+
+    @app.route("/returns/message", methods=["POST"])
+    def returns_message():
+        """Send ONE of Amazon's permitted messages about an order.
+
+        THE ONLY THING IN THIS FILE THAT REACHES A CUSTOMER, and the only write
+        anywhere in the returns feature. It cannot be undone, so:
+
+          * the account is checked twice, exactly as /returns/detail is -- a
+            caller must not be able to name someone else's account and message
+            THEIR buyer;
+          * api/amazon_messaging.send re-asks Amazon whether the action is
+            permitted at send time rather than trusting what the page was
+            holding, because "you may only send this once per order" becomes
+            true the moment somebody else sends it;
+          * nothing is composed here. The seller's own words are sent, and only
+            into the fields Amazon's schema declares;
+          * every attempt is written to buyer_messages, refusals included --
+            Amazon never gives these messages back, so if this app does not
+            record it, nothing does.
+        """
+        acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
+        b = request.get_json(silent=True) or {}
+
+        _bad = _wrong_account(request.args.get("id") or b.get("id"))
+        if _bad:
+            return _bad
+        from domain import accounts as _acc_check
+        if not _acc_check.seller_scope_allowed(acc or {}):
+            return jsonify({"ok": False, "error": (
+                "%s cannot message a buyer: it has no Amazon developer app of "
+                "its own, and borrowed credentials would write as the account "
+                "they were borrowed from."
+                % ((acc or {}).get("label") or wsid or "This workspace"))}), 400
+
+        order_id = str(b.get("order_id") or "").strip()
+        action = str(b.get("action") or "").strip()
+        values = b.get("values") or {}
+        if not order_id or not action:
+            return jsonify({"ok": False,
+                            "error": "an order and a message type are needed"}), 400
+
+        from api import amazon_messaging as _msg
+        from domain import accounts as _acc_mod
+        res = _msg.send(_acc_mod.account_creds(acc), mkt, order_id, action, values)
+
+        # LOGGED EITHER WAY. A log of successes only would show a customer as
+        # contacted when the message was refused.
+        try:
+            import datetime as _d
+            import json as _j
+            from data import db as _db
+            who = ""
+            try:
+                from flask import session
+                who = str((session or {}).get("user_email") or "")
+            except Exception:
+                who = ""
+            conn = _db.get_db(CONFIG_PATH)
+            conn.execute(
+                "INSERT INTO buyer_messages (workspace_id, marketplace, "
+                "order_id, action, body, ok, error, sent_by, sent_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (wsid, mkt, order_id, action,
+                 _j.dumps(res.get("sent") or values)[:4000],
+                 1 if res.get("ok") else 0,
+                 (res.get("error") or "")[:600], who,
+                 _d.datetime.now().isoformat(timespec="seconds")))
+            conn.commit()
+        except Exception:
+            pass
+
+        if not res.get("ok"):
+            return jsonify(res), 400
+        res["note"] = ("Sent. Amazon does not return the message afterwards, so "
+                       "this app's own record below is the only copy.")
+        return jsonify(res)
 
     @app.route("/returns/upload", methods=["POST"])
     def returns_upload():
