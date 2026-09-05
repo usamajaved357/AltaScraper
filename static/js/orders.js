@@ -1069,12 +1069,35 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
       +  '<td style="padding:3px 4px;color:var(--warn)">'
       +  (l.fee === null || l.fee === undefined ? money(null)
           : '−' + _oEsc(_oMoney(l.fee, currency))) + '</td>'
-      +  '<td style="padding:3px 4px;color:var(--warn)">'
+      // THE COST, AND WHERE IT CAME FROM, on the row whose profit it decided.
+      //
+      //     "the profit i see how can i know it is calculated using these cogs"
+      //
+      // The number alone cannot answer that: 14.99 read out of the SKU and
+      // 14.99 typed in by hand look identical, and only one of them is the
+      // figure the owner just uploaded. cogs_source has always come back on
+      // every line (domain/orders_view.py:382) and nothing displayed it, so
+      // the profit was traceable in the data and not on the screen.
+      +  '<td style="padding:3px 4px;color:var(--warn)" title="'
+      +  _oEsc(l.cogs_source === "manual-order" || l.cogs_source === "frozen"
+               ? "This is the cost you set for this order. The profit beside it "
+                 + "is worked out from this number."
+               : l.cogs_source === "manual"
+               ? "A cost you set against this product, used for every order of it."
+               : l.cogs_source === "tracked"
+               ? "The supplier's price at the moment this order arrived."
+               : l.cogs_source === "sku"
+               ? "Read from the cost written into the SKU. Set a cost for this "
+                 + "order to override it."
+               : "No cost is known for this line, so nothing was subtracted and "
+                 + "the profit is higher than the truth.") + '">'
       +  (l.cogs === null || l.cogs === undefined ? money(null)
           : '−' + _oEsc(_oMoney(l.cogs, currency))
             + (l.qty > 1 && l.unit_cost !== null
                 ? ' <span class="cc">(' + _oEsc(_oMoney(l.unit_cost, currency))
                   + ' ea)</span>' : ''))
+      +  ((l.cogs_source === "manual-order" || l.cogs_source === "frozen")
+          ? ' <span class="cc" style="font-size:9.5px">yours</span>' : '')
       +  '</td>'
       +  '<td style="padding:3px 4px;font-weight:600'
       +  (l.profit !== null && l.profit !== undefined && l.profit < 0
@@ -1174,6 +1197,34 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
         ? l.unit_cost
         : ((l.cogs !== null && l.cogs !== undefined && l.qty)
             ? (Number(l.cogs) / Number(l.qty)) : null);
+      // THE COST THAT IS SET GOES IN value=, NOT placeholder=.
+      //
+      //     "i uploaded the cogs ... give a green message showing confirmation
+      //      the cogs are updated but when i click on the order and see there
+      //      is a box which still asks for cogs, if the cogs are updated,
+      //      where can i see them"
+      //
+      // It was in the placeholder. A placeholder is grey ghost text that
+      // disappears the moment you type -- it reads as an empty box asking for
+      // a number, which is exactly what an unset cost looks like. So a cost
+      // that HAD been saved was indistinguishable on screen from one that
+      // never was, and the only way to find out was to save something and
+      // watch whether anything changed.
+      //
+      // In value= it is a real, editable figure: visibly there, and still
+      // clearable, because the note below promises that clearing it works.
+      const shown = (unit === null) ? "" : Number(unit).toFixed(2);
+      // AND WHERE THE NUMBER CAME FROM, in the owner's words rather than the
+      // stored code. "you set this" is the entire answer to "are my uploaded
+      // costs actually being used", and it costs one line on screen.
+      const WHENCE = {
+        "manual-order": "you set this",
+        "frozen": "you set this",
+        "manual": "you set this for this product",
+        "tracked": "supplier price when it arrived",
+        "sku": "read from the SKU",
+      };
+      const whence = WHENCE[String(l.cogs_source || "")] || "";
       h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'
         +  'margin:3px 0">'
         +  (bd.lines.length > 1
@@ -1181,12 +1232,14 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
               + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
               + _oEsc(l.sku) + '</code>' : '')
         +  '<input id="' + id + '" class="ed" style="width:100px" '
-        +  'placeholder="' + (unit === null ? 'e.g. 15.10'
-              : _oEsc(Number(unit).toFixed(2))) + '">'
+        +  'value="' + _oEsc(shown) + '" '
+        +  'placeholder="' + (unit === null ? 'e.g. 15.10' : '') + '">'
         +  '<button class="ghost" onclick="ordSetOrderCogs('
         +  jsArg(orderId) + ',' + jsArg(l.sku || '') + ',' + jsArg(id) + ','
         +  jsArg(accountId || '') + ',' + jsArg(marketplace || '') + ')">Save</button>'
         +  (l.qty > 1 ? '<span class="cc">x ' + l.qty + ' units</span>' : '')
+        +  (whence ? '<span class="cc" style="font-size:10.5px">' + _oEsc(whence)
+                     + '</span>' : '')
         +  '</div>';
     });
     h += '<div class="cc">Leave the box empty and press Save to clear a cost '

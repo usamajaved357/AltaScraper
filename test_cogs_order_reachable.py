@@ -185,7 +185,8 @@ const h2=_ordBreakdownHtml(two,"GBP","o1","jack_uk","M1");
 console.log(JSON.stringify({
   one:n(h1), two:n(h2), noId:n(_ordBreakdownHtml(one,"GBP","")),
   noSku:n(_ordBreakdownHtml(noSku,"GBP","o1","a","M1")),
-  unitPlaceholder:(h2.match(/placeholder="([\d.]+)"/)||[])[1],
+  unitValue:(h2.match(/value="([\d.]+)"/)||[])[1],
+  stillInPlaceholder:/placeholder="[\d.]+"/.test(h2),
   quoted:/ordSetOrderCogs\('o1','a&quot;b'/.test(
     _ordBreakdownHtml({lines:[{sku:'a"b',title:"x",qty:1,revenue:1,fee:0,cogs:1,unit_cost:1,profit:0}],
                        totals:{}},"GBP","o1","a","M1")),
@@ -207,8 +208,22 @@ try:
         check("no order id -> no control at all", got["noId"], 0)
         check("two skuless lines -> none, rather than one that hits both",
               got["noSku"], 0)
-        check("the placeholder on a 3-unit line is the UNIT cost",
-              got["unitPlaceholder"], "3.00")
+        # THE INVARIANT IS UNCHANGED, THE ATTRIBUTE MOVED.
+        #
+        # What must hold is that a 3-unit line shows the UNIT cost and not the
+        # line total -- order_lines.cogs is per unit, and putting a line total
+        # into a per-unit field overstates the cost threefold. That is still
+        # checked, and checked harder: the figure now has to be the input's
+        # VALUE.
+        #
+        # It used to be the placeholder, which is grey ghost text that vanishes
+        # the moment you type. Reported as: "there is a box which still asks
+        # for cogs, if the cogs are updated, where can i see them" -- a cost
+        # that HAD been saved was indistinguishable from one that never was.
+        check("the value on a 3-unit line is the UNIT cost",
+              got["unitValue"], "3.00")
+        check("  and a set cost is no longer only a placeholder",
+              got["stillInPlaceholder"], False)
         truthy("a quote in a sku cannot break out of the onclick", got["quoted"])
 except FileNotFoundError:
     print("  (node not on this machine -- renderer not exercised)")
