@@ -199,16 +199,37 @@ def from_lines(config_path, workspace_id, marketplace, start, end):
 
     So the window is clamped to the first day order_lines has for this account
     and marketplace. Earlier days are left exactly as the report delivered them.
+
+    AND TO THE LAST DAY THE PULL ACTUALLY COVERED, for the same reason at the
+    other end -- see the note beside the clamp itself. Both edges answer one
+    question: does a zero here mean Amazon said nothing sold, or that nobody
+    asked? Only the first is a fact about the business.
     """
     conn = _db.get_db(config_path)
     dead = ("canceled", "cancelled")
     # WHERE THE EVIDENCE BEGINS. No history at all means nothing here can be
     # said about any day, so nothing is written -- rather than every day in the
     # window being asserted as a zero on the strength of an empty table.
+    # UNDATED ROWS ARE EXCLUDED FROM THE EDGE, and that is not tidying.
+    #
+    # MIN() over a column where one row holds '' returns '', because the empty
+    # string sorts before any digit -- and `if not edge` below then reads that
+    # as "no history at all" and returns without writing anything. ONE ROW
+    # DISABLED THE WHOLE ACCOUNT.
+    #
+    # Measured, 5 Sep 2026: nestwell_goods had 61 order lines, 60 of them dated
+    # 27 Jul to 4 Sep and one -- order 204-8948160-2743530, revenue 0.00, no
+    # status -- with an empty purchase_date. from_lines returned no_history for
+    # that account every single time it was called.
+    #
+    # The figures themselves were never affected: the aggregation below groups
+    # by the date, so an undated line falls into a '' bucket that no day reads.
+    # It is only the edge that this row could poison.
     edge = conn.execute(
         "SELECT MIN(substr(purchase_date,1,10)) AS lo, COUNT(*) AS n, "
         "       MAX(COALESCE(fetched_at,'')) AS seen FROM order_lines "
-        "WHERE workspace_id=? AND marketplace=?",
+        "WHERE workspace_id=? AND marketplace=? "
+        "  AND TRIM(COALESCE(purchase_date,'')) <> ''",
         (workspace_id, marketplace)).fetchone()
     stamp = (edge["n"], edge["seen"]) if edge else (0, "")
     edge = edge["lo"] if edge else None
@@ -255,9 +276,73 @@ def from_lines(config_path, workspace_id, marketplace, start, end):
     # Clamped, per the note above: never claim a zero for a day this app has no
     # order history for.
     first = max(first, _dt.date.fromisoformat(edge))
+
+    # AND THE SAME RULE AT THE OTHER END, which was missing.
+    #
+    #     "i suspect the sales graph is not accurate"
+    #
+    # The argument in the docstring above -- a zero means "the Orders API says
+    # nothing happened", and before the history begins it means "we were not
+    # looking" -- is just as true AFTER the history ends. It was applied only to
+    # `first`, so this loop ran on to whatever end it was given, writing zeros
+    # for every day since the last pull and stamping each one orders_api. That
+    # stamp is what sales_data._LIVE_OWNED reads, so the Sales & Traffic report
+    # -- which does still run and does have those days -- was then forbidden
+    # from correcting a single one of them.
+    #
+    # MEASURED, 5 Sep 2026. order_lines was last fetched for selvora_limited on
+    # 20 Aug 04:48 and for jack_uk on 20 Aug 13:12; nestwell_goods was still
+    # being fetched that morning. Selvora's chart showed £0.00 for all sixteen
+    # days from 20 Aug to 4 Sep and jack_uk's for nineteen, every row stamped
+    # orders_api -- while nestwell, the account still being pulled, carried real
+    # figures throughout. The zeros began exactly where each account's pull
+    # stopped, which is the signature of "nobody asked", not "nothing sold".
+    #
+    # THE BOUND IS WHEN WE LAST LOOKED, NOT WHEN WE LAST SOLD. Clamping to the
+    # newest ORDER would silence a genuine quiet day at the end of a real
+    # window, which is the opposite mistake. A pull that ran this morning covers
+    # today, so today's running total still appears; a pull that last ran a
+    # fortnight ago covers nothing since.
+    covered = (str(stamp[1]) or "")[:10]
+    if covered:
+        try:
+            last = min(last, _dt.date.fromisoformat(covered))
+        except ValueError:
+            pass
+    else:
+        # No fetch timestamp to go on. We know the pull reached at least as far
+        # as its newest order, so use that rather than trusting the caller's end.
+        newest = conn.execute(
+            "SELECT MAX(substr(purchase_date,1,10)) AS hi FROM order_lines "
+            "WHERE workspace_id=? AND marketplace=? "
+            "  AND TRIM(COALESCE(purchase_date,'')) <> ''",
+            (workspace_id, marketplace)).fetchone()
+        if newest and newest["hi"]:
+            try:
+                last = min(last, _dt.date.fromisoformat(newest["hi"]))
+            except ValueError:
+                pass
+
+    # AND LET GO OF THE DAYS THIS FUNCTION ALREADY CLAIMED IN ERROR. Clamping
+    # stops new ones being written; it does nothing about the fortnight already
+    # sitting there stamped orders_api and blocking the report. Only rows that
+    # are OURS, beyond what the pull covered, and ZERO are released -- a day
+    # carrying a real figure is never touched, so no measured sale can be lost.
+    # Clearing the stamp does not change the number; it lets the report's own
+    # figure land on the next write.
+    conn.execute(
+        "UPDATE sales_daily SET orders_source=NULL "
+        " WHERE workspace_id=? AND marketplace=? AND asin='*' "
+        "   AND orders_source=? AND date>? "
+        "   AND COALESCE(ordered_sales,0)=0 AND COALESCE(orders,0)=0 "
+        "   AND COALESCE(units,0)=0",
+        (workspace_id, marketplace, SOURCE, last.isoformat()))
+
     if first > last:
+        conn.commit()
         return {"days_written": 0, "days_with_orders": 0,
-                "before_history": True, "history_starts": edge}
+                "before_history": True, "history_starts": edge,
+                "covered_to": last.isoformat()}
     now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     written = 0
     d = first
@@ -291,7 +376,7 @@ def from_lines(config_path, workspace_id, marketplace, start, end):
     except Exception:
         pass
     return {"days_written": written, "days_with_orders": len(have),
-            "history_starts": edge}
+            "history_starts": edge, "covered_to": last.isoformat()}
 
 
 def owned_days(config_path, workspace_id, marketplace, start, end):
