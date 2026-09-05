@@ -383,6 +383,131 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         return jsonify({"ok": True, "start": start, "end": end,
                         "count": len(items), "products": items})
 
+    @app.route("/sales/campaigns")
+    def sales_campaigns():
+        """Every advertising campaign that ran in this window, with its figures.
+
+        ONE ROW PER CAMPAIGN, summed over the period the screen is showing --
+        the stored grain is per campaign per DAY, so the range the user picked
+        is honoured rather than a fixed "last 30 days" that would disagree with
+        every other panel on the page.
+
+        ACOS, ROAS and CPC are worked out HERE, from the summed figures, and not
+        by averaging the daily rates: the mean of thirty daily ACOS values is not
+        the period's ACOS, and on days with spend but no sales it is not even a
+        number. Spend over sales, once, at the end.
+
+        A campaign with spend and no sales gets acos None, not a large number or
+        a zero -- there is no ACOS for zero sales, and saying 0% would read as
+        perfect efficiency for money that bought nothing.
+        """
+        from data import db as _db
+        _acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        start, end, _preset = _range()
+        conn = _db.get_db(CONFIG_PATH)
+
+        rows = []
+        for r in conn.execute(
+                "SELECT campaign_id, "
+                "       MAX(campaign_name) AS campaign_name, "
+                "       MAX(status)        AS status, "
+                "       MAX(budget)        AS budget, "
+                "       MAX(ad_product)    AS ad_product, "
+                "       SUM(impressions)   AS impressions, "
+                "       SUM(clicks)        AS clicks, "
+                "       SUM(spend)         AS spend, "
+                "       SUM(ad_orders)     AS ad_orders, "
+                "       SUM(ad_sales)      AS ad_sales, "
+                "       COUNT(DISTINCT date) AS days, "
+                "       MAX(fetched_at)    AS fetched_at "
+                "FROM ads_campaign_daily "
+                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
+                "GROUP BY campaign_id ORDER BY spend DESC",
+                (wsid, mkt, start, end)):
+            d = dict(r)
+            spend = d.get("spend")
+            sales = d.get("ad_sales")
+            clicks = d.get("clicks")
+            d["acos"] = (100.0 * spend / sales) if (spend is not None and sales) else None
+            d["roas"] = (sales / spend) if (sales is not None and spend) else None
+            d["cpc"] = (spend / clicks) if (spend is not None and clicks) else None
+            d["cvr"] = (100.0 * d["ad_orders"] / clicks) if (d.get("ad_orders") is not None and clicks) else None
+            rows.append(d)
+
+        # The status the report last saw. A campaign PAUSED today still shows
+        # what it spent while it ran, which is the point of a history table.
+        tot = {k: sum((r.get(k) or 0) for r in rows)
+               for k in ("impressions", "clicks", "spend", "ad_orders", "ad_sales")}
+        return jsonify({
+            "ok": True, "workspace": wsid, "marketplace": mkt,
+            "start": start, "end": end,
+            "rows": rows, "totals": tot,
+            "currency": _sd_currency(wsid, mkt),
+            # Which advertising products these rows actually cover, so the screen
+            # never implies it is showing all of a seller's advertising when it
+            # is showing one third of it.
+            "ad_products": sorted({(r.get("ad_product") or "SPONSORED_PRODUCTS")
+                                   for r in rows}) or ["SPONSORED_PRODUCTS"],
+            "fetched_at": max([r.get("fetched_at") or "" for r in rows] or [""]),
+        })
+
+    def _sd_currency(wsid, mkt):
+        """The currency this workspace sells in, cheaply.
+
+        ads_campaign_daily carries no currency -- Amazon's advertising reports
+        state amounts in the profile's currency without naming it. sales_daily
+        does, so it is asked, through the same "first row that actually has one"
+        rule sales_data.currency_of exists to enforce (Rule 12): a day with no
+        trade carries no currency, so taking the first row returns "" whenever
+        the range starts before the account's first sale.
+        """
+        try:
+            from data import db as _db
+            from domain import sales_data as _sd
+            rows = [dict(r) for r in _db.get_db(CONFIG_PATH).execute(
+                "SELECT currency FROM sales_daily WHERE workspace_id=? AND "
+                "marketplace=? AND COALESCE(currency,'')<>'' LIMIT 1",
+                (wsid, mkt))]
+            return _sd.currency_of(rows)
+        except Exception:
+            return ""
+
+    @app.route("/sales/ads-refresh", methods=["POST"])
+    def sales_ads_refresh():
+        """Ask Amazon for fresh advertising reports, and bank any that are ready.
+
+        DOES NOT WAIT. A daily report takes Amazon 9-14 minutes to build, which
+        is far longer than a browser request should live, so this returns
+        immediately with what it collected and what it commissioned. The figures
+        appear on the next refresh, or on the next scheduled pass -- the report
+        ids are on disk either way.
+        """
+        from domain import ads_sync as _as
+        _acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        got = _as.collect_pending(CONFIG_PATH, wsid)
+        asked = _as.request_reports(wsid, mkt, days=30, config_path=CONFIG_PATH)
+        if not asked.get("ok") and not (got.get("collected") or []):
+            return jsonify({"ok": False,
+                            "error": (asked.get("error")
+                                      or "could not ask Amazon for a report"),
+                            "errors": asked.get("errors") or []}), 400
+        n = len(got.get("collected") or [])
+        return jsonify({
+            "ok": True,
+            "collected": n,
+            "still_building": got.get("still_building") or 0,
+            "requested": len(asked.get("requested") or []),
+            "ad_products": asked.get("ad_products"),
+            "errors": (asked.get("errors") or []) + (got.get("failed") or []),
+            "note": ("Stored %d finished report%s. Amazon is building the next "
+                     "ones now — they take about 10 minutes, and appear on the "
+                     "next refresh." % (n, "" if n == 1 else "s")),
+        })
+
     @app.route("/sales/breakdown")
     def sales_breakdown():
         """Sales per product, optionally rolled up to the parent."""

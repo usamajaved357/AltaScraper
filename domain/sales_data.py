@@ -219,6 +219,23 @@ def _refresh_availability(conn, workspace_id, marketplace, source):
     conn.commit()
 
 
+def refresh_availability(conn, workspace_id, marketplace, source):
+    """Public hook for whoever writes one of these tables.
+
+    store() calls _refresh_availability itself for "sales" because it is the
+    thing that writes sales_daily. ads_daily has a writer now too --
+    domain/ads_sync.py -- and it needs the same call, because availability()
+    reads the CACHED data_availability row and NOT the table. Without it, 705
+    real rows of advertising data still report "not connected": measured on
+    nestwell_goods, the first live pull stored fine and every ad figure on the
+    screen stayed blank.
+
+    Exposed rather than letting the caller reach for the underscore, so the
+    "what counts as a day with data" rule stays in one place (Rule 12).
+    """
+    _refresh_availability(conn, workspace_id, marketplace, source)
+
+
 def availability(config_path, workspace_id, marketplace):
     """What dates genuinely have data, asked BEFORE anything requests data."""
     conn = _db.get_db(config_path)

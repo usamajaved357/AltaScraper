@@ -945,7 +945,20 @@
                title="Organic is total sales minus sales attributed to advertising. Both come from Amazon: the totals from the Sales & Traffic report, the attributed half from the Advertising API.">i</span></p>
           </div>
         </div>
+        <!-- WHAT THE ADVERTISING COST AND RETURNED, above the split it explains.
+             Empty until ads_daily has rows: the row draws nothing at all rather
+             than five zeros, because "£0 spend" and "we cannot see your spend"
+             are different claims and only one of them is true here. -->
+        <div id="sales_ppccards" class="stat-row"></div>
         <div id="sales_orgppc"></div>
+      </div>
+
+      <!-- WHICH CAMPAIGN SPENT IT. The split above says how much of the revenue
+           was paid for; this says what each campaign cost to get it, over the
+           same period the rest of the screen is showing. Sortable, and it opens
+           on spend because the question is where the money went. -->
+      <div class="salespanel" style="margin-top:16px">
+        <div id="sales_campaigns"></div>
       </div>
 
       <div class="salespanel" style="margin-top:16px">

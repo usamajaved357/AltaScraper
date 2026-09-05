@@ -1052,7 +1052,11 @@ async function salesReload(){
     // forget: a missing costing setting must never hold up the figures.
     if(typeof cogsModeLoad === "function") cogsModeLoad().catch(function(){});
     salesDrawCharts(ser);
+    salesDrawPpcCards(sum);
     salesDrawOrgPpc(ser);
+    // Below the split it breaks down. Fire and forget, like the product
+    // breakdown: a slow campaign query must never hold up the charts.
+    salesLoadCampaigns().catch(function(){});
     salesDrawGrid(ser);
     salesDrawRange(sum, av);
     // WHICH PRODUCTS SOLD. This was never called.
@@ -1567,17 +1571,294 @@ async function salesLoadWeek(){
   }
 }
 
+/* ---- campaign performance table -----------------------------------------
+ * Every campaign that ran in the chosen window, sortable, worst-value first by
+ * default -- because the question this table exists to answer is "what is
+ * wasting money", not "what is biggest".
+ *
+ * THE PERIOD IS THE ONE ON SCREEN. Rows are summed server-side over the same
+ * start/end as every other panel, so a campaign's spend here and the Ad Spend
+ * card above it are the same money over the same days.
+ *
+ * ACOS, ROAS and CPC ARE THE SERVER'S. It sums first and divides once; averaging
+ * thirty daily ACOS figures gives a different and wrong answer, and on a day
+ * with spend and no sales it gives no answer at all. Nothing is recomputed here.
+ *
+ * A campaign with spend and NO sales shows "—" for ACOS, never 0%. Zero would
+ * read as perfect efficiency for money that bought nothing; the dash says there
+ * is no ratio to state, and the spend column still shows what it cost.
+ */
+var SALES_CAMP = {rows: [], totals: {}, currency: "", sort: "spend", desc: true,
+                  loaded: false, error: "", products: []};
+
+const _CAMP_COLS = [
+  {k: "campaign_name", t: "Campaign",    kind: "text"},
+  {k: "status",        t: "Status",      kind: "status"},
+  {k: "budget",        t: "Budget",      kind: "money"},
+  {k: "spend",         t: "Spend",       kind: "money"},
+  {k: "ad_sales",      t: "Sales",       kind: "money"},
+  {k: "acos",          t: "ACOS",        kind: "pct"},
+  {k: "roas",          t: "ROAS",        kind: "x"},
+  {k: "ad_orders",     t: "Orders",      kind: "count"},
+  {k: "clicks",        t: "Clicks",      kind: "count"},
+  {k: "impressions",   t: "Impr",        kind: "count"},
+  {k: "cpc",           t: "CPC",         kind: "money4"},
+];
+
+function salesCampSort(k){
+  if(SALES_CAMP.sort === k) SALES_CAMP.desc = !SALES_CAMP.desc;
+  else { SALES_CAMP.sort = k; SALES_CAMP.desc = true; }
+  salesDrawCampaigns();
+}
+
+async function salesLoadCampaigns(){
+  const host = document.getElementById("sales_campaigns");
+  if(!host) return;
+  // Same query builder and same fetch wrapper as every other panel, so the
+  // campaign table is always showing the period the rest of the screen is.
+  try{
+    const j = await _sFetch("/sales/campaigns?" + _sQuery());
+    if(j === null) return;                       // superseded by a newer request
+    SALES_CAMP.rows = (j && j.rows) || [];
+    SALES_CAMP.totals = (j && j.totals) || {};
+    SALES_CAMP.currency = (j && j.currency) || "";
+    SALES_CAMP.products = (j && j.ad_products) || [];
+    SALES_CAMP.error = (j && j.ok) ? "" : ((j && j.error) || "could not load campaigns");
+  }catch(e){
+    SALES_CAMP.rows = []; SALES_CAMP.error = "could not load campaigns";
+  }
+  SALES_CAMP.loaded = true;
+  salesDrawCampaigns();
+}
+
+async function salesAdsRefresh(btn){
+  /* Ask Amazon for fresh reports. DOES NOT WAIT -- see /sales/ads-refresh.
+     The button says what actually happened rather than implying the numbers
+     have just changed, because they usually have not yet. */
+  const note = document.getElementById("sales_camp_note");
+  if(btn){ btn.disabled = true; btn.dataset.old = btn.innerHTML;
+           btn.innerHTML = '<i class="ti ti-loader"></i> Asking Amazon…'; }
+  try{
+    const r = await fetch("/sales/ads-refresh", {method: "POST"});
+    const j = await r.json();
+    if(note){
+      note.innerHTML = j && j.ok
+        ? '<span class="cc">' + _sEsc(j.note || "") + '</span>'
+        : '<span style="color:var(--red)">' + _sEsc((j && j.error) || "refresh failed") + '</span>';
+    }
+    if(j && j.ok && j.collected) await salesLoadCampaigns();
+  }catch(e){
+    if(note) note.innerHTML = '<span style="color:var(--red)">refresh failed</span>';
+  }
+  if(btn){ btn.disabled = false; btn.innerHTML = btn.dataset.old || "Refresh PPC data"; }
+}
+
+function salesDrawCampaigns(){
+  const host = document.getElementById("sales_campaigns");
+  if(!host) return;
+  const cur = SALES_CAMP.currency;
+  const rows = SALES_CAMP.rows || [];
+
+  let h = '<div style="display:flex;align-items:center;gap:10px;margin:2px 0 10px;flex-wrap:wrap">'
+    + '<div style="font-size:12.5px;font-weight:600">Campaign performance</div>'
+    + '<span class="cc" style="font-size:11px">' + rows.length + ' campaign'
+    + (rows.length === 1 ? '' : 's') + ' in this period'
+    + (SALES_CAMP.products && SALES_CAMP.products.length
+        ? ' · ' + _sEsc(SALES_CAMP.products.map(function(p){
+            return p.replace("SPONSORED_", "Sponsored ").toLowerCase()
+                    .replace(/(^|\s)\w/g, function(c){ return c.toUpperCase(); });
+          }).join(", "))
+        : '')
+    + '</span>'
+    + '<span style="margin-left:auto;display:flex;align-items:center;gap:8px">'
+    + '<span id="sales_camp_note" style="font-size:11px"></span>'
+    + '<button class="mktbtn" onclick="salesAdsRefresh(this)" '
+    + 'title="Ask Amazon to build fresh advertising reports. They take about ten '
+    + 'minutes, so the new figures appear on a later refresh — nothing is lost '
+    + 'in the meantime."><i class="ti ti-refresh"></i> Refresh PPC data</button>'
+    + '</span></div>';
+
+  if(!rows.length){
+    h += '<div class="cc" style="padding:14px;border:1px dashed var(--line2);'
+      +  'border-radius:6px;font-size:12px">'
+      +  _sEsc(SALES_CAMP.error
+                || "No advertising campaigns ran in this period.")
+      +  '</div>';
+    host.innerHTML = h; return;
+  }
+
+  const dir = SALES_CAMP.desc ? -1 : 1;
+  const sorted = rows.slice().sort(function(a, b){
+    let x = a[SALES_CAMP.sort], y = b[SALES_CAMP.sort];
+    // Unknown is not "smallest". A campaign with no ACOS must not sort as the
+    // most efficient one on the screen.
+    if(x === null || x === undefined) return 1;
+    if(y === null || y === undefined) return -1;
+    if(typeof x === "string") return dir * (x < y ? 1 : x > y ? -1 : 0);
+    return dir * (x - y);
+  });
+
+  h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:900px">'
+    + '<thead><tr>';
+  _CAMP_COLS.forEach(function(c){
+    h += '<th style="text-align:' + (c.kind === "text" || c.kind === "status" ? "left" : "right")
+      +  ';font-size:11px;cursor:pointer;white-space:nowrap;padding:6px 8px" '
+      +  'onclick="salesCampSort(' + jsArg(c.k) + ')">'
+      +  _sEsc(c.t) + (SALES_CAMP.sort === c.k ? (SALES_CAMP.desc ? " ▾" : " ▴") : "")
+      +  '</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  sorted.forEach(function(r){
+    h += '<tr>';
+    _CAMP_COLS.forEach(function(c){
+      const v = r[c.k];
+      let cell, align = (c.kind === "text" || c.kind === "status") ? "left" : "right";
+      if(c.kind === "text"){
+        cell = '<span style="display:block;overflow:hidden;text-overflow:ellipsis;'
+             + 'white-space:nowrap;max-width:320px;font-size:11.5px" title="'
+             + _sEsc(String(v || "")) + '">' + _sEsc(String(v || "—")) + '</span>';
+      } else if(c.kind === "status"){
+        // PAUSED and ARCHIVED are not failures -- a campaign that ran and was
+        // stopped still spent what it spent, and the history is the point of
+        // the table. Marked, not hidden.
+        const s = String(v || "").toUpperCase();
+        const col = s === "ENABLED" ? "var(--ok)"
+                  : (s === "PAUSED" ? "var(--warn)" : "");
+        cell = s ? '<span style="font-size:10.5px' + (col ? ";color:" + col : "") + '">'
+                   + _sEsc(s.charAt(0) + s.slice(1).toLowerCase()) + '</span>'
+                 : '<span class="cc">—</span>';
+      } else if(v === null || v === undefined){
+        cell = '<span class="cc">—</span>';
+      } else if(c.kind === "money")  cell = _sEsc(_sNum(v, "money", cur));
+      else if(c.kind === "money4")   cell = _sEsc(_sCur(cur) + Number(v).toFixed(3));
+      else if(c.kind === "pct")      cell = Number(v).toFixed(1) + "%";
+      else if(c.kind === "x")        cell = Number(v).toFixed(2) + "x";
+      else                           cell = Number(v).toLocaleString();
+      h += '<td style="text-align:' + align + ';padding:5px 8px;font-size:11.5px">'
+        +  cell + '</td>';
+    });
+    h += '</tr>';
+  });
+
+  // THE TOTAL ROW IS THE SERVER'S SUM, not a sum of what is displayed -- they
+  // are the same today and would silently stop being the same the moment this
+  // table gains a filter or a row limit.
+  const t = SALES_CAMP.totals || {};
+  const tAcos = (t.spend && t.ad_sales) ? (100 * t.spend / t.ad_sales) : null;
+  const tRoas = (t.spend && t.ad_sales) ? (t.ad_sales / t.spend) : null;
+  const tCpc  = (t.spend && t.clicks)   ? (t.spend / t.clicks) : null;
+  h += '</tbody><tfoot><tr style="border-top:1px solid var(--line2);font-weight:600">'
+    + '<td style="padding:6px 8px;font-size:11.5px">All campaigns</td>'
+    + '<td></td><td></td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + _sEsc(_sNum(t.spend, "money", cur)) + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + _sEsc(_sNum(t.ad_sales, "money", cur)) + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + (tAcos === null ? "—" : tAcos.toFixed(1) + "%") + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + (tRoas === null ? "—" : tRoas.toFixed(2) + "x") + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + Number(t.ad_orders || 0).toLocaleString() + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + Number(t.clicks || 0).toLocaleString() + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + Number(t.impressions || 0).toLocaleString() + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + (tCpc === null ? "—" : _sEsc(_sCur(cur) + tCpc.toFixed(3))) + '</td>'
+    + '</tr></tfoot></table></div>';
+
+  host.innerHTML = h;
+}
+
+/* ---- PPC summary cards ---------------------------------------------------
+ * Spend, ACOS, TACOS, ROAS and CPC, sitting above the Organic vs PPC split so
+ * the cost of the paid half is read before the split it produced.
+ *
+ * EVERY FIGURE IS THE SERVER'S. spend, acos, tacos and roas are already in
+ * sum.totals -- domain/sales_data.py derives them from ads_daily and defines
+ * acos as spend/ad_sales, tacos as spend/ordered_sales, roas as ad_sales/spend.
+ * Recomputing any of them here would be a second definition that can disagree
+ * with the grid on the same screen (CLAUDE.md Rule 12), so this only formats.
+ *
+ * CPC is the exception and is derived here, because nothing else in the app
+ * shows it: spend / clicks, both from the same totals, so it cannot drift.
+ *
+ * NOT CONNECTED DRAWS NOTHING. An account with no advertising data gets an
+ * empty row, not five zeros -- a zero ACOS is a claim about performance.
+ */
+function salesDrawPpcCards(sum){
+  const host = document.getElementById("sales_ppccards");
+  if(!host) return;
+  const t = (sum && sum.totals) || {};
+  const cur = (sum && sum.currency) || t.currency;
+  const connected = !!(sum && sum.ads_connected);
+  const spend = Number(t.spend);
+  if(!connected || !isFinite(spend) || !spend){ host.innerHTML = ""; return; }
+
+  const clicks = Number(t.clicks);
+  const cpc = (isFinite(clicks) && clicks) ? (spend / clicks) : null;
+  const n = function(v){ return (v === null || v === undefined || !isFinite(Number(v)))
+                                ? null : Number(v); };
+
+  // Sponsored Products only. Said on every card that could be read as "all of
+  // your advertising", because Brands and Display are not in these figures and
+  // a spend that is a floor must not be read as a total.
+  const SP = "Sponsored Products only — Sponsored Brands and Sponsored Display "
+           + "are separate ad products and are not included, so this is a floor.";
+
+  const CARDS = [
+    {label: "Ad Spend", value: n(t.spend), kind: "money",
+     note: "What Amazon charged for clicks in this period. " + SP},
+    {label: "ACOS", value: n(t.acos), kind: "pct", lowerIsBetter: true,
+     note: "Ad spend as a share of the sales advertising is credited with "
+         + "(spend ÷ ad sales). Lower is better."},
+    {label: "TACOS", value: n(t.tacos), kind: "pct", lowerIsBetter: true,
+     note: "Ad spend as a share of ALL sales, advertised or not "
+         + "(spend ÷ total sales). This is the one that says whether "
+         + "advertising is growing the business or just carrying it."},
+    {label: "ROAS", value: n(t.roas), kind: "count",
+     note: "Sales credited to advertising for each unit of currency spent "
+         + "(ad sales ÷ spend). 3.0 means £3 back for every £1 out."},
+    // CPC IS FORMATTED EXACTLY, not shortened. _sShort renders money with no
+    // decimals -- right for a £1,294 sales card, fatal for a 26p click, which
+    // it would print as "£0". Pence are the whole figure here.
+    {label: "Avg CPC", value: cpc, kind: "money", exact: true,
+     note: cpc === null ? "No clicks in this period."
+                        : "Average cost per click: spend ÷ " + _sNum(clicks, "count") + " clicks."},
+  ];
+
+  host.innerHTML = CARDS.map(function(c){
+    const missing = (c.value === null);
+    const shown = missing ? "—"
+                : (c.exact ? _sNum(c.value, c.kind, cur)
+                           : _sShort(c.value, c.kind, cur));
+    return '<div class="stat-card' + (missing ? " is-empty" : "") + '">'
+      + '<p class="stat-label">' + _sEsc(c.label) + ' '
+      + '<span class="statinfo" title="' + _sEsc(c.note) + '">'
+      + '<i class="ti ti-info-circle"></i></span></p>'
+      + '<p class="stat-number">'
+      + _sEsc(shown)
+      + (c.kind === "count" && !missing ? "x" : "")
+      + '</p>'
+      + '<p class="stat-delta">' + (missing ? "" : "Sponsored Products") + '</p>'
+      + '</div>';
+  }).join("");
+}
+
 /* ---- organic vs PPC -----------------------------------------------------
  * Orbit's split of what sold on its own against what advertising paid for:
  * two stacked areas in its own measured colours (#10b981 organic, #8b5cf6
  * PPC), a share bar above them, and the percentages named.
  *
- * THE ADVERTISING API IS NOT CONNECTED, and this is built anyway -- with the
- * shape drawn from a sample series and every figure marked as such, so the
- * panel exists and is judgeable now and fills with real numbers the moment
- * ads_daily has rows. The one thing it must never do is show a plausible
- * split as though it were measured: an organic/paid ratio drives what you
- * spend, and a made-up one is worse than a blank panel.
+ * BUILT BEFORE THE API WAS CONNECTED, with the shape drawn from a sample series
+ * and every figure marked as such, so the panel was judgeable before it had
+ * anything real in it. The one thing it must never do is show a plausible split
+ * as though it were measured: an organic/paid ratio drives what you spend, and
+ * a made-up one is worse than a blank panel.
+ *
+ * CONNECTED 5 Sep 2026 for nestwell_goods, and the switch below needed no
+ * change -- haveAds went true on its own the moment domain/ads_sync.py put real
+ * rows in ads_daily, the 70/30 banner disappeared and the two lines became
+ * measured. The sample branch stays because it is still the truth for every
+ * account that has not connected: five of the six have no advertising login.
+ *
+ * First real reading, Nestwell UK, 30 days: 1,294.97 total, 827.29 attributed
+ * to advertising, 467.68 organic. Nearly two thirds of the revenue is paid for,
+ * which is exactly the kind of thing a made-up 70/30 would have hidden.
  */
 function salesDrawOrgPpc(ser){
   const host = document.getElementById("sales_orgppc");

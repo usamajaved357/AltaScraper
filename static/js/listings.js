@@ -1548,6 +1548,113 @@ function _handCell(r, liveOverride){
  * profitable" mistake in another form; the line is simply absent, and the row
  * still has its price and its cost above.
  */
+/* ================= PER-ASIN ADVERTISING ============================
+ *
+ * What advertising cost for THIS product over the last 30 days, on the card
+ * that shows the product. From ads_daily via /ads/by-asin -- one query for the
+ * whole screen, fetched once and cached, never one call per row.
+ *
+ * IT IS KEYED ON OUR ASIN, NEVER THE COMPETITOR'S.
+ * Every row carries two: the ASIN embedded in its SKU, which is a COMPETITOR
+ * reference used to pull product data while generating, and the account's own
+ * live ASIN. Advertising is bought against ours. rowAsin() already owns that
+ * distinction and returns {own, source}; only `own` is used here. Using the
+ * source ASIN would attach a competitor's product code to our spend and read as
+ * "this listing cost £34" on a listing that has never been advertised.
+ *
+ * ABSENT IS NOT ZERO. An ASIN with no row in the reply was never advertised in
+ * the window, and the line is not drawn at all. A product that WAS advertised
+ * and returned nothing shows its spend with a dash for ACOS -- that one is
+ * worth seeing, because it is money that bought nothing.
+ */
+var PPC_BY_ASIN = null;        // null = not loaded yet, {} = loaded and empty
+var PPC_META = {connected: false, note: "", start: "", end: ""};
+var PPC_KEY = "";              // which account+marketplace PPC_BY_ASIN is for
+var PPC_LOADING = false;
+
+function _ppcKey(){
+  const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+            ? CUR_ACCOUNT.id : "";
+  const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
+  return a + "|" + m;
+}
+
+async function loadPpcByAsin(){
+  const key = _ppcKey();
+  try{
+    const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+              ? CUR_ACCOUNT.id : "";
+    const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
+    const r = await fetch("/ads/by-asin?days=30"
+      + (m && m !== "__all__" ? "&marketplace=" + encodeURIComponent(m) : "")
+      + (a ? "&account_id=" + encodeURIComponent(a) : ""));
+    const j = await r.json();
+    PPC_BY_ASIN = (j && j.ok && j.asins) ? j.asins : {};
+    PPC_META = {connected: !!(j && j.connected), note: (j && j.note) || "",
+                start: (j && j.start) || "", end: (j && j.end) || ""};
+  }catch(e){
+    // Never fatal. The listings page has to render with or without advertising.
+    PPC_BY_ASIN = {};
+  }
+  PPC_KEY = key;
+}
+
+/* Fetched ONCE per account+marketplace, lazily, from the first card that asks.
+ *
+ * Deliberately not wired into the page's load sequence: the advertising figures
+ * are decoration on a screen whose job is listings, and making the listings wait
+ * on an advertising query would trade something that matters for something that
+ * does not. The first pass draws without them, the reply lands, and one
+ * re-render fills them in.
+ *
+ * The key guard is what stops it looping and what makes a workspace switch
+ * refetch: once loaded, PPC_BY_ASIN is non-null for that key and no card asks
+ * again until the key changes. */
+function _ppcEnsure(){
+  if(PPC_LOADING) return;
+  if(PPC_BY_ASIN !== null && PPC_KEY === _ppcKey()) return;
+  PPC_LOADING = true;
+  loadPpcByAsin().then(function(){
+    PPC_LOADING = false;
+    try{ if(typeof render === "function") render(); }catch(e){}
+  });
+}
+
+function ppcFor(r){
+  if(!PPC_BY_ASIN) return null;
+  const a = (typeof rowAsin === "function") ? (rowAsin(r) || {}).own : "";
+  if(!a) return null;
+  return PPC_BY_ASIN[String(a).trim().toUpperCase()] || null;
+}
+
+function _ppcLine(r){
+  _ppcEnsure();
+  const p = ppcFor(r);
+  if(!p) return "";
+  const spend = Number(p.spend);
+  if(!isFinite(spend) || spend <= 0) return "";
+  const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
+  const acos = (p.acos === null || p.acos === undefined) ? null : Number(p.acos);
+  // The same bands the profit chip uses, read the other way round: a LOW ACOS is
+  // good. Spend that returned nothing is the worst case and is never green.
+  const tone = acos === null ? "tone-bad"
+             : (acos <= 25 ? "tone-ok" : (acos <= 50 ? "tone-warn" : "tone-bad"));
+  const bits = ["ad spend " + cur + spend.toFixed(2)];
+  bits.push(acos === null ? "no ad sales" : "ACOS " + acos.toFixed(1) + "%");
+  if(p.ad_orders) bits.push(p.ad_orders + (p.ad_orders === 1 ? " order" : " orders"));
+  const tip = "Sponsored Products, last 30 days (" + PPC_META.start + " to "
+    + PPC_META.end + "), for this listing's own ASIN.\n"
+    + "Spend " + cur + spend.toFixed(2)
+    + " · clicks " + (p.clicks == null ? "—" : p.clicks)
+    + " · ad sales " + cur + Number(p.ad_sales || 0).toFixed(2)
+    + (acos === null
+        ? "\nThis product was advertised and returned no attributed sales."
+        : "\nACOS = ad spend ÷ ad sales.");
+  return '<div style="margin-top:4px"><span class="profchip ' + tone + '" title="'
+       + esc(tip) + '"><i class="ti ti-speakerphone"></i> ' + esc(bits.join(" · "))
+       + '</span></div>';
+}
+
 function _econLine(r){
   const p = Number(String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, ""));
   if(!isFinite(p) || String(r.profit || "").trim() === "") return "";
@@ -1777,6 +1884,7 @@ function card(r){
       </div>
       <div class="tilefacts">${_brandCell(r)}${_handCell(r)}${_queuedChip(r)}</div>
       ${_econLine(r)}
+      ${_ppcLine(r)}
       <!-- the "lives on the X tab" badge went with the spreadsheet -->
 
       ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">

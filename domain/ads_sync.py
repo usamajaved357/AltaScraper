@@ -46,11 +46,60 @@ from api import amazon_ads as _ads
 from config import settings as _settings
 from data import db as _db
 
-# Which report feeds which grain of ads_daily.
-_GRAINS = (
-    ("campaign", "*"),              # account-wide day total
-    ("advertised_product", None),   # per ASIN per day; None = take it from the row
-)
+# WHICH ADVERTISING PRODUCTS TO PULL, and why the default is one of the three.
+#
+#     "i do run sponsor product ads only for now but add the option of other
+#      type of ads also the sp display and sp brands"
+#
+# So Sponsored Products is the default and Brands and Display are a setting, not
+# a guess. Turning them on costs a separate report each -- 9-14 minutes of
+# Amazon's build time apiece -- and, more importantly, their columns have never
+# been checked against a live response (api/amazon_ads.py says so at the
+# REPORT_TYPES table). Pulling a product nobody runs would prove nothing and
+# would slow every sync.
+#
+# Per account, in config.json, as a list:
+#     "ads_products": ["SPONSORED_PRODUCTS", "SPONSORED_BRANDS"]
+# Absent means Sponsored Products alone, which is what every stored row is.
+DEFAULT_PRODUCTS = ("SPONSORED_PRODUCTS",)
+PRODUCTS_FIELD = "ads_products"
+
+
+def products_for(cfg, account):
+    """Which ad products this account has been told to pull. Never empty.
+
+    An unknown name is dropped rather than sent: Amazon rejects the whole report
+    request for one bad adProduct, so a typo in the setting would take Sponsored
+    Products down with it.
+    """
+    raw = (account or {}).get(PRODUCTS_FIELD) or (cfg or {}).get(PRODUCTS_FIELD)
+    if isinstance(raw, str):
+        raw = [x.strip() for x in raw.replace(",", " ").split()]
+    known = [str(p).strip().upper() for p in (raw or [])
+             if str(p).strip().upper() in _ads.KINDS_BY_PRODUCT]
+    return tuple(known) or DEFAULT_PRODUCTS
+
+
+def kinds_for(products):
+    """The report kinds to pull, in order, for these products."""
+    out = []
+    for p in products:
+        for k in _ads.KINDS_BY_PRODUCT.get(p, ()):
+            if k not in out:
+                out.append(k)
+    return tuple(out)
+
+
+# The Sponsored Products pair, kept as a name because the manual sync reads
+# better for it. The destinations are decided in store_rows(), which is the only
+# thing that should know them.
+_KINDS = _ads.KINDS_BY_PRODUCT["SPONSORED_PRODUCTS"]
+_GRAINS = tuple((k, "*" if k.endswith("campaign") else None) for k in _KINDS)
+
+# A commissioned report that has not arrived after this long is not coming.
+# Amazon's own link expires, and a job that retries forever hides a real
+# failure behind an ever-growing attempts count.
+_JOB_MAX_ATTEMPTS = 40
 
 
 def _today():
@@ -84,7 +133,7 @@ def _rows_for(creds, marketplace, kind, start, end, wait, on_wait=None):
 _METRICS = ("impressions", "clicks", "spend", "orders", "sales")
 
 
-def _fold(rows, keys):
+def _fold(rows, keys, keep=()):
     """Amazon's rows -> one total per key. THE REPORT GRAIN IS NOT THE TABLE GRAIN.
 
     Both reports come back finer than ads_daily stores them:
@@ -105,71 +154,182 @@ def _fold(rows, keys):
 
     Additive metrics only. A key whose every row was None for a metric stays
     None rather than becoming 0 -- see the module docstring.
+
+    `keep` names fields that DESCRIBE the key rather than measuring it -- a
+    campaign's name, its status, its budget. Those must not be summed: three
+    daily rows for one campaign do not mean a budget of three times the budget.
+    The first non-empty value wins, because every row under one key is the same
+    campaign describing itself the same way.
     """
     out = {}
     for r in rows:
         k = tuple((r.get(f) or "").strip() for f in keys)
         if not all(k):
             continue
-        acc = out.setdefault(k, {m: None for m in _METRICS})
+        acc = out.get(k)
+        if acc is None:
+            acc = out[k] = {m: None for m in _METRICS}
+            for f in keep:
+                acc[f] = None
         for m in _METRICS:
             v = r.get(m)
             if v is None:
                 continue
             acc[m] = v if acc[m] is None else acc[m] + v
+        for f in keep:
+            if acc.get(f) in (None, "") and r.get(f) not in (None, ""):
+                acc[f] = r.get(f)
     return out
 
 
-def _upsert(conn, workspace_id, marketplace, date, asin, m, fetched_at):
+def _upsert(conn, workspace_id, marketplace, date, asin, m, fetched_at,
+            ad_product="SPONSORED_PRODUCTS"):
     conn.execute(
         "INSERT INTO ads_daily (workspace_id, marketplace, date, asin, "
-        "impressions, clicks, spend, ad_orders, ad_sales, source, fetched_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
-        "ON CONFLICT(workspace_id, marketplace, date, asin) DO UPDATE SET "
+        "impressions, clicks, spend, ad_orders, ad_sales, source, fetched_at, "
+        "ad_product) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(workspace_id, marketplace, date, asin, ad_product) "
+        "DO UPDATE SET "
         "impressions=excluded.impressions, clicks=excluded.clicks, "
         "spend=excluded.spend, ad_orders=excluded.ad_orders, "
         "ad_sales=excluded.ad_sales, source=excluded.source, "
         "fetched_at=excluded.fetched_at",
         (workspace_id, marketplace, date, asin,
          _int(m.get("impressions")), _int(m.get("clicks")), m.get("spend"),
-         _int(m.get("orders")), m.get("sales"), "ads_api", fetched_at))
+         _int(m.get("orders")), m.get("sales"), "ads_api", fetched_at,
+         ad_product))
+
+
+def _upsert_campaign(conn, workspace_id, marketplace, date, cid, m, fetched_at,
+                     ad_product="SPONSORED_PRODUCTS"):
+    conn.execute(
+        "INSERT INTO ads_campaign_daily (workspace_id, marketplace, date, "
+        "campaign_id, campaign_name, status, budget, impressions, clicks, "
+        "spend, ad_orders, ad_sales, source, fetched_at, ad_product) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(workspace_id, marketplace, date, campaign_id, ad_product) "
+        "DO UPDATE SET "
+        "campaign_name=excluded.campaign_name, status=excluded.status, "
+        "budget=excluded.budget, impressions=excluded.impressions, "
+        "clicks=excluded.clicks, spend=excluded.spend, "
+        "ad_orders=excluded.ad_orders, ad_sales=excluded.ad_sales, "
+        "source=excluded.source, fetched_at=excluded.fetched_at",
+        (workspace_id, marketplace, date, str(cid),
+         m.get("campaign_name") or "", m.get("state") or "",
+         m.get("budget"),
+         _int(m.get("impressions")), _int(m.get("clicks")), m.get("spend"),
+         _int(m.get("orders")), m.get("sales"), "ads_api", fetched_at,
+         ad_product))
 
 
 def _int(v):
     return None if v is None else int(round(v))
 
 
-def sync(workspace_id, marketplace="UK", days=30, wait=300, config_path=None,
-         on_wait=None):
-    """Pull both DAILY reports for this account and store them in ads_daily.
+def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at):
+    """Put one report's rows where they belong. THE ONE PLACE THAT DECIDES THAT.
 
-    Returns a dict a screen or a log can render directly. Never raises: a failed
-    sync has to be able to say WHY, and "not connected" and "connected but the
-    report failed" need different answers.
+    Both the blocking sync and the two-pass collector come through here, so a
+    report stored by a background job and the same report stored by a manual
+    refresh cannot land differently (CLAUDE.md Rule 12).
+
+    The campaign report feeds TWO tables from one download:
+        ads_daily          folded to the day, asin='*'  -- the account total
+        ads_campaign_daily folded to day+campaign       -- the breakdown
+    That is not double counting. They are different grains and every reader asks
+    for one or the other; nothing anywhere adds them together.
+    """
+    prod = _ads.ad_product_of(kind)
+    out = {"ad_product": prod}
+    if kind.endswith("campaign"):
+        n = 0
+        for (date,), m in sorted(_fold(rows, ("date",)).items()):
+            _upsert(conn, workspace_id, marketplace, date, "*", m, fetched_at,
+                    prod)
+            n += 1
+        out["ads_daily"] = n
+        c = 0
+        folded = _fold(rows, ("date", "campaign_id"),
+                       keep=("campaign_name", "state", "budget"))
+        for (date, cid), m in sorted(folded.items()):
+            _upsert_campaign(conn, workspace_id, marketplace, date, cid, m,
+                             fetched_at, prod)
+            c += 1
+        out["ads_campaign_daily"] = c
+    else:
+        n = 0
+        for (date, asin), m in sorted(_fold(rows, ("date", "asin")).items()):
+            _upsert(conn, workspace_id, marketplace, date, asin, m, fetched_at,
+                    prod)
+            n += 1
+        out["ads_daily"] = n
+    return out
+
+
+def creds_or_why(workspace_id, config_path=None):
+    """(creds, None) when this account can call the API, (None, reason) when not.
+
+    One place, because sync(), request_reports() and collect_pending() all ask
+    the same question and three copies of it would drift.
     """
     cfg = _settings.read_raw(config_path) if config_path else _settings.read_raw()
     acc = next((a for a in cfg.get("accounts", [])
                 if a.get("id") == workspace_id), None)
     if acc is None:
-        return {"ok": False, "error": "No such account: %s" % workspace_id}
-
+        return None, {"ok": False, "error": "No such account: %s" % workspace_id}
     creds = _ads.creds_for(cfg, acc)
     gaps = _ads.missing(creds)
     if gaps:
-        return {"ok": False, "connected": False, "missing": gaps,
-                "error": "%s is not connected to the Advertising API. Still "
-                         "needed: %s" % (workspace_id, ", ".join(gaps))}
+        return None, {"ok": False, "connected": False, "missing": gaps,
+                      "error": "%s is not connected to the Advertising API. "
+                               "Still needed: %s"
+                               % (workspace_id, ", ".join(gaps))}
+    return creds, None
+
+
+def sync(workspace_id, marketplace="UK", days=30, wait=300, config_path=None,
+         on_wait=None):
+    """Pull both DAILY reports for this account and store them, WAITING for them.
+
+    This is the by-hand path -- someone pressed Refresh and is watching. The
+    background job uses request_reports()/collect_pending() instead, because
+    Amazon takes 9-14 minutes to build a daily report and nothing scheduled
+    should sit still that long.
+
+    A report that has not arrived by `wait` is NOT lost: its id is written to
+    ads_report_jobs and the next collect picks it up. That is the difference
+    between a slow refresh and a wasted one.
+
+    Returns a dict a screen or a log can render directly. Never raises: a failed
+    sync has to be able to say WHY, and "not connected" and "connected but the
+    report failed" need different answers.
+    """
+    creds, why = creds_or_why(workspace_id, config_path)
+    if why:
+        return why
+
+    cfg = _settings.read_raw(config_path) if config_path else _settings.read_raw()
+    acc = next((a for a in cfg.get("accounts", [])
+                if a.get("id") == workspace_id), {})
+    products = products_for(cfg, acc)
 
     start, end = window(days)
     fetched_at = dt.datetime.now().isoformat(timespec="seconds")
     conn = _db.get_db(config_path)
     out = {"ok": True, "workspace_id": workspace_id, "marketplace": marketplace,
            "profile_id": creds["ads_profile_id"], "start": start, "end": end,
-           "written": {}, "errors": [], "ad_product": "SPONSORED_PRODUCTS"}
+           "written": {}, "errors": [], "ad_products": list(products)}
 
-    for kind, fixed_asin in _GRAINS:
+    for kind in kinds_for(products):
         got = _rows_for(creds, marketplace, kind, start, end, wait, on_wait)
         if not got.get("ok"):
+            # STILL BUILDING IS NOT A FAILURE. Hand the id to the collector so
+            # the work Amazon has already done is not thrown away because a
+            # person stopped watching.
+            if got.get("pending") and got.get("report_id"):
+                _job_add(conn, workspace_id, marketplace, kind,
+                         got["report_id"], start, end)
+                conn.commit()
             out["errors"].append({"kind": kind,
                                   "error": got.get("error") or "unknown",
                                   "report_id": got.get("report_id"),
@@ -178,18 +338,191 @@ def sync(workspace_id, marketplace="UK", days=30, wait=300, config_path=None,
             continue
 
         rows = got.get("rows") or []
-        n = 0
-        if fixed_asin == "*":
-            for (date,), m in sorted(_fold(rows, ("date",)).items()):
-                _upsert(conn, workspace_id, marketplace, date, "*", m,
-                        fetched_at)
-                n += 1
-        else:
-            for (date, asin), m in sorted(_fold(rows, ("date", "asin")).items()):
-                _upsert(conn, workspace_id, marketplace, date, asin, m,
-                        fetched_at)
-                n += 1
-        out["written"][kind] = {"report_rows": len(rows), "stored": n,
+        stored = store_rows(conn, workspace_id, marketplace, kind, rows,
+                            fetched_at)
+        out["written"][kind] = {"report_rows": len(rows), "stored": stored,
                                 "report_id": got.get("report_id")}
     conn.commit()
+
+    # TELL THE APP THE DATA IS THERE. Every ad figure on every screen is gated
+    # on data_availability, which is a CACHED row, not a count of this table --
+    # so storing rows without this leaves the whole app saying "not connected"
+    # while 705 rows of real spend sit in the database. Measured exactly that
+    # way on the first live pull.
+    _mark_available(conn, config_path, workspace_id, marketplace, out)
+    return out
+
+
+def _mark_available(conn, config_path, workspace_id, marketplace, out=None):
+    """TELL THE APP THE DATA IS THERE.
+
+    Every ad figure on every screen is gated on data_availability, which is a
+    CACHED row and not a count of the table -- so storing rows without this
+    leaves the whole app saying "not connected" while hundreds of rows of real
+    spend sit in the database. Measured exactly that way on the first live pull.
+    """
+    from domain import sales_data as _sd
+    _sd.refresh_availability(conn, workspace_id, marketplace, "ads")
+    av = _sd.availability(config_path, workspace_id, marketplace).get("ads")
+    if out is not None:
+        out["availability"] = av
+    return av
+
+
+# ---------------------------------------------------------------------------
+# THE BACKGROUND PATH: ask now, collect later
+# ---------------------------------------------------------------------------
+#
+# A daily report took between 9 and 14 minutes to build on the first live pull,
+# and both of the first two attempts timed out at 7 minutes with the report
+# still PENDING. Nothing on a schedule can hold still for that, so the work is
+# split in two and the report id is the handoff:
+#
+#     request_reports()   asks Amazon, writes the ids, returns in seconds
+#     collect_pending()   picks up whatever has finished since
+#
+# The scheduler calls collect first and then request, so one pass always banks
+# the previous pass's work before commissioning more. Nothing is lost if a pass
+# is missed, the process restarts, or the machine reboots: the ids are on disk.
+
+
+def _job_add(conn, workspace_id, marketplace, kind, report_id, start, end):
+    conn.execute(
+        "INSERT OR IGNORE INTO ads_report_jobs (workspace_id, marketplace, "
+        "kind, report_id, start_date, end_date, status, attempts, requested_at) "
+        "VALUES (?,?,?,?,?,?,'pending',0,?)",
+        (workspace_id, marketplace, kind, str(report_id), start, end,
+         dt.datetime.now().isoformat(timespec="seconds")))
+
+
+def _job_finish(conn, row_id, status, error=None):
+    conn.execute(
+        "UPDATE ads_report_jobs SET status=?, error=?, collected_at=? "
+        "WHERE id=?",
+        (status, (str(error)[:400] if error else None),
+         dt.datetime.now().isoformat(timespec="seconds"), row_id))
+
+
+def pending_jobs(config_path=None, workspace_id=None):
+    """Reports Amazon is still building, oldest first."""
+    conn = _db.get_db(config_path)
+    sql = ("SELECT * FROM ads_report_jobs WHERE status='pending'")
+    args = []
+    if workspace_id:
+        sql += " AND workspace_id=?"
+        args.append(workspace_id)
+    return [dict(r) for r in conn.execute(sql + " ORDER BY id", args)]
+
+
+def request_reports(workspace_id, marketplace="UK", days=30, config_path=None):
+    """Commission the reports and return at once. Stores nothing but the ids.
+
+    This is the half a scheduled job can afford to run.
+    """
+    creds, why = creds_or_why(workspace_id, config_path)
+    if why:
+        return why
+    cfg = _settings.read_raw(config_path) if config_path else _settings.read_raw()
+    acc = next((a for a in cfg.get("accounts", [])
+                if a.get("id") == workspace_id), {})
+    products = products_for(cfg, acc)
+
+    start, end = window(days)
+    conn = _db.get_db(config_path)
+    out = {"ok": True, "workspace_id": workspace_id, "marketplace": marketplace,
+           "start": start, "end": end, "ad_products": list(products),
+           "requested": [], "errors": []}
+    for kind in kinds_for(products):
+        try:
+            rid = _ads.report_request(creds, marketplace, kind, start, end,
+                                      "DAILY")
+        except Exception as e:
+            # A report product that Amazon rejects must be VISIBLE, not skipped.
+            # Sponsored Brands and Display columns have never been verified
+            # against a live response, so this is the most likely thing to fail
+            # and the least useful thing to swallow.
+            out["errors"].append({"kind": kind,
+                                  "ad_product": _ads.ad_product_of(kind),
+                                  "error": str(e)[:400]})
+            out["ok"] = False
+            continue
+        _job_add(conn, workspace_id, marketplace, kind, rid, start, end)
+        out["requested"].append({"kind": kind, "report_id": rid,
+                                 "ad_product": _ads.ad_product_of(kind)})
+    conn.commit()
+    return out
+
+
+def collect_pending(config_path=None, workspace_id=None, limit=12):
+    """Download and store every commissioned report that has finished.
+
+    Never waits. A report still building is left exactly as it was for the next
+    pass; only its attempt count moves. One that has been asked about
+    _JOB_MAX_ATTEMPTS times is marked expired rather than retried forever,
+    because a report that has not arrived after that many passes is not coming
+    and an ever-growing attempts count hides the failure.
+    """
+    conn = _db.get_db(config_path)
+    jobs = pending_jobs(config_path, workspace_id)[:limit]
+    out = {"ok": True, "checked": len(jobs), "collected": [], "still_building": 0,
+           "failed": [], "errors": []}
+    if not jobs:
+        return out
+
+    fetched_at = dt.datetime.now().isoformat(timespec="seconds")
+    touched = set()
+    creds_cache = {}
+    for j in jobs:
+        ws, mkt = j["workspace_id"], j["marketplace"]
+        if ws not in creds_cache:
+            creds_cache[ws] = creds_or_why(ws, config_path)
+        creds, why = creds_cache[ws]
+        if why:
+            _job_finish(conn, j["id"], "failed", why.get("error"))
+            out["failed"].append({"report_id": j["report_id"],
+                                  "error": why.get("error")})
+            continue
+
+        conn.execute("UPDATE ads_report_jobs SET attempts=attempts+1 WHERE id=?",
+                     (j["id"],))
+        try:
+            st = _ads.report_status(creds, mkt, j["report_id"])
+        except Exception as e:
+            out["errors"].append({"report_id": j["report_id"], "error": str(e)[:300]})
+            continue
+
+        s = (st.get("status") or "").upper()
+        if s in ("FAILURE", "FAILED", "CANCELLED"):
+            _job_finish(conn, j["id"], "failed", st.get("failure") or s)
+            out["failed"].append({"report_id": j["report_id"], "kind": j["kind"],
+                                  "error": st.get("failure") or s})
+            continue
+        if s not in ("COMPLETED", "SUCCESS") or not st.get("url"):
+            if (j["attempts"] or 0) + 1 >= _JOB_MAX_ATTEMPTS:
+                _job_finish(conn, j["id"], "expired",
+                            "still %s after %d checks" % (s or "pending",
+                                                          _JOB_MAX_ATTEMPTS))
+                out["failed"].append({"report_id": j["report_id"],
+                                      "kind": j["kind"], "error": "expired"})
+            else:
+                out["still_building"] += 1
+            continue
+
+        try:
+            rows = _ads.report_download(st["url"])
+        except Exception as e:
+            out["errors"].append({"report_id": j["report_id"], "error": str(e)[:300]})
+            continue
+
+        stored = store_rows(conn, ws, mkt, j["kind"], rows, fetched_at)
+        _job_finish(conn, j["id"], "done")
+        touched.add((ws, mkt))
+        out["collected"].append({"report_id": j["report_id"], "kind": j["kind"],
+                                 "workspace_id": ws, "marketplace": mkt,
+                                 "report_rows": len(rows), "stored": stored})
+    conn.commit()
+
+    for ws, mkt in touched:
+        _mark_available(conn, config_path, ws, mkt)
+    out["refreshed"] = [{"workspace_id": w, "marketplace": m} for w, m in touched]
     return out

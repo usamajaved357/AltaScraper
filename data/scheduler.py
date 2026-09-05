@@ -293,6 +293,64 @@ def sales_sync(workspace_id=None):
     return {"accounts": len(done), "skipped": skipped, "detail": done[:20]}
 
 
+def ads_sync(workspace_id=None):
+    """Keep the advertising figures current, WITHOUT ever waiting for Amazon.
+
+    An advertising report is commissioned, not fetched: you ask, Amazon builds
+    it, and you come back. Measured on the first live pull, a daily report took
+    between 9 and 14 minutes, and two attempts that waited 7 minutes both timed
+    out with it still PENDING. A scheduled job cannot hold still for that.
+
+    So each pass does two things and neither of them blocks:
+
+        1. COLLECT what the previous pass asked for and Amazon has since built
+        2. ASK for the next window
+
+    Collect comes first so a pass always banks the previous pass's work before
+    commissioning more, and the report ids live in ads_report_jobs, so a missed
+    pass, a restart or a reboot loses nothing.
+
+    Which ad products get pulled is per account and defaults to Sponsored
+    Products alone -- domain/ads_sync.py owns that rule and this job does not
+    repeat it.
+    """
+    from domain import ads_sync as _as
+    _app, config_path, cfg = _need("app", "config_path", "cfg")
+    try:
+        import accounts as _acc
+    except Exception as e:
+        raise RuntimeError("accounts module unavailable: %s" % e)
+
+    # BANK FIRST. Runs for every account at once -- a pending report knows which
+    # workspace it belongs to, so there is nothing to iterate here.
+    got = _as.collect_pending(config_path, workspace_id)
+
+    conf = cfg() if callable(cfg) else cfg
+    asked, skipped = [], []
+    for a in (_acc.load_accounts(conf, config_path) or []):
+        aid = str(a.get("id") or "")
+        if not aid or (workspace_id and aid != workspace_id):
+            continue
+        # Not connected to the ADVERTISING API is the normal case, not an error:
+        # it is a separate login from SP-API and only one account has one.
+        creds, why = _as.creds_or_why(aid, config_path)
+        if why:
+            skipped.append(aid)
+            continue
+        for mkt in (a.get("marketplaces") or []):
+            mkt = str(mkt or "").strip().upper()
+            if not mkt or mkt == "__ALL__":
+                continue
+            res = _as.request_reports(aid, mkt, days=30, config_path=config_path)
+            asked.append({"workspace": aid, "marketplace": mkt,
+                          "requested": len(res.get("requested") or []),
+                          "errors": res.get("errors") or []})
+    return {"collected": len(got.get("collected") or []),
+            "still_building": got.get("still_building"),
+            "failed": got.get("failed") or [],
+            "requested_for": asked, "not_connected": skipped}
+
+
 def sourcing_check(workspace_id=None):
     """Re-read every supplier of every SKU enrolled in the repricer.
 
@@ -462,6 +520,14 @@ register_job("asin_monitor", asin_monitor_check, hours=4,
              description="Check tracked ASINs for seller changes")
 register_job("inventory_sync", inventory_sync, hours=24,
              description="Pull FBA inventory levels")
+# EVERY 6 HOURS, NOT 24. The job is two non-blocking halves and the collect half
+# is what makes yesterday's spend appear -- running it four times a day means a
+# report commissioned at one pass is banked at the next rather than a day later.
+# It costs two report requests per account per pass, which is well inside
+# Amazon's reporting limits.
+register_job("ads_sync", ads_sync, hours=6,
+             description="Collect finished Amazon advertising reports and "
+                         "commission the next ones (never waits)")
 
 
 def register_jobs(app, workspace_ids=None, config_path=None, cfg=None):

@@ -393,8 +393,13 @@ MAPPING = {
     "impressions": ("impressions",),
     "clicks": ("clicks",),
     "spend": ("cost", "spend"),
-    "orders": ("purchases30d", "attributedConversions30d", "purchases", "orders"),
-    "sales": ("sales30d", "attributedSales30d", "sales", "attributedSales1d"),
+    # 30d first (Sponsored Products, verified), then 14d (Brands and Display,
+    # whose longest window is 14 days). One row only ever carries one of them,
+    # so the order is a preference, not a fallback that could double count.
+    "orders": ("purchases30d", "purchases14d", "attributedConversions30d",
+               "purchases", "orders"),
+    "sales": ("sales30d", "sales14d", "attributedSales30d", "sales",
+              "attributedSales1d"),
     "search_term": ("searchTerm", "query", "search_term"),
     "keyword": ("keywordText", "targeting", "keyword", "matchedTarget"),
     "match_type": ("matchType", "match_type"),
@@ -449,6 +454,32 @@ def campaigns(creds, marketplace):
 
 # Amazon's v3 reporting: ask for a report, poll until it is built, download it.
 # Same three-step shape as the SP-API reports this app already handles.
+#
+# THREE AD PRODUCTS, THREE SETS OF REPORTS. Sponsored Products, Sponsored Brands
+# and Sponsored Display are separate products with separate report types and
+# separate column vocabularies. `adProduct` on a spec says which one; anything
+# without it is Sponsored Products.
+#
+# VERIFIED vs NOT, and the difference matters (Rule 4):
+#
+#   SPONSORED PRODUCTS   spCampaigns and spAdvertisedProduct have been pulled
+#                        live and their columns confirmed against real rows --
+#                        impressions, clicks, cost, purchases30d, sales30d,
+#                        advertisedAsin, campaignStatus, campaignBudgetAmount.
+#
+#   BRANDS AND DISPLAY   NOT VERIFIED. These specs are from Amazon's published
+#                        documentation and have never been run, because the one
+#                        connected account advertises Sponsored Products only
+#                        and a report for a product with no campaigns proves
+#                        nothing about the column names.
+#
+# So they are built to FAIL LOUDLY rather than quietly: a wrong column makes
+# Amazon reject the report request outright with its own message, which
+# report_request already raises verbatim. What must never happen is a report
+# that succeeds and maps to nothing, which is why _row() returns None for a
+# field it cannot find instead of 0. The first time either of these is run
+# against a real account with campaigns, check raw_sample/the raw download
+# against MAPPING before trusting a single figure.
 REPORT_TYPES = {
     "campaign": {
         "reportTypeId": "spCampaigns",
@@ -470,7 +501,52 @@ REPORT_TYPES = {
         "columns": ["campaignId", "campaignName", "advertisedAsin",
                     "impressions", "clicks", "cost", "purchases30d", "sales30d"],
     },
+    # ---- SPONSORED BRANDS -- UNVERIFIED, never run. See the note above. ------
+    # Brands does not offer the 30-day attribution window Products does; 14 days
+    # is its longest, so the column names differ and are NOT interchangeable.
+    "sb_campaign": {
+        "adProduct": "SPONSORED_BRANDS",
+        "reportTypeId": "sbCampaigns",
+        "groupBy": ["campaign"],
+        "columns": ["campaignId", "campaignName", "impressions", "clicks",
+                    "cost", "purchases14d", "sales14d", "campaignStatus",
+                    "campaignBudgetAmount"],
+    },
+    # ---- SPONSORED DISPLAY -- UNVERIFIED, never run. ------------------------
+    "sd_campaign": {
+        "adProduct": "SPONSORED_DISPLAY",
+        "reportTypeId": "sdCampaigns",
+        "groupBy": ["campaign"],
+        "columns": ["campaignId", "campaignName", "impressions", "clicks",
+                    "cost", "purchases14d", "sales14d", "campaignStatus",
+                    "campaignBudgetAmount"],
+    },
+    "sd_advertised_product": {
+        "adProduct": "SPONSORED_DISPLAY",
+        "reportTypeId": "sdAdvertisedProduct",
+        "groupBy": ["advertiser"],
+        "columns": ["campaignId", "campaignName", "promotedAsin",
+                    "impressions", "clicks", "cost", "purchases14d", "sales14d"],
+    },
 }
+
+# Which report kinds belong to each ad product, so a caller can ask for "all of
+# Brands" without knowing the kind names. Sponsored Brands has no advertised
+# product report in the same shape as the other two, so it is absent rather than
+# guessed at.
+KINDS_BY_PRODUCT = {
+    "SPONSORED_PRODUCTS": ("campaign", "advertised_product"),
+    "SPONSORED_BRANDS": ("sb_campaign",),
+    "SPONSORED_DISPLAY": ("sd_campaign", "sd_advertised_product"),
+}
+
+# Only the first is proven against a live account.
+VERIFIED_PRODUCTS = ("SPONSORED_PRODUCTS",)
+
+
+def ad_product_of(kind):
+    """Which advertising product a report kind belongs to."""
+    return (REPORT_TYPES.get(kind) or {}).get("adProduct", "SPONSORED_PRODUCTS")
 
 
 def report_request(creds, marketplace, kind, start, end, time_unit="SUMMARY"):
@@ -499,7 +575,9 @@ def report_request(creds, marketplace, kind, start, end, time_unit="SUMMARY"):
         "startDate": start,
         "endDate": end,
         "configuration": {
-            "adProduct": "SPONSORED_PRODUCTS",
+            # Sponsored Products unless the spec says otherwise. Brands and
+            # Display are separate products with their own report types.
+            "adProduct": spec.get("adProduct", "SPONSORED_PRODUCTS"),
             "groupBy": spec["groupBy"],
             "columns": cols,
             "reportTypeId": spec["reportTypeId"],
