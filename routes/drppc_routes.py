@@ -161,23 +161,32 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                "marketplace": mkt, "start": start.isoformat(),
                "end": end.isoformat(), "days": days}
         errors = []
-        camp_rows, term_rows = [], []
-        try:
-            r = _ads.report(creds, mkt, "campaign", start.isoformat(), end.isoformat())
-            if r.get("ok"):
-                camp_rows = r.get("rows") or []
-            else:
-                errors.append("campaigns: " + str(r.get("error"))[:200])
-        except Exception as e:
-            errors.append("campaigns: %s: %s" % (type(e).__name__, str(e)[:180]))
-        try:
-            r = _ads.report(creds, mkt, "search_term", start.isoformat(), end.isoformat())
-            if r.get("ok"):
-                term_rows = r.get("rows") or []
-            else:
-                errors.append("search terms: " + str(r.get("error"))[:200])
-        except Exception as e:
-            errors.append("search terms: %s: %s" % (type(e).__name__, str(e)[:180]))
+        # READ WHAT THE SYNC STORED. DO NOT COMMISSION A REPORT HERE.
+        #
+        # This used to call _ads.report() twice and wait for Amazon to build
+        # each one. Measured on this account, a report takes between 9 and 14
+        # minutes; the default wait is 90 seconds. So the console reliably came
+        # back with two timeout errors and no findings, on an account whose
+        # campaign figures were already in the database -- the screen was slower
+        # AND emptier than doing nothing.
+        #
+        # domain/ads_sync.py owns the pulling and the storing, on a schedule.
+        # This reads. If the tables are empty it says so and points at the
+        # button, which is a fact the owner can act on rather than a timeout.
+        from domain import ads_sync as _as
+        camp_rows = _as.campaign_rows(CONFIG_PATH, wsid, mkt,
+                                      start.isoformat(), end.isoformat())
+        term_rows = _as.term_rows(CONFIG_PATH, wsid, mkt)
+        if not camp_rows:
+            errors.append(
+                "No campaign figures are stored for this window yet. Press "
+                "Refresh PPC data on the Sales page, or wait for the next "
+                "scheduled sync — Amazon takes about ten minutes to build each "
+                "report, so nothing here can wait for one.")
+        if not term_rows:
+            errors.append(
+                "No search-term report is stored yet. The scheduled sync pulls "
+                "one; until it lands, the keyword findings below cannot run.")
 
         # The ACOS target: whatever was given, else nothing. The rules refuse to
         # invent one, and say so on the screen -- see domain/dr_ppc.target_for.
@@ -210,7 +219,15 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         _oos_failed = ""
         try:
             from domain import stock_metrics as _sm
-            _cov = _sm.for_account(CONFIG_PATH, aid, mkt, window=30)
+            # wsid, NOT aid. `aid` is a local inside _scope() and does not
+            # exist here, so this raised NameError on every single run and the
+            # except below swallowed it -- meaning the out-of-stock check has
+            # never once executed, and the console has always shown the "could
+            # not read the stock history" note instead. That check is what stops
+            # the zero-order rule recommending a negative keyword for a product
+            # that was simply unbuyable, which is a recommendation that cannot
+            # be undone by waiting.
+            _cov = _sm.for_account(CONFIG_PATH, wsid, mkt, window=30)
             oos = [r["sku"] for r in (_cov.get("rows") or [])
                    if (r.get("oos_days") or 0) > 0]
         except Exception as e:
