@@ -141,6 +141,79 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "note": av.get("note") or "",
                         "asins": out, "count": len(out)})
 
+    @app.route("/listings/where")
+    def listings_where():
+        """WHICH ACCOUNT HOLDS THE DRAFT OF THIS SKU. Reads only.
+
+            "i see an error savedfailed no listing with this sku in this
+             workspace ... many of the listings dont hold the information we
+             have in amazon ... it dont have anything bullet points,
+             description, backend search terms"
+
+        One cause, four symptoms. A listing that is LIVE under one account can
+        have its draft filed under ANOTHER -- measured on this database, 26 of
+        nestwell_goods' 39 live UK listings have their draft under jack_uk. From
+        the nestwell workspace the app then has no draft to read, so:
+
+            editing says there is no listing with that SKU -- literally true
+            bullets, description and search terms are blank -- the live
+              catalogue pull is a SUMMARY (sku, asin, title, price, qty, status,
+              brand, fulfillment, image) and carries none of the three
+            fields fall back to defaults, which is where "number of items 1"
+              comes from while Amazon shows 2 -- the draft says 2, and it is in
+              the other account
+
+        A SKU does not identify an account: the owner deliberately runs the same
+        SKU on more than one. So this answers WHERE, and the screen can say it
+        instead of showing blanks that read as missing data.
+
+        It does not move anything. Which account a listing belongs to is the
+        owner's decision, not a thing to infer and act on.
+        """
+        from data import db as _db
+        sku = (request.args.get("sku") or "").strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "no sku given"}), 400
+        _acc, wsid, _mkt = _scope()
+        conn = _db.get_db(CONFIG_PATH)
+
+        rows = [dict(r) for r in conn.execute(
+            "SELECT workspace_id, status, "
+            "LENGTH(COALESCE(bullet_1,'')) bullets, "
+            "LENGTH(COALESCE(description_html,'')) description, "
+            "LENGTH(COALESCE(search_terms,'')) search_terms, "
+            "number_of_items, updated_at "
+            "FROM listings WHERE sku=?", (sku,))]
+
+        labels = {}
+        try:
+            cfg = _cfg() if callable(_cfg) else (_cfg or {})
+            for a in (cfg.get("accounts") or []):
+                labels[str(a.get("id"))] = str(a.get("label") or a.get("id"))
+        except Exception:
+            pass
+        for r in rows:
+            r["label"] = labels.get(r["workspace_id"], r["workspace_id"])
+
+        here = [r for r in rows if r["workspace_id"] == wsid]
+        elsewhere = [r for r in rows if r["workspace_id"] != wsid]
+        return jsonify({
+            "ok": True, "sku": sku, "workspace": wsid,
+            "here": bool(here), "drafts": rows,
+            "elsewhere": elsewhere,
+            "note": ("" if here else
+                     ("This workspace holds no draft of %s, so its bullets, "
+                      "description and search terms cannot be shown and editing "
+                      "it will fail. The draft is under %s. Amazon's own "
+                      "catalogue carries only the summary — price, quantity, "
+                      "status, title and image — never the copy."
+                      % (sku, ", ".join(r["label"] for r in elsewhere))
+                      if elsewhere else
+                      "No account holds a draft of %s. It exists on Amazon but "
+                      "this app has never generated or imported it, so there is "
+                      "nothing to edit and no copy to show." % sku)),
+        })
+
     @app.route("/ads/diag")
     def ads_diag():
         """WHY IS THE CHART STILL A PLACEHOLDER? -- answered from the tables.
