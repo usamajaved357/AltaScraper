@@ -131,6 +131,25 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
         return sid, (g.group(1) if g else "")
 
 
+    def _which():
+        """Which account an advertising request is about.
+
+        The page names it; otherwise the workspace that is open. Shared by the
+        read, the write and the connection test so all three cannot end up
+        talking about different accounts -- which they did, and it showed as
+        "not connected" under credentials that had just been saved and work.
+
+        This module is not given _active_account (see register's signature) and
+        _state holds the same id, so it is read from there rather than by
+        widening the signature for one lookup.
+        """
+        aid = str((request.args.get("account_id")
+                   or (request.get_json(silent=True) or {}).get("account_id")
+                   or "")).strip()
+        if not aid:
+            aid = str((_state or {}).get("active_account_id", "") or "")
+        return aid
+
     @app.route("/settings/ads", methods=["GET", "POST"])
     def settings_ads():
         """The Amazon ADVERTISING credentials -- a different login from SP-API.
@@ -162,20 +181,6 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
         from api import amazon_ads as _ads
 
         cfg = _cfg()
-
-        def _which():
-            """The account this request is about, and its record. May be None."""
-            # The page names it; otherwise the workspace that is open. This
-            # module is not given _active_account (see register's signature),
-            # and _state holds the same id -- so it is read from there rather
-            # than by widening the signature for one lookup.
-            aid = str((request.args.get("account_id")
-                       or (request.get_json(silent=True) or {}).get("account_id")
-                       or "")).strip()
-            if not aid:
-                aid = str((_state or {}).get("active_account_id", "") or "")
-            return aid
-
         aid = _which()
         if request.method == "GET":
             def tail(v):
@@ -248,12 +253,19 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
         """
         from api import amazon_ads as _ads
 
-        # The open account, resolved the same way every other route here does --
-        # from _state, against the accounts in config. An account may override
-        # the global advertising login with its own, so which one is open
-        # changes the answer.
+        # THE SAME ACCOUNT THE FIELDS ABOVE IT ARE ABOUT.
+        #
+        # This resolved the open workspace from _state and nothing else, while
+        # the GET and POST beside it now honour an account named by the page. On
+        # a machine whose open workspace was miles_lubricants, Save wrote to the
+        # account being edited and Test then reported on a different one --
+        # "not connected" directly under credentials that had just been saved
+        # and do work. Caught by testing the two together rather than apart.
+        #
+        # _which() is that one resolution: named by the page, else the open
+        # workspace (Rule 12).
         cfg = _cfg() or {}
-        aid = str((_state or {}).get("active_account_id") or "")
+        aid = _which()
         acc = next((a for a in (cfg.get("accounts") or [])
                     if str(a.get("id")) == aid), {}) if aid else {}
         mkt = (request.get_json(silent=True) or {}).get("marketplace") \
