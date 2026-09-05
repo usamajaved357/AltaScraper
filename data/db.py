@@ -215,6 +215,68 @@ CREATE INDEX IF NOT EXISTS idx_adsjob_pending
 
    `report_id` groups an upload so a later one can replace it wholesale rather
    than double every figure. */
+/* EVERY RETURN, KEPT.
+   -----------------------------------------------------------------------
+   domain/returns_view.py has parsed returns since it was written -- it detects
+   which report a file is, normalises the columns and de-duplicates overlapping
+   windows. What it never did was KEEP them: routes/returns_routes.py holds the
+   parsed rows in a per-workspace dict in MEMORY, so a restart loses them and the
+   export says "load the file again". Exactly the shape of the search-term bug --
+   the app could act on a report once and could never show you what it said
+   afterwards.
+
+   AND AMAZON CAPS THE REPORT AT 60 DAYS. Year-to-date is four or five downloads
+   whose windows overlap, so history is only possible if it is accumulated. That
+   is the whole reason for a table rather than a longer cache.
+
+   THE KEY IS returns_view.identity(), NOT A NEW ONE.
+   That function already decides what makes two rows the same return, and it was
+   measured against a real 11,509-row file: keying on Amazon's licence plate
+   alone silently deleted 467 genuine returns because Amazon recycles them. The
+   key it settled on is stored here as `identity` -- one string, built by that
+   function -- so the table cannot disagree with the merge that feeds it
+   (CLAUDE.md Rule 12).
+
+   `kind` is part of that identity. An FBA return and a seller-fulfilled return
+   are never the same event -- Amazon either handled it or you did.
+
+   disposition and comment are FBA-only and stay NULL on a seller-fulfilled
+   return. NULL, not "": Amazon never graded it and never recorded a comment,
+   which is a different fact from "it came back undamaged with nothing said". */
+CREATE TABLE IF NOT EXISTS returns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id  TEXT NOT NULL,
+    marketplace   TEXT NOT NULL,
+    identity      TEXT NOT NULL,       -- returns_view.identity(), joined
+    kind          TEXT,                -- 'mfn' | 'fba'
+    date          TEXT,                -- return request date
+    order_id      TEXT,
+    license_plate TEXT,
+    asin          TEXT,
+    sku           TEXT,
+    name          TEXT,
+    qty           INTEGER,
+    reason        TEXT,                -- normalised
+    reason_raw    TEXT,                -- exactly what Amazon wrote
+    nature        TEXT,
+    status        TEXT,                -- Amazon's return request status
+    resolution    TEXT,
+    refunded      REAL,
+    order_amount  REAL,
+    category      TEXT,
+    disposition   TEXT,                -- FBA only
+    comment       TEXT,                -- FBA only
+    source        TEXT,                -- 'report' | 'upload'
+    first_seen    TEXT,
+    fetched_at    TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_returns_identity
+    ON returns(workspace_id, marketplace, identity);
+CREATE INDEX IF NOT EXISTS idx_returns_scope
+    ON returns(workspace_id, marketplace, date);
+CREATE INDEX IF NOT EXISTS idx_returns_order
+    ON returns(workspace_id, order_id);
+
 CREATE TABLE IF NOT EXISTS ppc_search_terms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,
