@@ -96,10 +96,102 @@ CREATE TABLE IF NOT EXISTS ads_daily (
     ad_orders INTEGER,
     ad_sales REAL,
     source TEXT,                        -- 'upload' now, 'ads_api' later
-    fetched_at TEXT
+    fetched_at TEXT,
+    -- WHICH KIND OF ADVERTISING. Amazon sells three and they are separate
+    -- products with separate reports: SPONSORED_PRODUCTS, SPONSORED_BRANDS,
+    -- SPONSORED_DISPLAY. Without this column they share a key, so pulling
+    -- Brands would OVERWRITE the day's Sponsored Products figures instead of
+    -- adding to them -- the same silent-overwrite the campaign fold already had
+    -- to fix once. It is part of the unique key for that reason.
+    ad_product TEXT NOT NULL DEFAULT 'SPONSORED_PRODUCTS'
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ads_key
-    ON ads_daily(workspace_id, marketplace, date, asin);
+/* The unique key is created by _migrate, NOT here. This script runs against
+   databases that already have ads_daily WITHOUT ad_product -- CREATE TABLE IF
+   NOT EXISTS leaves them alone -- and an index naming a column that does not
+   exist yet fails the whole script. _migrate adds the column first, then builds
+   the key, and does the same thing on a brand new database. See
+   _REPLACED_INDEXES. */
+
+/* WHAT EACH CAMPAIGN SPENT, PER DAY.
+   -----------------------------------------------------------------------
+   ads_daily answers "what did advertising cost this account, and which
+   PRODUCTS did it sell". It cannot answer "which CAMPAIGN is wasting money",
+   because a campaign is not a product: one campaign advertises many ASINs and
+   one ASIN is advertised by many campaigns. Folding campaigns into ads_daily
+   would destroy exactly the breakdown a campaign table is for.
+
+   So this is the campaign grain, kept beside it rather than inside it, in the
+   same shape for the same reasons: one row per campaign per day, a unique key
+   so a re-sync corrects rather than doubles, and `source` so an API pull can be
+   told from an uploaded report.
+
+   ppc_campaigns is NOT this table and is not being extended into it. That one
+   holds the campaign BUILDER's output -- a campaign someone is composing, with
+   its bid and its target ASIN -- and has no date and no metrics. Two different
+   questions, and merging them would leave a table where half the rows are
+   proposals and half are history.
+
+   status and budget come from the report, not from a campaign-list call:
+   Amazon retired the v2 campaign endpoints (HTTP 404) and the v3 replacement is
+   a POST that api/amazon_ads.py refuses by design (Rule 8, no campaign writes).
+   The spCampaigns report carries campaignStatus and campaignBudgetAmount, so
+   nothing is lost by reading them there. */
+CREATE TABLE IF NOT EXISTS ads_campaign_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    date TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    campaign_name TEXT,
+    status TEXT,
+    budget REAL,
+    impressions INTEGER,
+    clicks INTEGER,
+    spend REAL,
+    ad_orders INTEGER,
+    ad_sales REAL,
+    source TEXT,
+    fetched_at TEXT,
+    ad_product TEXT NOT NULL DEFAULT 'SPONSORED_PRODUCTS'
+);
+/* Unique key built by _migrate, for the same reason as ads_daily's. */
+CREATE INDEX IF NOT EXISTS idx_adscamp_ws
+    ON ads_campaign_daily(workspace_id, marketplace, date);
+
+/* REPORTS AMAZON IS STILL BUILDING.
+   -----------------------------------------------------------------------
+   An advertising report is not fetched, it is COMMISSIONED: you ask, Amazon
+   builds it, and you come back for it. Measured on the first live pull, a DAILY
+   report took between 9 and 14 minutes to become available.
+
+   That is far too long to hold a background job open, and much too long to hold
+   a web request. So the sync is two passes: one asks and writes the report id
+   here, a later one collects whatever has finished. Nothing blocks, and a job
+   that dies between the two loses nothing -- the id is on disk and the next
+   pass finds it.
+
+   A row is deleted once collected. What stays is a row that failed or expired,
+   because a report that never arrived is a thing someone has to be told about,
+   and a silently vanishing job is how "the PPC numbers are stale" becomes
+   nobody's problem. */
+CREATE TABLE IF NOT EXISTS ads_report_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    kind TEXT NOT NULL,              -- 'campaign' | 'advertised_product'
+    report_id TEXT NOT NULL,
+    start_date TEXT,
+    end_date TEXT,
+    status TEXT DEFAULT 'pending',   -- pending | done | failed | expired
+    attempts INTEGER DEFAULT 0,
+    error TEXT,
+    requested_at TEXT,
+    collected_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_adsjob_report
+    ON ads_report_jobs(report_id);
+CREATE INDEX IF NOT EXISTS idx_adsjob_pending
+    ON ads_report_jobs(status, workspace_id);
 
 /* EVERY SEARCH TERM AMAZON CHARGED FOR, KEPT.
    -----------------------------------------------------------------------
@@ -971,6 +1063,26 @@ _ADDED_COLUMNS = [
     ("sourcing_rules", "shipping_label", "REAL"),
     ("sourcing_rules", "ads_margin", "REAL"),
     ("sourcing_rules", "min_profit", "REAL"),
+    # WHICH ADVERTISING PRODUCT A ROW CAME FROM. Every row that exists before
+    # this column did came from a Sponsored Products report -- that is the only
+    # thing the app has ever pulled -- so the default back-fills them correctly
+    # rather than leaving them unattributed. See the note in SCHEMA: without it
+    # a Brands pull overwrites the Products figures for the same day.
+    ("ads_daily", "ad_product", "TEXT NOT NULL DEFAULT 'SPONSORED_PRODUCTS'"),
+    ("ads_campaign_daily", "ad_product",
+     "TEXT NOT NULL DEFAULT 'SPONSORED_PRODUCTS'"),
+]
+
+# Unique keys that GAINED a column. Adding the column is not enough: the old
+# index still enforces the old key, so two ad products would still collide.
+# (table, old index, new index, columns) -- the new one is created first and the
+# old dropped only if that succeeded, so a failure leaves the database enforcing
+# the stricter-but-wrong key rather than no key at all.
+_REPLACED_INDEXES = [
+    ("ads_daily", "idx_ads_key", "idx_ads_key2",
+     "workspace_id, marketplace, date, asin, ad_product"),
+    ("ads_campaign_daily", "idx_adscamp_key", "idx_adscamp_key2",
+     "workspace_id, marketplace, date, campaign_id, ad_product"),
 ]
 
 
@@ -986,6 +1098,27 @@ def _migrate(conn):
                 conn.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, coltype))
             except Exception:
                 pass                       # raced with another thread; harmless
+
+    for table, old_ix, new_ix, cols in _REPLACED_INDEXES:
+        try:
+            have = {r["name"] for r in conn.execute("PRAGMA table_info(%s)" % table)}
+        except Exception:
+            continue                       # table not created yet
+        if not have:
+            continue
+        # Every column of the new key must exist, or the CREATE fails and the
+        # old index would be dropped for nothing.
+        if any(c.strip() not in have for c in cols.split(",")):
+            continue
+        try:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)"
+                         % (new_ix, table, cols))
+        except Exception:
+            continue                       # keep the old key rather than none
+        try:
+            conn.execute("DROP INDEX IF EXISTS %s" % old_ix)
+        except Exception:
+            pass
 
 
 def db_path(config_path=None):

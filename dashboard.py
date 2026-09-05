@@ -4220,6 +4220,12 @@ def build_app(backend=None):
     _sales_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state)
 
+    # Advertising figures for screens that are not Sales -- per-ASIN spend and
+    # ACOS on the Listings page. Reads ads_daily; asks Amazon for nothing.
+    import routes.ads_routes as _ads_routes
+    _ads_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                         _active_account=_active_account, _state=_state)
+
     # Import an eBay seller's catalogue as DRAFTS. Nothing here reaches Amazon:
     # it finds, screens and writes rows into this app's own store, and the
     # existing approve-and-submit path publishes them.

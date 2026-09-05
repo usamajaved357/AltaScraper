@@ -1054,6 +1054,9 @@ async function salesReload(){
     salesDrawCharts(ser);
     salesDrawPpcCards(sum);
     salesDrawOrgPpc(ser);
+    // Below the split it breaks down. Fire and forget, like the product
+    // breakdown: a slow campaign query must never hold up the charts.
+    salesLoadCampaigns().catch(function(){});
     salesDrawGrid(ser);
     salesDrawRange(sum, av);
     // WHICH PRODUCTS SOLD. This was never called.
@@ -1566,6 +1569,199 @@ async function salesLoadWeek(){
       {title: "against the same " + daysSoFar + " day"
               + (daysSoFar === 1 ? "" : "s") + " of last week"});
   }
+}
+
+/* ---- campaign performance table -----------------------------------------
+ * Every campaign that ran in the chosen window, sortable, worst-value first by
+ * default -- because the question this table exists to answer is "what is
+ * wasting money", not "what is biggest".
+ *
+ * THE PERIOD IS THE ONE ON SCREEN. Rows are summed server-side over the same
+ * start/end as every other panel, so a campaign's spend here and the Ad Spend
+ * card above it are the same money over the same days.
+ *
+ * ACOS, ROAS and CPC ARE THE SERVER'S. It sums first and divides once; averaging
+ * thirty daily ACOS figures gives a different and wrong answer, and on a day
+ * with spend and no sales it gives no answer at all. Nothing is recomputed here.
+ *
+ * A campaign with spend and NO sales shows "—" for ACOS, never 0%. Zero would
+ * read as perfect efficiency for money that bought nothing; the dash says there
+ * is no ratio to state, and the spend column still shows what it cost.
+ */
+var SALES_CAMP = {rows: [], totals: {}, currency: "", sort: "spend", desc: true,
+                  loaded: false, error: "", products: []};
+
+const _CAMP_COLS = [
+  {k: "campaign_name", t: "Campaign",    kind: "text"},
+  {k: "status",        t: "Status",      kind: "status"},
+  {k: "budget",        t: "Budget",      kind: "money"},
+  {k: "spend",         t: "Spend",       kind: "money"},
+  {k: "ad_sales",      t: "Sales",       kind: "money"},
+  {k: "acos",          t: "ACOS",        kind: "pct"},
+  {k: "roas",          t: "ROAS",        kind: "x"},
+  {k: "ad_orders",     t: "Orders",      kind: "count"},
+  {k: "clicks",        t: "Clicks",      kind: "count"},
+  {k: "impressions",   t: "Impr",        kind: "count"},
+  {k: "cpc",           t: "CPC",         kind: "money4"},
+];
+
+function salesCampSort(k){
+  if(SALES_CAMP.sort === k) SALES_CAMP.desc = !SALES_CAMP.desc;
+  else { SALES_CAMP.sort = k; SALES_CAMP.desc = true; }
+  salesDrawCampaigns();
+}
+
+async function salesLoadCampaigns(){
+  const host = document.getElementById("sales_campaigns");
+  if(!host) return;
+  // Same query builder and same fetch wrapper as every other panel, so the
+  // campaign table is always showing the period the rest of the screen is.
+  try{
+    const j = await _sFetch("/sales/campaigns?" + _sQuery());
+    if(j === null) return;                       // superseded by a newer request
+    SALES_CAMP.rows = (j && j.rows) || [];
+    SALES_CAMP.totals = (j && j.totals) || {};
+    SALES_CAMP.currency = (j && j.currency) || "";
+    SALES_CAMP.products = (j && j.ad_products) || [];
+    SALES_CAMP.error = (j && j.ok) ? "" : ((j && j.error) || "could not load campaigns");
+  }catch(e){
+    SALES_CAMP.rows = []; SALES_CAMP.error = "could not load campaigns";
+  }
+  SALES_CAMP.loaded = true;
+  salesDrawCampaigns();
+}
+
+async function salesAdsRefresh(btn){
+  /* Ask Amazon for fresh reports. DOES NOT WAIT -- see /sales/ads-refresh.
+     The button says what actually happened rather than implying the numbers
+     have just changed, because they usually have not yet. */
+  const note = document.getElementById("sales_camp_note");
+  if(btn){ btn.disabled = true; btn.dataset.old = btn.innerHTML;
+           btn.innerHTML = '<i class="ti ti-loader"></i> Asking Amazon…'; }
+  try{
+    const r = await fetch("/sales/ads-refresh", {method: "POST"});
+    const j = await r.json();
+    if(note){
+      note.innerHTML = j && j.ok
+        ? '<span class="cc">' + _sEsc(j.note || "") + '</span>'
+        : '<span style="color:var(--red)">' + _sEsc((j && j.error) || "refresh failed") + '</span>';
+    }
+    if(j && j.ok && j.collected) await salesLoadCampaigns();
+  }catch(e){
+    if(note) note.innerHTML = '<span style="color:var(--red)">refresh failed</span>';
+  }
+  if(btn){ btn.disabled = false; btn.innerHTML = btn.dataset.old || "Refresh PPC data"; }
+}
+
+function salesDrawCampaigns(){
+  const host = document.getElementById("sales_campaigns");
+  if(!host) return;
+  const cur = SALES_CAMP.currency;
+  const rows = SALES_CAMP.rows || [];
+
+  let h = '<div style="display:flex;align-items:center;gap:10px;margin:2px 0 10px;flex-wrap:wrap">'
+    + '<div style="font-size:12.5px;font-weight:600">Campaign performance</div>'
+    + '<span class="cc" style="font-size:11px">' + rows.length + ' campaign'
+    + (rows.length === 1 ? '' : 's') + ' in this period'
+    + (SALES_CAMP.products && SALES_CAMP.products.length
+        ? ' · ' + _sEsc(SALES_CAMP.products.map(function(p){
+            return p.replace("SPONSORED_", "Sponsored ").toLowerCase()
+                    .replace(/(^|\s)\w/g, function(c){ return c.toUpperCase(); });
+          }).join(", "))
+        : '')
+    + '</span>'
+    + '<span style="margin-left:auto;display:flex;align-items:center;gap:8px">'
+    + '<span id="sales_camp_note" style="font-size:11px"></span>'
+    + '<button class="mktbtn" onclick="salesAdsRefresh(this)" '
+    + 'title="Ask Amazon to build fresh advertising reports. They take about ten '
+    + 'minutes, so the new figures appear on a later refresh — nothing is lost '
+    + 'in the meantime."><i class="ti ti-refresh"></i> Refresh PPC data</button>'
+    + '</span></div>';
+
+  if(!rows.length){
+    h += '<div class="cc" style="padding:14px;border:1px dashed var(--line2);'
+      +  'border-radius:6px;font-size:12px">'
+      +  _sEsc(SALES_CAMP.error
+                || "No advertising campaigns ran in this period.")
+      +  '</div>';
+    host.innerHTML = h; return;
+  }
+
+  const dir = SALES_CAMP.desc ? -1 : 1;
+  const sorted = rows.slice().sort(function(a, b){
+    let x = a[SALES_CAMP.sort], y = b[SALES_CAMP.sort];
+    // Unknown is not "smallest". A campaign with no ACOS must not sort as the
+    // most efficient one on the screen.
+    if(x === null || x === undefined) return 1;
+    if(y === null || y === undefined) return -1;
+    if(typeof x === "string") return dir * (x < y ? 1 : x > y ? -1 : 0);
+    return dir * (x - y);
+  });
+
+  h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:900px">'
+    + '<thead><tr>';
+  _CAMP_COLS.forEach(function(c){
+    h += '<th style="text-align:' + (c.kind === "text" || c.kind === "status" ? "left" : "right")
+      +  ';font-size:11px;cursor:pointer;white-space:nowrap;padding:6px 8px" '
+      +  'onclick="salesCampSort(' + jsArg(c.k) + ')">'
+      +  _sEsc(c.t) + (SALES_CAMP.sort === c.k ? (SALES_CAMP.desc ? " ▾" : " ▴") : "")
+      +  '</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  sorted.forEach(function(r){
+    h += '<tr>';
+    _CAMP_COLS.forEach(function(c){
+      const v = r[c.k];
+      let cell, align = (c.kind === "text" || c.kind === "status") ? "left" : "right";
+      if(c.kind === "text"){
+        cell = '<span style="display:block;overflow:hidden;text-overflow:ellipsis;'
+             + 'white-space:nowrap;max-width:320px;font-size:11.5px" title="'
+             + _sEsc(String(v || "")) + '">' + _sEsc(String(v || "—")) + '</span>';
+      } else if(c.kind === "status"){
+        // PAUSED and ARCHIVED are not failures -- a campaign that ran and was
+        // stopped still spent what it spent, and the history is the point of
+        // the table. Marked, not hidden.
+        const s = String(v || "").toUpperCase();
+        const col = s === "ENABLED" ? "var(--ok)"
+                  : (s === "PAUSED" ? "var(--warn)" : "");
+        cell = s ? '<span style="font-size:10.5px' + (col ? ";color:" + col : "") + '">'
+                   + _sEsc(s.charAt(0) + s.slice(1).toLowerCase()) + '</span>'
+                 : '<span class="cc">—</span>';
+      } else if(v === null || v === undefined){
+        cell = '<span class="cc">—</span>';
+      } else if(c.kind === "money")  cell = _sEsc(_sNum(v, "money", cur));
+      else if(c.kind === "money4")   cell = _sEsc(_sCur(cur) + Number(v).toFixed(3));
+      else if(c.kind === "pct")      cell = Number(v).toFixed(1) + "%";
+      else if(c.kind === "x")        cell = Number(v).toFixed(2) + "x";
+      else                           cell = Number(v).toLocaleString();
+      h += '<td style="text-align:' + align + ';padding:5px 8px;font-size:11.5px">'
+        +  cell + '</td>';
+    });
+    h += '</tr>';
+  });
+
+  // THE TOTAL ROW IS THE SERVER'S SUM, not a sum of what is displayed -- they
+  // are the same today and would silently stop being the same the moment this
+  // table gains a filter or a row limit.
+  const t = SALES_CAMP.totals || {};
+  const tAcos = (t.spend && t.ad_sales) ? (100 * t.spend / t.ad_sales) : null;
+  const tRoas = (t.spend && t.ad_sales) ? (t.ad_sales / t.spend) : null;
+  const tCpc  = (t.spend && t.clicks)   ? (t.spend / t.clicks) : null;
+  h += '</tbody><tfoot><tr style="border-top:1px solid var(--line2);font-weight:600">'
+    + '<td style="padding:6px 8px;font-size:11.5px">All campaigns</td>'
+    + '<td></td><td></td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + _sEsc(_sNum(t.spend, "money", cur)) + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + _sEsc(_sNum(t.ad_sales, "money", cur)) + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + (tAcos === null ? "—" : tAcos.toFixed(1) + "%") + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + (tRoas === null ? "—" : tRoas.toFixed(2) + "x") + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + Number(t.ad_orders || 0).toLocaleString() + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + Number(t.clicks || 0).toLocaleString() + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + Number(t.impressions || 0).toLocaleString() + '</td>'
+    + '<td style="text-align:right;padding:6px 8px;font-size:11.5px">' + (tCpc === null ? "—" : _sEsc(_sCur(cur) + tCpc.toFixed(3))) + '</td>'
+    + '</tr></tfoot></table></div>';
+
+  host.innerHTML = h;
 }
 
 /* ---- PPC summary cards ---------------------------------------------------
