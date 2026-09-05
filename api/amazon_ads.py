@@ -265,13 +265,32 @@ def test(cfg, account, marketplace):
 # READING CAMPAIGN DATA
 # ---------------------------------------------------------------------------
 #
-# BUILT BEFORE THE CREDENTIALS EXIST, and that is the whole problem with it.
+# BUILT BEFORE THE CREDENTIALS EXISTED, and that was the whole problem with it.
 #
 # CLAUDE.md Rule 4 is explicit: never guess what Amazon returns, read the schema.
-# Right now there is no connection, so the schema cannot be read -- which means
-# every field name below is from Amazon's published documentation and NOT from a
-# live response. That is a materially weaker thing and it is said out loud here
-# rather than discovered later.
+# Every field name below was originally from Amazon's published documentation and
+# NOT from a live response, which is a materially weaker thing.
+#
+# CONNECTED 5 Sep 2026 (nestwell_goods, EU, profile 3291303541830197) and the
+# check the next paragraph prescribes was run. It found two wrong names: the
+# spCampaigns report sends `campaignStatus` and `campaignBudgetAmount`, and
+# neither was among the candidates, so state and budget silently read as unset on
+# real data. Both are corrected in MAPPING below, from the live response.
+#
+# The metric names were right: impressions, clicks, cost, purchases30d, sales30d
+# and advertisedAsin all arrive exactly as listed.
+#
+# STILL UNVERIFIED, because no report that carries them has been pulled yet:
+# search_term, keyword, match_type, target_type. Check them the same way before
+# trusting anything they feed.
+#
+# ALSO FOUND: the v2 campaign endpoints used by raw_sample() and campaigns() are
+# GONE -- /v2/sp/campaigns and /v2/sp/adGroups both return HTTP 404
+# {"code":"NOT_FOUND","details":"Method Not Found"}. Amazon retired v2; the
+# replacement is a POST to /sp/campaigns/list, which _post_json's whitelist
+# deliberately refuses. Structure data therefore has to come from the reports
+# (which carry campaign id, name, status and budget) or the whitelist has to be
+# widened by a deliberate decision. Reporting is unaffected and works.
 #
 # So the code is built to be CORRECTED IN ONE PLACE rather than to be right
 # first time:
@@ -360,8 +379,16 @@ def _num(v):
 MAPPING = {
     "campaign_id": ("campaignId", "campaign_id", "id"),
     "campaign_name": ("name", "campaignName", "campaign_name"),
-    "state": ("state", "status", "servingStatus"),
-    "budget": ("budget", "dailyBudget", "budgetAmount"),
+    # CORRECTED 5 Sep 2026 FROM A LIVE RESPONSE, not from documentation.
+    # The spCampaigns report sends `campaignStatus` and `campaignBudgetAmount`.
+    # Neither was in the candidate lists, so both came back "" and None on real
+    # data -- a campaign with a £5 budget read as having no budget, and an
+    # ENABLED campaign read as having no state. Exactly the failure the header
+    # warned about: names written from the docs before anything could be read.
+    "state": ("campaignStatus", "state", "status", "servingStatus"),
+    "budget": ("campaignBudgetAmount", "budget", "dailyBudget", "budgetAmount"),
+    # DAILY reports carry the day; SUMMARY reports do not.
+    "date": ("date", "startDate"),
     "target_type": ("targetingType", "targeting_type"),
     "impressions": ("impressions",),
     "clicks": ("clicks",),
@@ -389,7 +416,7 @@ def _row(d):
     for k in ("impressions", "clicks", "spend", "orders", "sales", "budget"):
         out[k] = _num(out.get(k))
     for k in ("campaign_id", "campaign_name", "state", "target_type",
-              "search_term", "keyword", "match_type", "asin"):
+              "search_term", "keyword", "match_type", "asin", "date"):
         out[k] = str(out[k]) if out.get(k) is not None else ""
     return out
 
@@ -446,24 +473,37 @@ REPORT_TYPES = {
 }
 
 
-def report_request(creds, marketplace, kind, start, end):
+def report_request(creds, marketplace, kind, start, end, time_unit="SUMMARY"):
     """Ask Amazon to build one report. Returns its id.
 
     A POST, and the only kind this module can make -- see _post_json.
+
+    time_unit "DAILY" gives one row per day instead of one row for the whole
+    window. That is what ads_daily needs -- it is keyed on the day, and a
+    SUMMARY report cannot be stored there at all because it carries no date.
+    Amazon requires the `date` column when the unit is DAILY and REFUSES it when
+    the unit is SUMMARY, so the column list is built to match rather than being
+    a fixed constant.
     """
     spec = REPORT_TYPES.get(kind)
     if not spec:
         raise RuntimeError("Unknown report kind: %s" % kind)
+    unit = str(time_unit or "SUMMARY").upper()
+    if unit not in ("SUMMARY", "DAILY"):
+        raise RuntimeError("Unknown time unit: %s" % time_unit)
+    cols = list(spec["columns"])
+    if unit == "DAILY" and "date" not in cols:
+        cols.insert(0, "date")
     body = {
-        "name": "altascraper %s %s..%s" % (kind, start, end),
+        "name": "altascraper %s %s %s..%s" % (kind, unit.lower(), start, end),
         "startDate": start,
         "endDate": end,
         "configuration": {
             "adProduct": "SPONSORED_PRODUCTS",
             "groupBy": spec["groupBy"],
-            "columns": spec["columns"],
+            "columns": cols,
             "reportTypeId": spec["reportTypeId"],
-            "timeUnit": "SUMMARY",
+            "timeUnit": unit,
             "format": "GZIP_JSON",
         },
     }
@@ -512,14 +552,15 @@ def report_download(url):
     return [_row(r) for r in got if isinstance(r, dict)]
 
 
-def report(creds, marketplace, kind, start, end, wait=90, on_wait=None):
+def report(creds, marketplace, kind, start, end, wait=90, on_wait=None,
+           time_unit="SUMMARY"):
     """The whole three-step sequence, or an explanation of why not.
 
     Polls for up to `wait` seconds. Amazon builds these in anything from a few
     seconds to a couple of minutes, so a caller that cannot wait gets a clear
     "still building" rather than a silent empty list.
     """
-    rid = report_request(creds, marketplace, kind, start, end)
+    rid = report_request(creds, marketplace, kind, start, end, time_unit)
     waited = 0
     while waited < wait:
         st = report_status(creds, marketplace, rid)

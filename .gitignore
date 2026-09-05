@@ -15,6 +15,14 @@ config.json*
 # zip of the app must NEVER be committed. (e.g. "new app for brands shopify to amazon.zip")
 *.zip
 
+# The Advertising API handover note. It was written with the LIVE Ads client
+# secret and refresh token pasted into it in plain text, and it is a .md sitting
+# in the repo root -- which `git add .` (CLAUDE.md Rule 2's own command) would
+# have swept straight into history, where this repo already has keys awaiting
+# rotation. The credentials now live in config.json like every other secret;
+# the note is ignored as well, so a future paste back into it cannot leak either.
+ADS_API_INTEGRATION.md
+
 # --- ANOTHER COMPANY'S BUSINESS DATA ---
 # The Orbit inventory capture. It holds live figures, ASINs, unit costs and
 # screenshots for real agency CLIENTS (flux-footwear and others) -- not this
