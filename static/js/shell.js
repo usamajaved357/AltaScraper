@@ -1154,6 +1154,11 @@ function navTo(sec){
   // Checks the CONNECTION on open, never the reports -- those are two Amazon
   // report builds and belong behind the button.
   if(sec==="drppc"){ if(typeof drpOnOpen==="function")   drpOnOpen(); }
+  // The three advertising screens. Each reads its own endpoint and draws once;
+  // revisiting shows what is already there, like every other section here.
+  if(sec==="ppcanalytics"){ if(typeof ppcaLoad==="function" && !PPCA.data) ppcaLoad(); }
+  if(sec==="ppcterms"){ if(typeof ppctLoad==="function" && !PPCT.data) ppctLoad(); }
+  if(sec==="ppccampaigns"){ if(typeof ppccLoad==="function" && !PPCC.data) ppccLoad(); }
   if(sec==="imagelib"){ if(typeof imagelibOnOpen==="function") imagelibOnOpen(); }
   if(sec==="permissions"){ if(typeof permissionsOnOpen==="function") permissionsOnOpen(); }
   // studioPickerOnOpen draws the product picker and then calls
@@ -1243,6 +1248,9 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
                        "compliance","categories","drppc","permissions",
+                       // The three advertising screens. One computation layer
+                       // behind all three (domain/ppc_analytics.py).
+                       "ppcanalytics","ppcterms","ppccampaigns",
                        "reimbursements","brief",
                        // Phase 1 analytics. Manual only -- see routes/keywords_routes.py.
                        "kwspy","kwasin","ranktracker","kwhistory",

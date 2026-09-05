@@ -1046,6 +1046,29 @@ const SC_SERIES = {
   top3:       {label: "3rd",              color: "#ef4444", width: 2, dash: "", fill: 0},
   top4:       {label: "4th",              color: "#22c55e", width: 2, dash: "", fill: 0},
   top5:       {label: "5th",              color: "#8b5cf6", width: 2, dash: "", fill: 0},
+
+  // ---- Advertising ------------------------------------------------------
+  // The three PPC screens draw through this same vocabulary rather than
+  // carrying their own palette, so ad spend is one colour everywhere in the
+  // app and a reader moving between Sales and PPC Analytics is not relearning
+  // the key (CLAUDE.md Rule 12).
+  //
+  // Spend is red because it is the only line here that is a cost, and it is
+  // read against Sales and Profit on the same axis; the rate lines are
+  // UNFILLED for the same reason the conversion lines above are -- a shaded
+  // area under a percentage invites reading the area as a quantity.
+  ad_spend:   {label: "Ad spend",         color: "#ef4444", width: 2, dash: "", fill: 0},
+  ad_sales:   {label: "Ad sales",         color: "#38bdf8", width: 2, dash: "", fill: 0.30},
+  total_sales:{label: "Total sales",      color: "#fbbf24", width: 2, dash: "", fill: 0.20},
+  acos:       {label: "ACOS",             color: "#f97316", width: 2, dash: "", fill: 0},
+  tacos:      {label: "TACOS",            color: "#f97316", width: 2, dash: "", fill: 0},
+  roas:       {label: "ROAS",             color: "#8b5cf6", width: 2, dash: "", fill: 0},
+  cpc:        {label: "CPC",              color: "#22c55e", width: 2, dash: "", fill: 0},
+  ctr:        {label: "CTR",              color: "#3b82f6", width: 2, dash: "", fill: 0},
+  clicks:     {label: "Clicks",           color: "#22c55e", width: 2, dash: "", fill: 0.20},
+  impressions:{label: "Impressions",      color: "#3b82f6", width: 2, dash: "", fill: 0.20},
+  ad_profit:  {label: "Profit",           color: "#38bdf8", width: 2, dash: "", fill: 0},
+  breakeven:  {label: "Break-even ACOS",  color: "#6b7280", width: 1.5, dash: "6 4", fill: 0},
 };
 
 /* ---- CLICKING THE KEY TO HIDE A LINE ----------------------------------------

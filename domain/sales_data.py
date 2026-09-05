@@ -8,11 +8,20 @@ ASIN, in a single JSON document. Most of the dashboard is that one call.
 
 WHAT IS NOT HERE
 Ad spend, ACOS and ROAS. Those are the Amazon ADVERTISING API, which is a
-different API with its own authorisation, and this app is not connected to it.
-ads_daily exists and is read by the same code path; it is simply empty until
-either a Sponsored Products report is uploaded or the API is connected. The
-dashboard says "not connected" rather than showing a zero, because a zero is a
-claim that there was no ad spend.
+different API with its own authorisation -- its own developer registration, its
+own Login-with-Amazon application and its own refresh token. An SP-API token
+does not work there and one cannot be derived from the other.
+
+IT IS CONNECTED PER ACCOUNT, NOT PER APP. This used to say flatly that "this app
+is not connected to it", which stopped being true once the first account was
+authorised and would have sent a reader looking for a connection that already
+existed. Measured 6 Sep 2026: one of the six accounts has an advertising login
+and 1,410 rows in ads_daily; the other five have neither.
+
+So the answer is per account and is asked, never assumed: ads_daily is read by
+the same code path either way, and is simply empty for an account that has not
+authorised. The dashboard says "not connected" for those rather than showing a
+zero, because a zero is a claim that there was no ad spend.
 
 AMAZON'S LAG IS REAL
 Sales for today never exist, and yesterday is often incomplete. Every reply

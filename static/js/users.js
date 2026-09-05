@@ -150,6 +150,13 @@ const SECTION_FEATURE = {
   traffic:"traffic", sqp:"sqp", finance:"finance", aiusage:"aiusage",
   weekly:"weekly", daily:"daily",
   ppc:"ppc", drppc:"drppc",
+  // The three new advertising screens. Mapped ON ARRIVAL, not left to be
+  // noticed: an unmapped section is never hidden, which is what once showed the
+  // weekly brief's revenue to a user with sales="none". Their routes are all
+  // under /ppc/, which auth/guard.py already governs as "ppc", so the nav item
+  // and the endpoint hide on exactly the same permission -- a link that is
+  // visible and then refused is worse than one never shown.
+  ppcanalytics:"ppc", ppcterms:"ppc", ppccampaigns:"ppc",
   monitor:"monitor", trackers:"trackers", alerts:"alerts",
   catalog:"catalog", categories:"categories", compliance:"compliance",
   notify:"notify", setup:"setup",
