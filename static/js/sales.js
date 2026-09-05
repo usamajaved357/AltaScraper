@@ -1639,8 +1639,14 @@ async function salesAdsRefresh(btn){
   if(btn){ btn.disabled = true; btn.dataset.old = btn.innerHTML;
            btn.innerHTML = '<i class="ti ti-loader"></i> Asking Amazon…'; }
   try{
-    const r = await fetch("/sales/ads-refresh", {method: "POST"});
-    const j = await r.json();
+    // _sFetch, NOT a raw fetch. Every /sales/ call goes through it so the
+    // account is on the request and a reply that arrives after the workspace
+    // has been switched is dropped rather than painted onto the account you
+    // have just opened -- the account-mixing fault this codebase has been
+    // bitten by before. It does not cache or de-duplicate when opts are given,
+    // so a POST is sent exactly once. test_request_account.py enforces this.
+    const j = await _sFetch("/sales/ads-refresh", {method: "POST"});
+    if(j === null) return;               // superseded by an account switch
     if(note){
       note.innerHTML = j && j.ok
         ? '<span class="cc">' + _sEsc(j.note || "") + '</span>'

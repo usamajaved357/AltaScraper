@@ -597,8 +597,17 @@ function matchesSearch(r){
   // `upc` is what an app row calls its. Both shapes go through this one
   // predicate now, so the Live view and the Drafts view cannot disagree about
   // what counts as a match.
-  const fields = [r.sku, r.asin, own, r.competitor_asin, r.upc, r.ean,
-                  r.barcode, r.title, r.brand, r.model_number, r.source_url];
+  // ORDER IS PRESENTATION ONLY -- every field below is tried, so this is a
+  // list and not a precedence. It is written with `r.asin, r.competitor_asin`
+  // and `r.upc, r.title` adjacent because test_listings_asin.py and
+  // test_bookmarks_and_search.js read those two pairs out of this source to
+  // prove the source ASIN and the title are still searched. Splitting the pairs
+  // up broke both tests while changing no behaviour at all, which is a bad
+  // trade: the pairs cost nothing to keep and the tests are how anyone later
+  // finds out they dropped a field.
+  const fields = [r.sku, r.asin, r.competitor_asin, own,
+                  r.upc, r.title, r.ean, r.barcode, r.brand,
+                  r.model_number, r.source_url];
   for(const f of fields){
     if(!f) continue;
     const s = _sq(f);

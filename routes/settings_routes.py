@@ -146,39 +146,91 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
         account advertising through its own agency login overrides it on the
         account object. GET never returns a secret -- only whether one is
         stored and its last four characters, so you can tell which is saved.
+
+        THIS SCREEN READS AND WRITES PER ACCOUNT, because that is how
+        amazon_ads.creds_for() reads: the account first, the global only as a
+        fallback. It used to do BOTH halves globally, and the mismatch was not
+        cosmetic -- an account with its own advertising login showed as "not
+        connected" here while the sync was happily pulling its data, and saving
+        on this screen would have moved the credentials back to the global slot
+        and handed one seller's ad spend to every other account in the app.
+
+        An advertising login is one advertiser's. Only a set that genuinely
+        serves every account belongs in the global slot, and that is not a thing
+        this screen should do by accident.
         """
         from api import amazon_ads as _ads
 
         cfg = _cfg()
+
+        def _which():
+            """The account this request is about, and its record. May be None."""
+            # The page names it; otherwise the workspace that is open. This
+            # module is not given _active_account (see register's signature),
+            # and _state holds the same id -- so it is read from there rather
+            # than by widening the signature for one lookup.
+            aid = str((request.args.get("account_id")
+                       or (request.get_json(silent=True) or {}).get("account_id")
+                       or "")).strip()
+            if not aid:
+                aid = str((_state or {}).get("active_account_id", "") or "")
+            return aid
+
+        aid = _which()
         if request.method == "GET":
             def tail(v):
                 v = str(v or "")
                 return (v[-4:] if len(v) >= 4 else "•" * len(v)) if v else ""
+            acc = next((a for a in (cfg.get("accounts") or [])
+                        if str(a.get("id") or "") == aid), {})
+            # Exactly what the sync will use, resolved the same way, so this
+            # screen cannot disagree with the thing doing the work (Rule 12).
+            creds = _ads.creds_for(cfg, acc)
+            # And WHERE each one came from, because "connected" and "connected
+            # through a shared login" are different facts about this account.
+            scope = ("account" if any(acc.get(f) for f in _ads.FIELDS)
+                     else ("global" if any(cfg.get(f) for f in _ads.FIELDS)
+                           else "none"))
             return jsonify({
                 "ok": True,
-                "ads_client_id": str(cfg.get("ads_client_id", "") or ""),
-                "ads_profile_id": str(cfg.get("ads_profile_id", "") or ""),
-                "has_secret": bool(str(cfg.get("ads_client_secret", "") or "").strip()),
-                "secret_tail": tail(cfg.get("ads_client_secret")),
-                "has_refresh": bool(str(cfg.get("ads_refresh_token", "") or "").strip()),
-                "refresh_tail": tail(cfg.get("ads_refresh_token")),
+                "account_id": aid,
+                "scope": scope,
+                "ads_client_id": creds.get("ads_client_id", ""),
+                "ads_profile_id": creds.get("ads_profile_id", ""),
+                "has_secret": bool(creds.get("ads_client_secret")),
+                "secret_tail": tail(creds.get("ads_client_secret")),
+                "has_refresh": bool(creds.get("ads_refresh_token")),
+                "refresh_tail": tail(creds.get("ads_refresh_token")),
+                "missing": _ads.missing(creds),
+                "connected": not _ads.missing(creds),
                 "fields": list(_ads.FIELDS),
             })
         b = request.get_json(force=True) or {}
         try:
             raw = _settings.read_raw(CONFIG_PATH)
+            # WRITE ONTO THE ACCOUNT. Falls back to the global slot only when
+            # there is no account to write to at all, which is the same order
+            # creds_for reads in.
+            target = None
+            for a in (raw.get("accounts") or []):
+                if str(a.get("id") or "") == aid:
+                    target = a
+                    break
+            if target is None:
+                target = raw
             for f in ("ads_client_id", "ads_profile_id"):
                 if f in b:
-                    raw[f] = str(b.get(f) or "").strip()
+                    target[f] = str(b.get(f) or "").strip()
             # A blank secret KEEPS the stored one, so editing the client id
             # alone cannot wipe the token. Same rule as the eBay cert above.
             for f in ("ads_client_secret", "ads_refresh_token"):
                 v = str(b.get(f) or "").strip()
                 if v and not v.startswith(("•", "*", "PUT_", "ROTATE")):
-                    raw[f] = v
+                    target[f] = v
             _settings.write_raw(raw, CONFIG_PATH)
             _state["cfg"] = None
-            return jsonify({"ok": True})
+            return jsonify({"ok": True, "account_id": aid,
+                            "scope": ("account" if target is not raw else "global")})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 

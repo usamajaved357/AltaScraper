@@ -395,7 +395,7 @@ function lrStatus(r){
   const AMAZON_WORDS = ["ACTIVE", "SUPPRESSED", "INCOMPLETE", "INACTIVE"];
   const _noDraftHere = (typeof hasDraftRow === "function") && !hasDraftRow(r.sku);
   const _amazonsWord = AMAZON_WORDS.indexOf(String(stored || "").toUpperCase()) >= 0;
-  const stale = (st !== stored && stored && !_amazonsWord && !_noDraftHere)
+  const stale = (st !== stored) && stored && !_amazonsWord && !_noDraftHere
               ? stored : "";
   // The date the listing was last worked on. date_processed is what the
   // generator stamps; updated_at is the row's own. Neither is invented here.

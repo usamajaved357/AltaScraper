@@ -252,7 +252,8 @@ async function openAISettings(){
   let ad; try{ ad=await (await fetch("/settings/ads")).json(); }catch(e){ ad={ok:false}; }
   const adSafe=(ad&&ad.ok)?ad:{ads_client_id:"",ads_profile_id:"",
                                has_secret:false,secret_tail:"",
-                               has_refresh:false,refresh_tail:""};
+                               has_refresh:false,refresh_tail:"",
+                               account_id:"",scope:"none",connected:false};
   const keyNote = s.has_key
     ? (s.discover_ok ? `<span class="cc" style="color:var(--ok)">\u2713 OpenRouter connected \u2014 ${ (s.text_models||[]).length } text models, ${ (s.image_models||[]).length } image models available</span>`
                      : `<span class="cc" style="color:var(--warn)">Key present, but model discovery failed: ${esc(s.discover_error||'')} (showing fallback list)</span>`)
@@ -282,16 +283,35 @@ async function openAISettings(){
       <div style="margin-top:8px"><button class="primary" onclick="saveEbaySettings()"><i class="ti ti-check"></i> Save eBay credentials</button> <span id="ebay_status" class="cc"></span></div>
     </div>
     <div class="adminbox" style="margin-top:12px">
-      <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-target-arrow"></i> Amazon Advertising credentials <span class="cc">(global default)</span></div>
+      <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-target-arrow"></i> Amazon Advertising credentials <span class="cc">(per account)</span></div>
       <div class="cc" style="font-size:11.5px;margin-bottom:8px">
         A <b>different login from SP-API</b> — its own developer registration, its own
         Login-with-Amazon application and its own refresh token. An SP-API token will not
         work here and one cannot be derived from the other.
-        <br><br>Six things on the PPC screen need it and cannot be built without it: the
-        day trail, the 7/14/30 day toggle, the per-ASIN table, the Sponsored
-        Products/Brands/Display split, the enabled/paused filter and the live tracker.
-        The Search Term Report carries none of them.
+        <br><br>What it turns on, once connected: real Organic vs PPC on the Sales page,
+        the spend/ACOS/TACOS/ROAS/CPC cards, the campaign table, per-ASIN ad cost on the
+        Listings cards, the Search Term Report pulled automatically instead of uploaded by
+        hand, and Dr PPC's findings. The Search Term Report alone carries none of the
+        campaign-level figures.
         <br><br>Read-only: this app never writes a bid, a budget or a campaign state.
+        The one POST it can make asks Amazon to BUILD a report, and nothing else is
+        allowed through — see api/amazon_ads.py.
+      </div>
+      <!-- WHICH ACCOUNT THIS SAVES TO, said before anything is typed.
+           An advertising login belongs to ONE advertiser: /v2/profiles returns
+           only that seller's profiles, so a set of credentials entered here is
+           that account's and not the app's. These fields read and write the
+           WORKSPACE THAT IS OPEN, and the server resolves it the same way the
+           sync does. Without this line the page looks global, and someone would
+           reasonably expect one login to serve all six accounts -- which would
+           put one seller's ad spend on every other seller's screen. -->
+      <div class="reqnote" style="margin-bottom:8px">
+        These credentials are saved to <b>${esc(adSafe.account_id || 'the open workspace')}</b>${
+          adSafe.scope === 'global'
+            ? ' &mdash; currently coming from the shared login used by every account'
+            : (adSafe.scope === 'account' ? ' &mdash; its own advertising login' : '')
+        }. Each Amazon account needs its own advertising authorisation; one
+        login cannot read another seller's campaigns.
       </div>
       <table class="kv">
         <tr><td class="k">Client ID</td><td class="v"><input class="ed" id="ads_client" value="${esc(adSafe.ads_client_id||'')}" placeholder="amzn1.application-oa2-client...."></td></tr>
