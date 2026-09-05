@@ -578,6 +578,44 @@ function render(){
     // number on the tile and the number of cards below it agree.
     if(typeof FILTER !== "undefined" && String(FILTER).indexOf("live_") === 0
        && typeof liveItemIs === "function" && !liveItemIs(it, FILTER)) return false;
+    // A DRAFT-STATUS FILTER HIDES CATALOGUE ITEMS, it does not ignore them.
+    //
+    //     "Clicking the 3 listings Amazon refused link rearranges the listings
+    //      instead of filtering to show only the 3 refused listings"
+    //
+    // Same cause as the search below. 'refused', 'blocked', 'queued' and the
+    // rest are questions about an APP ROW's status, and passFilter answers them
+    // for app rows -- but this list is Amazon's catalogue and was only ever
+    // asked the live_ questions. So clicking "3 listings Amazon refused" hid
+    // the non-refused DRAFTS and left every catalogue tile exactly where it
+    // was, which on this tab is nearly the whole page.
+    //
+    // A catalogue-only item has no app row, so it cannot BE refused, queued or
+    // approved. It is hidden rather than shown on the grounds that nothing is
+    // known -- the mirror of the rule passFilter already applies the other way
+    // round for a row with no catalogue item behind it.
+    if(typeof FILTER !== "undefined"){
+      const _f = String(FILTER);
+      if(_f && _f !== "all" && _f !== "live_all" && _f.indexOf("live_") !== 0)
+        return false;
+    }
+    // AND THE SEARCH, which these were never subject to either.
+    //
+    //     "searching for ASIN B0HHSBPW8H returns 0 matches ... it still shows
+    //      listings (just rearranged) instead of showing No results found"
+    //
+    // Two symptoms, one cause, and it is here. The search box filters ROWS
+    // through passFilter -- app rows only -- and counts its matches against
+    // ROWS as well. This list is Amazon's catalogue, and nothing in the search
+    // path ever touched it. So on the Live tab the box would say "0 matches"
+    // while all 37 catalogue tiles stayed on screen underneath it: the count
+    // was right about the drafts and the list was answering a different
+    // question. Nothing was ever "rearranged" -- the unfiltered list simply
+    // never changed.
+    //
+    // The same predicate the drafts use, so one search means one thing on both
+    // tabs (CLAUDE.md Rule 12).
+    if(typeof matchesSearch === "function" && !matchesSearch(it)) return false;
     return true;
   });
   // EVERY card in the live group is now confirmed by Amazon: liveRows only survives

@@ -7286,7 +7286,23 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             if _st == "LIVE":
                 continue                      # already LIVE -- nothing to do
             # only re-verify rows that were actually submitted or were ready to be
-            if _st not in ("SUBMITTED", "API_ERROR", "API_READY", "APPROVED", "PENDING", ""):
+            #
+            # NEEDS_REVIEW IS IN THIS LIST BECAUSE IT WAS THE ONE BEING ASKED ABOUT.
+            #
+            #     "LIVE / we still record NEEDS_REVIEW ... Sync says synced 6m
+            #      ago but status hasn't changed — why?"
+            #
+            # Because this line skipped it. The screen told the owner a Sync
+            # would correct the stale record, and the re-verify then refused to
+            # look at exactly the status the screen was complaining about, so no
+            # number of Syncs could ever have changed it.
+            #
+            # Safe to include: nothing below promotes on our own opinion. A row
+            # only becomes LIVE when Amazon itself returns BUYABLE or
+            # DISCOVERABLE for it, and a row Amazon does not confirm is left
+            # exactly as it is with a note.
+            if _st not in ("SUBMITTED", "API_ERROR", "API_READY", "APPROVED",
+                           "NEEDS_REVIEW", "PENDING", ""):
                 continue
             _rstatus, _rerrs, _rwhy, _rasin = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
             _checked += 1
