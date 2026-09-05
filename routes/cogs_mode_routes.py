@@ -10,6 +10,8 @@ Two modes, asked for as a toggle on the Sales page:
     GET  /cogs/mode                which mode, and what it means
     POST /cogs/mode                switch it
     POST /cogs/order               correct ONE order's cost by hand
+    GET  /cogs/orders/template.csv the same correction, for MANY orders
+    POST /cogs/orders/upload       read the filled-in file back
     POST /cogs/refreeze            re-cost a window after switching mode
 
 Its own file because it is its own feature (CLAUDE.md Rule 7), and because the
@@ -25,13 +27,34 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account,
              _save_account, _cogs_overrides):
 
     def _scope():
-        aid, _acc = _req_acct.for_read(request, _state)
+        # BOTH SPELLINGS, because the app uses both and always has.
+        #
+        # request_account.named() reads `account_id` only; two thirds of the
+        # route files read `request.args.get("id") or request.args.get("account_id")`
+        # and a page may legitimately send either. This one accepted only the
+        # first, so ?id=nestwell_goods silently fell through to whichever
+        # workspace happened to be open -- measured: a template downloaded for
+        # nestwell_goods arrived filled with miles_lubricants' orders, named
+        # correctly in the filename and wrong inside.
+        #
+        # Deliberately NOT fixed by teaching named() the `id` spelling: several
+        # routes use ?id= to mean something else entirely (miles_routes a run
+        # id, notify_routes a channel id), and widening the shared resolver
+        # would make those resolve an account from an unrelated number.
+        # ORDER MATTERS: what the page NAMED, in either spelling, before any
+        # fallback. for_read() already falls back to the open workspace itself,
+        # so asking it first and testing the answer afterwards can never reach
+        # the second spelling -- which is precisely how ?id= was being ignored.
+        b = request.get_json(silent=True) or {}
+        aid = (_req_acct.named(request)
+               or str(request.args.get("id") or b.get("id") or "").strip())
+        if not aid:
+            aid = str((_state or {}).get("active_account_id", "") or "")
         if not aid:
             try:
                 aid = str((_active_account() or {}).get("id") or "")
             except Exception:
                 aid = ""
-        b = request.get_json(silent=True) or {}
         mkt = (request.args.get("marketplace") or b.get("marketplace")
                or _state.get("active_marketplace") or "").upper()
         return aid, mkt
@@ -81,6 +104,102 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account,
                         "note": "Existing costs stay as they were. Use "
                                 "'recost' to work the window out again on the "
                                 "new mode."})
+
+    @app.route("/cogs/orders/template.csv")
+    def cogs_orders_template():
+        """The order-cost sheet: one row per order line, cost column empty.
+
+        Handed out with `cost now` filled in beside the empty `cost`, so the
+        sheet is corrected rather than retyped -- and so a row that is already
+        right can simply be left alone, which is what makes an unedited upload
+        harmless.
+        """
+        import csv as _csv
+        import io as _io
+        from flask import Response
+        from domain import order_cogs_sheet as _ocs
+
+        wsid, mkt = _scope()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "open an account and pick a marketplace first — a cost is "
+                "written against one order of one account")}), 400
+        start = (request.args.get("start") or "").strip() or None
+        end = (request.args.get("end") or "").strip() or None
+        only = str(request.args.get("uncosted") or "").lower() in ("1", "true", "yes")
+
+        headers, rows = _ocs.template_rows(CONFIG_PATH, wsid, mkt, start, end, only)
+        buf = _io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(headers)
+        for r in rows:
+            w.writerow(r)
+        # utf-8-sig: Excel opens a plain UTF-8 CSV in the wrong encoding and
+        # mangles every pound sign and every accented product name.
+        data = buf.getvalue().encode("utf-8-sig")
+        name = "order-costs-%s-%s.csv" % (wsid, mkt)
+        return Response(data, mimetype="text/csv", headers={
+            "Content-Disposition": 'attachment; filename="%s"' % name})
+
+    @app.route("/cogs/orders/upload", methods=["POST"])
+    def cogs_orders_upload():
+        """Read a filled-in order-cost sheet and write every cost in it.
+
+        SERVER-SIDE, like the product cost sheet and for the same reason: a
+        product name such as "Grill, Large" is quoted and contains a comma, so
+        splitting lines on commas in the browser shifts every column after it
+        and reads the cost out of the wrong place. domain/source_bulk.read_table
+        parses it properly, and spreadsheets as well.
+        """
+        from domain import order_cogs_sheet as _ocs
+        from domain import source_bulk as _sb
+
+        wsid, mkt = _scope()
+        _missing = [n for n, v in (("account", wsid), ("marketplace", mkt)) if not v]
+        if _missing:
+            return jsonify({"ok": False, "error": (
+                "could not read that file: no %s came with the request. A cost "
+                "is written against one order of one account, so both are "
+                "needed." % " or ".join(_missing))}), 400
+
+        f = request.files.get("file")
+        if not f:
+            return jsonify({"ok": False, "error": "no file was sent"}), 400
+        headers, rows, err = _sb.read_table(f.read(), f.filename or "")
+        if err:
+            return jsonify({"ok": False, "error": err}), 400
+        if not headers:
+            return jsonify({"ok": False,
+                            "error": "there were no columns in that file"}), 400
+
+        res = _ocs.apply_sheet(CONFIG_PATH, wsid, mkt, headers, rows)
+        if not res.get("ok"):
+            return jsonify(res), 400
+
+        # SAY WHAT HAPPENED TO EVERY ROW, in the order it matters. A bulk action
+        # that reports only its successes hides exactly the rows worth looking at.
+        bits = []
+        if res["set"]:
+            bits.append("Set the cost on %d order line%s."
+                        % (res["set"], "" if res["set"] == 1 else "s"))
+        if res["blank"]:
+            bits.append("%d row%s had no cost filled in and %s left alone."
+                        % (res["blank"], "" if res["blank"] == 1 else "s",
+                           "was" if res["blank"] == 1 else "were"))
+        if res["unknown_order"]:
+            bits.append("%d order%s in the file %s not found in this account "
+                        "and marketplace."
+                        % (res["unknown_order"],
+                           "" if res["unknown_order"] == 1 else "s",
+                           "was" if res["unknown_order"] == 1 else "were"))
+        if res["bad_number"]:
+            bits.append("%d cost%s could not be read as a number."
+                        % (res["bad_number"],
+                           "" if res["bad_number"] == 1 else "s"))
+        if not bits:
+            bits.append("Nothing in that file changed anything.")
+        res["note"] = " ".join(bits)
+        return jsonify(res)
 
     @app.route("/cogs/order", methods=["POST"])
     def cogs_order_set():
