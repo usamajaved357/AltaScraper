@@ -66,7 +66,7 @@ async function returnsListLoad(){
     const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
               ? CUR_ACCOUNT.id : "";
     const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
-    if(a) qs.push("id=" + encodeURIComponent(a));
+    if(a) qs.push("account=" + encodeURIComponent(a));
     if(m && m !== "__all__") qs.push("marketplace=" + encodeURIComponent(m));
     const r = await fetch("/returns/list?" + qs.join("&"));
     const j = await r.json();
@@ -242,7 +242,7 @@ async function returnsListOpen(identity){
     const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
               ? CUR_ACCOUNT.id : "";
     const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
-    if(a) qs.push("id=" + encodeURIComponent(a));
+    if(a) qs.push("account=" + encodeURIComponent(a));
     if(m && m !== "__all__") qs.push("marketplace=" + encodeURIComponent(m));
     const r = await fetch("/returns/detail?" + qs.join("&"));
     RETL.detail = await r.json();
@@ -467,7 +467,7 @@ async function returnsSend(){
     const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
               ? CUR_ACCOUNT.id : "";
     const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
-    if(a) qs.push("id=" + encodeURIComponent(a));
+    if(a) qs.push("account=" + encodeURIComponent(a));
     if(m && m !== "__all__") qs.push("marketplace=" + encodeURIComponent(m));
     const r = await fetch("/returns/message?" + qs.join("&"), {
       method: "POST", headers: {"Content-Type": "application/json"},

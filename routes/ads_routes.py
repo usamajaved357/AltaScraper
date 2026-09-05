@@ -47,6 +47,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         the PAGE named first, the global only as a fallback. routes/scope.py
         exists precisely so this is not decided a fifteenth way (Rule 12).
         """
+        # `account` is the app's one name for this; `account_id` is still read
+        # by request_account.named() so a page that has not been updated cannot
+        # silently answer for a different seller. See ACCOUNT_KEYS there.
         aid, acc = _req_acct.for_read(request, _state, get_account=_account_by_id)
         if acc is None:
             try:

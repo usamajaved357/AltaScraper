@@ -252,8 +252,8 @@ function _sIsLive(u){
 async function _sFetch(url, opts){
   const acct = _sAcct();
   let u = String(url);
-  if(acct && u.indexOf("account_id=") < 0){
-    u += (u.indexOf("?") < 0 ? "?" : "&") + "account_id=" + encodeURIComponent(acct);
+  if(acct && u.indexOf("account=") < 0){
+    u += (u.indexOf("?") < 0 ? "?" : "&") + "account=" + encodeURIComponent(acct);
   }
   // THE ACCOUNT IS PART OF THE KEY, AND NOTHING IS SHARED WITHOUT ONE.
   //
@@ -336,7 +336,7 @@ function _sForget(){
 function _sScope(){
   const q = [];
   const a = _sAcct();
-  if(a) q.push("account_id=" + encodeURIComponent(a));
+  if(a) q.push("account=" + encodeURIComponent(a));
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
     q.push("marketplace=" + encodeURIComponent(WS_MARKET));
   return q.join("&");
@@ -346,7 +346,7 @@ function _sQuery(){
   const q=["preset="+encodeURIComponent(SALES.preset),
            "granularity="+encodeURIComponent(SALES.gran)];
   const _a = _sAcct();
-  if(_a) q.push("account_id="+encodeURIComponent(_a));
+  if(_a) q.push("account="+encodeURIComponent(_a));
   if(SALES.preset==="custom" && SALES.start && SALES.end){
     q.push("start="+encodeURIComponent(SALES.start));
     q.push("end="+encodeURIComponent(SALES.end));

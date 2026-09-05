@@ -89,14 +89,23 @@ print("\n== the ROW's account, not whichever workspace is open ==")
 _save = CODE.split("async function ordSetOrderCogs")[1].split("\nfunction ")[0]
 truthy("the save takes an account and a marketplace",
        "ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace)" in CODE)
-truthy("  and sends account_id -- the key request_account.named() reads",
-       "account_id: accountId" in _save)
-falsy("  not 'account', which that function does not look at",
-      re.search(r"\baccount:\s*accountId", _save))
-truthy("named() really does read account_id",
-       'get("account_id")' in open(os.path.join(HERE, "domain",
-                                                "request_account.py"),
-                                   encoding="utf-8").read())
+# THE KEY IS `account` NOW, AND THE INVARIANT IS UNCHANGED: whatever this
+# sends has to be a key request_account.named() actually reads. It used to be
+# account_id, because that was the only key named() looked at -- and this test
+# existed precisely because sending 'account' to a resolver that ignored it
+# meant the save silently used whichever workspace was open.
+#
+# The app has one name for this now. named() reads `account` first and
+# `account_id` second, so both halves are still checked here: the browser sends
+# the canonical name, and the resolver genuinely accepts it.
+_RA = open(os.path.join(HERE, "domain", "request_account.py"),
+           encoding="utf-8").read()
+truthy("  and sends account -- the key request_account.named() reads",
+       re.search(r"\baccount:\s*accountId", _save))
+truthy("named() really does read account", 'get(key)' in _RA
+       and '"account"' in _RA)
+truthy("  and still accepts the older account_id, so nothing silently breaks",
+       '"account_id"' in _RA)
 truthy("the panel passes the row's own account down",
        "r.account_id, r.marketplace" in CODE)
 truthy("  and the row's own order id, not the detail payload's",

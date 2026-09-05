@@ -52,31 +52,45 @@ function runId(acct) {
   return fn(acct, "").scopeAccountId();
 }
 
+// THE PARAMETER IS NAMED `account`, AND THAT IS THE POINT OF THESE STRINGS.
+//
+// It was `id`. The app had grown three spellings for the same thing --
+// `account`, `account_id` and `id` -- and which one a route understood was a
+// coin toss: a cost sheet requested for nestwell_goods downloaded
+// miles_lubricants' orders, and /returns/detail answered about whichever
+// workspace was open. Neither errored. One name now, sent by every screen.
+//
+// Every invariant below is unchanged; only the spelling moved. `id` is still
+// ACCEPTED by the routes that always took it, so a page that has not been
+// updated cannot silently answer for the wrong seller -- see
+// domain/request_account.ACCOUNT_KEYS.
 console.log("\n== it sends what it knows and omits what it does not ==");
 check("account and marketplace",
-  run({ id: "jack_uk" }, "UK") === "?id=jack_uk&marketplace=UK");
+  run({ id: "jack_uk" }, "UK") === "?account=jack_uk&marketplace=UK");
 // An ABSENT parameter is how you say "you decide": every route's _scope() falls
-// back to the active account when a value is missing. An EMPTY id looks like an
-// answer instead.
-check("no account means no id at all", run(null, "UK") === "?marketplace=UK");
+// back to the active account when a value is missing. An EMPTY account looks
+// like an answer instead.
+check("no account means no account param at all",
+  run(null, "UK") === "?marketplace=UK");
 check("no marketplace means no marketplace at all",
-  run({ id: "jack_uk" }, "") === "?id=jack_uk");
+  run({ id: "jack_uk" }, "") === "?account=jack_uk");
 check("nothing known means no query string at all", run(null, "") === "");
 
 console.log("\n== '__all__' is not a country ==");
 // The bug daily.js and weekly.js carried: forwarding the UI's word for "every
 // marketplace" to a server that expects a marketplace code.
 check("__all__ is never sent as a marketplace",
-  run({ id: "jack_uk" }, "__all__") === "?id=jack_uk");
+  run({ id: "jack_uk" }, "__all__") === "?account=jack_uk");
 check("  and the account still is", run(null, "__all__") === "");
 
 console.log("\n== extra parameters ==");
 check("extras are appended",
-  run({ id: "a" }, "UK", { metric: "bsr" }) === "?id=a&marketplace=UK&metric=bsr");
+  run({ id: "a" }, "UK", { metric: "bsr" })
+    === "?account=a&marketplace=UK&metric=bsr");
 check("  empty extras are dropped",
-  run({ id: "a" }, "UK", { metric: "" }) === "?id=a&marketplace=UK");
+  run({ id: "a" }, "UK", { metric: "" }) === "?account=a&marketplace=UK");
 check("  and values are encoded",
-  run({ id: "a b" }, "UK") === "?id=a%20b&marketplace=UK");
+  run({ id: "a b" }, "UK") === "?account=a%20b&marketplace=UK");
 
 console.log("\n== the id on its own, for form posts ==");
 check("the account id is returned", runId({ id: "jack_uk" }) === "jack_uk");

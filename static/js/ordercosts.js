@@ -25,12 +25,11 @@ function _ocQS(){
   const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
             ? CUR_ACCOUNT.id : "";
   const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
-  // account_id AND id: the app reads both spellings depending on the screen,
-  // and sending both costs nothing and removes a whole class of "it answered
-  // for the wrong account" bug. Measured once already: a template downloaded
-  // for one account arrived full of another's orders.
-  if(a){ q.push("account_id=" + encodeURIComponent(a));
-         q.push("id=" + encodeURIComponent(a)); }
+  // ONE NAME: `account`. This used to send account_id AND id, because the app
+  // read three different spellings depending on the screen and sending all of
+  // them was the only way to be sure. The server now reads `account`
+  // everywhere -- domain/request_account.ACCOUNT_KEYS -- so one is enough.
+  if(a) q.push("account=" + encodeURIComponent(a));
   if(m && m !== "__all__") q.push("marketplace=" + encodeURIComponent(m));
   return q.join("&");
 }

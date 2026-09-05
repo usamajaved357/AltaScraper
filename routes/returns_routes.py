@@ -1,4 +1,4 @@
-"""routes/returns_routes.py -- why things come back, and what it costs.
+﻿"""routes/returns_routes.py -- why things come back, and what it costs.
 
     GET  /returns/report      pull it from Amazon for the open account
     POST /returns/upload      parse a returns file you supply
@@ -34,6 +34,7 @@ from flask import request, jsonify, Response
 
 from domain import returns_intel as _ri
 from domain import returns_view as _rv
+import domain.request_account as _req_acct
 from routes import scope as _scope_mod
 
 # Amazon refuses a wider window on this report -- measured: 90 days comes back
@@ -102,7 +103,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     def _scope():
         return _scope_mod.resolve(
             state=_state, account=_active_account() or {},
-            asked_id=request.args.get("id"),
+            # `account` is the app's one name for this. `id` is still read --
+            # this screen has always used it and a page that has not been
+            # updated must not silently answer for a different seller. See
+            # domain/request_account.ACCOUNT_KEYS.
+            asked_id=_req_acct.named_any(request),
             asked_marketplace=request.args.get("marketplace"),
             # WITHOUT THIS, THE ID AND THE CREDENTIALS DISAGREE.
             #
@@ -204,12 +209,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 # CANCELLED means Amazon had nothing to give, which is not an
                 # error and must not read as one.
                 return [], [], ("__EMPTY__" if st == "CANCELLED" else
-                                "Amazon could not build the report (FATAL) — "
+                                "Amazon could not build the report (FATAL) â€” "
                                 "usually the window is too wide; this one is "
                                 "limited to %d days." % MAX_DAYS)
         if not doc:
             return [], [], ("Amazon is still building the report. Try again in "
-                            "a minute — they can be slow.")
+                            "a minute â€” they can be slow.")
         try:
             d = rc.get_report_document(doc, download=True)
             body = (d.payload if hasattr(d, "payload") else d) or {}
@@ -258,7 +263,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "unavailable": ([] if kind == "fba" else [
                 {"section": "Disposition & recovery",
                  "why": ("Amazon grades a return's condition only when it "
-                         "receives it — which happens with FBA. A "
+                         "receives it â€” which happens with FBA. A "
                          "seller-fulfilled return goes straight back to you, so "
                          "Amazon never sees it and has nothing to report. "
                          "Upload an FBA Customer Returns file to fill this in.")},
@@ -307,7 +312,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify(_answer([], "mfn", wsid, mkt, start.isoformat(),
                                    end.isoformat(),
                                    note=("Amazon returned nothing for the last "
-                                         "%d days — which for returns is good "
+                                         "%d days â€” which for returns is good "
                                          "news, not a failure." % days)))
         if err:
             # NOT AN ERROR PAGE. Amazon being slow, or an account that is
@@ -386,7 +391,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "note": ("" if cov.get("held") else
                      "No returns have been stored for this account yet. Press "
                      "Refresh to pull Amazon's report, or upload a returns "
-                     "file — Amazon caps that report at 60 days, so anything "
+                     "file â€” Amazon caps that report at 60 days, so anything "
                      "older has to be uploaded once and is then kept."),
         })
 
@@ -432,7 +437,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         #     one place that answers it, and test_account_scope_audit.py exists
         #     precisely because "the hole that survives a fix is the one next
         #     door". It caught this route.
-        _bad = _wrong_account(request.args.get("id"))
+        _bad = _wrong_account(_req_acct.named_any(request))
         if _bad:
             return _bad
 
@@ -451,7 +456,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 "permitted_actions": [], "actions_error": "",
                 "actions_note": (
                     "%s has no Amazon developer app of its own, so Amazon "
-                    "cannot be asked what may be sent about this order — "
+                    "cannot be asked what may be sent about this order â€” "
                     "borrowed credentials would answer for the account they "
                     "were borrowed from. Connect this account's own SP-API "
                     "credentials under Account & sheets."
@@ -482,7 +487,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "actions_note": (
                 "Amazon decides which messages may be sent about an order, and "
                 "the list differs between orders. Free-form messages are not "
-                "possible through the API — each of these is one of Amazon's "
+                "possible through the API â€” each of these is one of Amazon's "
                 "own templates." if actions else
                 ("Amazon could not be asked what may be sent about this order."
                  if not perm.get("ok") else
@@ -527,7 +532,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
         b = request.get_json(silent=True) or {}
 
-        _bad = _wrong_account(request.args.get("id") or b.get("id"))
+        _bad = _wrong_account(_req_acct.named_any(request))
         if _bad:
             return _bad
         from domain import accounts as _acc_check
@@ -635,12 +640,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         for name, text in blobs:
             headers, rows, err = _split(text)
             if err == "__EMPTY__":
-                rejected.append("%s — no rows in it" % name)
+                rejected.append("%s â€” no rows in it" % name)
                 continue
             parsed, kind, skipped = _rv.parse_rows(headers, rows)
             if not kind:
                 rejected.append(
-                    "%s — those columns are not an Amazon returns report "
+                    "%s â€” those columns are not an Amazon returns report "
                     "(found: %s)" % (name, ", ".join(str(h) for h in headers[:8])))
                 continue
             held, added, dupes = _rv.merge(held, parsed)
@@ -825,7 +830,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                           got.get("marketplace") or "", got.get("start") or "",
                           got.get("end") or "",
                           note=("Read %d listings from your Listing Quality "
-                                "file — %d already carry Amazon's returns badge "
+                                "file â€” %d already carry Amazon's returns badge "
                                 "and %d are at risk of it."
                                 % (counts["rows"], counts["badge_showing"],
                                    counts["at_risk_count"])))
@@ -854,7 +859,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if not got.get("summary"):
             return jsonify({"ok": False, "error": (
                 "There is nothing to export yet. Load the returns report on "
-                "this screen first — the export writes exactly what you are "
+                "this screen first â€” the export writes exactly what you are "
                 "looking at, so it needs you to be looking at something. (If "
                 "the app has restarted since, load it again.)")}), 400
         s = got["summary"]
@@ -888,3 +893,4 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 # kept the first one would hand back last week's figures under
                 # this week's filename.
                 "Cache-Control": "no-store"})
+

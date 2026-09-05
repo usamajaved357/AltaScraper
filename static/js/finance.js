@@ -144,7 +144,7 @@ async function financeLoad(){
   // The page knows both. Every other money screen already says so; this is a
   // page of money that did not. See routes/scope.py.
   if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id){
-    qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+    qs.push("account=" + encodeURIComponent(CUR_ACCOUNT.id));
   }
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__"){
     qs.push("marketplace=" + encodeURIComponent(WS_MARKET));

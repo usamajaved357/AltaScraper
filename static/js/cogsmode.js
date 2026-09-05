@@ -116,7 +116,7 @@ async function cogsModeSet(mode){
   try{
     const j = await _sFetch("/cogs/mode", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({mode: mode, account_id: _sAcct(),
+      body: JSON.stringify({mode: mode, account: _sAcct(),
                             marketplace: (typeof WS_MARKET !== "undefined" ? WS_MARKET : "")})});
     if(j === null) return;
     if(!j || !j.ok){ toast((j && j.error) || "Could not change that"); return; }
@@ -143,7 +143,7 @@ async function cogsRefreeze(){
   const j = await _sFetch("/cogs/refreeze", {method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({start: s.start, end: s.end, force: true,
-                          account_id: _sAcct(),
+                          account: _sAcct(),
                           marketplace: (typeof WS_MARKET !== "undefined" ? WS_MARKET : "")})});
   if(j === null) return;
   if(!j || !j.ok){ toast((j && j.error) || "Could not re-cost that period"); return; }

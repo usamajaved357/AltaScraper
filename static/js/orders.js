@@ -1272,7 +1272,7 @@ async function ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace){
     const j = await (await fetch("/cogs/order", {
       method: "POST", headers: {"Content-Type": "application/json"},
       // account_id is the key request_account.named() reads. "account" is not.
-      body: JSON.stringify({account_id: accountId || "",
+      body: JSON.stringify({account: accountId || "",
                             marketplace: marketplace || "",
                             order_id: orderId, sku: sku || "",
                             cost: raw === "" ? null : raw})

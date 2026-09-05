@@ -96,7 +96,7 @@ async function stockLoad(force){
     const qs = [];
     try{
       if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
-        qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+        qs.push("account=" + encodeURIComponent(CUR_ACCOUNT.id));
       if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
         qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
     }catch(e){}

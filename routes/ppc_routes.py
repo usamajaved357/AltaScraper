@@ -648,7 +648,7 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
         except Exception:
             body = {}
         form = request.form if request.form else {}
-        aid = (request.args.get("id") or request.args.get("account_id")
+        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id")
                or form.get("id") or form.get("account_id")
                or body.get("id") or body.get("account_id") or "").strip()
         mkt = (request.args.get("marketplace") or form.get("marketplace")
