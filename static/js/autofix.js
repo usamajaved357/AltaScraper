@@ -1407,28 +1407,95 @@ function _fullDataParts(r){
   const _idcLine = (_idc && typeof amzIdConflictLine === "function")
     ? amzIdConflictLine(_idc) : "";
 
+  /* WHAT AMAZON WILL LET YOU CHANGE ON THIS LISTING.
+   *
+   *     "some things can not be changed like brand check amazon answer if it
+   *      can be changed or not when the listing is live on amazon and make the
+   *      boxes editable or not according to it, and also you know in draft
+   *      everything is changeable"
+   *
+   * TWO ANSWERS, ASKED IN THAT ORDER, and neither of them is a list kept here:
+   *
+   *   1. THE PRODUCT TYPE DEFINITION. Amazon marks some attributes read-only
+   *      for a given type; that list arrives with the schema as sc.readonly and
+   *      the attribute rows have honoured it for a while (see pdpAttrRows).
+   *      These identity boxes never asked, so a field Amazon would refuse
+   *      looked exactly like one it would take.
+   *
+   *   2. WHETHER THE LISTING EXISTS ON AMAZON YET. A draft is ours alone and
+   *      everything on it is changeable. Once it is LIVE the brand and the
+   *      product identifier belong to the ASIN in Amazon's catalogue rather
+   *      than to our offer, and a putListingsItem that tries to change them is
+   *      refused -- which is the same refusal the barcode warning above is
+   *      about, arriving from the other direction.
+   *
+   * THE LOCK SAYS WHICH OF THE TWO IT IS, because the remedies are different: a
+   * type-level read-only field is never editable, and a catalogue-owned one is
+   * editable right up until you submit.
+   *
+   * Deliberately NOT locked when live: title, bullets, description, price,
+   * quantity and handling. Those are the offer and the copy, they are what this
+   * app exists to change, and Amazon takes them on a live listing.
+   */
+  const _live = (typeof lsInLiveCatalogue === "function")
+    ? !!lsInLiveCatalogue(r)
+    : String(r.status||"").toUpperCase() === "LIVE";
+  const _roList = sc.readonly || [];
+  // The Amazon attribute each identity COLUMN lands in. Same mapping the stale
+  // banner uses (PDP_COL_TO_ATTR in pdp.js) -- named here rather than imported
+  // because this file must keep working when pdp.js has not loaded.
+  const _COL_ATTR = {"Brand":"brand", "UPC":"externally_assigned_product_identifier"};
+  const _lockOn = (col) => {
+    const attr = _COL_ATTR[col];
+    if(attr && _roList.indexOf(attr) >= 0){
+      return "Amazon marks this read-only for " + (r.product_type || "this product type")
+           + " — it cannot be set from here.";
+    }
+    if(_live){
+      return "This listing is live on Amazon. " + (col === "Brand" ? "The brand" : "The barcode")
+           + " belongs to the ASIN in Amazon's catalogue, not to your offer, so a change "
+           + "here would be refused. Amazon Support can amend it.";
+    }
+    return "";
+  };
+  /* A LOCKED BOX SHOWS ITS VALUE AND SAYS WHY IT IS LOCKED. It is not hidden --
+   * the value is the thing you came to check -- and it is not a disabled input
+   * either, because a greyed box with no explanation is the state that gets
+   * reported as "the app won't let me type". */
+  const _roCell = (val, why) =>
+    '<span class="dw2-ro" title="' + esc(why) + '">' + esc(String(val || "") || "—")
+    + '</span><i class="ti ti-lock dw2-rolock" title="' + esc(why) + '"></i>';
+
   const idRows=[
     dwFieldRow("Product type", productTypeCell(sku, r), {hint:"Amazon-assigned from the catalogue. Changing it can cause rejection."}),
     dwFieldRow("SKU", dwRo(r.sku)),
     // The brand gets a SECONDARY note, not the alarm: "The brand field can show
     // a secondary note ... but the EAN field is where the user needs to act
     // first." Only when Amazon actually named the catalogue's brand.
-    dwFieldRow("Brand", editCell(sku,"col","Brand",r.brand,null,false,true)
-      + ((_idc && _idc.brand)
-          ? '<div class="dw2-idnote">Amazon\'s catalogue has <b>' + esc(_idc.brand)
-            + '</b> for this barcode. Change the barcode, not this.</div>' : ""),
-      {prov:(rowProvenance(r)||{}).brand}),
+    (function(){
+       const why = _lockOn("Brand");
+       return dwFieldRow("Brand",
+         (why ? _roCell(r.brand, why)
+              : editCell(sku,"col","Brand",r.brand,null,false,true))
+         + ((_idc && _idc.brand)
+             ? '<div class="dw2-idnote">Amazon\'s catalogue has <b>' + esc(_idc.brand)
+               + '</b> for this barcode. Change the barcode, not this.</div>' : ""),
+         {prov:(rowProvenance(r)||{}).brand});
+    })(),
     dwFieldRow("Condition", dwRo("New")),
     dwFieldRow("Category", dwRo((r.category||r.amazon_category||"")+(r.subcategory?(" › "+r.subcategory):""))),
     dwFieldRow("Browse node(s)", dwRo((r.attributes||{}).recommended_browse_nodes||(r.attributes||{}).browse_node||"")),
-    dwFieldRow("Barcode / GTIN",
-      '<div class="dw2-idwrap' + (_idc ? " bad" : "") + '">'
-      + editCell(sku,"col","UPC",r.barcode)
-      + (_idcLine
-          ? '<div class="dw2-idclash"><i class="ti ti-alert-triangle"></i>'
-            + '<span>' + _idcLine + '</span></div>'
-          : "")
-      + '</div>'),
+    (function(){
+       const why = _lockOn("UPC");
+       return dwFieldRow("Barcode / GTIN",
+         '<div class="dw2-idwrap' + (_idc ? " bad" : "") + '">'
+         + (why ? _roCell(r.barcode, why) : editCell(sku,"col","UPC",r.barcode))
+         + (_idcLine
+             ? '<div class="dw2-idclash"><i class="ti ti-alert-triangle"></i>'
+               + '<span>' + _idcLine + '</span></div>'
+             : "")
+         + '</div>');
+    })(),
   ].join("");
   const offerRows=[
     (function(){

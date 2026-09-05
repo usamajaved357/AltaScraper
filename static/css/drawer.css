@@ -279,6 +279,31 @@
    The row is a flex line with the label on the left and the control on the
    right, so the warning has to sit INSIDE the control's side or it lands beside
    the label instead of under the box. That is what the wrapper is for. */
+/* ---- A FIELD AMAZON WILL NOT LET YOU CHANGE ---------------------------
+   The mockup's readonly identity rows: the value on --panel2 in grey, with a
+   padlock beside it.
+
+       <input class="pdp-input-sm" value="Nestwell Goods"
+              style="background:var(--panel2);color:var(--ink3)" readonly>
+       <i class="ti ti-lock" style="color:var(--ink4)">
+
+   A SPAN, NOT A DISABLED INPUT. The value is the thing you opened the listing
+   to check, so it stays legible and selectable; a greyed-out box with no
+   explanation is the state that gets reported as "the app won't let me type".
+   The title on both halves says WHICH rule locked it -- the product type's
+   read-only list, or the listing being live -- because the remedies differ. */
+.dw2-ro{
+  display:inline-block; padding:5px 8px; border-radius:4px;
+  background:var(--panel2); border:1px solid var(--line);
+  color:var(--ink3); font-size:12px; cursor:help;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  vertical-align:middle;
+}
+.dw2-rolock{
+  font-size:14px; color:var(--ink4); margin-left:6px; cursor:help;
+  vertical-align:middle;
+}
+
 .dw2-idwrap{ display:block; }
 .dw2-idwrap.bad .ed{
   border-color:var(--red); box-shadow:0 0 0 2px var(--red-bg);
