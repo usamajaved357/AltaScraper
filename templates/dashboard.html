@@ -1247,9 +1247,34 @@
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <input id="ord_q" placeholder="Order number, town, status…" oninput="ordersFilter(this.value)"
                  style="font-size:12px;padding:5px 9px;min-width:190px">
+          <!-- COSTS FOR MANY ORDERS AT ONCE.
+               The app can already correct ONE order's cost, which is the right
+               shape for a mistake and the wrong shape for a hundred of them.
+               A cost written this way is marked 'manual-order' -- the top of
+               the trust order in domain/order_cogs.py -- so nothing later
+               overwrites it: not a re-sync, not a supplier price change, not
+               switching costing mode.
+
+               Download first, because the template arrives with the order,
+               the product and the cost the app CURRENTLY believes already in
+               it. That turns filling it in into correcting what is wrong
+               rather than retyping what is already right, and it means an
+               unedited upload changes nothing. -->
+          <button class="db-chip" onclick="orderCostsTemplate(false)"
+                  title="Download every order in this window as a sheet, with the cost the app currently believes beside each one. Fill in the 'cost' column and upload it back.">
+            <i class="ti ti-download"></i> Cost sheet</button>
+          <button class="db-chip" onclick="orderCostsTemplate(true)"
+                  title="The same sheet, but only the orders that have no cost at all yet — usually the ones actually worth filling in.">
+            <i class="ti ti-download"></i> Uncosted only</button>
+          <button class="db-chip" onclick="orderCostsUploadOpen()"
+                  title="Upload the filled-in sheet. Rows with the cost left blank are skipped, so an unedited file changes nothing.">
+            <i class="ti ti-file-upload"></i> Upload costs</button>
+          <input type="file" id="ordcost_file" accept=".csv,.tsv,.txt,.xlsx,.xls"
+                 style="display:none" onchange="orderCostsUpload(this)">
           <button class="db-chip" onclick="ordersLoad()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
       </div>
+      <div id="ordcost_result" style="margin:0 0 8px"></div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
         <div id="ord_days" style="display:flex;gap:4px;flex-wrap:wrap">
           <button class="db-chip" onclick="ordersSetDays(7)">7 days</button>
@@ -1359,8 +1384,45 @@
                   title="Every table on this page as an eight-sheet workbook, built from exactly what you are looking at"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
         </div>
       </div>
+      <!-- TWO QUESTIONS, TWO VIEWS, ONE SCREEN.
+           "Analysis" is why things come back and what it costs -- reasons
+           grouped into causes, rates, trends. "All returns" is the operational
+           list: one row per return, Amazon's own status on it, and a detail
+           view for a single one.
+
+           They read different sources on purpose. Analysis reads what was just
+           pulled or uploaded; the list reads what has been KEPT. Amazon caps
+           its seller-fulfilled report at 60 days, so a return from four months
+           ago cannot be re-fetched -- only remembered. -->
+      <div class="mktswitch" style="margin:2px 0 8px">
+        <button class="mktbtn on" id="retview_analysis"
+                onclick="returnsSetView('analysis')">Analysis</button>
+        <button class="mktbtn" id="retview_list"
+                onclick="returnsSetView('list')"
+                title="Every return this app has stored, with its status, reason and amounts">All returns</button>
+      </div>
       <div id="retbody" style="padding:4px 0"></div>
+      <div id="returns_list" style="padding:4px 0;display:none"></div>
     </div>
+    <script>
+      /* Which half of the Returns screen is showing. Deliberately not a route
+         or a stored preference: it is one click either way, and a remembered
+         view means opening the screen and being shown something other than
+         what the heading above it describes. */
+      function returnsSetView(v){
+        var an = document.getElementById("retbody");
+        var li = document.getElementById("returns_list");
+        var ba = document.getElementById("retview_analysis");
+        var bl = document.getElementById("retview_list");
+        if(!an || !li) return;
+        var isList = (v === "list");
+        an.style.display = isList ? "none" : "";
+        li.style.display = isList ? "" : "none";
+        if(ba) ba.classList.toggle("on", !isList);
+        if(bl) bl.classList.toggle("on", isList);
+        if(isList && typeof returnsListOnOpen === "function") returnsListOnOpen();
+      }
+    </script>
 
     <!-- THE WEEKLY KPI PACK. Replaces a hand-built spreadsheet whose current
          week held live formulas and whose history held numbers pasted by hand
@@ -2131,12 +2193,21 @@
 <script src="/static/js/migrate.js?v={{ ASSET_V }}"></script>
 <!-- Every account's orders on one screen. -->
 <script src="/static/js/orders.js?v={{ ASSET_V }}"></script>
+<!-- Setting the cost of MANY orders from one sheet. Its own file: the Orders
+     screen lists orders, and costing them in bulk is its own feature with its
+     own template, its own parser on the server and its own per-row report. -->
+<script src="/static/js/ordercosts.js?v={{ ASSET_V }}"></script>
 <!-- The compact expanded-order panel. orders.js checks for it at DRAW time and
      falls back to its own long version, so a load failure costs the layout
      rather than the order details. -->
 <script src="/static/js/orders_panel.js?v={{ ASSET_V }}"></script>
 <!-- Why things come back, and what it costs. -->
 <script src="/static/js/returns.js?v={{ ASSET_V }}"></script>
+<!-- The operational half of the same screen: every return, one row each, and a
+     detail view. Its own file because it answers a different question from the
+     intelligence above it, and reads a different source (the stored returns,
+     not the last pull). -->
+<script src="/static/js/returnslist.js?v={{ ASSET_V }}"></script>
 <!-- The weekly KPI pack. Same two-buttons-per-report shape as Returns above. -->
 <script src="/static/js/weekly.js?v={{ ASSET_V }}"></script>
 <!-- The daily round: the morning checklist, run by the app. -->

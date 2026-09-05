@@ -69,6 +69,34 @@ def _remember(wsid, **fields):
 
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
+    from domain import returns_store as _rstore
+
+    def _wrong_account(asked):
+        """Refuse a caller naming an account other than the one that is open.
+
+        Asked of domain/account_scope.py rather than compared here, so this
+        screen cannot develop its own opinion about what counts as a mismatch
+        (CLAUDE.md Rule 12). Returns a ready 409 response, or None to continue.
+        """
+        from domain import account_scope as _acctscope
+        open_id = (_state or {}).get("active_account_id")
+        if _acctscope.is_mismatch(asked, open_id):
+            return jsonify(_acctscope.refusal(asked, open_id, "returns")), 409
+        return None
+
+    def _keep(wsid, mkt, returns, source):
+        """Store what was just parsed. NEVER fatal.
+
+        A returns screen that fails because the KEEPING failed would be worse
+        than one that forgets -- the figures on it are already correct and
+        already in the reply. So a storage problem is swallowed here and the
+        screen answers exactly as it did before this existed.
+        """
+        try:
+            return _rstore.store(CONFIG_PATH, wsid, mkt, returns, source)
+        except Exception:
+            return None
+
     """Attach /returns/* to the app."""
 
     def _scope():
@@ -300,8 +328,167 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 no_report=("That report's columns were not recognised. "
                            "Found: %s"
                            % ", ".join(str(h) for h in headers[:12]))))
+        # KEEP THEM. Amazon caps this report at 60 days, so year-to-date is four
+        # or five downloads and history is only possible if it is accumulated.
+        # Until now the parsed rows lived in a dict in memory and a restart lost
+        # them -- the same shape as the search-term bug, where the app could act
+        # on a report once and could never show you what it said afterwards.
+        # domain/returns_store.py de-duplicates on returns_view.identity(), so
+        # overlapping windows correct rather than double count.
+        _keep(wsid, mkt, returns, _rstore.SOURCE_REPORT)
         return jsonify(_answer(returns, kind, wsid, mkt, start.isoformat(),
                                end.isoformat(), skipped))
+
+    @app.route("/returns/list")
+    def returns_list():
+        """Every return this app has KEPT, newest first. Reads only.
+
+        The difference from /returns/report matters: that one asks Amazon and
+        answers with an analysis of the last N days. This one answers from what
+        has been accumulated, so it can show a return from four months ago that
+        no single 60-day report can still reach.
+
+        Nothing here is computed. The counting, the reasons and the causes are
+        returns_view's job and already have a screen; this is the operational
+        list -- one row per return, with what Amazon says about it.
+        """
+        acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
+        start = (request.args.get("start") or "").strip() or None
+        end = (request.args.get("end") or "").strip() or None
+        order_id = (request.args.get("order_id") or "").strip() or None
+        try:
+            limit = max(1, min(2000, int(request.args.get("limit") or 500)))
+        except (TypeError, ValueError):
+            limit = 500
+
+        rows = _rstore.load(CONFIG_PATH, wsid, mkt, start, end, order_id, limit)
+        cov = _rstore.coverage(CONFIG_PATH, wsid, mkt)
+
+        # WHAT IS OPEN AND WHAT IS SETTLED, from Amazon's own words rather than
+        # from a rule of ours. The report's status column is Amazon's; anything
+        # we invented on top would be a second opinion about a state we do not
+        # own.
+        statuses = {}
+        for r in rows:
+            s = str(r.get("status") or "").strip() or "(none given)"
+            statuses[s] = statuses.get(s, 0) + 1
+
+        return jsonify({
+            "ok": True, "workspace": wsid, "marketplace": mkt,
+            "start": start, "end": end,
+            "rows": rows, "count": len(rows),
+            "statuses": statuses,
+            "coverage": cov,
+            # Said plainly, because a list of 40 returns over a period the
+            # reports only covered half of is misleading unless it says so.
+            "note": ("" if cov.get("held") else
+                     "No returns have been stored for this account yet. Press "
+                     "Refresh to pull Amazon's report, or upload a returns "
+                     "file — Amazon caps that report at 60 days, so anything "
+                     "older has to be uploaded once and is then kept."),
+        })
+
+    @app.route("/returns/detail")
+    def returns_detail():
+        """One return, with the order behind it and what may be done about it.
+
+        THE ACTIONS ARE AMAZON'S TO NAME, NOT OURS TO ASSUME.
+        The Messaging API says which messages are permitted FOR THIS ORDER, and
+        the list genuinely varies between orders. So it is asked, per return,
+        and whatever comes back is what the screen may offer. Nothing is sent
+        here -- this endpoint reads, and Phase 2 does the sending.
+
+        A failure to ask is reported, never treated as "no actions available":
+        those two look identical on a screen and mean opposite things.
+        """
+        acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
+        ident = (request.args.get("identity") or "").strip()
+        if not ident:
+            return jsonify({"ok": False, "error": "no return named"}), 400
+
+        row = _rstore.one(CONFIG_PATH, wsid, mkt, ident)
+        if not row:
+            return jsonify({"ok": False,
+                            "error": "That return is not stored here."}), 404
+
+        # Every OTHER return on the same order -- a buyer sending back two of
+        # three items is one conversation, not two.
+        siblings = [r for r in _rstore.load(CONFIG_PATH, wsid, mkt,
+                                            order_id=row.get("order_id"))
+                    if r.get("identity") != ident] if row.get("order_id") else []
+
+        # TWO DIFFERENT CHECKS, AND THIS ROUTE NEEDS BOTH.
+        #
+        # (1) IS THE CALLER ALLOWED TO NAME THIS ACCOUNT AT ALL? The page sends
+        #     the account id, and this route resolves that account's own Amazon
+        #     credentials with it. Multi-tenant OAuth puts OTHER PEOPLE'S
+        #     selling accounts in the same config, so "a configured account" no
+        #     longer means "one of ours" -- naming another one here would ask
+        #     Amazon about a stranger's order. domain/account_scope.py is the
+        #     one place that answers it, and test_account_scope_audit.py exists
+        #     precisely because "the hole that survives a fix is the one next
+        #     door". It caught this route.
+        _bad = _wrong_account(request.args.get("id"))
+        if _bad:
+            return _bad
+
+        # (2) CAN THIS ACCOUNT AUTHENTICATE AS ITSELF? A workspace that BORROWS
+        #     its credentials would ask with the lender's login and Amazon would
+        #     answer for the lender's orders. miles_lubricants HAS a seller id
+        #     and borrows its credentials, so "has a seller id" is not the test.
+        #
+        # The stored return is local and needs neither check, so it is still
+        # shown. Only the Amazon question is refused, and it says why.
+        from domain import accounts as _acc_check
+        if not _acc_check.seller_scope_allowed(acc or {}):
+            return jsonify({
+                "ok": True, "workspace": wsid, "marketplace": mkt,
+                "return": row, "same_order": siblings,
+                "permitted_actions": [], "actions_error": "",
+                "actions_note": (
+                    "%s has no Amazon developer app of its own, so Amazon "
+                    "cannot be asked what may be sent about this order — "
+                    "borrowed credentials would answer for the account they "
+                    "were borrowed from. Connect this account's own SP-API "
+                    "credentials under Account & sheets."
+                    % ((acc or {}).get("label") or wsid or "This workspace")),
+            })
+
+        actions, actions_error = [], ""
+        if row.get("order_id"):
+            try:
+                from domain import accounts as _acc_mod
+                from sp_api.api import Messaging
+                from sp_api.base import Marketplaces
+                enum = getattr(Marketplaces, str(mkt).upper(), Marketplaces.UK)
+                m = Messaging(credentials=_acc_mod.account_creds(acc),
+                              marketplace=enum)
+                got = m.get_messaging_actions_for_order(row["order_id"])
+                payload = got.payload if hasattr(got, "payload") else got
+                for a in ((payload or {}).get("_links") or {}).get("actions") or []:
+                    if a.get("name"):
+                        actions.append(a["name"])
+            except Exception as e:
+                actions_error = "%s: %s" % (type(e).__name__, str(e)[:200])
+
+        return jsonify({
+            "ok": True, "workspace": wsid, "marketplace": mkt,
+            "return": row, "same_order": siblings,
+            "permitted_actions": actions,
+            "actions_error": actions_error,
+            "actions_note": (
+                "Amazon decides which messages may be sent about an order, and "
+                "the list differs between orders. These are the ones it "
+                "permits for this one. Free-form messages are not possible "
+                "through the API." if actions else
+                ("Amazon could not be asked what may be sent about this order."
+                 if actions_error else
+                 "Amazon permits no messages about this order.")),
+        })
 
     @app.route("/returns/upload", methods=["POST"])
     def returns_upload():
@@ -369,6 +556,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             total_added += added
             total_dupes += dupes
             total_skipped += skipped
+            # An uploaded file is kept for the same reason a pulled report is,
+            # and it matters MORE here: an FBA file carries the disposition and
+            # the customer's comment, which the seller-fulfilled report has no
+            # column for at all. Losing that on a restart loses the only copy.
+            _keep(wsid, mkt, parsed, _rstore.SOURCE_UPLOAD)
             read.append({"file": name, "kind": kind, "rows": len(parsed),
                          "added": added, "already_had": dupes})
 
