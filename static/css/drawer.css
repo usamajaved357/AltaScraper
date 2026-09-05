@@ -326,6 +326,16 @@
   line-height:1.4; text-align:left; white-space:normal;
 }
 .dw2-idnote b{ color:var(--gold); font-weight:600; }
+/* THE SUBMIT WILL SEND SOMETHING ELSE. Louder than the barcode's secondary note
+   because this one is about what leaves the app, not about somebody else's
+   product -- but still not the red alarm, because nothing is broken and the
+   remedy is one line in the account's Brands list. */
+.dw2-idnote.warn{
+  margin-top:5px; padding:6px 8px;
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:var(--radius-sm); color:var(--ink);
+}
+.dw2-idnote.warn b{ color:var(--warn); }
 .dw2-fv{
   color:#c8c7cc; font-weight:500; text-align:right;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:210px;

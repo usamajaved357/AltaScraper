@@ -147,6 +147,49 @@ yes("  never the global brand_name once an account is resolved",
     'config.get("brand_name", "")' in _fn
     and _fn.index('config.get("_account_brands")') < _fn.index('config.get("brand_name", "")'))
 
+print("\n== 3b. AND WHEN IT SENDS SOMETHING ELSE, IT SAYS SO ==")
+# The suspicion was reasonable even though it was wrong here, because the app
+# CAN send a different brand and said so only on the console. The guard stays --
+# one account's trademark on another's listing is the worse fault -- but the
+# editor showed what you typed while the payload could carry something else.
+R = read("routes", "listing_routes.py")
+yes("the server works out what will be sent", "def _attach_brand_send(" in R)
+yes("  by asking the ONE resolver, not by repeating its rule",
+    "from amazon_listing_generator import resolve_account_brand" in R
+    and "resolve_account_brand(out[\"typed\"], probe)" in R)
+yes("  and attaches it to the rows the editor reads",
+    "_attach_brand_send(c, _brands, _cfg())" in R)
+# ONCE PER REQUEST. It runs per row, and the account is a property of the
+# request -- 86 listings meant 86 identical account lookups.
+yes("the account is looked up once, not once per row",
+    "def _account_brands(cfg, workspace_id, config_path)" in R
+    and "_brands = _account_brands(" in R)
+# config_path IS A PARAMETER. There is no module-level CONFIG_PATH in that file
+# -- it is a keyword of register() -- so a module-level function reaching for it
+# raised NameError, the except swallowed it, and every row of an account with
+# two brands reported "this account has no registered brand".
+check("  and CONFIG_PATH is not reached for from module scope",
+      re.search(r"def _account_brands[^)]*\)[^\n]*\n(?:(?!\ndef ).)*?"
+                r"get_account\(cfg, workspace_id, CONFIG_PATH\)", R, re.S) is not None,
+      False)
+# THE ID COMES OFF THE STORE the rows were read from, not from _state, which is
+# empty on a plain page load.
+yes("the workspace id comes off the store", "def _ws_id_of(store)" in R)
+yes("  reaching through the shim as well as the store",
+    'getattr(getattr(store, "store", None), "workspace_id", "")' in R)
+AF2 = nojs_comments(read("static", "js", "autofix.js"))
+yes("the Brand field draws the warning", "r.brand_send" in AF2
+    and "Amazon will receive" in AF2)
+# An account with an EMPTY Brands list sends no brand rather than borrowing one,
+# and "Amazon will receive """ was the wrong sentence for the more serious case.
+yes("  and says so differently when NO brand will be sent",
+    "No brand will be sent to Amazon." in AF2)
+# Measured in Chrome on nestwell_goods, whose Brands list is
+# ['Nestwell Goods','AltaboltaVoo']:
+#   brand "Nestwell Goods" -> swapped false, no warning drawn
+#   brand "Selvora"        -> swapped true, "Amazon will receive Nestwell Goods"
+#   the row was restored afterwards.
+
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:
     print("  - " + f)

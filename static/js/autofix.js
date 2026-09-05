@@ -1474,9 +1474,35 @@ function _fullDataParts(r){
     // first." Only when Amazon actually named the catalogue's brand.
     (function(){
        const why = _lockOn("Brand");
+       // WHAT THE SUBMIT WILL ACTUALLY SEND, when it is not what is in the box.
+       //
+       //     "i suspect that this brand name change is not recorded and the app
+       //      is sending nestwell goods to amazon"
+       //
+       // It was not, in his case. But the app CAN send a different brand: a
+       // listing must go out under the ACCOUNT'S OWN trademark, so a brand that
+       // is not on the account's Brands list is replaced with the account's
+       // first one. That guard exists because one account's trademark once
+       // reached another's listings, and it stays -- what was missing is that
+       // it announced itself only on the console, so the box said one thing and
+       // the payload carried another with nothing on screen to say so.
+       //
+       // The verdict comes from the SERVER (_attach_brand_send), which asks the
+       // one resolver build_api_attributes will ask. Nothing decides it here.
+       // TWO OUTCOMES, AND "no brand at all" IS ONE OF THEM: an account with an
+       // empty Brands list sends none rather than borrowing one, so "Amazon
+       // will receive """ was the wrong sentence for the more serious case.
+       const bs = r.brand_send || null;
+       const swap = (bs && bs.swapped)
+         ? '<div class="dw2-idnote warn"><b>'
+           + (bs.send ? 'Amazon will receive &ldquo;' + esc(bs.send) + '&rdquo;.'
+                      : 'No brand will be sent to Amazon.')
+           + '</b> ' + esc(bs.note || "") + '</div>'
+         : "";
        return dwFieldRow("Brand",
          (why ? _roCell(r.brand, why)
               : editCell(sku,"col","Brand",r.brand,null,false,true))
+         + swap
          + ((_idc && _idc.brand)
              ? '<div class="dw2-idnote">Amazon\'s catalogue has <b>' + esc(_idc.brand)
                + '</b> for this barcode. Change the barcode, not this.</div>' : ""),
