@@ -1210,10 +1210,27 @@ function summary(){
         listing${c.ERROR>1?'s':''} Amazon refused</button>`);
   }
   if(c.HOLD){
+    // A STORED VERDICT IS NOT A CURRENT ONE, and this line could not say so.
+    //
+    //     "i still see 52 held by a compliance or IP check ... they should go
+    //      away if that is inaccurate"
+    //
+    // Fair, and the count on its own gave no way to find out which it was. This
+    // flag was written ONCE, when the listing was generated, against ip_rules
+    // and compliance_rules AS THEY WERE THEN. Change a rule afterwards and
+    // every already-generated row keeps the old verdict -- the rule moved, the
+    // rows did not. That is what flags.RESCANNABLE_STATUSES and /rescan/preview
+    // exist for, and neither was reachable from the number complaining about it.
+    //
+    // So the count now offers the check beside itself. Preview only: it lists
+    // what WOULD change and writes nothing until you say yes, which is the right
+    // default for something that rewrites a verdict on 52 listings at once.
     extras.push(`<button class="linkbtn" style="color:var(--red)"
         onclick="metricFilter('blocked')"
-        title="Held by this app's own IP or compliance check BEFORE anything was sent to Amazon — open one to see which rule, or re-scan after fixing a rule.">${c.HOLD}
-        held by a compliance or IP check</button>`);
+        title="Held by this app's own IP or compliance check BEFORE anything was sent to Amazon. Nothing reached Amazon. Click to see just these; open one to see which rule stopped it.">${c.HOLD}
+        held by a compliance or IP check</button>
+      <button class="linkbtn" onclick="rescanFlags()"
+        title="These flags were decided when each listing was generated, against the rules as they were then. If a rule has changed since, the stored verdict is out of date. This re-runs the checks against the copy already stored and shows you what would change — it writes nothing until you confirm.">re-check them</button>`);
   }
   // The published rows the Drafts list is deliberately not showing. Said in
   // words rather than counted into a tile above a list they are not in, and

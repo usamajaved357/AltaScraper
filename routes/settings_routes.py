@@ -232,10 +232,36 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                 v = str(b.get(f) or "").strip()
                 if v and not v.startswith(("•", "*", "PUT_", "ROTATE")):
                     target[f] = v
+            # AND TAKE THEM OUT OF THE GLOBAL SLOT.
+            #
+            # Writing onto the account is not enough on its own: creds_for()
+            # falls back to the global values for EVERY OTHER ACCOUNT, so
+            # credentials left up there keep serving all six. That is not
+            # theoretical -- the old global-only screen put them there, and the
+            # scheduled ads_sync job walks every account, so each one would
+            # commission reports against THIS advertiser's profile id and file
+            # the results under its own name. Nestwell's spend, filed as
+            # jack_uk's, looking entirely plausible.
+            #
+            # An advertising login belongs to one advertiser: /v2/profiles
+            # returns only that seller's profiles. So when the same credentials
+            # are being placed on an account, the global copy is the old mistake
+            # and it goes. Only the four advertising keys are touched, and only
+            # when this write actually landed on an account.
+            moved = []
+            if target is not raw:
+                for f in _ads.FIELDS:
+                    if raw.get(f) not in (None, ""):
+                        raw.pop(f, None)
+                        moved.append(f)
             _settings.write_raw(raw, CONFIG_PATH)
             _state["cfg"] = None
             return jsonify({"ok": True, "account_id": aid,
-                            "scope": ("account" if target is not raw else "global")})
+                            "scope": ("account" if target is not raw else "global"),
+                            "cleared_from_global": moved,
+                            "note": ("Also removed these from the shared slot so "
+                                     "no other account inherits them: "
+                                     + ", ".join(moved)) if moved else ""})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
