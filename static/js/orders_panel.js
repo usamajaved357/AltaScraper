@@ -489,6 +489,13 @@ function ordPanelHtml(r, d){
   }
 
   h += _opDelivery(o);
+  // WHERE THE PARCEL IS, right under where it is going.
+  //
+  // _opDelivery says what was PROMISED -- post by, must arrive by. This says
+  // what actually happened to it, which is the question the promise raises. The
+  // same function the long fallback panel uses, so the two layouts cannot offer
+  // different controls for the same job (CLAUDE.md Rule 12).
+  h += (typeof ordParcelPanel === "function") ? ordParcelPanel(r) : "";
   h += _opBadges(t, d, items, cur);
   return h + '</div>';
 }

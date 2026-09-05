@@ -4158,6 +4158,12 @@ def build_app(backend=None):
                                _state=_state, _active_account=_active_account,
                                _save_account=_acc_for_cogs.save_account,
                                _cogs_overrides=lambda: _COGS_OVERRIDE)
+    # Where the parcels are. Amazon does not give back the tracking a seller
+    # uploads -- measured, see domain/tracking.py -- so the numbers come in on a
+    # sheet the same way the per-order costs do. Its own file (Rule 7).
+    import routes.tracking_routes as _tracking_routes
+    _tracking_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                              _state=_state, _active_account=_active_account)
     import routes.asin_charges_routes as _asin_charges_routes
     _asin_charges_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                   _state=_state, _active_account=_active_account)

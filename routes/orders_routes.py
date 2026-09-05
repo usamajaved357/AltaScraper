@@ -365,6 +365,20 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                 "usually rate limiting; try again shortly."
                                 % (unread, "" if unread == 1 else "s"))
 
+        # WHERE THE PARCEL IS, on every row and not only the profited ones.
+        #
+        # Free: it is a read of this app's own table, grouped by account so the
+        # multi-account list costs one query per account rather than one per
+        # order. Nothing here calls a carrier -- that is /tracking/refresh, and
+        # it is deliberately a separate, explicit act.
+        try:
+            from domain import tracking as _trk
+            _trk.attach(CONFIG_PATH, rows)
+        except Exception:
+            # A tracking table that cannot be read must not empty the orders
+            # screen: the rows are exactly what they were before this existed.
+            pass
+
         return jsonify({"ok": True, "rows": rows, "days": days,
                         "accounts_asked": asked, "errors": errors,
                         "summary": _ov.summarise(rows),
@@ -728,6 +742,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         row["margin_pct"] = bd["totals"]["margin_pct"]
         row["profit_note"] = bd["totals"]["note"]
         row["fees_basis"] = bd["totals"].get("fees_basis")
+        # The same reader the list uses, so the detail and the row it was opened
+        # from can never disagree about where the parcel is (Rule 12).
+        try:
+            from domain import tracking as _trk
+            _trk.attach(CONFIG_PATH, [row])
+        except Exception:
+            pass
         return jsonify({"ok": True, "order_id": oid, "order": row,
                         "items": items,
                         "breakdown": bd,
