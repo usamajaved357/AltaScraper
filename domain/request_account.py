@@ -34,15 +34,77 @@ allowed it -- that is auth/guard.py's job and it still runs.
 """
 
 
+# THE ONE NAME. Everything the browser sends should call it `account`.
+#
+# The app grew three spellings -- `account`, `account_id` and `id` -- and which
+# one a route understood was a coin toss. Measured across routes/: 42 files read
+# an account, in six different ways between the query string and the body. It
+# cost real bugs, all of the same silent shape: an order costs sheet requested
+# for nestwell_goods downloaded miles_lubricants' orders, and /returns/detail
+# answered about the open workspace instead of the one asked for. Nothing errors
+# -- the app just answers about the wrong account.
+#
+# THE OLD SPELLINGS STILL WORK, DELIBERATELY. `account` is what the browser now
+# sends and what new code should use, but `account_id` is still accepted,
+# because a call site missed during the change would not fail: it would fall
+# back to whichever workspace happens to be open and answer confidently about
+# the wrong seller. An alias costs one line; a silent wrong answer costs trust
+# in every figure on the screen.
+#
+# `id` is NOT accepted here, and that is not an oversight. Several routes use
+# ?id= for something that is not an account at all -- miles_routes for a run id,
+# notify_routes for a channel id, aiusage_routes and backup_routes for a filter.
+# Teaching this resolver to read `id` would make those resolve an account from
+# an unrelated number. routes/scope.py accepts it because its callers are all
+# account-scoped screens; this one is used everywhere.
+ACCOUNT_KEYS = ("account", "account_id")
+
+
 def named(request):
-    """The account id the calling page says it is displaying, or ""."""
+    """The account id the calling page says it is displaying, or "".
+
+    `account` first, `account_id` second. See ACCOUNT_KEYS above for why the
+    older spelling is still read and why `id` is not.
+    """
+    for key in ACCOUNT_KEYS:
+        try:
+            v = request.args.get(key)
+        except Exception:
+            v = None
+        if v and str(v).strip():
+            return str(v).strip()
+    for key in ACCOUNT_KEYS:
+        try:
+            v = (request.get_json(silent=True) or {}).get(key)
+        except Exception:
+            v = None
+        if v and str(v).strip():
+            return str(v).strip()
+    return ""
+
+
+def named_any(request):
+    """Like named(), but ALSO accepting the legacy ?id= spelling.
+
+    For routes that have always treated ?id= as an account -- the returns,
+    catalogue, compliance, PPC and weekly screens all do. They keep working
+    unchanged while the browser moves to `account`.
+
+    NOT the default, and never used by named(): ?id= means a run on
+    miles_routes, a channel on notify_routes and a filter on aiusage_routes and
+    backup_routes. A route only opts into this spelling if an account is the
+    only thing ?id= can mean on it.
+    """
+    got = named(request)
+    if got:
+        return got
     try:
-        v = request.args.get("account_id")
+        v = request.args.get("id")
     except Exception:
         v = None
     if not v:
         try:
-            v = (request.get_json(silent=True) or {}).get("account_id")
+            v = (request.get_json(silent=True) or {}).get("id")
         except Exception:
             v = None
     return str(v or "").strip()

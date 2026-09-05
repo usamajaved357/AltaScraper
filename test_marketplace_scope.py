@@ -131,7 +131,9 @@ truthy("  and an account that lists none but names a default wins too",
 print("\n== the Finance page says whose money it is showing ==")
 F = read("static", "js", "finance.js")
 _load = F.split("async function financeLoad")[1].split("\nfunction ")[0]
-truthy("it sends the account", 'qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id))' in _load)
+# `account` is the app's one name for this now. The invariant is
+# unchanged -- the Finance page must say whose money it is showing.
+truthy("it sends the account", 'qs.push("account=" + encodeURIComponent(CUR_ACCOUNT.id))' in _load)
 truthy("  and the marketplace", '"marketplace=" + encodeURIComponent(WS_MARKET)' in _load)
 truthy("  and does not send __all__ as if it were one", 'WS_MARKET !== "__all__"' in _load)
 truthy("  guarded, so an unloaded shell does not throw",

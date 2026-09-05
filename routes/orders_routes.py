@@ -25,6 +25,7 @@ import datetime as _dt
 
 from flask import request, jsonify
 
+import domain.request_account as _req_acct
 from domain import marketplace_health as _mh
 from domain import orders_view as _ov
 
@@ -667,7 +668,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         """One order's lines. Items are not restricted and come through whole."""
         from domain import accounts as _acc_mod
         oid = (request.args.get("order_id") or "").strip()
-        aid = (request.args.get("account") or "").strip()
+        # `account` is the app's one name for this. Read through the shared
+        # resolver so this route, the ads routes and the returns routes all
+        # accept the same spellings -- three screens reading three different
+        # names is what made a cost sheet download the wrong account's orders.
+        aid = (_req_acct.named(request)
+               or (request.args.get("account") or "").strip())
         if not oid:
             return jsonify({"ok": False, "error": "no order id"}), 400
         # This route returns the buyer's town and postcode along with the

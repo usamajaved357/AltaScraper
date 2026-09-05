@@ -42,7 +42,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         return d if isinstance(d, dict) else {}
 
     def _scope():
-        aid = (request.args.get("id") or request.args.get("account_id") or "").strip()
+        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id") or "").strip()
         mkt = (request.args.get("marketplace") or "").strip().upper()
         b = request.get_json(silent=True) or {}
         aid = aid or str(b.get("id") or "").strip()

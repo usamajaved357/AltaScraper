@@ -383,6 +383,36 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         return jsonify({"ok": True, "start": start, "end": end,
                         "count": len(items), "products": items})
 
+    @app.route("/sales/pnl")
+    def sales_pnl():
+        """The account's profit and loss, line by line, for the window on screen.
+
+        Reads only. domain/pnl.py owns every rule -- which fees are Amazon's own
+        and which are estimated, that refunds sit on the day the money moved,
+        and that sales already include the postage buyers paid so there is no
+        separate shipping-credits line to add. This route scopes it and hands it
+        over; a second opinion about any of that here is how two screens come to
+        disagree (Rule 12).
+        """
+        from domain import pnl as _pnl
+        from domain import sales_data as _sd
+        _acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        start, end, _preset = _range()
+        try:
+            got = _pnl.build(CONFIG_PATH, wsid, mkt, start, end,
+                             _sd.vat_rate_for(_cfg, wsid))
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "%s: %s" % (type(e).__name__, str(e)[:200])}), 500
+        # The lines, in reading order, so the screen does not decide the shape
+        # of a P&L for itself.
+        got["lines"] = [{"key": k, "label": label, "sign": sign,
+                         "value": got.get(k), "basis": got["basis"].get(k, "")}
+                        for k, label, sign in _pnl.LINES]
+        return jsonify(got)
+
     @app.route("/sales/campaigns")
     def sales_campaigns():
         """Every advertising campaign that ran in this window, with its figures.

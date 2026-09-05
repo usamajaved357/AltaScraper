@@ -38,7 +38,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         another -- the exact fault that put another account's orders on the
         Orders tab.
         """
-        aid = (request.args.get("id") or request.args.get("account_id") or "").strip()
+        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id") or "").strip()
         mkt = (request.args.get("marketplace") or "").strip().upper()
         body = request.get_json(silent=True) or {}
         aid = aid or str(body.get("id") or body.get("account_id") or "").strip()

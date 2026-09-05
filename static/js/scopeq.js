@@ -32,7 +32,7 @@ function scopeQs(extra) {
   const qs = [];
   try {
     if (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id) {
-      qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+      qs.push("account=" + encodeURIComponent(CUR_ACCOUNT.id));
     }
     // "__all__" is the UI's word for "every marketplace". It is not a country
     // and must never be sent as one.

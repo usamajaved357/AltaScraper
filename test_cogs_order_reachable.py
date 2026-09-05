@@ -89,14 +89,23 @@ print("\n== the ROW's account, not whichever workspace is open ==")
 _save = CODE.split("async function ordSetOrderCogs")[1].split("\nfunction ")[0]
 truthy("the save takes an account and a marketplace",
        "ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace)" in CODE)
-truthy("  and sends account_id -- the key request_account.named() reads",
-       "account_id: accountId" in _save)
-falsy("  not 'account', which that function does not look at",
-      re.search(r"\baccount:\s*accountId", _save))
-truthy("named() really does read account_id",
-       'get("account_id")' in open(os.path.join(HERE, "domain",
-                                                "request_account.py"),
-                                   encoding="utf-8").read())
+# THE KEY IS `account` NOW, AND THE INVARIANT IS UNCHANGED: whatever this
+# sends has to be a key request_account.named() actually reads. It used to be
+# account_id, because that was the only key named() looked at -- and this test
+# existed precisely because sending 'account' to a resolver that ignored it
+# meant the save silently used whichever workspace was open.
+#
+# The app has one name for this now. named() reads `account` first and
+# `account_id` second, so both halves are still checked here: the browser sends
+# the canonical name, and the resolver genuinely accepts it.
+_RA = open(os.path.join(HERE, "domain", "request_account.py"),
+           encoding="utf-8").read()
+truthy("  and sends account -- the key request_account.named() reads",
+       re.search(r"\baccount:\s*accountId", _save))
+truthy("named() really does read account", 'get(key)' in _RA
+       and '"account"' in _RA)
+truthy("  and still accepts the older account_id, so nothing silently breaks",
+       '"account_id"' in _RA)
 truthy("the panel passes the row's own account down",
        "r.account_id, r.marketplace" in CODE)
 truthy("  and the row's own order id, not the detail payload's",
@@ -185,7 +194,8 @@ const h2=_ordBreakdownHtml(two,"GBP","o1","jack_uk","M1");
 console.log(JSON.stringify({
   one:n(h1), two:n(h2), noId:n(_ordBreakdownHtml(one,"GBP","")),
   noSku:n(_ordBreakdownHtml(noSku,"GBP","o1","a","M1")),
-  unitPlaceholder:(h2.match(/placeholder="([\d.]+)"/)||[])[1],
+  unitValue:(h2.match(/value="([\d.]+)"/)||[])[1],
+  stillInPlaceholder:/placeholder="[\d.]+"/.test(h2),
   quoted:/ordSetOrderCogs\('o1','a&quot;b'/.test(
     _ordBreakdownHtml({lines:[{sku:'a"b',title:"x",qty:1,revenue:1,fee:0,cogs:1,unit_cost:1,profit:0}],
                        totals:{}},"GBP","o1","a","M1")),
@@ -207,8 +217,22 @@ try:
         check("no order id -> no control at all", got["noId"], 0)
         check("two skuless lines -> none, rather than one that hits both",
               got["noSku"], 0)
-        check("the placeholder on a 3-unit line is the UNIT cost",
-              got["unitPlaceholder"], "3.00")
+        # THE INVARIANT IS UNCHANGED, THE ATTRIBUTE MOVED.
+        #
+        # What must hold is that a 3-unit line shows the UNIT cost and not the
+        # line total -- order_lines.cogs is per unit, and putting a line total
+        # into a per-unit field overstates the cost threefold. That is still
+        # checked, and checked harder: the figure now has to be the input's
+        # VALUE.
+        #
+        # It used to be the placeholder, which is grey ghost text that vanishes
+        # the moment you type. Reported as: "there is a box which still asks
+        # for cogs, if the cogs are updated, where can i see them" -- a cost
+        # that HAD been saved was indistinguishable from one that never was.
+        check("the value on a 3-unit line is the UNIT cost",
+              got["unitValue"], "3.00")
+        check("  and a set cost is no longer only a placeholder",
+              got["stillInPlaceholder"], False)
         truthy("a quote in a sku cannot break out of the onclick", got["quoted"])
 except FileNotFoundError:
     print("  (node not on this machine -- renderer not exercised)")

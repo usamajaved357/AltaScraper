@@ -25,7 +25,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     """Attach /leading to the app."""
 
     def _scope():
-        aid = (request.args.get("id") or request.args.get("account_id") or "").strip()
+        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id") or "").strip()
         mkt = (request.args.get("marketplace") or "").strip().upper()
         if not aid or not mkt:
             acc = {}

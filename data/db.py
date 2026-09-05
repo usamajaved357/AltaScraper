@@ -277,6 +277,40 @@ CREATE INDEX IF NOT EXISTS idx_returns_scope
 CREATE INDEX IF NOT EXISTS idx_returns_order
     ON returns(workspace_id, order_id);
 
+/* EVERY MESSAGE THIS APP SENT TO A BUYER.
+   -----------------------------------------------------------------------
+   An outward-facing action with no record of it is not acceptable: a message
+   to a customer cannot be unsent, and "did we already reply to them?" has to be
+   answerable months later, by someone who was not there.
+
+   Amazon does not give the messages back. getMessagingActionsForOrder says what
+   MAY be sent, never what WAS -- so if this app does not write it down, nothing
+   does.
+
+   The body is stored verbatim. A log that keeps only "a message was sent" is
+   the version of this that gets trusted and should not be: the whole question
+   is usually what was actually said.
+
+   Failures are kept too, with Amazon's own words in `error`. A message that was
+   refused is a thing somebody has to know about, and a log of successes only
+   would show a customer as contacted when they were not. */
+CREATE TABLE IF NOT EXISTS buyer_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    order_id     TEXT NOT NULL,
+    action       TEXT NOT NULL,       -- Amazon's own action name
+    body         TEXT,                -- exactly what was sent
+    ok           INTEGER,             -- 1 sent, 0 refused
+    error        TEXT,                -- Amazon's words when it refused
+    sent_by      TEXT,                -- which user pressed send
+    sent_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_buyermsg_order
+    ON buyer_messages(workspace_id, order_id);
+CREATE INDEX IF NOT EXISTS idx_buyermsg_when
+    ON buyer_messages(workspace_id, sent_at);
+
 CREATE TABLE IF NOT EXISTS ppc_search_terms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,

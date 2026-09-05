@@ -38,7 +38,7 @@ let SRC_LAST_J = null;
 function _srcScope(){
   const p = [];
   if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
-    p.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+    p.push("account=" + encodeURIComponent(CUR_ACCOUNT.id));
   if(typeof WS_MARKET !== "undefined" && WS_MARKET)
     p.push("marketplace=" + encodeURIComponent(WS_MARKET));
   return p.join("&");

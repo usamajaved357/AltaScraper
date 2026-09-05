@@ -40,7 +40,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     """Attach /weekly/* to the app."""
 
     def _scope():
-        aid = (request.args.get("id") or request.args.get("account_id")
+        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id")
                or (request.form.get("id") if request.form else "") or "").strip()
         mkt = (request.args.get("marketplace")
                or (request.form.get("marketplace") if request.form else "")

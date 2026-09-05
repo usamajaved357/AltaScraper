@@ -62,7 +62,11 @@ function fnBody(src, name) {
 console.log("\n=== they are asked with the scope, not the period ===");
 const scope = fnBody(sales, "_sScope");
 check("a scope-only query builder exists", scope.length > 0, true);
-check("  it carries the account", /account_id=/.test(scope), true);
+// `account` is the app's one name for this now -- the screens used to
+// send three different spellings and which one a route understood was a
+// coin toss. The invariant is unchanged: the scope query must carry the
+// account.
+check("  it carries the account", /account=/.test(scope), true);
 check("  and the marketplace", /marketplace=/.test(scope), true);
 check("  and NOT the period", /preset=/.test(scope), false);
 check("  nor the granularity", /granularity=/.test(scope), false);

@@ -27,7 +27,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     """Attach /notify/* to the app."""
 
     def _acct():
-        aid = (request.args.get("id") or request.args.get("account_id") or "").strip()
+        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id") or "").strip()
         body = request.get_json(silent=True) or {}
         aid = aid or str(body.get("id") or body.get("account_id") or "").strip()
         if not aid:

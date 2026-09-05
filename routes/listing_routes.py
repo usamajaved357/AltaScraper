@@ -2314,7 +2314,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         cannot disagree with the run it is describing. It spends nothing: no AI
         call, no Amazon call, no write.
         """
-        wsid = (request.args.get("account_id") or request.args.get("id") or "").strip()
+        wsid = (request.args.get("account_id") or request.args.get("account") or request.args.get("id") or "").strip()
         if not wsid:
             try:
                 acc = _active_account() or {}

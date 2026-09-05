@@ -394,7 +394,7 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
 
     def _scope():
         """(account_id, marketplace) for this request, however it was asked."""
-        aid = (request.args.get("id") or request.args.get("account_id")
+        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id")
                or "").strip()
         mkt = (request.args.get("marketplace") or "").strip().upper()
         if not aid or not mkt:
