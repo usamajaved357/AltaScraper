@@ -140,3 +140,114 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "connected": bool(av.get("connected")),
                         "note": av.get("note") or "",
                         "asins": out, "count": len(out)})
+
+    @app.route("/ads/diag")
+    def ads_diag():
+        """WHY IS THE CHART STILL A PLACEHOLDER? -- answered from the tables.
+
+        The Organic vs PPC chart switches on ONE thing: whether the sales series
+        carries a non-zero ad_sales cell. That series reads ads_daily, filtered
+        by workspace, marketplace, date range and asin='*'. Four separate ways
+        for data to exist and still not reach the chart:
+
+            stored under a different MARKETPLACE than the screen is showing
+            stored outside the DATE RANGE the screen is showing
+            stored per-ASIN but with no '*' account-wide row
+            stored, and reaching the chart, but every ad_sales is zero
+
+        The campaign table reads a DIFFERENT table (ads_campaign_daily), so
+        "the campaigns are there but the chart is not" is a real and specific
+        state -- and none of the screens could say which of the four it was.
+        This reports all of them at once, reads nothing from Amazon, and writes
+        nothing.
+        """
+        from data import db as _db
+        _acc, wsid, mkt = _scope()
+        start, end = _window()
+        conn = _db.get_db(CONFIG_PATH)
+        q = lambda s, *a: [dict(r) for r in conn.execute(s, a)]
+
+        # SPLIT BY GRAIN, or the totals read as double.
+        #
+        # ads_daily holds the same money twice on purpose: one account-wide row
+        # per day (asin='*') and one row per advertised ASIN per day. Summing
+        # the table adds them together -- 256.93 of real spend reports as
+        # 513.86, which on a page whose job is to explain a confusing number is
+        # the worst possible thing to print. Readers ask for one grain or the
+        # other and nothing ever adds them, so neither does this.
+        everything = q(
+            "SELECT marketplace, ad_product, "
+            "CASE WHEN asin='*' THEN 'account total' ELSE 'per ASIN' END grain, "
+            "COUNT(*) rows, COUNT(DISTINCT date) days, "
+            "MIN(date) first_date, MAX(date) last_date, "
+            "ROUND(SUM(spend),2) spend, ROUND(SUM(ad_sales),2) ad_sales, "
+            "MAX(fetched_at) fetched_at "
+            "FROM ads_daily WHERE workspace_id=? "
+            "GROUP BY marketplace, ad_product, grain "
+            "ORDER BY marketplace, ad_product, grain",
+            wsid)
+        # The account-wide rows are the ones the chart reads, so "is there any
+        # data for this marketplace" is asked of those alone.
+        acct_rows = [r for r in everything if r["grain"] == "account total"]
+
+        # Exactly what the chart's series query returns, same filters.
+        in_view = q(
+            "SELECT COUNT(*) rows, ROUND(SUM(spend),2) spend, "
+            "ROUND(SUM(ad_sales),2) ad_sales, "
+            "SUM(CASE WHEN COALESCE(ad_sales,0) <> 0 THEN 1 ELSE 0 END) nonzero "
+            "FROM ads_daily WHERE workspace_id=? AND marketplace=? "
+            "AND date>=? AND date<=? AND asin='*'",
+            wsid, mkt, start, end)[0]
+
+        camps = q("SELECT COUNT(*) rows, COUNT(DISTINCT campaign_id) campaigns, "
+                  "MIN(date) first_date, MAX(date) last_date "
+                  "FROM ads_campaign_daily WHERE workspace_id=? AND marketplace=?",
+                  wsid, mkt)[0]
+
+        avail = q("SELECT * FROM data_availability WHERE workspace_id=? AND "
+                  "marketplace=? AND source='ads'", wsid, mkt)
+        jobs = q("SELECT kind, status, attempts, start_date, end_date, "
+                 "requested_at, SUBSTR(COALESCE(error,''),1,200) error "
+                 "FROM ads_report_jobs WHERE workspace_id=? "
+                 "ORDER BY id DESC LIMIT 10", wsid)
+
+        would_draw = (in_view.get("nonzero") or 0) > 0
+        if would_draw:
+            why = "The chart HAS data and should not be showing the placeholder."
+        elif not everything:
+            why = ("Nothing has ever been stored for this account. No report has "
+                   "been collected yet — press Refresh PPC data, wait about ten "
+                   "minutes, then press it again.")
+        elif not any(r["marketplace"] == mkt for r in everything):
+            why = ("Data exists, but not for %s. It is stored under: %s. The "
+                   "chart only reads the marketplace on screen."
+                   % (mkt, ", ".join(sorted({r["marketplace"] for r in everything}))))
+        elif not any(r["marketplace"] == mkt for r in acct_rows):
+            why = ("Per-ASIN rows exist for %s but there is no account-wide "
+                   "('*') row, which is the only thing the chart reads. That "
+                   "row is written by the CAMPAIGN report, so only the "
+                   "advertised-product one has been collected. Press Refresh "
+                   "PPC data again and give it ten minutes." % mkt)
+        elif not in_view.get("rows"):
+            got = [r for r in acct_rows if r["marketplace"] == mkt]
+            why = ("Data exists for %s but none of it falls in %s..%s. Stored "
+                   "range is %s..%s — change the date range on the Sales page "
+                   "to cover it."
+                   % (mkt, start, end,
+                      min(r["first_date"] for r in got),
+                      max(r["last_date"] for r in got)))
+        else:
+            why = ("Rows are in view but every ad_sales is zero, so there is "
+                   "genuinely no advertising-attributed revenue to draw.")
+
+        return jsonify({
+            "ok": True, "workspace": wsid, "marketplace": mkt,
+            "date_range_checked": [start, end],
+            "chart_would_draw_real_data": would_draw,
+            "why": why,
+            "what_the_chart_sees": in_view,
+            "everything_stored": everything,
+            "campaign_table": camps,
+            "availability": (avail[0] if avail else None),
+            "recent_report_jobs": jobs,
+        })
