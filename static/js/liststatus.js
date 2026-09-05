@@ -190,29 +190,21 @@ function lsIsWaitingOnAmazon(r){
   return lsSaysSubmitted(r) && !lsInLiveCatalogue(r);
 }
 
-/* WHAT THE WARNING MARK SAYS ON HOVER. One sentence, one place.
+/* lsWarnTip WAS HERE -- the hover text on the warning-count mark, and the
+ * source of the sentence the owner asked about:
  *
- *     "The '1 warning' / '2 warnings' text is redundant -- the warning icons
- *      already show the count. Remove the text line entirely."
+ *     "there is still a symbol saying 1 warning worst: medium. i dont want this
+ *      symbol at all, i already have 3 symbols for restricted compliance and
+ *      claims risk, i will maintain those"
  *
- * The words came off the screen; they had to go somewhere, and hover is where
- * the messages already were. Three views draw that mark -- the card's badge,
- * the detailed row's chip and the product page's hero -- and they were about to
- * grow three slightly different tooltips (CLAUDE.md Rule 12), which is how one
- * view comes to list four messages and another one.
+ * All four marks that used it are gone, so the tooltip has nothing left to
+ * label. Deleted rather than left standing: an unused exported function is a
+ * thing the next person wires back up believing it is still wanted.
  *
- * Takes the object lsWarnings() returns: {n, high, medium, list}.
+ * lsWarnings() STAYS and is untouched -- the status filters read it, and
+ * _dwWarnings in listings.js still lists every message in full in the Safety &
+ * Compliance tab. What was removed is a badge, not a check.
  */
-function lsWarnTip(w){
-  if(!w || !w.n) return "";
-  const worst = w.high ? "high" : (w.medium ? "medium" : "low");
-  return String(w.n) + " warning" + (w.n === 1 ? "" : "s")
-    + " (worst: " + worst + ")\n"
-    + (w.list || []).slice(0, 4).map(function(x){
-        return "• " + String((x && x.message) || "");
-      }).join("\n")
-    + ((w.list || []).length > 4 ? "\n• …and " + (w.list.length - 4) + " more" : "");
-}
 
 // ---- the wording -----------------------------------------------------------
 // What the drawer says when a run finishes. Kept beside the vocabulary above so a

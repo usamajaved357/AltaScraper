@@ -1129,6 +1129,40 @@ async function editField(sku, target, key, value){
         updateLocalCol(r, key, value);
       }
     }
+    // THE SCREEN HAS TO CATCH UP, or a save that worked looks like one that
+    // did not. The product page's hero draws the title, brand, barcode and the
+    // profit/cost badges from the row at render time, so after one of those is
+    // written it is showing the previous value -- which is exactly what "the
+    // hero section STILL shows Brand: Nestwell Goods" was.
+    //
+    // Only the hero, and only for the fields it shows: this runs on blur, which
+    // is the moment you TAB into the next box, and re-rendering the panel would
+    // pull the focus out of it. pdpRebuild stays for structural edits.
+    if(target !== "attr" && typeof pdpHeroShows === "function"
+       && pdpHeroShows(key) && typeof pdpHeroRefresh === "function"){
+      pdpHeroRefresh(sku);
+    }
+    // AND THE LIST UNDERNEATH IS STALE NOW TOO -- same bug, one screen further
+    // out: edit a title here, close the page, and the row in the table still
+    // showed the old one. pdpClose redraws the grid when this flag is set.
+    //
+    // Marked from the SAVE rather than from the input event that usually
+    // precedes it. PDP_DIRTY is otherwise raised by typing, which is right for
+    // the save bar but is not proof that anything was written -- and a value
+    // set any other way (a suggestion applied, a live value copied in) would
+    // slip past it. A save that returned ok is the thing that is actually true.
+    if(typeof pdpMarkDirty === "function" && typeof PDP_SKU !== "undefined"
+       && String(PDP_SKU) === String(sku)){
+      pdpMarkDirty();
+    }
+    // AND A STORED AMAZON COMPLAINT ABOUT THIS FIELD IS NOW OUT OF DATE.
+    //
+    //     "The stale error message makes it impossible to know if your fix
+    //      worked without re-submitting to Amazon."
+    //
+    // The message is left exactly as Amazon wrote it -- it records what was
+    // SENT -- and the banner marks the ones whose field has since changed.
+    if(typeof pdpFieldEdited === "function") pdpFieldEdited(sku, target, key);
     return {ok:true};
   }catch(e){ return {ok:false, error:String((e && e.message) || e)}; }
 }
@@ -1352,14 +1386,142 @@ function _fullDataParts(r){
   // SPLIT IN TWO, because the product page has an Identity tab and an Offer
   // tab. Same thirteen rows, same controls, same order -- the join below is
   // what the drawer shows, and it is the identical string it was.
+  // WHO ALREADY OWNS THIS BARCODE, if Amazon has said so.
+  //
+  //     "The app should show a PROMINENT warning directly on the EAN/barcode
+  //      field ... Be the FIRST thing highlighted, not the brand field -- the
+  //      EAN is the cause, brand mismatch is just the symptom"
+  //
+  // Amazon blames `brand` in attributeNames for this refusal, which is why the
+  // Brand box was the one wearing the red border: correct as a report of what
+  // Amazon said, and the wrong field to send someone to. Changing the brand to
+  // match cannot work -- the catalogue entry belongs to another product -- and
+  // the barcode is the thing to change.
+  //
+  // Read through amzIdConflict, the one place that reads Amazon's prose
+  // (static/js/amazon_errors.js, CLAUDE.md Rule 12). It names the ASIN only in
+  // Amazon's own format, and the owning brand only if the message really
+  // contains it.
+  const _idc = (typeof amzIdConflict === "function")
+    ? amzIdConflict(((r.api_issues||{}).issues)||[], {barcode:r.barcode}) : null;
+  const _idcLine = (_idc && typeof amzIdConflictLine === "function")
+    ? amzIdConflictLine(_idc) : "";
+
+  /* WHAT AMAZON WILL LET YOU CHANGE ON THIS LISTING.
+   *
+   *     "some things can not be changed like brand check amazon answer if it
+   *      can be changed or not when the listing is live on amazon and make the
+   *      boxes editable or not according to it, and also you know in draft
+   *      everything is changeable"
+   *
+   * TWO ANSWERS, ASKED IN THAT ORDER, and neither of them is a list kept here:
+   *
+   *   1. THE PRODUCT TYPE DEFINITION. Amazon marks some attributes read-only
+   *      for a given type; that list arrives with the schema as sc.readonly and
+   *      the attribute rows have honoured it for a while (see pdpAttrRows).
+   *      These identity boxes never asked, so a field Amazon would refuse
+   *      looked exactly like one it would take.
+   *
+   *   2. WHETHER THE LISTING EXISTS ON AMAZON YET. A draft is ours alone and
+   *      everything on it is changeable. Once it is LIVE the brand and the
+   *      product identifier belong to the ASIN in Amazon's catalogue rather
+   *      than to our offer, and a putListingsItem that tries to change them is
+   *      refused -- which is the same refusal the barcode warning above is
+   *      about, arriving from the other direction.
+   *
+   * THE LOCK SAYS WHICH OF THE TWO IT IS, because the remedies are different: a
+   * type-level read-only field is never editable, and a catalogue-owned one is
+   * editable right up until you submit.
+   *
+   * Deliberately NOT locked when live: title, bullets, description, price,
+   * quantity and handling. Those are the offer and the copy, they are what this
+   * app exists to change, and Amazon takes them on a live listing.
+   */
+  const _live = (typeof lsInLiveCatalogue === "function")
+    ? !!lsInLiveCatalogue(r)
+    : String(r.status||"").toUpperCase() === "LIVE";
+  const _roList = sc.readonly || [];
+  // The Amazon attribute each identity COLUMN lands in. Same mapping the stale
+  // banner uses (PDP_COL_TO_ATTR in pdp.js) -- named here rather than imported
+  // because this file must keep working when pdp.js has not loaded.
+  const _COL_ATTR = {"Brand":"brand", "UPC":"externally_assigned_product_identifier"};
+  const _lockOn = (col) => {
+    const attr = _COL_ATTR[col];
+    if(attr && _roList.indexOf(attr) >= 0){
+      return "Amazon marks this read-only for " + (r.product_type || "this product type")
+           + " — it cannot be set from here.";
+    }
+    if(_live){
+      return "This listing is live on Amazon. " + (col === "Brand" ? "The brand" : "The barcode")
+           + " belongs to the ASIN in Amazon's catalogue, not to your offer, so a change "
+           + "here would be refused. Amazon Support can amend it.";
+    }
+    return "";
+  };
+  /* A LOCKED BOX SHOWS ITS VALUE AND SAYS WHY IT IS LOCKED. It is not hidden --
+   * the value is the thing you came to check -- and it is not a disabled input
+   * either, because a greyed box with no explanation is the state that gets
+   * reported as "the app won't let me type". */
+  const _roCell = (val, why) =>
+    '<span class="dw2-ro" title="' + esc(why) + '">' + esc(String(val || "") || "—")
+    + '</span><i class="ti ti-lock dw2-rolock" title="' + esc(why) + '"></i>';
+
   const idRows=[
     dwFieldRow("Product type", productTypeCell(sku, r), {hint:"Amazon-assigned from the catalogue. Changing it can cause rejection."}),
     dwFieldRow("SKU", dwRo(r.sku)),
-    dwFieldRow("Brand", editCell(sku,"col","Brand",r.brand,null,false,true), {prov:(rowProvenance(r)||{}).brand}),
+    // The brand gets a SECONDARY note, not the alarm: "The brand field can show
+    // a secondary note ... but the EAN field is where the user needs to act
+    // first." Only when Amazon actually named the catalogue's brand.
+    (function(){
+       const why = _lockOn("Brand");
+       // WHAT THE SUBMIT WILL ACTUALLY SEND, when it is not what is in the box.
+       //
+       //     "i suspect that this brand name change is not recorded and the app
+       //      is sending nestwell goods to amazon"
+       //
+       // It was not, in his case. But the app CAN send a different brand: a
+       // listing must go out under the ACCOUNT'S OWN trademark, so a brand that
+       // is not on the account's Brands list is replaced with the account's
+       // first one. That guard exists because one account's trademark once
+       // reached another's listings, and it stays -- what was missing is that
+       // it announced itself only on the console, so the box said one thing and
+       // the payload carried another with nothing on screen to say so.
+       //
+       // The verdict comes from the SERVER (_attach_brand_send), which asks the
+       // one resolver build_api_attributes will ask. Nothing decides it here.
+       // TWO OUTCOMES, AND "no brand at all" IS ONE OF THEM: an account with an
+       // empty Brands list sends none rather than borrowing one, so "Amazon
+       // will receive """ was the wrong sentence for the more serious case.
+       const bs = r.brand_send || null;
+       const swap = (bs && bs.swapped)
+         ? '<div class="dw2-idnote warn"><b>'
+           + (bs.send ? 'Amazon will receive &ldquo;' + esc(bs.send) + '&rdquo;.'
+                      : 'No brand will be sent to Amazon.')
+           + '</b> ' + esc(bs.note || "") + '</div>'
+         : "";
+       return dwFieldRow("Brand",
+         (why ? _roCell(r.brand, why)
+              : editCell(sku,"col","Brand",r.brand,null,false,true))
+         + swap
+         + ((_idc && _idc.brand)
+             ? '<div class="dw2-idnote">Amazon\'s catalogue has <b>' + esc(_idc.brand)
+               + '</b> for this barcode. Change the barcode, not this.</div>' : ""),
+         {prov:(rowProvenance(r)||{}).brand});
+    })(),
     dwFieldRow("Condition", dwRo("New")),
     dwFieldRow("Category", dwRo((r.category||r.amazon_category||"")+(r.subcategory?(" › "+r.subcategory):""))),
     dwFieldRow("Browse node(s)", dwRo((r.attributes||{}).recommended_browse_nodes||(r.attributes||{}).browse_node||"")),
-    dwFieldRow("Barcode / GTIN", editCell(sku,"col","UPC",r.barcode)),
+    (function(){
+       const why = _lockOn("UPC");
+       return dwFieldRow("Barcode / GTIN",
+         '<div class="dw2-idwrap' + (_idc ? " bad" : "") + '">'
+         + (why ? _roCell(r.barcode, why) : editCell(sku,"col","UPC",r.barcode))
+         + (_idcLine
+             ? '<div class="dw2-idclash"><i class="ti ti-alert-triangle"></i>'
+               + '<span>' + _idcLine + '</span></div>'
+             : "")
+         + '</div>');
+    })(),
   ].join("");
   const offerRows=[
     (function(){

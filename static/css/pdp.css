@@ -12,50 +12,78 @@
 
    ── COLOURS ARE TOKENS, DEFINED ONCE, HERE ──────────────────────────────────
 
-   The brief asks for the app's CSS variables rather than hardcoded colours.
-   Taken literally that would mean dashboard.css's tokens -- and those would
-   repaint this page in the app's TEAL accent (--accent:#2dd4a8), which is not
-   what the mockup draws and not what the rest of this listing editor is in:
-   the drawer was deliberately taken out of that palette on 29 Aug 2026 (the
-   decision is recorded at the top of drawer.css) and drawn in
-   listing-editor-lighter's blues. This page is made of drawer blocks, so
-   borrowing the app's teal would leave every card disagreeing with its own
-   contents.
+   This page used to be drawn in the DRAWER's blues, and the argument for it was
+   good: the drawer was deliberately taken out of the app's teal on 29 Aug 2026
+   (the decision is at the top of drawer.css), this page is made of drawer
+   blocks, and a teal frame round blue contents would have disagreed with
+   itself. It is superseded -- see the token block below for by what, and by
+   whose instruction. The frame and the blocks are BOTH the mockup's teal now,
+   which is what removes the disagreement rather than choosing a side of it.
 
-   So the intent is honoured rather than the letter: the mockup's colours are
-   declared ONCE as --pdp-* tokens below and referenced by var() everywhere
-   else, so there is a single place to retheme and nothing is scattered. The
-   values are the mockup's own, which are drawer.css's family.
+   Whichever palette is in force, it is declared ONCE as --pdp-* tokens below
+   and referenced by var() everywhere else, so there is a single place to
+   retheme and nothing is scattered.
 
    EVERY CLASS IS PREFIXED pdp-, for the reason drawer.css prefixes dw2-:
    dashboard.css already owns short names like .tab, .field, .content, .side,
    .hero and .checks, and a bare name here would repaint the app behind it.
    ========================================================================= */
 
+/* ── THE PALETTE IS altascraper-pdp-mockup.html's, EXACTLY ──────────────────
+ *
+ *     "i want to match my pdp exactly like this, size color font pixels boxes
+ *      style grey text over boxes, relative position, layout, every single bit
+ *      of it identical"
+ *
+ * THIS REVERSES A DELIBERATE EARLIER CHOICE, and the note above says what it
+ * was: the page was drawn in the DRAWER's blue family, from a different mockup
+ * (docspdp-seller-central-layout.html), because the drawer had been taken out
+ * of the app's teal on 29 Aug 2026 and a page made of drawer blocks in the
+ * app's teal would have disagreed with its own contents.
+ *
+ * That reasoning was sound and it is overruled: the mockup being matched now is
+ * the teal one, named by file, and asked for to the pixel. Every value below is
+ * READ OUT OF THAT FILE's :root, which is why they are its names in comments --
+ * so the next person can diff the two rather than trust this list.
+ *
+ * IT IS STILL ONE PLACE. Nothing else in this file carries a literal colour, so
+ * going back to the blue is editing these twenty lines and nothing else.
+ */
 #pdp{
   /* surfaces */
-  --pdp-bg:#1a1a20;          /* the page under everything */
-  --pdp-panel:#222230;       /* top bar, hero, tab row */
-  --pdp-raise:#262630;       /* inputs, bullet cards, image tiles */
-  --pdp-line:#33333d;        /* borders */
-  --pdp-line2:#2a2a35;       /* quieter rules */
-  --pdp-edge:#3a3a48;        /* control borders */
+  --pdp-bg:#1a1d23;          /* mockup --bg      the page under everything */
+  --pdp-panel:#1e2128;       /* mockup --panel   the card itself */
+  --pdp-raise:#252830;       /* mockup --panel2  hero image well, badges */
+  --pdp-input:#14171c;       /* mockup --sidebar INPUTS and the footer, and it
+                                is DARKER than the panel, not lighter -- the
+                                boxes are cut into the card rather than raised
+                                off it. That inversion is most of why the two
+                                did not look alike. */
+  --pdp-line:#2a2f3a;        /* mockup --line    borders */
+  --pdp-line2:rgba(42,47,58,.3); /* the attribute row's quieter rule */
+  --pdp-edge:#2a2f3a;        /* mockup uses --line for control borders too */
   /* text */
-  --pdp-ink:#eeedf0;         /* headings, values in focus */
-  --pdp-ink2:#c8c7cc;        /* body */
-  --pdp-ink3:#8a8992;        /* labels */
-  --pdp-dim:#6a6974;         /* captions */
-  --pdp-faint:#555560;       /* placeholders */
+  --pdp-ink:#c9d1d9;         /* mockup --ink   headings, values */
+  --pdp-ink2:#8b949e;        /* mockup --ink2  body */
+  --pdp-ink3:#6e7681;        /* mockup --ink3  labels, the grey over boxes */
+  --pdp-dim:#6e7681;         /* mockup --ink3  captions */
+  --pdp-faint:#484f5a;       /* mockup --ink4  placeholders, the (?) ring */
   /* accents */
-  --pdp-accent:#3b7dd4;      /* the blue that marks the active thing */
-  --pdp-link:#6ea8ff;        /* links and "use" affordances */
-  --pdp-ok:#5DCAA5;          /* agrees / passed */
-  --pdp-okbg:#08504120;
-  --pdp-warn:#EF9F27;        /* disagrees / attention */
-  --pdp-warnbg:#41240220;
-  --pdp-danger:#F09595;      /* required, failing, over a cap */
-  --pdp-dangerbg:#50131320;
-  --pdp-green:#1a8c6e;       /* submit, LIVE */
+  --pdp-accent:#2dd4bf;      /* mockup --accent  TEAL, not the blue */
+  --pdp-accentbg:rgba(45,212,191,.08);
+  --pdp-link:#58a6ff;        /* mockup --link */
+  --pdp-ok:#7fd1a0;          /* mockup --ok */
+  --pdp-okbg:rgba(127,209,160,.08);
+  --pdp-warn:#e3b768;        /* mockup --warn */
+  --pdp-warnbg:rgba(227,183,104,.10);
+  --pdp-danger:#ff6b6b;      /* mockup --red */
+  --pdp-dangerbg:rgba(255,107,107,.10);
+  --pdp-green:#7fd1a0;       /* the mockup's Submit is --ok, not a deep green */
+  /* THE BASE TYPE IS THE MOCKUP'S BODY RULE: 12px/1.45. dashboard.css sets
+     14px/1.5 on the page under this, and every unstyled line inside inherited
+     it -- which is why rows measured 17.4px against the mockup's 15.95 even
+     where the rule matched. */
+  font-size:12px; line-height:1.45;
 }
 
 /* ---- 1. THE OVERLAY ----------------------------------------------------
@@ -103,7 +131,7 @@
   display:none;
   position:fixed; inset:0; z-index:78;
   background:rgba(0,0,0,.6);            /* the page below shows through this */
-  color:var(--pdp-ink2);
+  color:var(--pdp-ink);
   overflow-y:auto; overflow-x:hidden;
   /* A CARD ON A BACKDROP, NOT A SHEET FROM THE BOTTOM.
    *
@@ -186,8 +214,10 @@
   display:flex;
   flex-direction:column;
   overflow:hidden;              /* so the 10px radius clips what scrolls inside */
-  background:var(--pdp-bg);
-  border:1px solid var(--pdp-line);
+  /* THE MOCKUP'S CARD IS --panel AND HAS NO BORDER. It was --bg (darker than
+     the chrome on it) plus a 1px line, which is what made the top bar, hero and
+     tab row read as three stacked bars instead of one card. */
+  background:var(--pdp-panel);
   border-radius:10px;
   box-shadow:0 8px 40px rgba(0,0,0,.5);
   transform:translateY(10px);
@@ -201,7 +231,7 @@
    scroller, and without it a short viewport squashes the 100px picture rather
    than scrolling the fields -- which are the thing you came to scroll. */
 .pdp-top, .pdp-hero, .pdp-tabs, .pdp-footer{ flex-shrink:0; }
-.pdp-top{ border-radius:9px 9px 0 0; }
+/* No radius on the bars: the card clips them (overflow:hidden). */
 
 /* Nothing behind it should scroll while it is open -- the panel has its own. */
 body.pdp-on{ overflow:hidden; }
@@ -309,6 +339,21 @@ body.pdp-on{ overflow:hidden; }
 }
 .pdp-error > i{ font-size:15px; color:var(--pdp-danger); flex-shrink:0; margin-top:1px; }
 .pdp-error b{ color:var(--pdp-danger); font-weight:600; }
+/* A COMPLAINT WHOSE FIELD HAS SINCE BEEN EDITED. Cooled to the neutral panel
+   rather than deleted: Amazon's sentence is a record of what was SENT, and it
+   is still the only account of why the listing was refused. What changes is how
+   loudly it is shouting -- an answered problem should not read as an open one.
+   "answered" here means "you have changed the field", never "Amazon is happy";
+   only another Preview or Submit can say that, and the note says so. */
+.pdp-error.answered{
+  background:var(--pdp-raise); border-color:var(--pdp-line);
+  opacity:.85;
+}
+.pdp-error.answered > i{ color:var(--pdp-ink3); }
+.pdp-errstale{
+  margin-top:4px; font-size:10px; color:var(--pdp-warn);
+  display:flex; align-items:center; gap:4px;
+}
 .pdp-error-code{
   font-size:9px; color:var(--pdp-dim); margin-top:4px;
   font-family:ui-monospace,Consolas,monospace;
@@ -446,9 +491,9 @@ body.pdp-on{ overflow:hidden; }
      tab row are all --pdp-panel, a shade LIGHTER than the body -- so the footer
      joins them. Matching the mockup's token name here would have made the
      footer the only piece of chrome that did not match the other three. */
-  background:var(--pdp-panel);
+  background:var(--pdp-input);
   border-top:1px solid var(--pdp-line);
-  border-radius:0 0 9px 9px;
+  border-radius:0;
   max-height:0; padding-top:0; padding-bottom:0;
   border-top-width:0; overflow:hidden;
   /* min-height:0 IS LOAD-BEARING, not tidying. A flex item's min-height
@@ -473,14 +518,15 @@ body.pdp-on{ overflow:hidden; }
 .pdp-footer button{
   font-size:12px; font-weight:500; padding:6px 16px; border-radius:4px;
   border:1px solid var(--pdp-edge); cursor:pointer; font-family:inherit;
+  line-height:normal;
 }
-.pdp-footer-cancel{ background:transparent; color:var(--pdp-ink); }
-.pdp-footer-cancel:hover{ border-color:var(--pdp-ink3); }
-.pdp-footer-save{
-  background:var(--pdp-link); border-color:var(--pdp-link); color:#0a1628;
+.pdp-footer button.pdp-footer-cancel{ background:transparent; color:var(--pdp-ink); }
+.pdp-footer button.pdp-footer-cancel:hover{ border-color:var(--pdp-ink3); }
+.pdp-footer button.pdp-footer-save{
+  background:var(--pdp-accent); border:none; color:#0a1628;
   font-weight:600;
 }
-.pdp-footer-save:hover{ opacity:.9; }
+.pdp-footer button.pdp-footer-save:hover{ opacity:.9; }
 
 /* ---- 1c. TEXTAREAS THAT GROW ------------------------------------------- */
 /* A BOX THAT SCROLLS HIDES ITS OWN CONTENT. A 480-character bullet in a
@@ -492,7 +538,15 @@ body.pdp-on{ overflow:hidden; }
    the buttons under it off the panel. Scoped to .pdp on purpose: the drawer's
    fixed-height boxes are a deliberate part of its one-column layout and are
    not changed here. */
+/* THE BIG BOXES ARE THE MOCKUP'S .pdp-input, and they were still drawer.css's:
+   `.dw2-bedit textarea` paints 11px on #1e1e24 with a 5px radius and a #3a3a45
+   border, all literal, all one step off the mockup's 12px on --sidebar with a
+   4px radius and a --line border. Restated here in tokens, where this page's
+   palette is, so a retheme moves them too. */
 .pdp textarea{
+  font-size:12px; color:var(--pdp-ink);
+  background:var(--pdp-input); border:1px solid var(--pdp-line);
+  border-radius:4px; padding:6px 10px;
   field-sizing:content;
   min-height:38px; max-height:60vh;
   resize:vertical; overflow-y:auto;
@@ -511,7 +565,7 @@ body.pdp-on{ overflow:hidden; }
   display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   /* The mockup's 8px 16px. 24 was set when the panel was full-bleed and the
      bar had a page's width to sit across. */
-  padding:8px 16px; background:var(--pdp-panel);
+  padding:8px 16px; background:transparent;
   border-bottom:1px solid var(--pdp-line);
   /* NO position:sticky. It is outside the scroller now -- see .pdp above. */
   z-index:3;
@@ -533,8 +587,8 @@ body.pdp-on{ overflow:hidden; }
 .pdp-tb i{ font-size:14px; }
 .pdp-tb.accent{ background:var(--pdp-accent); color:#fff; border-color:transparent; }
 .pdp-tb.success{ background:var(--pdp-green); color:#fff; border-color:transparent; }
-.pdp-tb.accent:hover{ background:#4a8ce0; }
-.pdp-tb.success:hover{ background:#1fa080; }
+.pdp-tb.accent:hover{ background:var(--pdp-accent); }
+.pdp-tb.success:hover{ background:var(--pdp-ok); }
 .pdp-rolock{
   font-size:11px; color:var(--pdp-dim); display:flex; align-items:center; gap:5px;
 }
@@ -543,8 +597,7 @@ body.pdp-on{ overflow:hidden; }
 /* TIGHTER, because the panel is 680 wide now and 24px of air above a 120px
    picture was most of the first screen. 12px/16px, per the brief. */
 .pdp-hero{
-  background:var(--pdp-panel); border-bottom:1px solid var(--pdp-line); padding:12px 0;
-  border-radius:9px 9px 0 0;   /* it is the panel's top edge when the bar scrolls */
+  background:transparent; border-bottom:1px solid var(--pdp-line); padding:12px 0;/* it is the panel's top edge when the bar scrolls */
 }
 /* THE MOCKUP'S OWN WIDTHS. Kept, deliberately.
  *
@@ -588,41 +641,45 @@ body.pdp-on{ overflow:hidden; }
   font-size:9px; padding:2px 6px; border-radius:3px; font-weight:600;
   display:inline-flex; align-items:center; gap:4px;
 }
-.pdp-hb.live{   background:var(--pdp-green); color:#e0fff0; }
+.pdp-hb.live{   background:var(--pdp-green); color:#0a1628; }
 .pdp-hb.sent{   background:var(--pdp-warnbg); color:var(--pdp-warn); border:1px solid #41240235; }
-.pdp-hb.gen{    background:#1b2635; color:var(--pdp-link); border:1px solid #24334a; }
+.pdp-hb.gen{    background:var(--pdp-raise); color:var(--pdp-link); border:1px solid var(--pdp-line); }
 .pdp-hb.queued,
 .pdp-hb.other{  background:var(--pdp-raise); color:var(--pdp-ink3); border:1px solid var(--pdp-line); }
 .pdp-hb.profit{ background:var(--pdp-raise); color:var(--pdp-ok); border:1px solid var(--pdp-line); }
 .pdp-hb.cost{   background:var(--pdp-raise); color:var(--pdp-ink3); border:1px solid var(--pdp-line); }
-.pdp-hb.warn{
-  background:var(--pdp-warnbg); color:var(--pdp-warn);
-  border:1px solid #41240235; cursor:pointer;
-}
-.pdp-hb.warn:hover{ filter:brightness(1.15); }
+/* .pdp-hb.warn was here -- the warning-count badge in the hero. Removed with
+   the three on the list; this page's Safety & Compliance tab already lists
+   every warning in full, two inches below where the badge sat. */
 
 /* ---- 4. TABS ----------------------------------------------------------- */
 /* Left-aligned for the same reason as the hero: centred tabs over full-width
    content point at the middle of nothing. The 16px lines them up with the
    sidebar's own padding, so the first tab sits above the rail's first item. */
 .pdp-tabs{
-  background:var(--pdp-panel); border-bottom:1px solid var(--pdp-line);
+  background:transparent; border-bottom:1px solid var(--pdp-line);
   display:flex; justify-content:flex-start; gap:0; flex-wrap:wrap;
-  padding-left:16px;
+  padding:0 16px;
   /* NO position:sticky, and no top:41px guessing at the bar above it -- which
      was wrong the moment a long title wrapped that bar onto two lines. It is a
      flex sibling outside the scroller now, so it simply cannot move. */
   z-index:2;
 }
 .pdp-tab{
-  font-size:12px; font-weight:500; color:var(--pdp-ink3);
+  /* weight 400, not 500 -- the mockup's inactive tab is plain text and the
+     active one is coloured rather than bolded. */
+  font-size:12px; font-weight:400; color:var(--pdp-ink3);
   /* The mockup's 8px 14px. 12/24 was set for a full-width bar; at 680px five
      tabs at 24px of side padding wrapped onto a second line. */
   padding:8px 14px; cursor:pointer;
-  border-bottom:2px solid transparent; transition:color .15s, background .15s;
+  border-bottom:2px solid transparent; transition:all .12s;
 }
-.pdp-tab:hover{ color:var(--pdp-ink2); background:#2a2a35; }
-.pdp-tab.active{ color:var(--pdp-ink); border-bottom-color:var(--pdp-accent); }
+/* The mockup's hover changes the TEXT only. A background band under one tab of
+   five reads as a selection, which is what the underline is already for. */
+.pdp-tab:hover{ color:var(--pdp-ink); }
+/* Teal text AND a teal underline, as the mockup has it -- the old rule went
+   white-on-accent-underline, so the lit tab was the only one not coloured. */
+.pdp-tab.active{ color:var(--pdp-accent); border-bottom-color:var(--pdp-accent); }
 
 /* ---- 5. LAYOUT --------------------------------------------------------- */
 /* THE PAGE FILLS THE PAGE.
@@ -650,7 +707,7 @@ body.pdp-on{ overflow:hidden; }
    inside a 680px panel every pixel it takes is one the fields do not get. */
 .pdp-side{
   width:130px; flex-shrink:0; padding:12px 10px;
-  border-right:1px solid var(--pdp-line2);
+  border-right:1px solid var(--pdp-line);
   /* The rail stays put while the fields scroll past it. It is inside the
      scroller (so its divider runs the full height) but sticky to its top, which
      is the mockup's arrangement: a short list of actions that should not have
@@ -669,7 +726,8 @@ body.pdp-on{ overflow:hidden; }
   font-size:11px; color:var(--pdp-ink3); padding:5px 8px; border-radius:4px;
   cursor:pointer; display:flex; align-items:center; gap:6px; margin-bottom:2px;
 }
-.pdp-sbitem:hover{ background:var(--pdp-raise); color:var(--pdp-ink2); }
+.pdp-sbitem:hover{ background:var(--pdp-raise); color:var(--pdp-ink); }
+.pdp-ck:hover{ background:var(--pdp-raise); }
 .pdp-sbitem i{ font-size:14px; }
 .pdp-sbbtn{
   font-size:10px; font-weight:500; padding:6px 12px; border-radius:5px;
@@ -677,18 +735,29 @@ body.pdp-on{ overflow:hidden; }
   cursor:pointer; display:flex; align-items:center; gap:4px; width:100%;
   font-family:inherit; margin-bottom:20px;
 }
-.pdp-sbbtn:hover{ background:#3b7dd420; }
+.pdp-sbbtn:hover{ background:var(--pdp-accentbg); }
+/* THE MOCKUP'S CHECK IS A LINE WITH A DOT, NOT A PILL.
+ *
+ *     .pdp-check{display:flex;align-items:center;gap:6px;padding:5px 8px;
+ *                border-radius:4px;font-size:10px;margin-bottom:2px}
+ *     .pdp-check .dot{width:6px;height:6px;border-radius:50%}
+ *
+ * These were filled, bordered badges -- three of them stacked under "Checks"
+ * read as three buttons in the rail, which is louder than a status list needs
+ * to be and is why the rail did not look like the mockup's. The COLOUR still
+ * carries the verdict; only the box around it goes. */
 .pdp-ck{
-  font-size:10px; padding:5px 10px; border-radius:5px; margin-bottom:4px;
-  display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:500;
+  font-size:10px; padding:5px 8px; border-radius:4px; margin-bottom:2px;
+  display:flex; align-items:center; gap:6px; cursor:pointer;
+  background:none; border:none;
 }
-.pdp-ck.ok{   background:var(--pdp-okbg);     color:var(--pdp-ok);     border:1px solid #08504130; }
-.pdp-ck.warn{ background:var(--pdp-warnbg);   color:var(--pdp-warn);   border:1px solid #41240230; }
+.pdp-ck.ok{   color:var(--pdp-ok); }
+.pdp-ck.warn{ color:var(--pdp-warn); }
 /* A HIGH warning is red, not amber. Three shades so the rail can say which of
    "nothing", "worth a look" and "this will stop the listing" it means -- amber
    for a medium warning and for a verdict on the row that never became one. */
-.pdp-ck.bad{  background:var(--pdp-badbg, #4b111133); color:var(--pdp-bad, #ff8080); border:1px solid #7a1c1c55; }
-.pdp-ck.info{ background:#042C5318;           color:var(--pdp-link);   border:1px solid #042C5330; }
+.pdp-ck.bad{  color:var(--pdp-danger); }
+.pdp-ck.info{ color:var(--pdp-ink3); }
 .pdp-ck:hover{ filter:brightness(1.12); }
 .pdp-ck i{ font-size:12px; }
 
@@ -726,20 +795,41 @@ body.pdp-on{ overflow:hidden; }
   font-size:11px; font-weight:600; color:var(--pdp-ink3);
   text-transform:none; letter-spacing:0; margin-bottom:6px;
 }
+/* The mockup's .pdp-input: 12px on --sidebar, 6px 10px, radius 4, --line. */
 .pdp-content .dw2-edit{
-  background:var(--pdp-raise); border:1px solid var(--pdp-edge); border-radius:6px;
-  padding:10px 12px; font-size:13px; line-height:1.5; color:var(--pdp-ink);
+  background:var(--pdp-input); border:1px solid var(--pdp-line); border-radius:4px;
+  padding:6px 10px; font-size:12px; line-height:1.45; color:var(--pdp-ink);
+  /* THE DESCRIPTION SCROLLS INSTEAD OF GROWING WITHOUT END.
+   *
+   *     "that mockup donot contain the description as scrollable so make it
+   *      scrollable when there is more text than the box"
+   *
+   * The mockup draws a fixed 80px box and says nothing about what a 2,000
+   * character description does to it; the answer here is that the box keeps its
+   * size and the text moves inside it.
+   *
+   * THIS IS THE OPPOSITE OF WHAT THE BULLETS DO, deliberately. A bullet is 500
+   * characters and is judged whole -- the note on .pdp textarea explains why
+   * those grow. A description is four times that; letting it grow pushes the
+   * attributes, the footer and everything below it off the panel, and the one
+   * box you are not reading takes the whole screen.
+   *
+   * min-height is the mockup's 80px so a short description still looks like a
+   * field rather than a line. */
+  min-height:80px; max-height:240px; overflow-y:auto;
 }
 .pdp-content .dw2-edit:focus{
-  border-color:var(--pdp-accent); box-shadow:0 0 0 2px rgba(59,125,212,.15);
+  /* The mockup's focus ring is the accent, and this shadow was still the blue
+     it used to be -- rgba(59,125,212) against a teal border. */
+  border-color:var(--pdp-accent); box-shadow:0 0 0 2px var(--pdp-accentbg);
 }
 .pdp-content .dw2-h3{
   font-size:15px; font-weight:500; line-height:1.45; color:var(--pdp-ink);
   border:1px solid var(--pdp-edge); border-radius:6px; padding:10px 12px;
-  background:var(--pdp-raise); outline:none;
+  background:var(--pdp-input); outline:none;
 }
 .pdp-content .dw2-h3:focus{
-  border-color:var(--pdp-accent); box-shadow:0 0 0 2px rgba(59,125,212,.15);
+  border-color:var(--pdp-accent); box-shadow:0 0 0 2px var(--pdp-accentbg);
 }
 .pdp-content .dw2-fold{
   background:var(--pdp-panel); border:1px solid var(--pdp-line);
@@ -768,7 +858,7 @@ body.pdp-on{ overflow:hidden; }
   cursor:pointer; font-weight:500; font-family:inherit;
 }
 .pdp-af:hover{ border-color:#555; color:var(--pdp-ink2); }
-.pdp-af.active{ background:#3b7dd420; color:var(--pdp-link); border-color:#3b7dd450; }
+.pdp-af.active{ background:var(--pdp-accentbg); color:var(--pdp-link); border-color:rgba(45,212,191,.31); }
 .pdp-af b{ font-weight:600; }
 
 /* ---- THE ATTRIBUTE ROWS ------------------------------------------------
@@ -816,7 +906,7 @@ body.pdp-on{ overflow:hidden; }
   border:1px solid var(--pdp-edge); background:transparent; color:var(--pdp-link);
   cursor:pointer; font-weight:500; font-family:inherit;
 }
-.pdp-ause:hover{ background:#3b7dd420; border-color:var(--pdp-accent); }
+.pdp-ause:hover{ background:var(--pdp-accentbg); border-color:var(--pdp-accent); }
 /* Before the label, as the mockup has it: `<span class="req">*</span> Brand`.
    Solid for a field Amazon has actually flagged, muted for one the schema calls
    required but Amazon has not complained about yet. */
@@ -839,7 +929,7 @@ body.pdp-on{ overflow:hidden; }
 .pdp-attr .ed,
 .pdp-attr select.ed{
   width:100%; font-size:12px; padding:5px 8px; border-radius:4px;
-  border:1px solid var(--pdp-edge); background:var(--pdp-raise); color:var(--pdp-ink);
+  border:1px solid var(--pdp-edge); background:var(--pdp-input); color:var(--pdp-ink);
   font-family:inherit;
 }
 .pdp-attr .ed:focus{ border-color:var(--pdp-accent); outline:none; }
@@ -848,9 +938,9 @@ body.pdp-on{ overflow:hidden; }
   padding:5px 8px; border-radius:4px; outline:none; word-break:break-word;
   border:1px solid transparent; min-height:28px;
 }
-.pdp-attr .dw2-cv-in:hover{ background:var(--pdp-raise); }
+.pdp-attr .dw2-cv-in:hover{ background:var(--pdp-input); }
 .pdp-attr .dw2-cv-in:focus{
-  background:var(--pdp-raise); border-color:var(--pdp-accent);
+  background:var(--pdp-input); border-color:var(--pdp-accent);
 }
 .pdp-attr .dw2-cv-in.empty:empty::before{
   content:'—'; color:var(--pdp-faint); font-style:italic;
@@ -876,6 +966,6 @@ body.pdp-on{ overflow:hidden; }
 .pdp-content .addfield{ margin-top:12px; }
 .pdp-content .addfield .ed{
   font-size:11px; padding:5px 8px; border-radius:5px;
-  border:1px solid var(--pdp-edge); background:var(--pdp-raise);
+  border:1px solid var(--pdp-edge); background:var(--pdp-input);
   color:var(--pdp-ink2); font-family:inherit;
 }

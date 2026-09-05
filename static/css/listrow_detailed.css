@@ -244,11 +244,9 @@
 .lr-risk.warn{ color:var(--warn); background:var(--warn-bg); border-color:var(--warn-line); }
 .lr-risk.bad{  color:var(--red);  background:var(--red-bg);  border-color:var(--red-line); }
 
-.prod-warn{
-  font-size:11px; color:var(--warn); margin-top:3px;
-  display:flex; align-items:center; gap:3px; cursor:pointer;
-}
-.prod-warn:hover{ text-decoration:underline; }
+/* .prod-warn was here -- the warning-count chip under the product cell.
+   Removed with the card's badge and the table's: the .lr-risk marks above are
+   the three the owner keeps, and they say WHICH risk rather than how many. */
 
 /* ---- the data blocks -------------------------------------------------- */
 /* DENSITY. line-height 1.7 on a dozen stacked pairs is what made the rows tall

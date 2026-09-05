@@ -294,7 +294,88 @@
     return { html: body + toggle, matched: anyMatched };
   }
 
+  /* ---------------------------------------------------------------------
+     WHO OWNS THIS BARCODE, pulled out of the reply so a FIELD can say it.
+
+         "When a listing uses an EAN that's already registered to another
+          product on Amazon (different ASIN), the app does NOT clearly tell the
+          user this. The information is buried in a wall of Amazon error text
+          that most users won't read."
+
+         "Be the FIRST thing highlighted, not the brand field — the EAN is the
+          cause, brand mismatch is just the symptom"
+
+     The rules above turn one message into a card for the Preview panel. This
+     answers a narrower question for the editor: is there an identifier
+     conflict in this whole reply, and what does Amazon say owns the code.
+
+     IT LIVES HERE, beside the patterns, because this file is the one place
+     that reads Amazon's prose (CLAUDE.md Rule 12). A second regex over the same
+     sentence in the editor is how the two come to disagree about what Amazon
+     said.
+
+     WHAT IT WILL AND WILL NOT CLAIM. CLAUDE.md rule 4 forbids inventing a field
+     name out of message text; the same caution applies to a VALUE. The ASIN is
+     taken only in Amazon's own format and only where the message says it is the
+     match. THE BRAND IS TAKEN ONLY IF THE MESSAGE ACTUALLY CONTAINS IT --
+     quoted, and next to the word brand. A conflict with no brand named is
+     reported without one rather than with a guess, because "the catalogue has
+     X" is a statement about somebody else's product and being wrong about it
+     sends the reader to change the wrong field.
+
+     Returns {asin, brand, barcode, message} or null.
+     ------------------------------------------------------------------- */
+  var ASIN_RE = /\b(B0[A-Z0-9]{8})\b/;
+
+  function idConflictFrom(text, ctx) {
+    var t = String(text || "");
+    // Both shapes that mean "your code is already on an ASIN": the catalogue
+    // conflict, and the outright "linked to product".
+    var isMatch = /standard product ids[\s\S]*provided matches the asin/i.test(t) ||
+                  /bar ?code[\s\S]*already linked to product/i.test(t);
+    if (!isMatch) return null;
+    var m = t.match(/matches the ASIN\s+([A-Z0-9]{10})/i) ||
+            t.match(/already linked to product\s+([A-Z0-9]{10})/i);
+    var asin = m ? m[1].toUpperCase() : "";
+    // Amazon's own format, or nothing. A ten-character run out of a sentence is
+    // not an ASIN just because it is ten characters long.
+    if (asin && !ASIN_RE.test(asin)) asin = "";
+    var brand = "";
+    var bm = t.match(/brand[^"'“]{0,40}["'“]([^"'”]{1,60})["'”]/i) ||
+             t.match(/["'“]([^"'”]{1,60})["'”][^"'“]{0,20}\bbrand\b/i);
+    if (bm) brand = bm[1].trim();
+    var bc = (t.match(/\b(\d{8,14})\b/) || [])[1] ||
+             ((ctx && ctx.barcode) ? String(ctx.barcode).trim() : "");
+    return { asin: asin, brand: brand, barcode: bc, message: t };
+  }
+
+  /* The same question asked of a whole stored reply (listing/api_issues.py's
+     record), which is what the editor holds. First hit wins -- one listing has
+     one barcode, so a second conflict would be the same conflict. */
+  function amzIdConflict(issues, ctx) {
+    var arr = (issues && issues.length) ? issues : [];
+    for (var i = 0; i < arr.length; i++) {
+      var it = arr[i] || {};
+      var got = idConflictFrom(it.message || "", ctx);
+      if (got) { got.code = it.code || ""; return got; }
+    }
+    return null;
+  }
+
+  /* ONE SENTENCE, which is what the brief asked for:
+       "Be one clear sentence, not a paragraph of Amazon legal text" */
+  function amzIdConflictLine(c) {
+    if (!c) return "";
+    return "This barcode" + (c.barcode ? " (" + E(c.barcode) + ")" : "") +
+           " is already registered on Amazon" +
+           (c.asin ? " under ASIN <b>" + E(c.asin) + "</b>" : " to another product") +
+           (c.brand ? " (brand: <b>" + E(c.brand) + "</b>)" : "") +
+           ". You cannot use it for a different product.";
+  }
+
   global.translateAmazonError = translateAmazonError;
   global.renderAmazonErrors = renderAmazonErrors;
   global.AMZ_ERROR_PATTERNS = AMZ_ERROR_PATTERNS;
+  global.amzIdConflict = amzIdConflict;
+  global.amzIdConflictLine = amzIdConflictLine;
 })(window);

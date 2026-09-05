@@ -169,6 +169,10 @@ function pdpOpen(sku){
     // without closing the page would otherwise carry the bar across, and it
     // would be reporting the last listing's work over this one's fields.
     PDP_DIRTY = false;
+    // Same reasoning, and it matters more here: carrying these across would
+    // mark ANOTHER listing's Amazon errors as "you have changed this", which is
+    // a claim about work that was never done.
+    PDP_EDITED_FIELDS = new Set();
   }
   // The drawer and this page are two views of one listing; having both open
   // means two title boxes saving to the same cell.
@@ -225,10 +229,28 @@ function pdpOpen(sku){
 function pdpClose(){
   if(!PDP_SKU) return;
   PDP_SKU = "";
+  // THE LIST UNDERNEATH IS ANOTHER COPY OF THE ROW, and it goes stale the same
+  // way the hero did.
+  //
+  //     "please check what other problems are related to it and this same
+  //      behavior may be occuring at multiple places"
+  //
+  // It is. Measured: edit the title on this page, close it, and the row in the
+  // table still shows the old one -- nothing after a save re-draws the grid.
+  // The row OBJECT is already correct (editField wrote it), so this is a
+  // redraw and not a re-read: no request, ~25ms.
+  //
+  // ON CLOSE RATHER THAN ON EVERY SAVE, and only when something was actually
+  // changed. A blur-save fires as you tab between fields, and re-drawing 86
+  // rows behind the panel each time is work nobody can see. PDP_DIRTY is
+  // already the answer to "was anything edited here" -- it is what raises the
+  // save bar -- so it is read here before it is cleared.
+  const _edited = PDP_DIRTY;
   // "When saved or cancelled: bar disappears." Both buttons close the page, so
   // it goes with it -- and the flag has to go too, or the next listing opens
   // wearing the last one's bar.
   PDP_DIRTY = false;
+  if(_edited && typeof render === "function"){ try{ render(); }catch(e){} }
   const host = document.getElementById("pdp");
   if(host){
     host.classList.remove("in");
@@ -290,7 +312,6 @@ function pdpHero(r){
     : (asin.source ? esc(asin.source) + ' <span class="pdp-dim">(competitor reference — not ours)</span>'
                    : '<span class="pdp-dim">not live yet</span>');
   const cost = (typeof _dwCost === "function") ? _dwCost(r) : "";
-  const w = (typeof lsWarnings === "function") ? lsWarnings(r) : {n:0, high:0};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
   const profit = String(r.profit == null ? "" : r.profit).replace(/^[A-Z]{3}/, "");
 
@@ -319,15 +340,15 @@ function pdpHero(r){
     +     pdpStatusBadge(r)
     +     (profit ? '<span class="pdp-hb profit">Profit ' + esc(cur + profit) + '</span>' : "")
     +     (cost ? '<span class="pdp-hb cost">Cost ' + esc(cost) + '</span>' : "")
-    // The icon and the count, not the sentence -- the same shape the card's
-    // badge and the detailed row's chip use, with lsWarnTip's hover text so all
-    // three say the same thing (Rule 12). The word "warning" is in the tooltip.
-    +     (w.n ? '<span class="pdp-hb warn" onclick="pdpTab(\'compliance\')" '
-              + 'title="' + esc((typeof lsWarnTip === "function")
-                                ? lsWarnTip(w) + "\n\nOpen the Compliance tab"
-                                : "Open the Compliance tab")
-              + '"><i class="ti ti-alert-triangle"></i>'
-              + w.n + '</span>' : "")
+    // THE WARNING-COUNT BADGE WAS HERE, and went with the three on the list.
+    //
+    //     "i dont want this symbol at all, i already have 3 symbols for
+    //      restricted compliance and claims risk, i will maintain those"
+    //
+    // It is the least useful of the four places it appeared: this page has a
+    // Safety & Compliance TAB, two inches below, that lists every warning in
+    // full with what each one matched on. A badge saying "1" above a tab that
+    // says which one is a count of something already on screen.
     +   '</div>'
     + '</div></div></div>';
 }
@@ -1026,10 +1047,84 @@ function pdpAutoGrow(){
  * Errors first and always; warnings folded, because "accepted with warnings" is
  * a success and a wall of amber on a listing that went live is noise.
  */
+/* WHICH FIELDS HAVE BEEN EDITED SINCE THE REPLY WAS STORED.
+ *
+ *     "After the user changed the brand to match Amazon's value, the error
+ *      banner still shows the old message with 'Nestwell Goods'. The stale
+ *      error message makes it impossible to know if your fix worked without
+ *      re-submitting to Amazon."
+ *
+ * THE MESSAGE IS NOT WRONG -- it is a record of what was sent LAST TIME, and it
+ * still names the value that was sent. Rewriting it to show the new value would
+ * be a lie about what Amazon was told. Deleting it would throw away the only
+ * account of why the listing was refused.
+ *
+ * So the reply stays exactly as Amazon wrote it, and the ones you have since
+ * changed are marked. Option (b) of the two the brief offered:
+ *
+ *     "Show a note: 'You've changed this field — Preview or Submit again to
+ *      verify the fix'"
+ *
+ * Per listing, and cleared when the panel opens on a different one: it is a
+ * statement about this editing session, not a stored fact.
+ */
+let PDP_EDITED_FIELDS = new Set();
+
+/* The Amazon attribute name a saved COLUMN lands in, for the few the banner can
+ * actually blame. Amazon complains about `brand`, not about "Brand" -- without
+ * this the two never match and nothing is ever marked.
+ *
+ * Deliberately short: only columns that map to one Amazon attribute go on it. A
+ * guess here would mark a message as answered when it was not, which is worse
+ * than not marking it at all. */
+const PDP_COL_TO_ATTR = {
+  "Title": "item_name",
+  "Brand": "brand",
+  "UPC": "externally_assigned_product_identifier",
+  "Description (HTML)": "product_description",
+  "Search Terms / KW": "generic_keyword",
+  "Bullet 1": "bullet_point", "Bullet 2": "bullet_point",
+  "Bullet 3": "bullet_point", "Bullet 4": "bullet_point",
+  "Bullet 5": "bullet_point",
+};
+
+/* Called by the saver when a write succeeds. Takes what the app calls the
+ * field; records what AMAZON calls it, which is what the reply is keyed on. */
+function pdpFieldEdited(sku, target, key){
+  if(!PDP_SKU || String(PDP_SKU) !== String(sku)) return;
+  const attr = (target === "attr") ? String(key)
+                                   : PDP_COL_TO_ATTR[String(key)];
+  if(!attr) return;
+  // topAttr, not `top`: this file already has a `const top` for the top BAR,
+  // and `top` is a window global besides. test_pdp_images.py reads the top bar
+  // by splitting on that name and found this one first.
+  const topAttr = String(attr).split(".")[0];
+  if(PDP_EDITED_FIELDS.has(topAttr)) return;  // already marked, nothing to redraw
+  PDP_EDITED_FIELDS.add(topAttr);
+  // THE BANNER HAS TO SAY IT NOW, not at the next render -- the whole point is
+  // to answer "did my fix land?" without submitting again. Swapped on its own
+  // like the hero, and for the same reason: this fires on blur, which is the
+  // moment you have tabbed into the next box.
+  const host = document.getElementById("pdp");
+  const old = host && host.querySelector(".pdp-errors");
+  if(!old) return;
+  const r = pdpRow();
+  if(!r) return;
+  try{
+    const tmp = document.createElement("div");
+    tmp.innerHTML = pdpApiIssues(r);
+    const fresh = tmp.firstElementChild;
+    if(fresh) old.replaceWith(fresh);
+  }catch(e){}
+}
+
 function pdpApiIssues(r){
   const rec = (r && r.api_issues) || null;
   const all = (rec && rec.issues) || [];
   if(!all.length) return "";
+  // An issue whose field you have edited since this reply was stored.
+  const answered = i => (i.fields || []).some(
+    f => PDP_EDITED_FIELDS.has(String(f).split(".")[0]));
 
   const errs  = all.filter(i => i.severity === "ERROR");
   const warns = all.filter(i => i.severity !== "ERROR");
@@ -1043,19 +1138,32 @@ function pdpApiIssues(r){
       '<button class="pdp-errfield" title="Go to this field"'
       + ' onclick="pdpGoToField(\'' + esc(f) + '\')">' + esc(f) + '</button>').join("");
 
-  const line = (i, cls) =>
-    '<div class="pdp-error ' + cls + '">'
-    + '<i class="ti ti-' + (cls === "warn" ? "alert-triangle" : "alert-circle") + '"></i>'
+  const line = (i, cls) => {
+    const done = answered(i);
+    return '<div class="pdp-error ' + cls + (done ? " answered" : "") + '">'
+    + '<i class="ti ti-' + (done ? "pencil"
+                                 : (cls === "warn" ? "alert-triangle" : "alert-circle")) + '"></i>'
     + '<div><div>' + esc(i.message || "Amazon reported a problem with this listing.") + '</div>'
+    // THE MESSAGE IS LEFT ALONE and the note goes under it. Amazon's sentence
+    // names the value that was SENT; it is a record, not a live reading, and
+    // editing it would misreport what Amazon was actually told.
+    + (done ? '<div class="pdp-errstale">You have changed this field since '
+              + 'Amazon said this. Preview or Submit again to check the fix.</div>' : "")
     + (i.fields && i.fields.length ? '<div class="pdp-errfields">' + chips(i) + '</div>' : "")
     + (i.code ? '<div class="pdp-error-code">Amazon code ' + esc(i.code) + '</div>' : "")
     + '</div></div>';
+  };
 
   let out = "";
   if(errs.length){
+    // HOW MANY ARE STILL UNANSWERED, said in the headline. "3 problems" over a
+    // list where two are already edited is the same stale reading one level up.
+    const open = errs.filter(i => !answered(i)).length;
+    const edited = errs.length - open;
     out += '<div class="pdp-errhead"><b>'
         +  (sub ? "Amazon refused this listing" : "Amazon would refuse this listing")
         +  '</b> — ' + errs.length + (errs.length === 1 ? " problem" : " problems")
+        +  (edited ? ' <span class="pdp-dim">· ' + edited + ' since edited</span>' : "")
         +  when + '</div>'
         +  errs.map(i => line(i, "err")).join("");
   }
@@ -1450,6 +1558,55 @@ function pdpRender(){
 function pdpRebuild(sku){
   if(PDP_SKU && String(PDP_SKU) === String(sku)) pdpRender();
 }
+
+/* THE HERO IS A COPY OF THE ROW, AND A COPY GOES STALE.
+ *
+ *     "The user changed the Brand Name field from 'Nestwell Goods' to
+ *      'AltaboltaVoo' on the PDP. But ... the hero section STILL shows
+ *      'Brand: Nestwell Goods'. This means either the edit didn't save to the
+ *      database, or the PDP is reading from a stale cache."
+ *
+ * The second one, and only on screen. THE SAVE IS FINE -- measured on a draft,
+ * all eight editable columns (title, brand, barcode, price, handling, bullet,
+ * description, search terms) survive a page reload, and /edit answered ok to
+ * every one of them. Nothing is lost and nothing stale is sent to Amazon.
+ *
+ * What was missing is a redraw. pdpHero() renders r.title, r.barcode and
+ * r.brand at RENDER TIME; a blur-save updates the row and the box it was typed
+ * in, and nothing tells the hero. So the hero showed the value from the last
+ * render until the panel was closed and opened -- measured: box and row both
+ * "ZZBRANDPROBE", hero still "Nestwell Goods", and a bare pdpRender() then
+ * showed the new value, which is what proves the data was there all along.
+ *
+ * THE HERO ONLY, NOT THE WHOLE PANEL. pdpRebuild re-renders everything, which
+ * is right after a structural change but wrong here: a blur-save fires as you
+ * TAB to the next field, and replacing the panel underneath would take the
+ * focus out of the box you just moved into. The hero holds no editable control,
+ * so swapping it is safe.
+ */
+function pdpHeroRefresh(sku){
+  if(!PDP_SKU || String(PDP_SKU) !== String(sku)) return;
+  const host = document.getElementById("pdp");
+  const old = host && host.querySelector(".pdp-hero");
+  if(!old) return;
+  const r = pdpRow();
+  if(!r) return;
+  try{
+    const tmp = document.createElement("div");
+    tmp.innerHTML = pdpHero(r);
+    const fresh = tmp.firstElementChild;
+    if(fresh) old.replaceWith(fresh);
+  }catch(e){}                       // a stale hero beats no hero
+}
+
+/* WHICH SAVED FIELDS THE HERO IS SHOWING. Named here, beside pdpHero, because
+ * this list is only ever wrong when that function changes -- keeping it in the
+ * saver would put it a file away from the thing it describes.
+ *
+ * "Our Price (GBP)" is on it because the hero carries the profit and cost
+ * badges, which are computed from it. */
+const PDP_HERO_COLS = ["Title", "Brand", "UPC", "Our Price (GBP)"];
+function pdpHeroShows(key){ return PDP_HERO_COLS.indexOf(String(key)) >= 0; }
 
 /* ---- the address ------------------------------------------------------- */
 

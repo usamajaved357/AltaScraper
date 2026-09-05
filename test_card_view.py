@@ -57,6 +57,7 @@ def rd(p):
 
 
 LS = rd("static/js/listings.js")
+LSTAT = rd("static/js/liststatus.js")
 MT = rd("static/js/miles_template.js")
 CSS = rd("static/css/dashboard.css")
 ICONS = rd("static/vendor/tabler-icons/tabler-icons.min.css")
@@ -83,17 +84,23 @@ truthy("  and .tilefact is inline-flex, so it would be an item in it",
        "display:inline-flex" in rule(CSS, ".tilefact{"))
 # So nothing unpositioned may be placed inside it.
 _img = CARD[CARD.find('class="tileimg'):CARD.find('class="tilebody')]
-falsy("no warning TEXT is placed inside the picture box", "_warnChip(r)" in _img
-      and "tilefact" in fn(LS, "_warnChip"))
-truthy("the warning is a positioned badge now",
-       "position:absolute" in rule(CSS, ".tilewarn{"))
-truthy("  drawn by _warnChip", "tilewarn" in fn(LS, "_warnChip"))
-falsy("  and the words are gone", re.search(r"\} warning\$\{|warning`\s*\+", fn(LS, "_warnChip")) is not None)
-falsy("  no 'warnings' sentence is rendered",
-      re.search(r'\+ `[^`]*\} warnings?', fn(LS, "_warnChip")) is not None)
-# THE COUNT STAYS. "3" and "1" are different amounts of trouble.
-truthy("the count is kept in the badge", "${w.n}</span>" in fn(LS, "_warnChip"))
-truthy("  and the messages are still on hover", "title=" in fn(LS, "_warnChip"))
+# THE WARNING MARK IS GONE ALTOGETHER NOW, badge and all.
+#
+#     "there is still a symbol saying 1 warning worst: medium. i dont want this
+#      symbol at all, i already have 3 symbols for restricted compliance and
+#      claims risk, i will maintain those"
+#
+# This section used to pin the badge's SHAPE -- positioned, count kept, words on
+# hover -- which was the right answer to the previous brief and is now the wrong
+# question. What it pins instead is that nothing draws it.
+falsy("no warning mark is placed inside the picture box", "_warnChip(r)" in _img)
+falsy("  _warnChip is gone", "function _warnChip" in LS)
+falsy("  and so is its badge class", ".tilewarn{" in CSS)
+# THE THREE THAT STAY, and the reason the fourth was redundant: each of these
+# names WHICH risk, where the count named none.
+truthy("the restricted flag stays", "tileflag" in CARD)
+truthy("  the claims-risk badge stays", "claimBadge(r)" in CARD)
+truthy("  the viability badge stays", "viabilityBadge(r)" in CARD)
 # THE OTHER UNPOSITIONED ONE moved out of the picture box too.
 truthy("the queued chip moved to the facts line",
        "${_brandCell(r)}${_handCell(r)}${_queuedChip(r)}" in CARD)
@@ -167,11 +174,16 @@ for cls in (".tileimg", ".tilebody", ".tileacts", ".tiletitle", ".tilemeta"):
 print("\n=== what was NOT to change ===")
 truthy("the action buttons are still rowActions", 'rowActions(r, "ib")' in CARD)
 truthy("  on the live tile too", 'rowActions(' in MT)
-truthy("the warning ICON is kept", "ti-alert-triangle" in fn(LS, "_warnChip"))
-# The table's own warning cell is a different control on a different screen and
-# the brief does not touch it.
-truthy("the table's warning cell is untouched", "function _warnCell" in LS
-       and "warning${w.n === 1" in fn(LS, "_warnCell"))
+truthy("the warning ICON is kept where it names a risk",
+       "ti-alert-triangle" in fn(LS, "card"))
+# The table's cell went with the card's badge -- both were the same count, and
+# leaving one would have answered the complaint on one screen out of four.
+falsy("the table's warning cell went too", "function _warnCell" in LS)
+# WHAT IS NOT REMOVED: the checks themselves, and the full list in the detail
+# view. A badge was taken off the screen; nothing stopped being checked.
+truthy("lsWarnings still decides the counts", "function lsWarnings" in LSTAT)
+truthy("  and the Safety & Compliance tab still lists every message",
+       "function _dwWarnings" in LS)
 
 print("\n=== one header over the whole list, found in a browser ===")
 # MEASURED ON THE REAL DRAFTS SCREEN: 16 <th> over a 40-row list -- two full

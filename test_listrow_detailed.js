@@ -228,24 +228,23 @@ globalThis.SELECTED.add(LIVE.sku);
 truthy("a selected row is marked", /class="inv-row sel"/.test(ctx.detailedRow(LIVE)));
 globalThis.SELECTED.clear();
 
-console.log("\n  ...warnings are surfaced on the row");
-// THE WORD WENT, THE NUMBER STAYED.
+console.log("\n  ...the warning COUNT is not a fourth mark on the row");
+// THE WORD WENT FIRST, THEN THE NUMBER, THEN THE MARK.
 //
-//     "The '1 warning' / '2 warnings' text is redundant -- the warning icons
-//      already show the count. Remove the text line entirely."
+//     "there is still a symbol saying 1 warning worst: medium. i dont want this
+//      symbol at all, i already have 3 symbols for restricted compliance and
+//      claims risk, i will maintain those"
 //
-// So the chip is the triangle and the count, and the sentence -- with the worst
-// severity and the first four messages -- is the hover text, built by
-// lsWarnTip() so the card badge, this chip and the product page's hero cannot
-// drift apart.
-truthy("counted", /prod-warn[^>]*>\s*<i class="ti ti-alert-triangle"><\/i>2</.test(draftHtml));
-truthy("  and the sentence is on hover instead",
-       draftHtml.indexOf("2 warnings (worst:") >= 0);
-check("and one warning is singular there",
-      ctx.detailedRow(Object.assign({}, DRAFT, {warnings:[{}]}))
-         .indexOf("1 warning (worst:") >= 0, true);
-truthy("  but the row itself no longer prints the word",
-       !/<\/i>\s*\d+ warnings?</.test(draftHtml));
+// The row carries lrRisks -- restricted, compliance, claims -- and each of those
+// says WHICH risk. The count said only that there was one, so reading it always
+// meant opening the listing anyway.
+check("no count chip is drawn", /prod-warn/.test(draftHtml), false);
+check("  not even with two warnings on the row",
+      /alert-triangle[^<]*<\/i>\s*2</.test(draftHtml), false);
+check("  and no tooltip survives it", draftHtml.indexOf("(worst:") >= 0, false);
+// WHAT STAYS: the three that name the risk. Removing the fourth must not have
+// taken one of these with it.
+truthy("the three risk marks are still on the row", /lr-risk/.test(draftHtml));
 
 console.log("\n  ...dates are readable, and bad ones do not print 'Invalid Date'");
 check("an ISO date",        ctx.lrDate("2026-08-15"), "15 Aug 2026");

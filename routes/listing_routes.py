@@ -156,6 +156,88 @@ def _attach_identifier(c, r, config_path, workspace_id):
     return c
 
 
+def _ws_id_of(store):
+    """WHICH WORKSPACE A STORE IS READING, whichever of the two it is.
+
+    SheetLikeStore is a worksheet-shaped SHIM around ListingStore, so the id
+    lives one level down at .store.workspace_id; a bare ListingStore carries it
+    itself. Asking only the outer object returned nothing, and the caller then
+    fell back to _state["active_account_id"] -- which is empty on a plain page
+    load. Measured: every row came back "this account has no registered brand"
+    when the account had two.
+
+    Taken off the store rather than from _state on purpose: the store is what
+    the rows were just read from, so its workspace cannot disagree with them.
+    """
+    return (getattr(store, "workspace_id", "")
+            or getattr(getattr(store, "store", None), "workspace_id", "")
+            or "")
+
+
+def _account_brands(cfg, workspace_id, config_path):
+    """The account's registered Brands list, looked up ONCE per request.
+
+    Hoisted out of _attach_brand_send because that runs per row: on an account
+    with 86 listings it was 86 identical account lookups to answer one question
+    about the account.
+
+    config_path IS A PARAMETER, not the module's CONFIG_PATH. There is no module
+    CONFIG_PATH -- it is a keyword of register(), so a function defined out here
+    that reaches for it raises NameError. This swallowed that and returned [],
+    which reads as "the account has no brands" and produced a warning on every
+    row of an account that has two. Same shape as _attach_identifier above,
+    which takes its config_path for the same reason.
+    """
+    try:
+        import accounts as _acc
+        acct = _acc.get_account(cfg, workspace_id, config_path) or {}
+        return [str(x).strip() for x in (acct.get("brands") or []) if str(x).strip()]
+    except Exception:
+        return []
+
+
+def _attach_brand_send(c, brands, cfg):
+    """WHOSE BRAND WILL ACTUALLY GO TO AMAZON, said before the submit.
+
+        "i suspect that this brand name change is not recorded and the app is
+         sending nestwell goods to amazon"
+
+    It was not, in his case -- but the suspicion was reasonable, because the app
+    CAN send a different brand from the one in the box and until now said so
+    only on the console.
+
+    resolve_account_brand is the one place that decides (CLAUDE.md Rule 12): a
+    listing must go out under this ACCOUNT'S OWN trademark, so a Brand column
+    naming something that is not on the account's Brands list is replaced with
+    the account's first brand. That guard exists because one account's trademark
+    once reached another's listings, and it stays. What was missing is that the
+    editor kept showing what you typed while the payload would carry something
+    else, with nothing on screen to say so.
+
+    Read-only, and it never blocks. Attached like the identifier and restricted
+    checks beside it; the row carries {send, typed, swapped, note} and the Brand
+    field draws the note when swapped is true.
+    """
+    out = {"send": "", "typed": str(c.get("brand") or ""), "swapped": False, "note": ""}
+    try:
+        from amazon_listing_generator import resolve_account_brand
+        # The same two keys build_api_attributes is handed, so this asks the
+        # resolver the same question the submit will.
+        probe = {"_account_brands": brands,
+                 "_account_brand": (brands[0] if brands else ""),
+                 "brand_name": cfg.get("brand_name", "")}
+        send, note = resolve_account_brand(out["typed"], probe)
+        out["send"] = send
+        out["note"] = note
+        out["swapped"] = bool(note)
+    except Exception:
+        # A fault here must not cost the card. Saying nothing is right: the
+        # alternative is claiming a swap that may not happen.
+        pass
+    c["brand_send"] = out
+    return c
+
+
 def _attach_viability(c, r):
     """Attach the SOURCING VIABILITY result (document-demand risk) for the card's
     'Compliance requirements' panel.
@@ -891,6 +973,9 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     # Can Amazon create this at all -- barcode, exemption, or
                     # neither, and is the barcode already on another listing.
                     _attach_identifier(c, r, CONFIG_PATH, _who)
+                    # And whose brand the submit will actually carry, which is
+                    # not always the one in the box.
+                    _attach_brand_send(c, _account_brands(_cfg(), _who, CONFIG_PATH), _cfg())
                     return jsonify({"ok": True, "row": c})
             return jsonify({"ok": False, "error": "sku not found"}), 404
         except Exception as e:
@@ -1114,6 +1199,19 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     # The NAMED workspace, not the open one. _ws() resolves from
                     # _state and is kept for the no-account case only.
                     db_store = _store_for(_use_aid) if _use_aid else _ws()
+                    # ONCE for the whole list, not once per row.
+                    #
+                    # THE ID COMES OFF THE STORE, not from _state. The store is
+                    # what these rows were just read from, so its workspace
+                    # cannot disagree with them -- and _state's
+                    # active_account_id is empty on a plain page load, which is
+                    # exactly when this ran and found no brands at all
+                    # ("this account has no registered brand", measured).
+                    _brands = _account_brands(
+                        _cfg(),
+                        _ws_id_of(db_store) or _use_aid
+                        or _state.get("active_account_id", ""),
+                        CONFIG_PATH)
                     for r in _records(db_store):
                         c = _card(r)
                         # One store, so one "tab". The multi-tab manifest exists
@@ -1125,6 +1223,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         _attach_claim_flags(c, r)
                         _attach_restricted(c, r)
                         _attach_viability(c, r)
+                        # Whose brand the submit will really carry. The editor
+                        # showed what you typed while the payload could carry
+                        # the account's own trademark instead, with nothing on
+                        # screen to say so.
+                        _attach_brand_send(c, _brands, _cfg())
                         db_cards.append(c)
                 except Exception as _dbe:
                     # A database that cannot be read must not take the sheet's

@@ -154,7 +154,15 @@ yes("badges 9px, 2px 6px, radius 3px",
 # task." The badge is the triangle and the number, and the sentence is on hover.
 check("the warning badge is a count, not a sentence",
       re.search(r"' warning' \+ \(w\.n === 1", JS) is not None, False)
-yes("  with the wording on hover instead", "lsWarnTip(w)" in JS)
+# AND THEN THE BADGE ITSELF WENT. Step 6 of the mockup brief only asked for the
+# sentence to go; a later message asked for the mark:
+#     "i dont want this symbol at all, i already have 3 symbols for restricted
+#      compliance and claims risk, i will maintain those"
+# This page has a Safety & Compliance tab two inches below where the badge sat,
+# listing every warning in full -- so the badge was a count of something already
+# on screen. lsWarnTip, the shared hover text, had no callers left and went too.
+check("  and the badge with it", "pdp-hb warn" in JS, False)
+check("  so its tooltip is gone as well", "lsWarnTip" in JS, False)
 
 print("\n== STEP 7: the API error, once ==")
 yes("the banner is at the top of the content", "pdpApiIssues(r)" in JS)

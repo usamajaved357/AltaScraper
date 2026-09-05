@@ -271,6 +271,71 @@
 }
 .dw2-fr:last-child{ border-bottom:none; }
 .dw2-fl{ color:#7a7984; white-space:nowrap; flex-shrink:0; display:flex; align-items:center; gap:3px; }
+
+/* ---- THE BARCODE ALREADY BELONGS TO SOMETHING ELSE --------------------
+   "Appear directly under the EAN input field with a red border"
+   "Be one clear sentence, not a paragraph of Amazon legal text"
+
+   The row is a flex line with the label on the left and the control on the
+   right, so the warning has to sit INSIDE the control's side or it lands beside
+   the label instead of under the box. That is what the wrapper is for. */
+/* ---- A FIELD AMAZON WILL NOT LET YOU CHANGE ---------------------------
+   The mockup's readonly identity rows: the value on --panel2 in grey, with a
+   padlock beside it.
+
+       <input class="pdp-input-sm" value="Nestwell Goods"
+              style="background:var(--panel2);color:var(--ink3)" readonly>
+       <i class="ti ti-lock" style="color:var(--ink4)">
+
+   A SPAN, NOT A DISABLED INPUT. The value is the thing you opened the listing
+   to check, so it stays legible and selectable; a greyed-out box with no
+   explanation is the state that gets reported as "the app won't let me type".
+   The title on both halves says WHICH rule locked it -- the product type's
+   read-only list, or the listing being live -- because the remedies differ. */
+.dw2-ro{
+  display:inline-block; padding:5px 8px; border-radius:4px;
+  background:var(--panel2); border:1px solid var(--line);
+  color:var(--ink3); font-size:12px; cursor:help;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  vertical-align:middle;
+}
+.dw2-rolock{
+  font-size:14px; color:var(--ink4); margin-left:6px; cursor:help;
+  vertical-align:middle;
+}
+
+.dw2-idwrap{ display:block; }
+.dw2-idwrap.bad .ed{
+  border-color:var(--red); box-shadow:0 0 0 2px var(--red-bg);
+}
+.dw2-idclash{
+  display:flex; align-items:flex-start; gap:6px;
+  margin-top:5px; padding:6px 8px;
+  background:var(--red-bg); border:1px solid var(--red);
+  border-radius:var(--radius-sm);
+  font-size:11px; line-height:1.45; color:var(--ink);
+  text-align:left; white-space:normal;
+}
+.dw2-idclash > i{ color:var(--red); font-size:13px; flex-shrink:0; margin-top:1px; }
+.dw2-idclash b{ color:var(--red); font-weight:600; }
+/* The brand's SECONDARY note. Deliberately quieter than the one above it: the
+   brand is the symptom, and dressing it in the same red is what sent people to
+   change the wrong field in the first place. */
+.dw2-idnote{
+  margin-top:4px; font-size:10px; color:var(--muted);
+  line-height:1.4; text-align:left; white-space:normal;
+}
+.dw2-idnote b{ color:var(--gold); font-weight:600; }
+/* THE SUBMIT WILL SEND SOMETHING ELSE. Louder than the barcode's secondary note
+   because this one is about what leaves the app, not about somebody else's
+   product -- but still not the red alarm, because nothing is broken and the
+   remedy is one line in the account's Brands list. */
+.dw2-idnote.warn{
+  margin-top:5px; padding:6px 8px;
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:var(--radius-sm); color:var(--ink);
+}
+.dw2-idnote.warn b{ color:var(--warn); }
 .dw2-fv{
   color:#c8c7cc; font-weight:500; text-align:right;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:210px;
