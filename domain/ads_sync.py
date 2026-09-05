@@ -192,4 +192,14 @@ def sync(workspace_id, marketplace="UK", days=30, wait=300, config_path=None,
         out["written"][kind] = {"report_rows": len(rows), "stored": n,
                                 "report_id": got.get("report_id")}
     conn.commit()
+
+    # TELL THE APP THE DATA IS THERE. Every ad figure on every screen is gated
+    # on data_availability, which is a CACHED row, not a count of this table --
+    # so storing rows without this leaves the whole app saying "not connected"
+    # while 705 rows of real spend sit in the database. Measured exactly that
+    # way on the first live pull.
+    from domain import sales_data as _sd
+    _sd.refresh_availability(conn, workspace_id, marketplace, "ads")
+    out["availability"] = _sd.availability(config_path, workspace_id,
+                                           marketplace).get("ads")
     return out

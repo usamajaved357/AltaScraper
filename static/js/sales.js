@@ -1052,6 +1052,7 @@ async function salesReload(){
     // forget: a missing costing setting must never hold up the figures.
     if(typeof cogsModeLoad === "function") cogsModeLoad().catch(function(){});
     salesDrawCharts(ser);
+    salesDrawPpcCards(sum);
     salesDrawOrgPpc(ser);
     salesDrawGrid(ser);
     salesDrawRange(sum, av);
@@ -1567,17 +1568,101 @@ async function salesLoadWeek(){
   }
 }
 
+/* ---- PPC summary cards ---------------------------------------------------
+ * Spend, ACOS, TACOS, ROAS and CPC, sitting above the Organic vs PPC split so
+ * the cost of the paid half is read before the split it produced.
+ *
+ * EVERY FIGURE IS THE SERVER'S. spend, acos, tacos and roas are already in
+ * sum.totals -- domain/sales_data.py derives them from ads_daily and defines
+ * acos as spend/ad_sales, tacos as spend/ordered_sales, roas as ad_sales/spend.
+ * Recomputing any of them here would be a second definition that can disagree
+ * with the grid on the same screen (CLAUDE.md Rule 12), so this only formats.
+ *
+ * CPC is the exception and is derived here, because nothing else in the app
+ * shows it: spend / clicks, both from the same totals, so it cannot drift.
+ *
+ * NOT CONNECTED DRAWS NOTHING. An account with no advertising data gets an
+ * empty row, not five zeros -- a zero ACOS is a claim about performance.
+ */
+function salesDrawPpcCards(sum){
+  const host = document.getElementById("sales_ppccards");
+  if(!host) return;
+  const t = (sum && sum.totals) || {};
+  const cur = (sum && sum.currency) || t.currency;
+  const connected = !!(sum && sum.ads_connected);
+  const spend = Number(t.spend);
+  if(!connected || !isFinite(spend) || !spend){ host.innerHTML = ""; return; }
+
+  const clicks = Number(t.clicks);
+  const cpc = (isFinite(clicks) && clicks) ? (spend / clicks) : null;
+  const n = function(v){ return (v === null || v === undefined || !isFinite(Number(v)))
+                                ? null : Number(v); };
+
+  // Sponsored Products only. Said on every card that could be read as "all of
+  // your advertising", because Brands and Display are not in these figures and
+  // a spend that is a floor must not be read as a total.
+  const SP = "Sponsored Products only — Sponsored Brands and Sponsored Display "
+           + "are separate ad products and are not included, so this is a floor.";
+
+  const CARDS = [
+    {label: "Ad Spend", value: n(t.spend), kind: "money",
+     note: "What Amazon charged for clicks in this period. " + SP},
+    {label: "ACOS", value: n(t.acos), kind: "pct", lowerIsBetter: true,
+     note: "Ad spend as a share of the sales advertising is credited with "
+         + "(spend ÷ ad sales). Lower is better."},
+    {label: "TACOS", value: n(t.tacos), kind: "pct", lowerIsBetter: true,
+     note: "Ad spend as a share of ALL sales, advertised or not "
+         + "(spend ÷ total sales). This is the one that says whether "
+         + "advertising is growing the business or just carrying it."},
+    {label: "ROAS", value: n(t.roas), kind: "count",
+     note: "Sales credited to advertising for each unit of currency spent "
+         + "(ad sales ÷ spend). 3.0 means £3 back for every £1 out."},
+    // CPC IS FORMATTED EXACTLY, not shortened. _sShort renders money with no
+    // decimals -- right for a £1,294 sales card, fatal for a 26p click, which
+    // it would print as "£0". Pence are the whole figure here.
+    {label: "Avg CPC", value: cpc, kind: "money", exact: true,
+     note: cpc === null ? "No clicks in this period."
+                        : "Average cost per click: spend ÷ " + _sNum(clicks, "count") + " clicks."},
+  ];
+
+  host.innerHTML = CARDS.map(function(c){
+    const missing = (c.value === null);
+    const shown = missing ? "—"
+                : (c.exact ? _sNum(c.value, c.kind, cur)
+                           : _sShort(c.value, c.kind, cur));
+    return '<div class="stat-card' + (missing ? " is-empty" : "") + '">'
+      + '<p class="stat-label">' + _sEsc(c.label) + ' '
+      + '<span class="statinfo" title="' + _sEsc(c.note) + '">'
+      + '<i class="ti ti-info-circle"></i></span></p>'
+      + '<p class="stat-number">'
+      + _sEsc(shown)
+      + (c.kind === "count" && !missing ? "x" : "")
+      + '</p>'
+      + '<p class="stat-delta">' + (missing ? "" : "Sponsored Products") + '</p>'
+      + '</div>';
+  }).join("");
+}
+
 /* ---- organic vs PPC -----------------------------------------------------
  * Orbit's split of what sold on its own against what advertising paid for:
  * two stacked areas in its own measured colours (#10b981 organic, #8b5cf6
  * PPC), a share bar above them, and the percentages named.
  *
- * THE ADVERTISING API IS NOT CONNECTED, and this is built anyway -- with the
- * shape drawn from a sample series and every figure marked as such, so the
- * panel exists and is judgeable now and fills with real numbers the moment
- * ads_daily has rows. The one thing it must never do is show a plausible
- * split as though it were measured: an organic/paid ratio drives what you
- * spend, and a made-up one is worse than a blank panel.
+ * BUILT BEFORE THE API WAS CONNECTED, with the shape drawn from a sample series
+ * and every figure marked as such, so the panel was judgeable before it had
+ * anything real in it. The one thing it must never do is show a plausible split
+ * as though it were measured: an organic/paid ratio drives what you spend, and
+ * a made-up one is worse than a blank panel.
+ *
+ * CONNECTED 5 Sep 2026 for nestwell_goods, and the switch below needed no
+ * change -- haveAds went true on its own the moment domain/ads_sync.py put real
+ * rows in ads_daily, the 70/30 banner disappeared and the two lines became
+ * measured. The sample branch stays because it is still the truth for every
+ * account that has not connected: five of the six have no advertising login.
+ *
+ * First real reading, Nestwell UK, 30 days: 1,294.97 total, 827.29 attributed
+ * to advertising, 467.68 organic. Nearly two thirds of the revenue is paid for,
+ * which is exactly the kind of thing a made-up 70/30 would have hidden.
  */
 function salesDrawOrgPpc(ser){
   const host = document.getElementById("sales_orgppc");
