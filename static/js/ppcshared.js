@@ -289,6 +289,62 @@ function ppcAvailabilityNote(av){
   return h + '</ul></div>';
 }
 
+/* THE EMPTY SCREEN, EXPLAINED PROPERLY.
+ *
+ *     "PPC Analytics page seems to be just an image not a full interactive page"
+ *
+ * Measured afterwards, and this is the reason: five of the six accounts have no
+ * Amazon Advertising login at all. On those there is no spend, no campaign, no
+ * search term and nothing to hover -- so the page drew its frame and nothing
+ * else, which is indistinguishable from a page that is broken.
+ *
+ * What it used to say was "Nothing is stored for this account and marketplace in
+ * this window", in small grey type. True, and useless: it does not say whether
+ * the fix is to connect a login, to run a sync, or to widen the dates. Those are
+ * three different problems and only one of them is about the window.
+ *
+ * So this states which one it is, in the order a person would act on:
+ *
+ *     no login          -> connect it, and which account HAS one
+ *     login, no rows    -> run the advertising sync
+ *     rows, none here   -> widen the range; the data is elsewhere in time
+ *
+ * Shared by all three advertising screens and the console, because an empty
+ * Search Terms page and an empty PPC Analytics page have the same cause and
+ * deserve the same sentence (Rule 12).
+ */
+function ppcNoData(av, what){
+  const c = (av && av.connection) || {};
+  const camp = (av && av.campaigns) || {};
+  let title, body, cls;
+  if(c.ok === false){
+    cls = "warn";
+    title = "This account has no Amazon Advertising login connected";
+    body = c.why + " Advertising figures are read with a SEPARATE login from "
+         + "the Selling Partner one, so nothing on this page can be filled "
+         + "until that is set — it is not that the window is empty.";
+  }else if(c.ok === true && !camp.ok){
+    cls = "warn";
+    title = "Connected, but nothing has been mirrored yet";
+    body = "The Advertising login for this account resolves, so the connection "
+         + "is good. No advertising rows are stored yet — the sync has not run, "
+         + "or ran before this account was connected. Run the advertising sync "
+         + "and this page fills.";
+  }else{
+    cls = "";
+    title = "No advertising figures in this window";
+    body = "This account has advertising data stored, but none inside the dates "
+         + "chosen. Widen the range — the figures are there, just not here.";
+  }
+  return '<div class="ppc-note ' + cls + '" style="padding:16px 18px">'
+    + '<b style="font-size:15px;display:block;margin-bottom:6px">'
+    + _pEsc(title) + '</b>'
+    + '<div style="line-height:1.6">' + _pEsc(body) + '</div>'
+    + (what ? '<div style="margin-top:8px;font-size:12px;opacity:.8">'
+              + _pEsc(what) + '</div>' : "")
+    + '</div>';
+}
+
 function ppcProductNote(av){
   const p = av && av.ad_products;
   if(!p || !p.why) return "";

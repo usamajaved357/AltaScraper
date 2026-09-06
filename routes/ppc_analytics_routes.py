@@ -59,6 +59,37 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
                     break
         return aid, mkt
 
+    def _avail(aid, mkt):
+        """What each panel can be filled from, PLUS whether Advertising is even
+        connected for this account.
+
+        The second half is the one that was missing, and it is why this screen
+        looked broken rather than empty. Measured on the real config: five of the
+        six accounts have no Advertising login at all, and every one of them was
+        being told "nothing is stored for this window" -- which is true, and
+        useless. "No login" and "a login that spent nothing" need entirely
+        different things done about them.
+
+        All three advertising endpoints go through here, so they cannot end up
+        giving three different answers to the same question (Rule 12).
+        """
+        from domain import ppc_analytics as _pa
+
+        av = _pa.availability(CONFIG_PATH, aid, mkt)
+        acc = {}
+        for a in ((_cfg() or {}).get("accounts") or []):
+            if str(a.get("id") or "") == aid:
+                acc = a
+                break
+        try:
+            from api import amazon_ads as _ads
+            av["connection"] = _ads.connection(_cfg, acc)
+        except Exception as e:
+            av["connection"] = {"ok": None, "profile_id": "", "missing": [],
+                                "why": ("Could not check whether Advertising is "
+                                        "connected: %s" % str(e)[:120])}
+        return av
+
     def _window():
         from domain import ppc_analytics as _pa
         start = (request.args.get("start") or "").strip()
@@ -98,7 +129,7 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             return bad
         start, end, pstart, pend = _window()
 
-        avail = _pa.availability(CONFIG_PATH, aid, mkt)
+        avail = _avail(aid, mkt)
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
         now = _pa.totals_for(CONFIG_PATH, aid, mkt, start, end)
         before = _pa.totals_for(CONFIG_PATH, aid, mkt, pstart, pend)
@@ -169,7 +200,7 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "ok": True, "account": aid, "marketplace": mkt,
             "window": {"start": start, "end": end,
                        "compare_start": pstart, "compare_end": pend},
-            "availability": _pa.availability(CONFIG_PATH, aid, mkt),
+            "availability": _avail(aid, mkt),
             "rates": rates,
             "totals": now, "previous": before,
             "change": _pa.change(now, before),
@@ -216,7 +247,7 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "ok": True, "account": aid, "marketplace": mkt,
             "window": {"start": start, "end": end,
                        "compare_start": pstart, "compare_end": pend},
-            "availability": _pa.availability(CONFIG_PATH, aid, mkt),
+            "availability": _avail(aid, mkt),
             "rates": rates,
             "totals": _pa.totals_for(CONFIG_PATH, aid, mkt, start, end),
             "campaigns": camps,

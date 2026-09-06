@@ -157,6 +157,9 @@ const SECTION_FEATURE = {
   // and the endpoint hide on exactly the same permission -- a link that is
   // visible and then refused is worse than one never shown.
   ppcanalytics:"ppc", ppcterms:"ppc", ppccampaigns:"ppc",
+  // The Dr PPC Console. Its routes live under /drppc/, which auth/guard.py
+  // already governs as "ppc", so the nav item and the endpoints hide together.
+  drppcconsole:"ppc",
   monitor:"monitor", trackers:"trackers", alerts:"alerts",
   catalog:"catalog", categories:"categories", compliance:"compliance",
   notify:"notify", setup:"setup",

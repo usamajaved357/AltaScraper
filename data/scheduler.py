@@ -85,12 +85,55 @@ def run_job(job_type, workspace_id=None):
                 "seconds": round(time.time() - started, 2)}
 
 
+STALE_RUN_HOURS = 6
+
+
+def reap_stale(hours=STALE_RUN_HOURS):
+    """Close out runs whose process ended before they finished. -> count.
+
+    A RUN CANNOT OUTLIVE THE PROCESS THAT OWNS IT. _record_start writes
+    'running' and _record_end updates it; if the app is stopped, redeployed or
+    killed in between, the row stays 'running' for ever and every screen that
+    reads it believes the job is still going.
+
+    MEASURED on the live database: 72 rows were stuck at 'running', the oldest
+    from 27 August -- ten days. Two job types were reporting as currently
+    running because their newest row was one of these, which also means their
+    real last outcome was invisible.
+
+    Six hours is far beyond anything here (the longest wait in this file is 90
+    seconds), so nothing legitimate is caught. They are marked 'interrupted'
+    rather than 'error': nobody knows whether the work failed or simply never
+    got to say it had finished, and 'error' would claim the former.
+    """
+    import datetime as _dt
+
+    # Matches _now()'s "%Y-%m-%d %H:%M:%S" exactly -- the comparison is a string
+    # comparison, so a different separator would silently match nothing.
+    cut = (_dt.datetime.now() - _dt.timedelta(hours=float(hours))).strftime(
+        "%Y-%m-%d %H:%M:%S")
+    conn = _db.get_db()
+    cur = conn.execute(
+        "UPDATE sync_jobs SET status='interrupted', error=COALESCE(error,?) "
+        "WHERE status='running' AND last_run < ?",
+        ("The process that started this run ended before it finished, so the "
+         "outcome was never recorded. It may have completed.", cut))
+    conn.commit()
+    return cur.rowcount or 0
+
+
 def status():
     """Last run of every job type, straight from the database.
 
     Read from sync_jobs, not from the scheduler's memory: after a restart the
     scheduler knows nothing, while the table still holds the truth.
     """
+    # Truth first: an abandoned 'running' row would otherwise be reported as a
+    # job that is currently going, and hide the real last outcome behind it.
+    try:
+        reap_stale()
+    except Exception:
+        pass
     conn = _db.get_db()
     rows = conn.execute(
         "SELECT job_type, workspace_id, status, last_run, result, error "
@@ -112,6 +155,44 @@ def status():
             "scheduler_running": bool(_scheduler and _scheduler.running),
             "apscheduler_installed": HAVE_APSCHEDULER,
             "registered": sorted(_JOBS.keys())}
+
+
+def history(job_types=None, workspace_id=None, limit=10):
+    """The last N ATTEMPTS, not just the last one per type. -> list.
+
+    status() answers "where does each job stand"; this answers "what has been
+    happening", which is what a run log is. It lives here because sync_jobs is
+    this module's table and a second reader elsewhere would be a second opinion
+    about what a run is (Rule 12).
+
+    Failures are included deliberately. A run list showing only successes is how
+    a job that has been erroring for a fortnight goes unnoticed.
+    """
+    conn = _db.get_db()
+    sql = ("SELECT id, job_type, workspace_id, status, last_run, result, error "
+           "FROM sync_jobs WHERE 1=1")
+    args = []
+    if job_types:
+        sql += " AND job_type IN (%s)" % ",".join("?" * len(job_types))
+        args += list(job_types)
+    if workspace_id:
+        # A job run for every account carries no workspace id, and it still ran
+        # for this one -- so those are kept rather than filtered out.
+        sql += " AND (workspace_id=? OR workspace_id IS NULL)"
+        args.append(workspace_id)
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(int(limit))
+    out = []
+    for r in conn.execute(sql, args):
+        d = dict(r)
+        if d.get("result"):
+            try:
+                d["result"] = json.loads(d["result"])
+            except ValueError:
+                pass
+        d["age_seconds"] = _age(d.get("last_run"))
+        out.append(d)
+    return out
 
 
 def start(workspace_ids=None):

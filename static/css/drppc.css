@@ -1,0 +1,559 @@
+/* static/css/drppc.css -- the Dr PPC(tm) Console.
+ *
+ * Built to DR-PPC-SETUP-BUILD-PROMPT.md, DR-PPC-CURRENT-STATE-BUILD-PROMPT.md
+ * and DR-PPC-GOALS-STRATEGY-BUILD-PROMPT.md. The dark half borrows ppc.css's
+ * tokens unchanged -- the console sits inside the same app as the three
+ * advertising screens and must not be a second dark theme.
+ *
+ * THE LIGHT HALF IS THE POINT OF THIS FILE. All three specs are emphatic and
+ * repeat it:
+ *
+ *     "Workspace config panel: WHITE background inside the dark page -- this is
+ *      the ONLY light-themed section"
+ *     "ALL form sections use WHITE panels on the dark page"
+ *     "Save configuration button: GOLD/AMBER (#e8b923), NOT cyan or green"
+ *     "Toggle switches: GOLD/AMBER when ON"
+ *     "Form inputs: light gray bg (#f0f2f5), NOT white"
+ *
+ * So the light panel is a deliberate device, not an oversight: the sections a
+ * person TYPES INTO are white, everything they READ is dark. That is a real
+ * distinction worth keeping -- it is the same reason the Save button is gold
+ * rather than the app's cyan, which everywhere else means "a link".
+ *
+ * The hexes below are the specs' own, moved rather than chosen. static/js may
+ * not name a colour (test_one_palette.py), so every one of them lives here.
+ */
+
+:root{
+  /* The light panel, from the spec's own table. */
+  --drp-light-bg:     #ffffff;
+  --drp-light-field:  #f0f2f5;   /* inputs -- grey, NOT white */
+  --drp-light-sub:    #f6f8fa;   /* the toggle row's ground */
+  --drp-light-border: #d1d9e0;
+  --drp-light-text:   #1f2328;
+  --drp-light-muted:  #656d76;
+  --drp-gold:         #e8b923;   /* Save, and a toggle that is ON */
+  --drp-gold-dark:    #c99f12;
+}
+
+/* ---- the console shell ----------------------------------------------------
+ *
+ * 200px sidebar, scrolling middle, and a right-hand Analyst column the setup
+ * spec asks for as a placeholder. It IS a placeholder and says so -- a chat box
+ * that looks live but answers nothing is worse than an empty one that explains
+ * itself. */
+.drp-shell{
+  display: flex;
+  align-items: stretch;
+  background: var(--ppc-bg);
+  color: var(--ppc-text);
+  min-height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.drp-side{
+  width: 200px;
+  flex: 0 0 200px;
+  background: var(--ppc-surface);
+  border-right: 1px solid var(--ppc-border);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.drp-side-head{
+  padding: 14px;
+  border-bottom: 1px solid var(--ppc-border);
+}
+.drp-avatar{
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #103c33, #2d8f7b);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; margin-bottom: 9px;
+}
+.drp-side-title{ font-size: 14px; font-weight: 700; }
+.drp-side-acct{
+  font-size: 11px; color: var(--ppc-muted); margin-top: 2px;
+  cursor: default;
+}
+.drp-apply{
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-top: 10px; padding: 4px 11px; border-radius: 11px;
+  background: var(--ppc-green); color: var(--ppc-bg);
+  font-size: 11px; font-weight: 700; border: 0;
+}
+.drp-apply[disabled]{ opacity: .55; }
+
+.drp-nav a{
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 14px; font-size: 13px;
+  color: var(--ppc-muted); text-decoration: none;
+  border-left: 2px solid transparent;
+}
+.drp-nav a:hover{ color: var(--ppc-text); }
+.drp-nav a.on{
+  border-left-color: var(--ppc-cyan);
+  color: #fff; font-weight: 600;
+  background: rgba(255,255,255,0.06);
+}
+.drp-nav a.soon{ opacity: .45; cursor: default; }
+.drp-nav .ic{ font-size: 15px; width: 17px; text-align: center; }
+
+.drp-side-foot{
+  margin-top: auto; padding: 12px 14px;
+  font-size: 11px; color: var(--ppc-muted);
+  display: flex; align-items: center; gap: 7px;
+}
+.drp-dot{
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ppc-green); flex: 0 0 8px;
+}
+.drp-dot.off{ background: var(--ppc-dim); }
+
+.drp-main{
+  flex: 1; min-width: 0;
+  padding: 26px 30px 60px;
+  max-width: 1060px;
+}
+
+/* ---- page header ---------------------------------------------------------- */
+.drp-head{
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 20px; margin-bottom: 22px;
+}
+.drp-head h1{ font-size: 22px; font-weight: 700; margin: 0; }
+.drp-head .sub{
+  font-size: 13px; color: var(--ppc-muted); margin-top: 4px; max-width: 720px;
+  line-height: 1.5;
+}
+.drp-ghost{
+  background: transparent; border: 1px solid var(--ppc-border);
+  color: var(--ppc-muted); border-radius: 6px;
+  padding: 7px 13px; font-size: 13px; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.drp-ghost:hover{ color: var(--ppc-text); border-color: var(--ppc-muted); }
+
+.drp-h2{ font-size: 20px; font-weight: 700; margin: 30px 0 4px; }
+.drp-h2-sub{ font-size: 13px; color: var(--ppc-muted); margin-bottom: 12px;
+             line-height: 1.5; }
+
+.drp-panel{
+  background: var(--ppc-surface);
+  border: 1px solid var(--ppc-border);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+.drp-panel + .drp-panel{ margin-top: 10px; }
+
+/* ---- THE LIGHT PANEL ------------------------------------------------------
+ * The one place in this app with a white ground, and it is deliberate. */
+.drp-light{
+  background: var(--drp-light-bg);
+  border: 1px solid var(--drp-light-border);
+  border-radius: 10px;
+  padding: 22px 26px;
+  color: var(--drp-light-text);
+  margin-bottom: 14px;
+}
+.drp-light h3{ font-size: 18px; font-weight: 700; margin: 0;
+               color: var(--drp-light-text); }
+.drp-light .desc{
+  font-size: 13px; color: var(--drp-light-muted); margin-top: 6px;
+  line-height: 1.5;
+}
+.drp-light-head{
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px;
+}
+.drp-gold-btn{
+  background: var(--drp-gold); color: var(--drp-light-text);
+  border: 0; border-radius: 6px; padding: 8px 15px;
+  font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.drp-gold-btn:hover{ background: var(--drp-gold-dark); }
+.drp-green-btn{
+  background: var(--ppc-green); color: var(--ppc-bg);
+  border: 0; border-radius: 6px; padding: 8px 15px;
+  font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.drp-light-ghost{
+  background: transparent; border: 1px solid var(--drp-light-border);
+  color: var(--drp-light-muted); border-radius: 6px; padding: 6px 12px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+
+/* light form fields */
+.drp-fields{
+  display: grid; gap: 14px 18px; margin-top: 18px;
+  grid-template-columns: repeat(3, 1fr);
+}
+.drp-fields.two{ grid-template-columns: 1.6fr 1fr 1fr; }
+.drp-fields.four{ grid-template-columns: repeat(4, 1fr); }
+.drp-fields.one{ grid-template-columns: 1fr; }
+.drp-f label{
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .3px;
+  text-transform: uppercase; color: var(--drp-light-muted); margin-bottom: 5px;
+}
+.drp-f input, .drp-f select, .drp-f textarea{
+  width: 100%; box-sizing: border-box;
+  background: var(--drp-light-field);
+  border: 1px solid var(--drp-light-border);
+  border-radius: 6px; padding: 9px 12px;
+  font-size: 14px; color: var(--drp-light-text);
+  font-family: inherit;
+}
+.drp-f textarea{ resize: vertical; min-height: 62px; line-height: 1.5; }
+/* The gold focus ring the spec calls for -- 2px, and it replaces the border so
+ * nothing shifts by a pixel when a dropdown is opened. */
+.drp-f input:focus, .drp-f select:focus, .drp-f textarea:focus{
+  outline: none; border: 2px solid var(--drp-gold); padding: 8px 11px;
+}
+.drp-mono{
+  font-family: "SF Mono", Consolas, "Courier New", monospace;
+  font-size: 12.5px; line-height: 1.55;
+}
+
+/* the three toggles, joined in one bordered row */
+.drp-toggles{
+  display: flex; margin-top: 18px;
+  border: 1px solid var(--drp-light-border); border-radius: 8px;
+  overflow: hidden; background: var(--drp-light-sub);
+}
+.drp-toggle{ flex: 1; padding: 14px; }
+.drp-toggle + .drp-toggle{ border-left: 1px solid var(--drp-light-border); }
+.drp-toggle .t{
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 13px; font-weight: 600; color: var(--drp-light-text);
+}
+.drp-toggle .d{
+  font-size: 12px; color: var(--drp-light-muted); line-height: 1.4; margin-top: 6px;
+}
+.drp-sw{
+  width: 42px; height: 22px; border-radius: 11px; background: #bbb;
+  position: relative; flex: 0 0 42px; cursor: pointer; border: 0; padding: 0;
+  transition: background .15s;
+}
+.drp-sw:after{
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  transition: transform .15s;
+}
+.drp-sw.on{ background: var(--drp-gold); }        /* GOLD, not green */
+.drp-sw.on:after{ transform: translateX(20px); }
+
+/* ---- readiness ------------------------------------------------------------
+ * All ten checks in ONE panel, five across, as the spec draws them. */
+.drp-checks{
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+}
+.drp-check{
+  display: flex; gap: 10px; padding: 10px; border-radius: 6px;
+  align-items: flex-start;
+}
+.drp-check.hl{ background: rgba(45,212,191,0.08); }
+.drp-ring{
+  width: 24px; height: 24px; border-radius: 50%; flex: 0 0 24px;
+  border: 2px solid #4a4f57; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 13px; color: transparent;
+}
+.drp-ring.ok{
+  border-color: var(--ppc-green); background: rgba(63,185,80,0.12);
+  color: #fff;
+}
+.drp-check .ct{ font-size: 14px; font-weight: 600; }
+.drp-check .cn{ font-size: 12px; color: var(--ppc-muted); margin-top: 2px;
+                line-height: 1.4; word-break: break-word; }
+
+.drp-steps li{ font-size: 13px; line-height: 1.9; }
+.drp-orange-link{
+  color: var(--ppc-orange); font-size: 13px; font-weight: 600;
+  cursor: pointer; background: none; border: 0; padding: 0;
+}
+.drp-cyan-link{
+  color: var(--ppc-cyan); font-size: 13px; font-weight: 600;
+  cursor: pointer; background: none; border: 0; padding: 0;
+}
+
+/* status pills and cards */
+.drp-pill{
+  display: inline-flex; align-items: center; gap: 5px;
+  border-radius: 12px; padding: 3px 10px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--ppc-border); color: var(--ppc-muted);
+}
+.drp-pill.green{ border-color: var(--ppc-green); color: var(--ppc-green); }
+.drp-pill.red{ border-color: var(--ppc-red); color: var(--ppc-red); }
+.drp-pill.cyan{ border-color: var(--ppc-cyan); color: var(--ppc-cyan); }
+.drp-pill.orange{ border-color: var(--ppc-orange); color: var(--ppc-orange); }
+
+.drp-cards{ display: flex; gap: 8px; flex-wrap: wrap; }
+.drp-card{
+  flex: 1; min-width: 165px;
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-radius: 8px; padding: 14px;
+}
+.drp-card .t{ font-size: 13px; font-weight: 700; margin-top: 9px; }
+.drp-card .s{ font-size: 12px; color: var(--ppc-muted); margin-top: 3px;
+              line-height: 1.4; }
+.drp-card .s2{ font-size: 11px; color: var(--ppc-dim); margin-top: 3px; }
+
+.drp-note{
+  border-radius: 6px; padding: 10px 13px; font-size: 12.5px; line-height: 1.55;
+  margin-top: 10px; color: var(--ppc-muted);
+  background: rgba(255,255,255,0.02); border: 1px solid var(--ppc-border);
+}
+.drp-note.good{ background: rgba(63,185,80,0.06); color: var(--ppc-green);
+                border-color: transparent; }
+.drp-note.bad{ background: rgba(248,81,73,0.06);
+               border: 1px solid rgba(248,81,73,0.25); color: var(--ppc-text); }
+.drp-note.bad b{ display: block; margin-bottom: 4px; }
+.drp-empty{
+  border: 1px solid var(--ppc-border); border-radius: 6px;
+  padding: 22px; text-align: center; font-size: 13px; color: var(--ppc-muted);
+  background: rgba(255,255,255,0.015);
+}
+.drp-light .drp-empty{
+  border-color: var(--drp-light-border); background: var(--drp-light-sub);
+  color: var(--drp-light-muted);
+}
+
+/* the schedule pair, joined by an arrow */
+.drp-sched{ display: flex; align-items: stretch; }
+.drp-sched .c{
+  flex: 1; background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  padding: 14px 16px;
+}
+.drp-sched .c:first-child{ border-radius: 8px 0 0 8px; border-right: 0; }
+.drp-sched .c:last-child{ border-radius: 0 8px 8px 0; border-left: 0; }
+.drp-sched .k{
+  font-size: 11px; font-weight: 700; letter-spacing: .8px;
+  color: var(--ppc-muted); text-transform: uppercase;
+}
+.drp-sched .arrow{
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 0 14px; gap: 3px;
+}
+.drp-sched .arrow .a{ font-size: 15px; color: var(--ppc-muted); }
+.drp-sched .arrow .l{
+  font-size: 9px; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--ppc-dim); text-align: center; line-height: 1.3;
+}
+
+/* the classified-spend meter, with its 80% mark */
+.drp-meter{ height: 6px; border-radius: 3px; background: var(--ppc-surface2);
+            position: relative; margin: 12px 0 8px; }
+.drp-meter .fill{ height: 100%; border-radius: 3px; background: var(--ppc-cyan); }
+.drp-meter .bar{
+  position: absolute; top: -4px; width: 2px; height: 14px;
+  background: var(--ppc-text);
+}
+
+/* ---- current state -------------------------------------------------------- */
+.drp-stats{
+  display: flex; border: 1px solid var(--ppc-border); border-radius: 8px;
+  overflow: hidden; margin-bottom: 16px;
+}
+.drp-stat{ flex: 1; padding: 14px 16px; min-width: 0; }
+.drp-stat + .drp-stat{ border-left: 1px solid var(--ppc-border); }
+.drp-stat .n{ font-size: 24px; font-weight: 700; color: var(--ppc-cyan); }
+.drp-stat .n.unk{ color: var(--ppc-dim); }
+.drp-stat .l{
+  font-size: 10px; font-weight: 700; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--ppc-muted); margin-top: 3px;
+}
+
+.drp-filters{ display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+.drp-in{
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-radius: 4px; padding: 7px 11px; font-size: 13px;
+  color: var(--ppc-text); font-family: inherit;
+}
+.drp-in:focus{ outline: none; border-color: var(--ppc-cyan); }
+.drp-count{ font-size: 12px; color: var(--ppc-muted); margin-left: auto; }
+
+.drp-table{ width: 100%; border-collapse: collapse; }
+.drp-table th{
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  color: var(--ppc-muted); text-align: right; padding: 8px 10px;
+  border-bottom: 1px solid var(--ppc-border); white-space: nowrap;
+}
+.drp-table th:first-child{ text-align: left; }
+.drp-table td{ padding: 9px 10px; font-size: 14px; text-align: right; }
+.drp-table td:first-child{
+  text-align: left; font-size: 13px; max-width: 400px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.drp-table tbody tr{ border-bottom: 1px solid var(--ppc-border); }
+.drp-table tbody tr.row{ cursor: pointer; }
+.drp-table tbody tr.row:hover{ background: rgba(255,255,255,0.02); }
+.drp-table td.mono{
+  font-family: "SF Mono", Consolas, "Courier New", monospace; font-size: 12.5px;
+}
+.drp-unk{ color: var(--ppc-dim); }
+
+.drp-tag{
+  display: inline-block; border-radius: 4px; padding: 2px 8px;
+  font-size: 11px; font-weight: 600;
+}
+.drp-tag.sp{ background: var(--ppc-gold-bg); color: #f0c000; }
+.drp-tag.sb{ background: var(--ppc-blue-bg); color: var(--ppc-blue); }
+.drp-tag.sd{ background: rgba(188,140,255,0.18); color: var(--ppc-purple); }
+.drp-tag.enabled{ background: var(--ppc-green-bg); color: var(--ppc-green); }
+.drp-tag.paused{ background: var(--ppc-orange-bg); color: var(--ppc-orange); }
+.drp-tag.archived{ background: rgba(255,255,255,0.06); color: var(--ppc-dim); }
+
+.drp-detail{
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--ppc-border); border-radius: 8px;
+  padding: 16px 20px; margin: 4px 0 10px;
+}
+.drp-detail h4{
+  font-size: 13px; font-weight: 700; margin: 0 0 8px;
+  letter-spacing: .4px;
+}
+.drp-group{
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-radius: 8px; padding: 14px 18px; margin-bottom: 8px;
+}
+.drp-group .gn{ font-size: 14px; font-weight: 700; }
+.drp-chips{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.drp-chip{
+  background: var(--ppc-surface2); border: 1px solid var(--ppc-border);
+  border-radius: 4px; padding: 4px 10px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.drp-chip .kw{ color: var(--ppc-text); font-weight: 600; }
+.drp-chip .mu{ color: var(--ppc-muted); }
+
+/* ---- the plan ------------------------------------------------------------- */
+.drp-item{
+  border: 1px solid var(--drp-light-border); border-radius: 8px;
+  padding: 16px 18px; margin-top: 12px; position: relative;
+  background: var(--drp-light-sub);
+}
+.drp-item .hd{
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 14px; font-weight: 700; color: var(--drp-light-text);
+  margin-bottom: 10px;
+}
+.drp-del{
+  background: none; border: 0; cursor: pointer; font-size: 14px;
+  color: var(--drp-light-muted); padding: 2px 5px;
+}
+.drp-del:hover{ color: var(--ppc-red); }
+.drp-alloc-sum{ font-size: 13px; color: var(--drp-light-muted); }
+.drp-alloc-sum.over{ color: var(--ppc-red); font-weight: 600; }
+
+.drp-rev{ display: flex; align-items: center; gap: 9px; }
+.drp-hist{ font-size: 12px; color: var(--ppc-muted); margin-top: 10px; }
+.drp-hist b{ color: var(--ppc-text); }
+
+/* ---- performance ----------------------------------------------------------
+ * Six cards, each with its own 3px left border. The colour is an identity for
+ * the metric, not a verdict on it -- the verdict is the badge underneath, and
+ * two things saying the same thing in different languages is how a screen gets
+ * misread. */
+.drp-perf-cards{
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+}
+.drp-perf-card{
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-left: 3px solid var(--ppc-muted);
+  border-radius: 6px; padding: 12px 14px; min-width: 0;
+}
+.drp-perf-card.total_sales{ border-left-color: var(--ppc-cyan); }
+.drp-perf-card.spend{       border-left-color: var(--ppc-blue); }
+.drp-perf-card.tacos_pct{   border-left-color: var(--ppc-green); }
+.drp-perf-card.ad_sales{    border-left-color: var(--ppc-orange); }
+.drp-perf-card.acos_pct{    border-left-color: var(--ppc-gold); }
+.drp-perf-card.cvr_pct{     border-left-color: var(--ppc-red); }
+.drp-perf-card .k{
+  font-size: 10px; font-weight: 700; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--ppc-muted);
+}
+.drp-perf-card .v{ font-size: 21px; font-weight: 700; margin: 5px 0 2px;
+                   word-break: break-word; }
+.drp-perf-card .d{ font-size: 11px; color: var(--ppc-muted); margin-bottom: 8px; }
+.drp-perf-card .n{ font-size: 10px; color: var(--ppc-dim); margin-top: 7px; }
+
+.drp-state{
+  display: inline-block; border-radius: 4px; padding: 2px 8px;
+  font-size: 11px; font-weight: 600;
+}
+.drp-state.ok{   background: var(--ppc-green-bg);  color: var(--ppc-green); }
+.drp-state.warn{ background: var(--ppc-orange-bg); color: var(--ppc-orange); }
+.drp-state.bad{  background: var(--ppc-red-bg);    color: var(--ppc-red); }
+.drp-state.dim{  background: rgba(255,255,255,0.05); color: var(--ppc-dim); }
+
+.drp-good{ color: var(--ppc-green); }
+.drp-bad{  color: var(--ppc-red); }
+.drp-warn{ color: var(--ppc-orange); }
+
+.drp-perf-bottom{ display: grid; grid-template-columns: repeat(3, 1fr);
+                  gap: 10px; }
+.drp-perf-bottom-card{
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-top: 3px solid var(--ppc-muted);
+  border-radius: 8px; padding: 14px 16px;
+}
+.drp-perf-bottom-card.budget{ border-top-color: var(--ppc-cyan); }
+.drp-perf-bottom-card.goal{   border-top-color: var(--ppc-gold); }
+.drp-perf-bottom-card.rank{   border-top-color: var(--ppc-purple); }
+.drp-perf-bottom-card .t{ font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.drp-perf-bottom-card .s{ font-size: 12px; color: var(--ppc-muted);
+                          line-height: 1.5; margin-top: 4px; }
+
+.drp-gaps{ margin: 0 0 0 18px; padding: 0; }
+.drp-gaps li{ font-size: 13px; line-height: 1.8; color: var(--ppc-orange); }
+
+/* ---- the activity timeline ------------------------------------------------ */
+.drp-timeline{ position: relative; padding-left: 22px; }
+.drp-timeline:before{
+  content: ""; position: absolute; left: 4px; top: 4px; bottom: 4px;
+  width: 2px; background: var(--ppc-border);
+}
+.drp-tl-item{ position: relative; margin-bottom: 8px; }
+.drp-tl-dot{
+  position: absolute; left: -22px; top: 14px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--ppc-surface2); border: 2px solid var(--ppc-muted);
+}
+.drp-tl-dot.plan{        border-color: var(--ppc-gold); }
+.drp-tl-dot.decision{    border-color: var(--ppc-green); }
+.drp-tl-dot.observation{ border-color: var(--ppc-blue); }
+.drp-tl-dot.system{      border-color: var(--ppc-blue); }
+.drp-tl-card{
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-radius: 8px; padding: 12px 16px;
+}
+.drp-tl-head{
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap;
+}
+.drp-tl-title{ font-size: 15px; font-weight: 700; margin-top: 7px; }
+.drp-tl-desc{ font-size: 13px; color: var(--ppc-muted); line-height: 1.5;
+              margin-top: 4px; }
+.drp-tl-meta{
+  font-size: 11px; color: var(--ppc-dim); margin-top: 7px;
+  font-family: "SF Mono", Consolas, "Courier New", monospace;
+}
+
+@media (max-width: 1400px){
+  .drp-perf-cards{ grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 1200px){
+  .drp-perf-bottom{ grid-template-columns: 1fr; }
+  .drp-checks{ grid-template-columns: repeat(3, 1fr); }
+  .drp-fields, .drp-fields.two, .drp-fields.four{
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .drp-stats{ flex-wrap: wrap; }
+  .drp-stat{ min-width: 25%; }
+}

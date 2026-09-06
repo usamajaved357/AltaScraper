@@ -211,6 +211,63 @@ check("its delivered is our delivered", _t17.STATUS["Delivered"], _tr.DELIVERED)
 check("its NotFound is not our unknown — they mean different things",
       _t17.STATUS["NotFound"] != _tr.UNKNOWN, True)
 
+print("\nAMAZON'S OWN shipping-confirmation file goes straight in")
+# THE FILE THE SELLER ALREADY MADE. When shipments are confirmed in Seller
+# Central the seller ends up with this exact file, so it must import unedited --
+# otherwise "do not ask me for the tracking again" is answered with "retype it
+# into our template", which is the same thing wearing a hat.
+#
+# Amazon will not give the numbers back through the API. Measured, not assumed,
+# on nestwell_goods over 54 real orders of which 49 were shipped merchant-
+# fulfilled: the flat-file All Orders report has 33 columns and not one names a
+# carrier or a tracking number; the XML version of the SAME report carries a
+# FulfillmentData block holding only channel, service level and address, and the
+# string "track" does not occur once in 73KB of it; MerchantFulfillment exposes
+# get_shipment(id) for a label THIS app bought and has no way to list one it did
+# not. So the file is the route, and it has to be a file nobody has to retype.
+from domain import tracking_sheet as _ts        # noqa: E402
+
+AMZ = ["order-id", "order-item-id", "quantity", "ship-date", "carrier-code",
+       "carrier-name", "tracking-number", "ship-method"]
+conn.execute(
+    "INSERT INTO order_lines (workspace_id, marketplace, order_id, "
+    "purchase_date, asin, sku, title, units, revenue, currency, status) "
+    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    (WS, MKT, "T-9", "2026-09-04T01:07:07Z", "B0TEST", "S1", "Fan", 1, 34.99,
+     "GBP", "Shipped"))
+conn.commit()
+
+got = _ts.apply_sheet(None, WS, MKT, AMZ, [
+    ["T-9", "1", "1", "2026-09-05", "Royal Mail", "", "JD0002123456789GB", "Std"],
+])
+check("Amazon's header resolves the order column", got["columns"]["order"],
+      "order-id")
+check("  and the tracking column", got["columns"]["tracking"],
+      "tracking-number")
+check("  and the row is recorded", got["set"], 1)
+# THE ONE THAT MATTERS. Amazon fills carrier-CODE for every courier it knows and
+# leaves carrier-NAME empty unless the code is "Other". A matcher that finds
+# carrier-name and stops reads an empty cell on nearly every row -- and a
+# tracking number with no carrier can never be checked with the courier, which
+# is the entire point of storing it. Measured: every row imported blank.
+row = (_tr.for_orders(None, WS, MKT, ["T-9"]).get("T-9") or [{}])[0]
+check("the carrier comes from carrier-code when carrier-name is empty",
+      row.get("carrier"), "Royal Mail")
+check("  and maps to a courier this app can actually ask",
+      row.get("carrier_code"), "royalmail")
+check("  with both columns named in the report, not just the first",
+      got["columns"]["carrier_columns"], ["carrier-name", "carrier-code"])
+
+# "Other" is Amazon's placeholder meaning "look in the next column". Filing a
+# parcel under a courier called Other would make it permanently uncheckable.
+_tr.remove(None, WS, MKT, "T-9", "JD0002123456789GB")
+_ts.apply_sheet(None, WS, MKT, AMZ, [
+    ["T-9", "1", "1", "2026-09-05", "Other", "Yodel", "JD0002123456789GB", "Std"],
+])
+row = (_tr.for_orders(None, WS, MKT, ["T-9"]).get("T-9") or [{}])[0]
+check("\"Other\" defers to the name column beside it", row.get("carrier"),
+      "Yodel")
+
 for t in ("order_tracking", "order_lines"):
     conn.execute("DELETE FROM %s WHERE workspace_id=?" % t, (WS,))
 conn.commit()

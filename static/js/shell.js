@@ -1154,6 +1154,9 @@ function navTo(sec){
   // Checks the CONNECTION on open, never the reports -- those are two Amazon
   // report builds and belong behind the button.
   if(sec==="drppc"){ if(typeof drpOnOpen==="function")   drpOnOpen(); }
+  // The console draws its shell once and then loads whichever of its three
+  // pages is open. Reading only -- nothing it does reaches Amazon.
+  if(sec==="drppcconsole"){ if(typeof drpcOnOpen==="function") drpcOnOpen(); }
   // The three advertising screens. Each reads its own endpoint and draws once;
   // revisiting shows what is already there, like every other section here.
   if(sec==="ppcanalytics"){ if(typeof ppcaLoad==="function" && !PPCA.data) ppcaLoad(); }
@@ -1250,7 +1253,7 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "compliance","categories","drppc","permissions",
                        // The three advertising screens. One computation layer
                        // behind all three (domain/ppc_analytics.py).
-                       "ppcanalytics","ppcterms","ppccampaigns",
+                       "ppcanalytics","ppcterms","ppccampaigns","drppcconsole",
                        "reimbursements","brief",
                        // Phase 1 analytics. Manual only -- see routes/keywords_routes.py.
                        "kwspy","kwasin","ranktracker","kwhistory",

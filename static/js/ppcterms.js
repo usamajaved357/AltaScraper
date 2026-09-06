@@ -158,9 +158,9 @@ function ppctRender(){
     + '</div></div>';
 
   if(!(j.terms || []).length){
-    h += ppcUnavailable("No search terms stored",
-      (av.search_terms && av.search_terms.why)
-        || "No Search Term Report is stored for this account.");
+    // The same three-way answer PPC Analytics gives, because an empty Search
+    // Terms page and an empty PPC Analytics page have the same cause.
+    h += ppcNoData(av, (av.search_terms && av.search_terms.why) || "");
     host.innerHTML = h + '</div>';
     return;
   }
