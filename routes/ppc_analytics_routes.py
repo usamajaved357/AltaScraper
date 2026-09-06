@@ -175,7 +175,13 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
         now = _pa.totals_for(CONFIG_PATH, aid, mkt, start, end)
         before = _pa.totals_for(CONFIG_PATH, aid, mkt, pstart, pend)
-        camps = _pa.campaigns(CONFIG_PATH, aid, mkt, start, end, rates)
+        # WHICH DAYS HAVE FINISHED BEING ATTRIBUTED, worked out once for the
+        # whole page so every panel agrees (Rule 12). The money columns keep the
+        # full window; the judgements -- cohort, opportunity score -- are made
+        # on the days whose sales have landed. See ppc_analytics.maturity().
+        mat = _pa.maturity(CONFIG_PATH, aid, mkt, start, end)
+        camps = _pa.campaigns(CONFIG_PATH, aid, mkt, start, end, rates,
+                              judge_end=mat.get("mature_end"))
         days = _pa.daily(CONFIG_PATH, aid, mkt, start, end)
 
         # The panels the mockup draws that are not simple totals. Each is
@@ -208,7 +214,15 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             # None per metric when the previous window has no data. A move from
             # nothing to something is not a rise, and +100% would read as one.
             "change": _pa.change(now, before),
+            # Why an arrow is blank when it is blank. A dash with no reason
+            # reads as missing data; this says the data is there and it is the
+            # COMPARISON that would be meaningless -- a prior TACOS of 0.4%
+            # rising to 12% is arithmetic, not news.
+            "change_floor": _pa.change_floor(now, before),
             "daily": days,
+            # The days still being attributed, so the charts can mark them and
+            # the page can say why the judgements stop short of the last day.
+            "maturity": mat,
             "cohorts": _pa.cohorts(CONFIG_PATH, aid, mkt, start, end, camps, rates),
             "wasted": _wasted,
             # The headline 0-100 score, with all three parts and their weights,
@@ -238,20 +252,30 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             return bad
         start, end, pstart, pend = _window()
 
+        from domain import ppc_view as _pv
+
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
-        rows = _pa.terms(CONFIG_PATH, aid, mkt, rates)
+        meta = _pv.report_meta(CONFIG_PATH, aid, mkt)
+
+        # THE TABLE NOW MOVES WITH THE DATE PICKER -- when the rows carry days.
+        #
+        # It could not before, and the note below said so honestly: the report
+        # was stored as one batch per window, so every window asked for returned
+        # the same rows. Pulled at DAILY grain it carries the day, and the
+        # backend re-queries rather than slicing a fixed batch in the browser.
+        #
+        # WHICH CASE THIS ACCOUNT IS IN IS MEASURED, NOT ASSUMED. An account can
+        # hold both at once -- an old uploaded file and a new daily sync -- so
+        # the window is only applied when there are dated rows to apply it to,
+        # and `dated` tells the screen what to say either way.
+        _dw = _pv.dated_window(CONFIG_PATH, aid, mkt,
+                               (meta or {}).get("report_id"))
+        _follows = bool(_dw.get("can_follow_picker"))
+        rows = _pa.terms(CONFIG_PATH, aid, mkt, rates,
+                         start=(start if _follows else None),
+                         end=(end if _follows else None))
         now = _pa.totals_for(CONFIG_PATH, aid, mkt, start, end)
         before = _pa.totals_for(CONFIG_PATH, aid, mkt, pstart, pend)
-
-        # THE REPORT'S OWN WINDOW, WHICH IS NOT THE PAGE'S.
-        #
-        # The search term report covers one fixed window chosen when it was
-        # pulled; the date picker above the table moves the KPI cards, which
-        # come from the daily tables. Saying so is the difference between a
-        # confusing screen and an honest one -- the table does not move when
-        # the dates do, and somebody will notice.
-        from domain import ppc_view as _pv
-        meta = _pv.report_meta(CONFIG_PATH, aid, mkt)
 
         return jsonify({
             "ok": True, "account": aid, "marketplace": mkt,
@@ -261,15 +285,21 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "rates": rates,
             "totals": now, "previous": before,
             "change": _pa.change(now, before),
+            "change_floor": _pa.change_floor(now, before),
             "terms": rows,
             "term_count": len(rows),
             "report": meta,
+            "dated": _dw,
+            "follows_picker": _follows,
             "report_note": (
                 "" if not meta else
-                ("These search terms come from the report covering %s to %s. "
-                 "The cards above move with the date picker; this table does "
-                 "not, because one report is one fixed window."
-                 % (meta.get("date_from"), meta.get("date_to")))),
+                (("These search terms are stored per day, so this table moves "
+                  "with the date picker like the cards above it.")
+                 if _follows else
+                 ("These search terms come from the report covering %s to %s. "
+                  "The cards above move with the date picker; this table does "
+                  "not, because one report is one fixed window."
+                  % (meta.get("date_from"), meta.get("date_to"))))),
             "by_match_type": _pa.by_group(rows, "match_type"),
             "branded": _pa.branded_split(rows),
             "wasted": _pa.wasted_spend(CONFIG_PATH, aid, mkt, start, end),
@@ -286,8 +316,12 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             return bad
         start, end, pstart, pend = _window()
 
+        from domain import ppc_targeting as _pt
+
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
-        camps = _pa.campaigns(CONFIG_PATH, aid, mkt, start, end, rates)
+        mat = _pa.maturity(CONFIG_PATH, aid, mkt, start, end)
+        camps = _pa.campaigns(CONFIG_PATH, aid, mkt, start, end, rates,
+                              judge_end=mat.get("mature_end"))
         terms = _pa.terms(CONFIG_PATH, aid, mkt, rates)
 
         # The search terms of each campaign, for the expanded row. Grouped here
@@ -310,7 +344,31 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "campaigns": camps,
             "cohorts": _pa.cohorts(CONFIG_PATH, aid, mkt, start, end, camps, rates),
             "by_ad_product": _pa.by_group(camps, "ad_product"),
-            "by_match_type": _pa.by_group(terms, "match_type"),
+            # SPEND BY MATCH TYPE, FROM THE TARGETING REPORT, NOT THE SEARCH
+            # TERMS. The spec names the source twice -- "daily targeting-level
+            # reports (keyword/target grain), NOT search term report" -- and the
+            # difference is not academic: Amazon suppresses low-volume queries
+            # from the Search Term Report, so a donut drawn from it is short of
+            # the spend that was actually billed and does not add up to the
+            # total printed beside it.
+            #
+            # `by_match_type_terms` is kept under its own name so the Search
+            # Terms panel on this page still has its own figures, and so the two
+            # can be compared rather than silently disagreeing.
+            "by_match_type": _pt.by_match_type(
+                CONFIG_PATH, aid, mkt, start, end,
+                rates.get("fee_rate"), rates.get("cogs_rate")),
+            "by_match_type_terms": _pa.by_group(terms, "match_type"),
+            # The stacked area: one column per day, one lane per match type,
+            # in the shape the app's own chart engine already takes.
+            "match_type_daily": _pt.daily_by_match_type(CONFIG_PATH, aid, mkt,
+                                                        start, end),
+            "targeting": _pt.available(CONFIG_PATH, aid, mkt),
+            # The click and spend shortfall against the campaign grain, MEASURED
+            # rather than asserted -- auto campaigns and SB placements do not map
+            # to keyword match types, so the two totals are shown side by side.
+            "match_type_gap": _pt.gap(CONFIG_PATH, aid, mkt, start, end),
+            "maturity": mat,
             "daily": _pa.daily(CONFIG_PATH, aid, mkt, start, end),
             "daily_by_product": _pa.daily_by_ad_product(CONFIG_PATH, aid, mkt,
                                                         start, end),

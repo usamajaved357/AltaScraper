@@ -59,13 +59,46 @@ RANGES = (
 )
 
 HOURLY_WHY = (
-    "Amazon does not provide advertising figures by the hour. Asked directly — "
-    "spCampaigns, spAdvertisedProduct and the placement report all refuse "
-    "timeUnit HOURLY with \"configuration timeUnit is not supported for this "
-    "report type\". Every advertising row Amazon sends is one whole day, so an "
-    "hourly view would be twenty-four invented points per day. The ranges below "
-    "are days, which is the finest grain that exists."
+    "Amazon does not provide advertising figures by the hour through its "
+    "reporting API. Asked directly — spCampaigns, spAdvertisedProduct and the "
+    "placement report all refuse timeUnit HOURLY with \"configuration timeUnit "
+    "is not supported for this report type\". Every advertising row Amazon "
+    "sends is one whole day, so an hourly view would be twenty-four invented "
+    "points per day. The ranges below are days, which is the finest grain that "
+    "exists."
 )
+
+
+def hourly_state(config_path=None):
+    """Whether hourly data exists, and the sentence to show when it does not.
+
+    ONE MODULE DECIDES THIS FOR THE WHOLE APP. This file used to answer a flat
+    False with a paragraph of its own, and the PPC Analytics screen answered the
+    same question with a different paragraph of its own. Two answers to one
+    question drift the first time either changes -- and the day an AWS queue
+    does appear, exactly one thing should start saying yes (Rule 12).
+
+    domain/ams.py holds it. Its `available` follows STORED ROWS rather than an
+    environment variable, which is the distinction that matters here: a queue
+    URL can be set hours before the first message lands, and this page
+    abandoning a correct daily chart for an empty hourly one would be a
+    regression dressed as a feature.
+
+    The refusal above is kept and appended to what ams says, because it is a
+    DIFFERENT fact and both are worth having: ams explains that the push
+    integration is not set up, and this explains that the pull API has no hourly
+    data either, so nobody goes looking for a report that does not exist.
+    """
+    try:
+        from domain import ams as _ams
+        st = _ams.status(config_path)
+    except Exception:
+        return {"available": False, "why": HOURLY_WHY}
+    if st.get("available"):
+        return {"available": True, "why": ""}
+    return {"available": False,
+            "configured": st.get("configured"),
+            "why": "%s %s" % (st.get("why") or "", HOURLY_WHY)}
 
 
 def _f(v):
@@ -121,9 +154,11 @@ def series(config_path, workspace_id, marketplace, days=7, cumulative=False):
                              if (sp is not None and ads) else None)
         out.append(point)
 
+    _h = hourly_state(config_path)
     return {"points": out, "start": start, "end": end, "days": int(days),
             "cumulative": bool(cumulative),
-            "hourly_available": False, "hourly_why": HOURLY_WHY}
+            "hourly_available": bool(_h.get("available")),
+            "hourly_why": _h.get("why") or ""}
 
 
 def kpis(config_path, workspace_id, marketplace, days=7):

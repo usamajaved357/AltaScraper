@@ -204,7 +204,15 @@ function _ppccRing(prods, matches, NICE, PCOL, MCOL){
                + "ad product, so the product split would be one whole circle",
       segments: live.map(function(m){
         const k = String(m.key).toUpperCase();
-        return {label: String(m.key).replace(/_/g, " "), value: m.spend || 0,
+        // THE SERVER'S LABEL, when it sends one. The match types now come from
+        // the targeting report, which carries Amazon's literal enum -- so the
+        // auto slice arrives as TARGETING_EXPRESSION_PREDEFINED and read
+        // "TARGETING EXPRESSION PREDEFINED" on the chart key. The server knows
+        // it means "Auto"; underscores-to-spaces stays as the fallback for a
+        // value it has no name for, so a new Amazon enum still shows up as
+        // itself rather than vanishing into an Other slice.
+        return {label: m.label || String(m.key).replace(/_/g, " "),
+                value: m.spend || 0,
                 colour: MCOL[k] || "var(--ppc-muted)"};
       }),
     };
@@ -308,8 +316,13 @@ function ppccBreakdown(j, cur){
   if(matches.length){
     table += '<tr class="sect"><td colspan="11">Match types</td></tr>';
     matches.forEach(function(m){
+      // The server's readable name, falling back to Amazon's own string. See
+      // the note in _ppccRing: an enum this app has no name for is shown as
+      // itself rather than swept into an "Other" row, because spend that
+      // disappears from a table while staying in the total beside it reads as
+      // an arithmetic error in the page.
       table += row(m, MCOL[String(m.key).toUpperCase()] || "var(--ppc-muted)",
-                   m.key);
+                   m.label || m.key);
     });
   }
   if(prods.length){
@@ -351,21 +364,43 @@ function ppccBreakdown(j, cur){
   //     "the line graph should also have more data than there is"
   //
   // With a single ad product this chart is one line, and a chart with one line
-  // needs no key and shows no composition. The placement report -- top of
-  // search, product pages, the rest of Amazon -- is the same spend cut a second
-  // way, from Amazon, with a figure for every day. So when the product split
-  // has nothing to compare, the day chart splits by placement instead and says
-  // which it is showing. Nothing is invented either way; the data simply is not
-  // there for the first cut and is for the second.
-  const pd = j.placement_daily || {};
+  // needs no key and shows no composition.
+  //
+  // MATCH TYPE IS WHAT THE SPEC ASKS FOR HERE, and it is what the panel is
+  // named after: "Stacked Area Chart -- Daily spend by match type over the date
+  // range. Layers = match types (Exact, Phrase, Broad, PAT). Same
+  // targeting-level data source as donut."
+  //
+  // It could not be drawn before today. Match type lived only in the search
+  // term report, which was stored as one batch per window with no dates -- so
+  // there was no per-day figure to layer. The targeting report supplies one,
+  // and the donut beside this chart is now drawn from the same rows, so the
+  // ring and the layers cannot disagree.
+  //
+  // Placement stays as the LAST resort, for an account with no targeting report
+  // yet. Nothing is invented at any step; each is a real cut of the same spend
+  // and the caption says which one is on screen.
   const PKEY = ["ad_spend", "ad_sales", "roas", "clicks"];
+  const mtd = j.match_type_daily || {};
+  if(lines.length < 2 && (mtd.lines || []).length > 1){
+    lines = mtd.lines.map(function(s, i){
+      return {key: PKEY[i % PKEY.length], label: s.name || s.key,
+              values: s.values};
+    });
+    cols = mtd.columns || [];
+    chartNote = "Spend per day by match type — this account runs one ad "
+              + "product, so a split by product would be a single line";
+  }
+
+  const pd = j.placement_daily || {};
   if(lines.length < 2 && (pd.series || []).length > 1){
     lines = pd.series.map(function(s, i){
       return {key: PKEY[i % PKEY.length], label: s.label, values: s.values};
     });
     cols = pd.dates || [];
     chartNote = "Spend per day by placement — this account runs one ad product, "
-              + "so a split by product would be a single line";
+              + "and no targeting report is stored yet, so neither a product "
+              + "nor a match-type split can be drawn";
   }
 
   const chart = (lines.length && typeof salesCombo === "function")

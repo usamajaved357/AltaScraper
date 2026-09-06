@@ -553,6 +553,31 @@ REPORT_TYPES = {
         "columns": ["campaignId", "campaignName", "advertisedAsin",
                     "impressions", "clicks", "cost", "purchases30d", "sales30d"],
     },
+    # WHAT WAS TARGETED, AND ON WHICH MATCH TYPE -- the only source of match
+    # type at a daily grain.
+    #
+    # The Campaign Analytics page splits spend by match type as a donut and as a
+    # stacked area BY DAY, and the spec says where that has to come from: "daily
+    # targeting-level reports (keyword/target grain), NOT search term report".
+    # The search term report carries a match type too, but it is privacy-
+    # thresholded -- low-volume queries are suppressed -- so its spend is short
+    # of what Amazon actually billed, and a donut built on it would not add up
+    # to the total printed beside it.
+    #
+    # THE CONFIGURATION IS THE ONE AMAZON ACCEPTED, asked and measured on 7 Sep
+    # 2026 against nestwell_goods (Rule 4, and probe_ads_targeting.py is the
+    # question): spTargeting grouped by ["targeting"] at timeUnit DAILY was
+    # accepted and returned 8,505 rows over 7 days carrying match_type and date.
+    # spKeywords -- the older name for the same question -- was REFUSED:
+    # "invalid groupBy values: (keyword). Allowed values: (adGroup)". So this is
+    # spTargeting and must stay spTargeting.
+    "targeting": {
+        "reportTypeId": "spTargeting",
+        "groupBy": ["targeting"],
+        "columns": ["campaignId", "campaignName", "adGroupId", "keywordId",
+                    "keyword", "matchType", "targeting", "impressions",
+                    "clicks", "cost", "purchases30d", "sales30d"],
+    },
     # WHERE THE AD ACTUALLY APPEARED -- top of search, a product page, or
     # somewhere else on Amazon. Two ads costing the same are not the same buy if
     # one is at the top of search and the other is on a competitor's page, and
@@ -612,8 +637,11 @@ KINDS_BY_PRODUCT = {
     # `placement` is LAST on purpose. It is the only one no existing screen
     # depends on, so if a sync runs out of time or quota the three that screens
     # already read have been done first.
+    # `targeting` sits beside `placement` at the end for the same reason: it is
+    # a new cut that the existing screens do not yet depend on, so a sync short
+    # of time or quota completes the three they DO read first.
     "SPONSORED_PRODUCTS": ("campaign", "advertised_product", "search_term",
-                           "placement"),
+                           "placement", "targeting"),
     "SPONSORED_BRANDS": ("sb_campaign",),
     "SPONSORED_DISPLAY": ("sd_campaign", "sd_advertised_product"),
 }

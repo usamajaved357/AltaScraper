@@ -199,6 +199,63 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_adsplace_key
 CREATE INDEX IF NOT EXISTS idx_adsplace_ws
     ON ads_placement_daily(workspace_id, marketplace, date);
 
+/* WHAT WAS TARGETED, per targeting per campaign per day.
+   -----------------------------------------------------------------------
+   The keyword or product target that won the auction, and its MATCH TYPE.
+
+   THIS IS THE ONLY PLACE MATCH TYPE EXISTS AT A DAILY GRAIN, and that is the
+   whole reason for the table. The Campaign Analytics page draws spend split by
+   match type as a donut and as a stacked area BY DAY, and the spec is explicit
+   about where that comes from: "Data from daily targeting-level reports
+   (keyword/target grain), NOT search term report".
+
+   The distinction matters and is not pedantry. ppc_search_terms also carries a
+   match_type, but it is the SEARCH TERM report -- privacy-thresholded, so
+   low-volume queries are suppressed and its spend is short of the billed
+   ledger. Measured on the same account, the spec's own reconciliation: campaign
+   reports 11,768, search terms 11,703. Splitting a donut by a source that is
+   missing spend Amazon actually charged would draw a chart whose slices do not
+   add up to the total printed beside them.
+
+   ITS OWN TABLE, for the same reason ads_placement_daily has one: a targeting
+   column on ads_campaign_daily would multiply every existing row and silently
+   double every figure the current screens read. Four grains -- account,
+   per-ASIN, per-campaign, per-placement -- already hold the SAME money cut four
+   ways, and this is a fifth. Nothing may ever add two of them together.
+
+   ASKED FOR AND MEASURED, 7 Sep 2026: spTargeting at timeUnit DAILY is accepted
+   and returns match_type and date -- 8,505 rows over 7 days on nestwell_goods.
+   Auto campaigns come back with match_type TARGETING_EXPRESSION_PREDEFINED and
+   the predicate (close-match, loose-match, substitutes, complements) in the
+   keyword column, exactly as the spec says they do. */
+CREATE TABLE IF NOT EXISTS ads_targeting_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    date         TEXT NOT NULL,
+    campaign_id  TEXT NOT NULL,
+    campaign_name TEXT,
+    ad_group     TEXT,
+    keyword      TEXT,               -- keywordText, or the auto predicate
+    match_type   TEXT,               -- EXACT | PHRASE | BROAD |
+                                     -- TARGETING_EXPRESSION[_PREDEFINED]
+    impressions  INTEGER,
+    clicks       INTEGER,
+    spend        REAL,
+    ad_orders    INTEGER,
+    ad_sales     REAL,
+    ad_product   TEXT NOT NULL DEFAULT 'SPONSORED_PRODUCTS',
+    source       TEXT,
+    fetched_at   TEXT
+);
+/* The key includes keyword AND match_type: one campaign runs the same word on
+   more than one match type on the same day, and they are different buys. */
+CREATE UNIQUE INDEX IF NOT EXISTS idx_adstarget_key
+    ON ads_targeting_daily(workspace_id, marketplace, date, campaign_id,
+                           ad_group, keyword, match_type, ad_product);
+CREATE INDEX IF NOT EXISTS idx_adstarget_ws
+    ON ads_targeting_daily(workspace_id, marketplace, date);
+
 /* REPORTS AMAZON IS STILL BUILDING.
    -----------------------------------------------------------------------
    An advertising report is not fetched, it is COMMISSIONED: you ask, Amazon
@@ -1309,6 +1366,24 @@ CREATE TABLE IF NOT EXISTS schema_cache (
 # on a machine that has been running longest, which is the worst place to find
 # out. Each entry is (table, column, type); applying one twice is a no-op.
 _ADDED_COLUMNS = [
+    # THE DAY A SEARCH TERM'S SPEND HAPPENED, so the Search Terms page can
+    # follow the date picker.
+    #
+    # The report was stored at REPORT-WINDOW grain: one batch covering
+    # date_from..date_to, with no way to ask what happened on the Tuesday. That
+    # was right when it was written -- the spec's own Critical Rule 2 says the
+    # Search Term Report has no day breakdown -- and it is now known to be
+    # avoidable. Measured against the live API on 7 Sep 2026: spSearchTerm with
+    # timeUnit DAILY is ACCEPTED and returns a `date` column, 393 rows across 7
+    # distinct dates on nestwell_goods. So the grain was a property of how the
+    # report was ASKED FOR, not of the report.
+    #
+    # NULL ON EVERY ROW ALREADY STORED, and that is the honest value: a batch
+    # covering thirty days cannot be split back into thirty days, and writing
+    # date_from here would claim a month of spend happened on its first
+    # morning. Rows with no date are reported at their window, as before; rows
+    # with one can be summed for any window inside it.
+    ("ppc_search_terms", "date", "TEXT"),
     # Opt-in, per listing, for the GTIN exemption. See column_map.py.
     ("listings", "gtin_exemption", "TEXT"),
     # Amazon's own reply to the last Preview/Submit. In SCHEMA too; here so a
