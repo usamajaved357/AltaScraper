@@ -122,6 +122,16 @@ try:
     out = sched.run_job("boom")
     check("a throwing job returns instead of raising", out["ok"], False)
     check("  with the reason", "nope" in out["error"], True)
+    # AND IT CLEANS UP AFTER ITSELF. run_job records into the real sync_jobs
+    # table, so without this the test leaves a permanent failed job called
+    # "boom" in the live history -- which then appears in the Dr PPC activity
+    # ledger and in the readiness checks as something that actually happened.
+    # Found there, on the live database, ten days after it was written.
+    _db.get_db().execute("DELETE FROM sync_jobs WHERE job_type='boom'")
+    _db.get_db().commit()
+    left = _db.get_db().execute(
+        "SELECT COUNT(*) FROM sync_jobs WHERE job_type='boom'").fetchone()[0]
+    check("  and leaves nothing behind in the real run history", left, 0)
 except Exception as e:
     check("run_job needs a database (skipped: %s)" % str(e)[:40], True, True)
 

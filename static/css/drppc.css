@@ -454,7 +454,102 @@
 .drp-hist{ font-size: 12px; color: var(--ppc-muted); margin-top: 10px; }
 .drp-hist b{ color: var(--ppc-text); }
 
+/* ---- performance ----------------------------------------------------------
+ * Six cards, each with its own 3px left border. The colour is an identity for
+ * the metric, not a verdict on it -- the verdict is the badge underneath, and
+ * two things saying the same thing in different languages is how a screen gets
+ * misread. */
+.drp-perf-cards{
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+}
+.drp-perf-card{
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-left: 3px solid var(--ppc-muted);
+  border-radius: 6px; padding: 12px 14px; min-width: 0;
+}
+.drp-perf-card.total_sales{ border-left-color: var(--ppc-cyan); }
+.drp-perf-card.spend{       border-left-color: var(--ppc-blue); }
+.drp-perf-card.tacos_pct{   border-left-color: var(--ppc-green); }
+.drp-perf-card.ad_sales{    border-left-color: var(--ppc-orange); }
+.drp-perf-card.acos_pct{    border-left-color: var(--ppc-gold); }
+.drp-perf-card.cvr_pct{     border-left-color: var(--ppc-red); }
+.drp-perf-card .k{
+  font-size: 10px; font-weight: 700; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--ppc-muted);
+}
+.drp-perf-card .v{ font-size: 21px; font-weight: 700; margin: 5px 0 2px;
+                   word-break: break-word; }
+.drp-perf-card .d{ font-size: 11px; color: var(--ppc-muted); margin-bottom: 8px; }
+.drp-perf-card .n{ font-size: 10px; color: var(--ppc-dim); margin-top: 7px; }
+
+.drp-state{
+  display: inline-block; border-radius: 4px; padding: 2px 8px;
+  font-size: 11px; font-weight: 600;
+}
+.drp-state.ok{   background: var(--ppc-green-bg);  color: var(--ppc-green); }
+.drp-state.warn{ background: var(--ppc-orange-bg); color: var(--ppc-orange); }
+.drp-state.bad{  background: var(--ppc-red-bg);    color: var(--ppc-red); }
+.drp-state.dim{  background: rgba(255,255,255,0.05); color: var(--ppc-dim); }
+
+.drp-good{ color: var(--ppc-green); }
+.drp-bad{  color: var(--ppc-red); }
+.drp-warn{ color: var(--ppc-orange); }
+
+.drp-perf-bottom{ display: grid; grid-template-columns: repeat(3, 1fr);
+                  gap: 10px; }
+.drp-perf-bottom-card{
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-top: 3px solid var(--ppc-muted);
+  border-radius: 8px; padding: 14px 16px;
+}
+.drp-perf-bottom-card.budget{ border-top-color: var(--ppc-cyan); }
+.drp-perf-bottom-card.goal{   border-top-color: var(--ppc-gold); }
+.drp-perf-bottom-card.rank{   border-top-color: var(--ppc-purple); }
+.drp-perf-bottom-card .t{ font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.drp-perf-bottom-card .s{ font-size: 12px; color: var(--ppc-muted);
+                          line-height: 1.5; margin-top: 4px; }
+
+.drp-gaps{ margin: 0 0 0 18px; padding: 0; }
+.drp-gaps li{ font-size: 13px; line-height: 1.8; color: var(--ppc-orange); }
+
+/* ---- the activity timeline ------------------------------------------------ */
+.drp-timeline{ position: relative; padding-left: 22px; }
+.drp-timeline:before{
+  content: ""; position: absolute; left: 4px; top: 4px; bottom: 4px;
+  width: 2px; background: var(--ppc-border);
+}
+.drp-tl-item{ position: relative; margin-bottom: 8px; }
+.drp-tl-dot{
+  position: absolute; left: -22px; top: 14px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--ppc-surface2); border: 2px solid var(--ppc-muted);
+}
+.drp-tl-dot.plan{        border-color: var(--ppc-gold); }
+.drp-tl-dot.decision{    border-color: var(--ppc-green); }
+.drp-tl-dot.observation{ border-color: var(--ppc-blue); }
+.drp-tl-dot.system{      border-color: var(--ppc-blue); }
+.drp-tl-card{
+  background: var(--ppc-surface); border: 1px solid var(--ppc-border);
+  border-radius: 8px; padding: 12px 16px;
+}
+.drp-tl-head{
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap;
+}
+.drp-tl-title{ font-size: 15px; font-weight: 700; margin-top: 7px; }
+.drp-tl-desc{ font-size: 13px; color: var(--ppc-muted); line-height: 1.5;
+              margin-top: 4px; }
+.drp-tl-meta{
+  font-size: 11px; color: var(--ppc-dim); margin-top: 7px;
+  font-family: "SF Mono", Consolas, "Courier New", monospace;
+}
+
+@media (max-width: 1400px){
+  .drp-perf-cards{ grid-template-columns: repeat(3, 1fr); }
+}
+
 @media (max-width: 1200px){
+  .drp-perf-bottom{ grid-template-columns: 1fr; }
   .drp-checks{ grid-template-columns: repeat(3, 1fr); }
   .drp-fields, .drp-fields.two, .drp-fields.four{
     grid-template-columns: repeat(2, 1fr);

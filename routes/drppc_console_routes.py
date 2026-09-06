@@ -256,6 +256,21 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         if not _cs.write_raw(raw, CONFIG_PATH):
             return jsonify({"ok": False,
                             "error": "config.json could not be written"}), 500
+        # A settings change alters what the console will do and leaves no other
+        # trace, so it goes in the ledger. The plan and the rules do not -- they
+        # already carry their own stamps and a second copy could disagree.
+        try:
+            from domain import drppc_activity as _da
+            _da.record(CONFIG_PATH, aid, mkt, "system", "human",
+                       "settings_saved", "Console settings saved",
+                       "analysis profile %s · scheduled observation %s · "
+                       "exclude legacy %s"
+                       % (blk.get("analysis_profile") or "unset",
+                          "on" if blk.get("scheduled_observation") else "off",
+                          "on" if blk.get("exclude_legacy") else "off"),
+                       "workspace", aid, _who())
+        except Exception:
+            pass
         return jsonify({"ok": True, "drppc": blk, "note": (
             "Saved. These decide eligibility only — nothing here runs analysis "
             "or touches Amazon.")})
@@ -289,6 +304,80 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         got = _dc.campaign_detail(CONFIG_PATH, aid, mkt, name)
         got["ok"] = True
         return jsonify(got)
+
+    @app.route("/drppc/console/activity")
+    def drppc_console_activity():
+        """The ledger, its filters, and what is waiting for review."""
+        from domain import drppc_activity as _da
+
+        aid, mkt = _scope()
+        bad = _need(aid, mkt)
+        if bad:
+            return bad
+        kind = (request.args.get("kind") or "all").strip().lower()
+        actor = (request.args.get("actor") or "all").strip().lower()
+        return jsonify({
+            "ok": True, "account": aid, "marketplace": mkt,
+            "events": _da.events(CONFIG_PATH, aid, mkt, kind, actor),
+            "counts": _da.counts(CONFIG_PATH, aid, mkt),
+            "suggestions": _da.suggestions(CONFIG_PATH, aid, mkt),
+            "kinds": list(_da.KINDS), "actors": list(_da.ACTORS),
+            "kind": kind, "actor": actor,
+            "why": ("Most of this is DERIVED from the rows that already hold it "
+                    "— a plan carries its own created and activated stamps, a "
+                    "sync attempt is already a row with its outcome. Copying "
+                    "them into a second table would make the ledger a copy that "
+                    "can disagree with the original."),
+        })
+
+    @app.route("/drppc/console/performance")
+    def drppc_console_performance():
+        """Everything the Performance page draws, in one call.
+
+        One call because every section reads the same two windows and the same
+        baseline, and eight calls would each recompute it -- and could disagree
+        if a day landed between them.
+        """
+        from domain import drppc_performance as _dp
+
+        aid, mkt = _scope()
+        bad = _need(aid, mkt)
+        if bad:
+            return bad
+        try:
+            days = max(14, min(180, int(request.args.get("baseline") or 60)))
+        except (TypeError, ValueError):
+            days = 60
+        try:
+            span = max(1, min(90, int(request.args.get("span") or 7)))
+        except (TypeError, ValueError):
+            span = 7
+
+        score = _dp.scorecard(CONFIG_PATH, aid, mkt, days)
+        tr = _dp.trend(CONFIG_PATH, aid, mkt, span)
+        lane = _dp.lanes(CONFIG_PATH, aid, mkt)
+        plans = _dp.plan_sections(CONFIG_PATH, aid, mkt, tr)
+        return jsonify({
+            "ok": True, "account": aid, "marketplace": mkt,
+            "scorecard": score,
+            "today": _dp.today_pulse(CONFIG_PATH, aid, mkt),
+            "trend": tr,
+            "drivers": _dp.drivers(CONFIG_PATH, aid, mkt, span),
+            "largest": _dp.largest(CONFIG_PATH, aid, mkt, span),
+            "lanes": lane,
+            "plan": plans,
+            "gaps": _dp.gaps(CONFIG_PATH, aid, mkt, score,
+                             score.get("baseline"), lane, plans),
+            "rule": {
+                "min_baseline_days": _dp.MIN_BASELINE_DAYS,
+                # The scoring rule, sent to the browser so the page can state it
+                # rather than leave a colour unexplained.
+                "text": ("Scored on distance from the baseline mean: within one "
+                         "standard deviation is in line, within two is drifting, "
+                         "beyond two is off. Symmetric — 'in line' says a day is "
+                         "normal for this account, not that the news is good."),
+            },
+        })
 
     @app.route("/drppc/console/plan")
     def drppc_console_plan_get():

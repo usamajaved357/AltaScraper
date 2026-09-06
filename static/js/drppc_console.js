@@ -28,7 +28,8 @@
 
 const DRPC = {
   page: "setup",
-  setup: null, state: null, plan: null,
+  setup: null, state: null, plan: null, perf: null, act: null,
+  actKind: "all", actActor: "all",
   loading: false,
   // Current state's own filters.
   q: "", type: "All", st: "All", openCamp: null, detail: {},
@@ -80,9 +81,9 @@ const DRPC_NAV = [
   ["state",   "📋", "Current state",     1],
   ["plan",    "🎯", "Goals + strategy",  1],
   ["products", "📦", "Products",         0],
-  ["perf",    "📈", "Performance",       0],
+  ["perf",    "📈", "Performance",       1],
   ["analysis", "🔬", "Analysis + proposals", 0],
-  ["activity", "⚡", "Activity + decisions", 0],
+  ["activity", "⚡", "Activity + decisions", 1],
 ];
 
 function drpcOnOpen(){
@@ -183,6 +184,27 @@ async function drpcLoad(force){
         DRPC.state = j;
       }
       drpcState();
+    }else if(DRPC.page === "perf"){
+      if(!DRPC.perf || force){
+        drpcSpin("Scoring the latest complete day against this account's own "
+                 + "baseline…");
+        const j = await (await fetch("/drppc/console/performance?"
+                                     + ppcQS())).json();
+        if(!j || !j.ok){
+          drpcErr((j && j.error) || "Could not read performance."); return; }
+        DRPC.perf = j;
+      }
+      drpcPerf();
+    }else if(DRPC.page === "activity"){
+      if(!DRPC.act || force){
+        drpcSpin("Reading the ledger…");
+        const j = await (await fetch("/drppc/console/activity?"
+          + ppcQS({kind: DRPC.actKind, actor: DRPC.actActor}))).json();
+        if(!j || !j.ok){
+          drpcErr((j && j.error) || "Could not read the ledger."); return; }
+        DRPC.act = j;
+      }
+      drpcActivity();
     }else{
       if(!DRPC.plan || force){
         drpcSpin("Reading the plan…");
@@ -870,6 +892,420 @@ function drpcDetail(r){
   });
   h += '<div class="drp-note">' + _dEsc(d.why || "") + '</div>';
   return h + '</div>';
+}
+
+/* ==========================================================================
+ * Page 4 -- Performance
+ *
+ * Built to DR-PPC-PERFORMANCE-BUILD-PROMPT.md, with two of its assumptions
+ * corrected against what this account actually has rather than drawn anyway:
+ *
+ *   the spec asks for a 60-day baseline -- there are 28 days of advertising
+ *   history, so the page scores against what exists and PRINTS how long it is
+ *
+ *   the spec's "Today so far" bar wants today's spend and clicks -- Amazon's
+ *   advertising feed runs two days behind, so there is no such figure and the
+ *   bar says so instead of showing nought beside the word "spend"
+ * ======================================================================= */
+
+const DRPC_STATUS = {
+  in_line:  ["ok",   "✓ in line with baseline"],
+  drifting: ["warn", "⚠ drifting from baseline"],
+  off:      ["bad",  "✗ off baseline"],
+  unscored: ["dim",  "— not scored"],
+  unknown:  ["dim",  "— not measured"],
+};
+
+function drpcVal(v, kind){
+  if(v === null || v === undefined) return drpcUnk();
+  if(kind === "money") return drpcMoney(v);
+  if(kind === "points") return Number(v).toFixed(1) + "%";
+  return Number(v).toLocaleString();
+}
+
+/* The delta beside the value. POINTS for a ratio, money for money -- "TACOS is
+ * 2% above expected" and "TACOS is 2 points above expected" are different
+ * statements and only one of them is what moved. */
+function drpcDelta(v, kind){
+  if(v === null || v === undefined)
+    return '<span class="drp-unk" title="No expected value, so there is '
+         + 'nothing to compare this against.">—</span>';
+  const n = Number(v);
+  const sign = n > 0 ? "+" : (n < 0 ? "−" : "");
+  const mag = Math.abs(n);
+  const txt = (kind === "money") ? drpcMoney(mag)
+            : (kind === "points") ? mag.toFixed(1) + "pts"
+            : mag.toLocaleString();
+  return sign + txt + " vs expected";
+}
+
+function drpcPerf(){
+  const j = DRPC.perf, s = j.scorecard || {}, t = j.today || {},
+        tr = j.trend || {}, b = s.baseline || {};
+  drpcFoot(s.day, !!s.has_data);
+
+  let h = '<div class="drp-head"><div>'
+    + '<h1>Performance</h1>'
+    + '<div class="sub">How the account is doing right now. The latest '
+    +   'complete reporting day is the verdict; today is a partial pulse '
+    +   'only.</div></div>'
+    + (s.day ? '<span class="drp-pill cyan">Latest complete day: '
+               + _dEsc(s.day) + '</span>' : "")
+    + '</div>';
+
+  if(!s.has_data){
+    h += '<div class="drp-note bad"><b>Nothing to score</b>'
+      + _dEsc(s.why || "") + '</div>';
+    drpcMain(h);
+    return;
+  }
+
+  /* --- 1: the six cards -------------------------------------------------- */
+  h += '<div class="drp-h2">Latest complete day · ' + _dEsc(s.day) + '</div>'
+    + '<div class="drp-h2-sub">Scored against this account\'s own baseline, '
+    +   _dEsc(b.start || "") + ' to ' + _dEsc(b.end || "") + ' — '
+    +   '<b>' + drpcNum(b.days_with_data) + ' advertising days found</b> of the '
+    +   drpcNum(b.asked_days) + ' asked for. ' + _dEsc(s.why || "") + '</div>'
+    + '<div class="drp-perf-cards">'
+    + (s.cards || []).map(function(c){
+        const st = DRPC_STATUS[c.status] || DRPC_STATUS.unknown;
+        return '<div class="drp-perf-card ' + _dEsc(c.key) + '">'
+          + '<div class="k">' + _dEsc(c.label) + '</div>'
+          + '<div class="v">' + drpcVal(c.value, c.kind) + '</div>'
+          + '<div class="d">' + drpcDelta(c.delta, c.kind) + '</div>'
+          + '<span class="drp-state ' + st[0] + '" title="'
+          +   _dEsc(c.why || "") + '">' + st[1] + '</span>'
+          + '<div class="n">' + drpcNum(c.baseline_n) + ' baseline days'
+          + (c.baseline_unmeasurable
+             ? ' · <span title="Days that had advertising but could not produce '
+               + 'this figure — a day with spend and no sales has no ACOS.">'
+               + c.baseline_unmeasurable + ' unmeasurable</span>' : "")
+          + '</div></div>';
+      }).join("")
+    + '</div>'
+    + '<div class="drp-note">' + _dEsc((j.rule || {}).text || "") + '</div>';
+
+  /* --- 2: today ---------------------------------------------------------- */
+  h += '<div class="drp-panel" style="margin-top:16px">'
+    + '<div style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap">'
+    +   '<b style="font-size:14px">Today so far · ' + _dEsc(t.date) + '</b>'
+    +   '<span style="font-size:13px;color:var(--ppc-muted)">total sales '
+    +     drpcMoney(t.total_sales) + '</span>'
+    +   '<span style="font-size:13px;color:var(--ppc-muted)">ad spend '
+    +     (t.has_ads ? drpcMoney(t.spend)
+                     : drpcUnk("Amazon has not reported today's advertising."))
+    +   '</span>'
+    +   '<span style="font-size:13px;color:var(--ppc-muted)">clicks '
+    +     (t.has_ads ? drpcNum(t.clicks) : drpcUnk()) + '</span>'
+    + '</div>'
+    + (t.why ? '<div class="drp-note" style="margin-top:8px">' + _dEsc(t.why)
+               + '</div>' : "")
+    + '</div>';
+
+  /* --- 3: lanes ---------------------------------------------------------- */
+  const ln = j.lanes || {};
+  h += '<div class="drp-h2">Strategy lanes</div>'
+    + '<div class="drp-h2-sub">' + _dEsc(ln.why || "") + '</div>'
+    + '<div class="drp-panel">'
+    + (ln.rules_active
+       ? '<div class="drp-chips">'
+         + Object.keys(ln.by_lane || {}).map(function(k){
+             const v = ln.by_lane[k];
+             return '<span class="drp-chip"><span class="kw">'
+               + _dEsc(k.replace(/_/g, " ")) + '</span><span class="mu">'
+               + drpcMoney(v.spend) + '</span><span class="mu">'
+               + drpcNum(v.terms) + ' terms</span></span>'; }).join("")
+         + '</div>'
+       : '<div class="drp-empty">No reviewed lane rules, so every term is '
+         + 'unclassified — ' + drpcMoney(ln.total_spend) + ' across '
+         + drpcNum((ln.by_lane && ln.by_lane.unclassified || {}).terms)
+         + ' terms. <button class="drp-orange-link" '
+         + 'onclick="drpcGo(\'setup\')">Review classification</button></div>')
+    + '</div>';
+
+  /* --- 4: the trend ------------------------------------------------------ */
+  if(tr.has_data){
+    const r = tr.recent, p = tr.prior, c = tr.change;
+    const cell = function(v, kind, good){
+      if(v === null || v === undefined)
+        return '<td>' + drpcUnk("The week before had none of this, so there is "
+                                + "no base to change from — that is not a "
+                                + "change of nought.") + '</td>';
+      const n = Number(v);
+      const cls = (good === null) ? "" : ((n > 0) === (good === "up")
+                                          ? "drp-good" : "drp-bad");
+      return '<td class="' + cls + '" style="font-weight:600">'
+        + (n > 0 ? "+" : "") + n.toFixed(1)
+        + (kind === "points" ? "pts" : "%") + '</td>';
+    };
+    h += '<div class="drp-h2">' + tr.span + '-day trend</div>'
+      + '<div class="drp-h2-sub">' + _dEsc(tr.why || "") + '</div>'
+      + '<div class="drp-panel"><table class="drp-table"><thead><tr>'
+      + '<th>Window</th><th>Spend</th><th>Ad sales</th><th>Total sales</th>'
+      + '<th>Ad orders</th><th>ACOS</th><th>TACOS</th><th>PPC CVR</th>'
+      + '</tr></thead><tbody>'
+      + '<tr><td>Recent · ' + _dEsc(r.start) + ' to ' + _dEsc(r.end) + '</td>'
+      +   '<td>' + drpcMoney(r.spend) + '</td><td>' + drpcMoney(r.ad_sales)
+      +   '</td><td>' + drpcMoney(r.total_sales) + '</td><td>'
+      +   drpcNum(r.orders) + '</td><td>' + drpcVal(r.acos_pct, "points")
+      +   '</td><td>' + drpcVal(r.tacos_pct, "points") + '</td><td>'
+      +   drpcVal(r.cvr_pct, "points") + '</td></tr>'
+      + '<tr><td>Prior · ' + _dEsc(p.start) + ' to ' + _dEsc(p.end) + '</td>'
+      +   '<td>' + drpcMoney(p.spend) + '</td><td>' + drpcMoney(p.ad_sales)
+      +   '</td><td>' + drpcMoney(p.total_sales) + '</td><td>'
+      +   drpcNum(p.orders) + '</td><td>' + drpcVal(p.acos_pct, "points")
+      +   '</td><td>' + drpcVal(p.tacos_pct, "points") + '</td><td>'
+      +   drpcVal(p.cvr_pct, "points") + '</td></tr>'
+      + '<tr><td>Change</td>'
+      +   cell(c.spend, "pct", null) + cell(c.ad_sales, "pct", "up")
+      +   cell(c.total_sales, "pct", "up") + cell(c.orders, "pct", "up")
+      +   cell(c.acos_pct, "points", "down")
+      +   cell(c.tacos_pct, "points", "down")
+      +   cell(c.cvr_pct, "points", "up")
+      + '</tr></tbody></table></div>';
+  }
+
+  /* --- 5: what moved ----------------------------------------------------- */
+  const dr = j.drivers || {};
+  h += '<div class="drp-h2">Change drivers</div>'
+    + '<div class="drp-h2-sub">' + _dEsc(dr.why || "") + ' Total movement '
+    +   drpcMoney(dr.total_movement) + '.</div>'
+    + '<div class="drp-panel">'
+    + ((dr.rows || []).length
+       ? '<table class="drp-table"><thead><tr><th>Campaign</th>'
+         + '<th style="text-align:left">Type</th><th>Spend Δ</th>'
+         + '<th>Movement share</th><th>Sales Δ</th><th>Orders Δ</th>'
+         + '<th>Recent spend</th></tr></thead><tbody>'
+         + dr.rows.map(function(r){
+             return '<tr><td title="' + _dEsc(r.campaign) + '">'
+               + _dEsc(r.campaign)
+               + (r.state !== "continuing"
+                  ? ' <span class="drp-tag ' + (r.state === "new"
+                      ? "enabled" : "archived") + '">' + _dEsc(r.state)
+                    + '</span>' : "")
+               + '</td>'
+               + '<td style="text-align:left"><span class="drp-tag '
+               +   _dEsc(drpcAdType(r.ad_product).toLowerCase()) + '">'
+               +   _dEsc(drpcAdType(r.ad_product)) + '</span></td>'
+               // Spending LESS is green here: the column is about money going
+               // out, and a campaign that pulled back released budget.
+               + '<td class="' + (r.spend_delta < 0 ? "drp-good"
+                                  : r.spend_delta > 0 ? "drp-bad" : "") + '">'
+               +   (r.spend_delta > 0 ? "+" : "") + drpcMoney(r.spend_delta)
+               + '</td>'
+               + '<td>' + (r.movement_share_pct === null ? drpcUnk()
+                           : r.movement_share_pct.toFixed(1) + "%") + '</td>'
+               + '<td class="' + (r.sales_delta > 0 ? "drp-good"
+                                  : r.sales_delta < 0 ? "drp-bad" : "") + '">'
+               +   (r.sales_delta > 0 ? "+" : "") + drpcMoney(r.sales_delta)
+               + '</td>'
+               + '<td class="' + (r.orders_delta > 0 ? "drp-good"
+                                  : r.orders_delta < 0 ? "drp-bad" : "") + '">'
+               +   (r.orders_delta > 0 ? "+" : "") + drpcNum(r.orders_delta)
+               + '</td>'
+               + '<td>' + drpcMoney(r.recent_spend) + '</td></tr>';
+           }).join("")
+         + '</tbody></table>'
+       : '<div class="drp-empty">Nothing moved between the two windows.</div>')
+    + '</div>';
+
+  /* --- 6: the big ones --------------------------------------------------- */
+  const lg = j.largest || {};
+  h += '<div class="drp-h2">Largest spenders</div>'
+    + '<div class="drp-h2-sub">' + _dEsc(lg.start || "") + ' to '
+    +   _dEsc(lg.end || "") + ', ' + drpcMoney(lg.total_spend) + ' in '
+    +   'total.</div>'
+    + '<div class="drp-panel">'
+    + ((lg.rows || []).length
+       ? '<table class="drp-table"><thead><tr><th>Campaign</th>'
+         + '<th style="text-align:left">Type</th><th>Spend</th><th>Share</th>'
+         + '<th>Ad sales</th><th>ACOS</th><th>Orders</th></tr></thead><tbody>'
+         + lg.rows.map(function(r){
+             const a = r.acos_pct;
+             const cls = (a === null || a === undefined) ? ""
+                       : (a > 40 ? "drp-bad" : a >= 30 ? "drp-warn" : "");
+             return '<tr><td title="' + _dEsc(r.campaign) + '">'
+               + _dEsc(r.campaign) + '</td>'
+               + '<td style="text-align:left"><span class="drp-tag '
+               +   _dEsc(drpcAdType(r.ad_product).toLowerCase()) + '">'
+               +   _dEsc(drpcAdType(r.ad_product)) + '</span></td>'
+               + '<td>' + drpcMoney(r.spend) + '</td>'
+               + '<td>' + (r.share_pct === null ? drpcUnk()
+                           : r.share_pct.toFixed(1) + "%") + '</td>'
+               + '<td>' + drpcMoney(r.sales) + '</td>'
+               + '<td class="' + cls + '">'
+               +   (a === null || a === undefined
+                    ? drpcUnk("This campaign made no attributed sales, so it "
+                              + "has no ACOS. That is not an ACOS of nought — "
+                              + "it spent " + drpcMoney(r.spend) + " and sold "
+                              + "nothing.")
+                    : a.toFixed(1) + "%") + '</td>'
+               + '<td>' + drpcNum(r.orders) + '</td></tr>';
+           }).join("")
+         + '</tbody></table>'
+       : '<div class="drp-empty">No campaign spent anything in this '
+         + 'window.</div>')
+    + '</div>';
+
+  /* --- 7: the three plan-dependent panels -------------------------------- */
+  const pl = j.plan || {};
+  h += '<div class="drp-h2">Against the plan</div>'
+    + '<div class="drp-perf-bottom">'
+    + drpcPlanCard("budget", "Budget pacing", pl.has_plan && pl.budget
+        ? '<div style="font-size:22px;font-weight:700">'
+          + (pl.budget.pace_pct === null ? drpcUnk()
+             : pl.budget.pace_pct.toFixed(0) + "%") + '</div>'
+          + '<div class="s">' + drpcMoney(pl.budget.spent) + ' of '
+          + drpcMoney(pl.budget.planned) + ' · day ' + pl.budget.days_elapsed
+          + ' of ' + pl.budget.days_total
+          + '<br>Above 100% means the money is going out faster than the '
+          + 'calendar.</div>'
+        : null, pl.budget_why || pl.why)
+    + drpcPlanCard("goal", "Goal progress",
+        (pl.has_plan && (pl.goals || []).length)
+        ? pl.goals.map(function(g){
+            return '<div style="margin-bottom:8px"><b style="font-size:13px">'
+              + _dEsc(g.title || g.metric) + '</b><div class="s">'
+              + (g.measurable
+                 ? "now " + drpcNum(g.actual) + " · target "
+                   + _dEsc(String(g.target))
+                 : _dEsc(g.why)) + '</div></div>'; }).join("")
+        : null, pl.why || "The active plan carries no goals.")
+    + drpcPlanCard("rank", "Rank evidence", null,
+        pl.rank_why || "Rank is not recorded by this app.")
+    + '</div>';
+
+  /* --- 8: the gaps ------------------------------------------------------- */
+  if((j.gaps || []).length){
+    h += '<div class="drp-h2">Evidence gaps</div>'
+      + '<div class="drp-h2-sub">Derived from the sections above rather than '
+      +   'kept by hand, so a gap disappears from this list the moment it '
+      +   'closes.</div>'
+      + '<div class="drp-panel"><ul class="drp-gaps">'
+      + j.gaps.map(function(g){ return '<li>' + _dEsc(g) + '</li>'; }).join("")
+      + '</ul></div>';
+  }
+
+  drpcMain(h);
+}
+
+/* ==========================================================================
+ * Page 5 -- Activity + decisions
+ *
+ * The spec's example timeline describes another account's history -- entitlements
+ * stamped, channels created, a brand onboarded. None of that happened here, so
+ * none of it is drawn. What IS drawn is this account's real history, derived
+ * from the rows that already hold it, which is why the page is full rather than
+ * waiting for somebody to start using it.
+ * ======================================================================= */
+
+const DRPC_KIND_TAG = {
+  plan: "sp", decision: "enabled", observation: "sb", system: "sb",
+  action: "enabled", execution: "enabled", verification: "sd",
+  recommendation: "sd",
+};
+
+function drpcActivity(){
+  const j = DRPC.act, s = j.suggestions || {}, c = j.counts || {};
+  drpcFoot((j.events || [])[0] && j.events[0].at, true);
+
+  let h = '<div class="drp-head"><div>'
+    + '<h1>Activity + decisions</h1>'
+    + '<div class="sub">The durable history of plans, decisions, actions, '
+    +   'attempts and verification.</div></div>'
+    + '<span class="drp-pill">' + drpcNum((j.events || []).length)
+    +   ' events shown of ' + drpcNum(c.total) + '</span></div>';
+
+  h += '<div class="drp-note good"><b>Append-only ledger.</b> '
+    + _dEsc(j.why || "") + ' Nothing here is edited or removed; a correction is '
+    + 'a new entry.</div>';
+
+  /* --- suggested changes -------------------------------------------------- */
+  h += '<div class="drp-h2">Suggested changes</div>'
+    + '<div class="drp-h2-sub">What is waiting for a person to approve.</div>'
+    + '<div class="drp-panel" style="display:flex;gap:14px;align-items:center;'
+    +   'flex-wrap:wrap">'
+    +   '<span class="drp-pill green">✓ Manual apply</span>'
+    +   '<div style="flex:1;min-width:220px">'
+    +     '<div style="font-size:12px;color:var(--ppc-muted)">'
+    +       'Read-only towards Amazon · a person applies any change by hand'
+    +       (s.plan_active ? ' · plan active' : ' · no active plan') + '</div>'
+    +     (s.plan_warning ? '<div style="font-size:12px;color:var(--ppc-orange);'
+                           + 'margin-top:3px">' + _dEsc(s.plan_warning)
+                           + '</div>' : "")
+    +   '</div></div>'
+    + '<div class="drp-panel" style="margin-top:8px">'
+    +   '<div class="drp-empty">' + _dEsc(s.why || "") + '</div></div>';
+
+  /* --- the timeline ------------------------------------------------------- */
+  const sel = function(id, cur, list, fn, lead){
+    return '<select class="drp-in" onchange="' + fn + '(this.value)">'
+      + '<option value="all"' + (cur === "all" ? " selected" : "") + '>'
+      + _dEsc(lead) + '</option>'
+      + list.map(function(k){
+          return '<option value="' + _dEsc(k) + '"'
+            + (cur === k ? " selected" : "") + '>'
+            + _dEsc(k.replace(/_/g, " ").replace(/^./, function(m){
+                return m.toUpperCase(); }))
+            + ((c.by_kind && c.by_kind[k]) ? " (" + c.by_kind[k] + ")" : "")
+            + ((c.by_actor && c.by_actor[k]) ? " (" + c.by_actor[k] + ")" : "")
+            + '</option>'; }).join("")
+      + '</select>';
+  };
+  h += '<div class="drp-h2">Timeline</div>'
+    + '<div class="drp-filters">'
+    +   sel("kind", DRPC.actKind, j.kinds || [], "drpcActFilterKind",
+            "All activity")
+    +   sel("actor", DRPC.actActor, j.actors || [], "drpcActFilterActor",
+            "All actors")
+    + '</div>';
+
+  if(!(j.events || []).length){
+    h += '<div class="drp-empty">Nothing matches these filters.</div>';
+    drpcMain(h);
+    return;
+  }
+
+  h += '<div class="drp-timeline">'
+    + j.events.map(function(e){
+        return '<div class="drp-tl-item">'
+          + '<span class="drp-tl-dot ' + _dEsc(e.kind) + '"></span>'
+          + '<div class="drp-tl-card">'
+          +   '<div class="drp-tl-head">'
+          +     '<span><span class="drp-tag '
+          +       _dEsc(DRPC_KIND_TAG[e.kind] || "archived") + '">'
+          +       _dEsc(e.kind) + '</span> '
+          +       '<span style="font-size:12px;color:var(--ppc-muted)">'
+          +       _dEsc(String(e.action || "").replace(/_/g, " ")) + '</span>'
+          +     '</span>'
+          +     '<span style="font-size:12px;color:var(--ppc-dim)">'
+          +       _dEsc(e.at) + '</span>'
+          +   '</div>'
+          +   '<div class="drp-tl-title">' + _dEsc(e.title) + '</div>'
+          +   (e.detail ? '<div class="drp-tl-desc">' + _dEsc(e.detail)
+                          + '</div>' : "")
+          +   '<div class="drp-tl-meta">' + _dEsc(e.op || "—")
+          +     ' · ' + _dEsc(e.actor)
+          +     (e.who ? ' · ' + _dEsc(e.who) : "")
+          +     (e.entity_type ? ' · ' + _dEsc(e.entity_type) + ' '
+                                 + _dEsc(e.entity_id) : "")
+          +   '</div>'
+          + '</div></div>';
+      }).join("")
+    + '</div>';
+
+  drpcMain(h);
+}
+
+function drpcActFilterKind(v){ DRPC.actKind = v; DRPC.act = null; drpcLoad(true); }
+function drpcActFilterActor(v){ DRPC.actActor = v; DRPC.act = null; drpcLoad(true); }
+
+function drpcPlanCard(kind, title, body, why){
+  return '<div class="drp-perf-bottom-card ' + kind + '">'
+    + '<div class="t">' + _dEsc(title) + '</div>'
+    + (body ? body : '<div class="drp-empty" style="padding:14px">'
+                     + _dEsc(why || "") + '</div>')
+    + '</div>';
 }
 
 /* ==========================================================================

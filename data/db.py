@@ -408,6 +408,40 @@ CREATE TABLE IF NOT EXISTS drppc_rules (
 CREATE INDEX IF NOT EXISTS idx_drppc_rules_ws
     ON drppc_rules(workspace_id, marketplace, active, priority);
 
+/* THE APPEND-ONLY LEDGER, for the events that have nowhere else to live.
+
+   MOST OF THE CONSOLE'S HISTORY IS NOT KEPT HERE, AND THAT IS DELIBERATE.
+   A plan revision already carries its own created_at, created_by and
+   activated_at; a lane rule carries the same; a sync run is a row in sync_jobs.
+   Copying any of those into a second table would create two records of one fact
+   that can disagree, which is exactly what Rule 12 exists to prevent. The
+   Activity page DERIVES those from the rows that already hold them.
+
+   What lands here is the rest: a setting changed, an execution mode changed, a
+   proposal accepted or rejected -- things that alter what the console will do
+   and leave no other trace. Nothing is ever updated or deleted; a correction is
+   a new row, because a ledger that can be edited is not evidence of anything.
+
+   NOTHING IN THIS TABLE REACHES AMAZON. It records what was decided here. */
+CREATE TABLE IF NOT EXISTS drppc_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT,
+    at           TEXT NOT NULL,           -- ISO timestamp, when it happened
+    kind         TEXT NOT NULL,           -- plan|observation|decision|action|
+                                          -- execution|verification|system
+    actor        TEXT NOT NULL,           -- human|analyst|scheduler|system|
+                                          -- admin_assisted|external
+    action       TEXT NOT NULL,           -- the short verb, e.g. 'settings_saved'
+    title        TEXT NOT NULL,
+    detail       TEXT,
+    entity_type  TEXT,
+    entity_id    TEXT,
+    who          TEXT                     -- the person, when there was one
+);
+CREATE INDEX IF NOT EXISTS idx_drppc_events_ws
+    ON drppc_events(workspace_id, marketplace, at);
+
 /* THE COSTS AMAZON KNOWS NOTHING ABOUT, and the one Amazon charges but attaches
    to no order.
 
