@@ -49,6 +49,20 @@ _REFERRAL = ("commission", "referralfee", "variableclosingfee", "fixedclosingfee
 _FBA = ("fba", "fulfillmentfee", "fulfilmentfee", "storagefee", "weightbased",
         "shippingchargeback", "giftwrapchargeback")
 
+# THE PRICE OF A PROMOTION, pulled out of "other".
+#
+# Amazon charges a fee each time a coupon is redeemed and a flat fee to run a
+# Lightning or Best Deal. These used to land in other_fees beside the monthly
+# subscription and the digital services fee, where they could not be told apart
+# -- and they are the only charges in that bucket that are the price of a
+# CHOICE, so they are the only ones worth seeing on their own.
+#
+# Matched by substring for the same reason the two above are: Amazon spells
+# these inconsistently across marketplaces. An unrecognised spelling still lands
+# in other_fees and is REPORTED as unknown (see _is_known), so a fee type nobody
+# has seen surfaces rather than being quietly absorbed.
+_PROMO = ("coupon", "lightningdeal", "bestdeal", "dealfee", "promotionfee")
+
 # Adjustment types that are money coming BACK to you for Amazon's own errors.
 _REIMBURSEMENT = ("reimbursement", "warehouse_damage", "warehouse_lost",
                   "reversal_reimbursement", "compensated_clawback")
@@ -95,6 +109,10 @@ def _bucket_fee(fee_type):
         return "referral_fees"
     if any(k in t for k in _FBA):
         return "fba_fees"
+    # BEFORE the other_fees fallback: a coupon fee is a real category, and it
+    # was previously indistinguishable from the monthly subscription.
+    if any(k in t for k in _PROMO):
+        return "promo_fees"
     return "other_fees"
 
 
@@ -121,6 +139,7 @@ _REVENUE_TYPES = {"principal", "shippingcharge", "giftwrap",
 def _blank(date, asin):
     return {"date": date, "asin": asin, "currency": "",
             "referral_fees": 0.0, "fba_fees": 0.0, "other_fees": 0.0,
+            "promo_fees": 0.0,
             "refunds": 0.0, "refund_units": 0, "refund_fees_returned": 0.0,
             "reimbursements": 0.0, "promos": 0.0, "principal": 0.0, "tax": 0.0, "refund_tax": 0.0,
             "units": 0, "cogs": 0.0, "cogs_units": 0}
@@ -343,7 +362,8 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
 # understates profit slightly; crediting it would overstate profit whenever the
 # return is damaged, and of the two errors only one gets someone to reorder
 # stock that is not selling.
-_COLS = ["referral_fees", "fba_fees", "other_fees", "refunds", "refund_units",
+_COLS = ["referral_fees", "fba_fees", "other_fees", "promo_fees",
+         "refunds", "refund_units",
          "refund_fees_returned", "reimbursements", "promos", "principal",
          "tax", "refund_tax",
          "units", "cogs", "cogs_units", "currency", "source"]

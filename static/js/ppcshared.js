@@ -1,20 +1,24 @@
-/* static/js/ppcshared.js -- what the three advertising screens have in common.
+/* static/js/ppcshared.js -- the components the three advertising screens share.
+ *
+ * Built to the mockups: orbit-ppc-v3.jsx, orbit-search-terms-v4.jsx and
+ * orbit-campaign-analytics-v2.jsx. Their type scale, spacing and palette live in
+ * static/css/ppc.css as tokens; this file draws with them. The hexes are the
+ * mockups' own, unchanged -- only their address moved, because static/js may not
+ * name a colour (test_one_palette.py) and a screen inventing its own shade is
+ * how an app stops looking like one app.
  *
  * PPC Analytics, Search Terms and Campaign Analytics are three views of one set
- * of numbers, so they share one formatter, one KPI card, one "this cannot be
- * drawn" notice and one date picker. Three screens formatting ACOS three ways
- * is the small version of three screens computing it three ways, and both are
- * the thing CLAUDE.md Rule 12 is about.
+ * of numbers, so they share one formatter, one KPI card, one sparkline and one
+ * "this cannot be drawn" notice. Three screens formatting ACOS three ways is the
+ * small version of three screens computing it three ways (Rule 12).
  *
  * NULL IS NOT ZERO, AND THIS FILE IS WHERE THAT IS ENFORCED ON SCREEN.
  * The server sends None for anything it could not measure -- an ACOS with no
  * sales, a profit with no cost rate, a day with no advertising row. Every
- * formatter here renders those as a dash with a reason on hover, never as
- * "0.0%" or "£0.00". A zero is a measurement, and printing one that nobody made
- * is how somebody switches off a campaign that was working.
+ * formatter renders those as a dash with a reason on hover, never "0.0%" or
+ * "£0.00". A zero is a measurement, and printing one nobody made is how somebody
+ * switches off a campaign that was working.
  */
-
-const PPC_ACCENT = "#39d2c0";
 
 function _pEsc(s){
   return String(s == null ? "" : s)
@@ -22,8 +26,8 @@ function _pEsc(s){
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-/* The account and marketplace every one of these calls is scoped to. `account`
- * is the one spelling the app settled on -- see domain/request_account.py. */
+/* The account and marketplace every call is scoped to. `account` is the one
+ * spelling the app settled on -- see domain/request_account.py. */
 function ppcQS(extra){
   const q = [];
   const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
@@ -41,24 +45,34 @@ function ppcQS(extra){
 
 /* ---- formatting -----------------------------------------------------------
  *
- * Each of these takes the server's value, which may be null, and returns
- * display text. `ppcDash` is the single answer to "what does a figure we could
- * not work out look like", so an unmeasurable ACOS and an unmeasurable profit
- * look the same and neither looks like a zero. */
+ * `ppcDash` is the single answer to "what does a figure we could not work out
+ * look like", so an unmeasurable ACOS and an unmeasurable profit look the same
+ * and neither looks like a zero. */
 
 function ppcDash(why){
-  return '<span class="cc" style="opacity:.45"'
+  return '<span class="ppc-dash"'
        + (why ? ' title="' + _pEsc(why) + '"' : '') + '>—</span>';
 }
 
+/* Money, in the mockup's shape: no decimals once past a thousand, two below. */
 function ppcMoney(v, cur, why){
   if(v === null || v === undefined) return ppcDash(why);
   const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
   const n = Number(v);
-  const s = Math.abs(n) >= 1000
-    ? n.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})
-    : n.toFixed(2);
-  return (n < 0 ? "-" : "") + sym + s.replace("-", "");
+  const a = Math.abs(n);
+  const s = a >= 1000
+    ? a.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})
+    : a.toFixed(2);
+  return (n < 0 ? "-" : "") + sym + s;
+}
+
+/* $11,853 style -- whole pounds, for the big headline numbers. */
+function ppcMoney0(v, cur, why){
+  if(v === null || v === undefined) return ppcDash(why);
+  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+  const n = Number(v);
+  return (n < 0 ? "-" : "") + sym
+    + Math.abs(Math.round(n)).toLocaleString();
 }
 
 function ppcPct(v, why, nd){
@@ -76,63 +90,139 @@ function ppcX(v, why){
   return Number(v).toFixed(2) + "x";
 }
 
-/* ---- change badges --------------------------------------------------------
+/* ---- change ---------------------------------------------------------------
  *
- * WHICH DIRECTION IS GOOD IS PER METRIC, and getting it wrong is worse than
- * showing no colour at all: ACOS falling is good news painted red, spend rising
- * is bad news painted green. `good` says which way is up for this metric.
+ * WHICH DIRECTION IS GOOD IS PER METRIC, and getting it wrong is worse than no
+ * colour: ACOS falling is good news painted red, spend rising is bad news
+ * painted green. The mockup is explicit about it -- "TACOS increasing = RED",
+ * "Wasted Spend decreasing = GREEN" -- so `good` says which way is up.
  *
- * A null change is NOT 0%. It means the period before had no data to compare
- * against, which happens on every account in its first month of advertising --
- * and rendering that as "0.0%, no change" claims a measurement nobody made. */
-function ppcChange(v, good, why){
+ * A null change is NOT 0%. It means the period before had nothing to compare
+ * against, which is every account in its first month of advertising, and
+ * rendering that as "0.0%, no change" claims a measurement nobody made. */
+function ppcChangeText(v, good, why){
   if(v === null || v === undefined){
-    return '<span class="cc" style="font-size:11px;opacity:.5"'
-         + ' title="' + _pEsc(why || "Nothing stored for the period before this "
-           + "one, so there is nothing to compare against. This is not a change "
-           + "of zero.") + '">no comparison</span>';
+    return '<span class="ppc-chg flat" title="'
+      + _pEsc(why || "Nothing stored for the period before this one, so there "
+              + "is nothing to compare against. This is not a change of zero.")
+      + '">—</span>';
   }
   const n = Number(v);
-  if(!n) return '<span class="cc" style="font-size:11px">no change</span>';
+  if(!n) return '<span class="ppc-chg flat">— 0%</span>';
   const up = n > 0;
-  // `good` is "up" when a rise is good (sales), "down" when a fall is good
-  // (ACOS, CPC, spend, wasted spend).
   const isGood = (good === "up") ? up : (good === "down" ? !up : null);
-  const col = (isGood === null) ? "var(--ink2)"
-            : (isGood ? "var(--ok,#3fb950)" : "var(--red,#f85149)");
-  const bg = (isGood === null) ? "transparent"
-           : (isGood ? "rgba(63,185,80,0.15)" : "rgba(248,81,73,0.15)");
-  return '<span style="font-size:11px;color:' + col + ';background:' + bg
-       + ';border-radius:14px;padding:2px 9px;white-space:nowrap">'
-       + (up ? "↗ " : "↘ ") + Math.abs(n).toFixed(1) + '%</span>';
+  const cls = (isGood === null) ? "flat" : (isGood ? "good" : "bad");
+  return '<span class="ppc-chg ' + cls + '">'
+       + (up ? "↗" : "↘") + " " + Math.abs(n).toFixed(1) + '%</span>';
+}
+
+/* The bare arrow-and-figure the KPI card uses, without the pill. */
+function ppcChangeBare(v, good, why){
+  if(v === null || v === undefined){
+    return '<span class="ppc-kpi-c ppc-dash" title="'
+      + _pEsc(why || "No data for the period before this one.") + '">—</span>';
+  }
+  const n = Number(v);
+  const up = n > 0;
+  const isGood = (good === "up") ? up : (good === "down" ? !up : null);
+  const col = (isGood === null) ? "var(--ppc-muted)"
+            : (isGood ? "var(--ppc-green)" : "var(--ppc-red)");
+  return '<span class="c" style="color:' + col + '">'
+       + (n === 0 ? "—" : (up ? "↗" : "↘")) + " "
+       + Math.abs(n).toFixed(1) + '%</span>';
+}
+
+/* ---- sparkline ------------------------------------------------------------
+ *
+ * The mockup's: 200x28, a bare 2px stroke, no dots, no axes, stretched to the
+ * card. Gaps are real -- a day with no advertising row is not a day of zero
+ * spend, and joining across it would draw a line through a measurement nobody
+ * made. So the path breaks and resumes. */
+function ppcSparkline(data, colour){
+  const vals = (data || []).map(function(v){
+    return (v === null || v === undefined) ? null : Number(v);
+  });
+  const known = vals.filter(function(v){ return v !== null; });
+  if(known.length < 2) return '<div class="spark"></div>';
+  const w = 200, h = 28;
+  const min = Math.min.apply(null, known), max = Math.max.apply(null, known);
+  const range = (max - min) || 1;
+  let d = "", pen = false;
+  vals.forEach(function(v, i){
+    if(v === null){ pen = false; return; }
+    const x = (i / Math.max(1, vals.length - 1)) * w;
+    const y = h - ((v - min) / range) * h;
+    d += (pen ? "L" : "M") + x.toFixed(1) + "," + y.toFixed(1) + " ";
+    pen = true;
+  });
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" '
+    + 'style="width:100%;height:' + h + 'px" preserveAspectRatio="none">'
+    + '<path d="' + d.trim() + '" fill="none" stroke="' + colour
+    + '" stroke-width="2"/></svg>';
+}
+
+/* The day-trail card's chart: 120x50, a 1.5px line over a gradient that fades
+ * 0.25 -> 0.02. Cumulative, so it only ever climbs. */
+let _PPC_GRAD = 0;
+function ppcMiniLine(points, colour){
+  const pts = (points || []).filter(function(v){
+    return v !== null && v !== undefined;
+  }).map(Number);
+  if(pts.length < 2) return "";
+  const w = 120, h = 50;
+  const max = Math.max.apply(null, pts) || 1;
+  const id = "ppcg" + (++_PPC_GRAD);
+  let d = "";
+  pts.forEach(function(p, i){
+    const x = (i / (pts.length - 1)) * w;
+    const y = h - (p / max) * h;
+    d += (i ? "L" : "M") + x.toFixed(1) + "," + y.toFixed(1) + " ";
+  });
+  const fill = d + "L" + w + "," + h + " L0," + h + " Z";
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" '
+    + 'style="width:100%;height:100%" preserveAspectRatio="none">'
+    + '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0%" stop-color="' + colour + '" stop-opacity="0.25"/>'
+    + '<stop offset="100%" stop-color="' + colour + '" stop-opacity="0.02"/>'
+    + '</linearGradient></defs>'
+    + '<path d="' + fill + '" fill="url(#' + id + ')"/>'
+    + '<path d="' + d.trim() + '" fill="none" stroke="' + colour
+    + '" stroke-width="1.5"/></svg>';
 }
 
 /* ---- a KPI card -----------------------------------------------------------
  *
- * One card, used by all three pages. `help` becomes the ? bubble: every metric
- * on these screens is a ratio of two other numbers, and a card that shows
- * "31.1%" without saying what was divided by what is decoration. */
-function ppcCard(o){
-  return '<div class="panelcard" style="padding:12px 14px;border-radius:8px">'
-    + '<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">'
-    +   '<span class="cc" style="font-size:10.5px;text-transform:uppercase;'
-    +     'letter-spacing:.7px">' + _pEsc(o.label) + '</span>'
-    +   (o.help ? '<span class="hbub" title="' + _pEsc(o.help) + '">?</span>' : '')
+ * The mockup's exactly: label 11px uppercase with a ⓘ, value 28/700 with the
+ * change on the same baseline, sparkline underneath. */
+function ppcKpi(o){
+  return '<div class="ppc-kpi">'
+    + '<div class="k">' + _pEsc(o.label)
+    +   (o.help ? '<span class="ppc-i" title="' + _pEsc(o.help) + '">ⓘ</span>' : '')
     + '</div>'
-    + '<div style="font-size:24px;font-weight:600;line-height:1.15">'
+    + '<div class="row"><span class="v">'
     +   (o.value === "" || o.value === null || o.value === undefined
-         ? ppcDash(o.why) : o.value) + '</div>'
-    + (o.change !== undefined
-        ? '<div style="margin-top:5px">' + o.change + '</div>' : '')
-    + (o.note ? '<div class="cc" style="font-size:10.5px;margin-top:4px">'
-                + _pEsc(o.note) + '</div>' : '')
+         ? ppcDash(o.why) : o.value) + '</span>'
+    +   (o.change === undefined ? "" : o.change)
+    + '</div>'
+    + (o.spark || '<div class="spark"></div>')
     + '</div>';
 }
 
-function ppcCards(list){
-  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,'
-    + 'minmax(160px,1fr));gap:6px;margin:0 0 10px">'
-    + list.join("") + '</div>';
+/* A card inside a panel -- the profitability grid's six. */
+function ppcSubCard(o){
+  return '<div class="ppc-sub-card">'
+    + '<div class="k">' + _pEsc(o.label)
+    +   (o.help ? '<span class="ppc-i" title="' + _pEsc(o.help) + '">ⓘ</span>' : '')
+    + '</div>'
+    + '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'
+    +   '<span class="v"' + (o.colour ? ' style="color:' + o.colour + '"' : '')
+    +   '>' + (o.value === null || o.value === undefined
+               ? ppcDash(o.why) : o.value) + '</span>'
+    +   (o.change || "") + (o.badge || "")
+    + '</div>'
+    + (o.note ? '<div class="n">' + o.note + '</div>' : '')
+    + (o.note2 ? '<div class="n" style="margin-top:0">' + o.note2 + '</div>' : '')
+    + '</div>';
 }
 
 /* ---- a panel that cannot be drawn -----------------------------------------
@@ -141,79 +231,85 @@ function ppcCards(list){
  *     "now i have the ppc data campaign performance from amazon but the graph
  *      is still as a placeholder"
  *
- * Said twice. So when a source is missing, these pages do not draw a stubbed
- * chart, an empty axis or a row of zeros -- they say what is missing and what
- * would fix it. This is the only thing that goes where a panel would have been.
+ * Said twice. So a missing source draws nothing -- not a stub, not an empty
+ * axis, not a row of zeros -- and says what is missing and what would fix it.
  */
 function ppcUnavailable(title, why){
-  return '<div class="panelcard" style="padding:16px 18px;border-radius:8px;'
-    + 'margin:0 0 10px">'
-    + '<div style="font-weight:600;margin-bottom:5px">' + _pEsc(title) + '</div>'
-    + '<div class="cc" style="font-size:12px;line-height:1.6">'
-    + '<i class="ti ti-info-circle"></i> ' + _pEsc(why) + '</div></div>';
+  return '<div class="ppc-panel ppc-panel-sm">'
+    + '<div class="ppc-panel-title-sm">' + _pEsc(title) + '</div>'
+    + '<div style="font-size:12px;line-height:1.6;color:var(--ppc-muted)">'
+    + _pEsc(why) + '</div></div>';
 }
 
-/* Where the profit figures on these screens come from, said once per page.
+/* Where the profit figures come from, said once per page.
  *
  * Amazon attributes SALES to a campaign. It does not attribute the stock cost
  * or the referral fee, and neither can be known per campaign -- so profit here
- * is the account's own measured rates applied to that campaign's sales. That is
- * an estimate, it is a good one, and it is labelled rather than presented as
- * settled. */
+ * is the account's own measured rates applied to that campaign's sales. An
+ * estimate, a good one, labelled rather than presented as settled. */
 function ppcRatesNote(r){
   if(!r) return "";
   const bits = [];
   if(r.fee_rate !== null && r.fee_rate !== undefined){
     bits.push("Amazon's fee measured at "
-      + (Number(r.fee_rate) * 100).toFixed(1) + "% on this account's own settled "
-      + "orders");
+      + (Number(r.fee_rate) * 100).toFixed(1) + "%");
   }
   if(r.cogs_rate !== null && r.cogs_rate !== undefined){
-    bits.push("stock cost at " + (Number(r.cogs_rate) * 100).toFixed(1) + "% ("
-      + _pEsc(r.cogs_basis || "") + ")");
-  }
-  if(r.breakeven_acos_pct !== null && r.breakeven_acos_pct !== undefined){
-    bits.push("<b>break-even ACOS " + Number(r.breakeven_acos_pct).toFixed(1)
-      + "%</b> — above that a campaign is losing money");
+    bits.push("stock at " + (Number(r.cogs_rate) * 100).toFixed(1)
+      + "% (" + _pEsc(r.cogs_basis || "") + ")");
   }
   if(!bits.length){
-    return '<div class="odp-note warn" style="padding:9px 11px;margin:0 0 10px;'
-      + 'font-size:11.5px;line-height:1.6">'
-      + '<b>Profit cannot be worked out for this window.</b> '
-      + _pEsc(r.why || "This account has no measured fee rate or no costed "
-              + "orders, so there is no honest way to say whether a campaign "
-              + "made money. The profit and cohort columns are left blank "
-              + "rather than filled with a guess.") + '</div>';
+    return '<div class="ppc-note warn"><b>Profit cannot be worked out for this '
+      + 'window.</b> ' + _pEsc(r.why || "This account has no measured fee rate "
+      + "or no costed orders, so there is no honest way to say whether a "
+      + "campaign made money. The profit and cohort columns are left blank "
+      + "rather than filled with a guess.") + '</div>';
   }
-  return '<div class="cc" style="font-size:11.5px;margin:0 0 10px;padding:8px 11px;'
-    + 'border:1px solid var(--line2);border-radius:6px;line-height:1.6">'
-    + '<i class="ti ti-calculator"></i> Profit here is <b>estimated</b>: Amazon '
-    + 'attributes sales to a campaign but not the stock cost or the fee, so '
-    + 'this applies the account\'s own rates — ' + bits.join(", ") + '.'
-    + (r.why ? ' <span style="color:var(--warn)">' + _pEsc(r.why) + '</span>' : '')
+  return '<div class="ppc-note">Profit here is <b>estimated</b>: Amazon '
+    + 'attributes sales to a campaign but not the stock cost or the fee, so this '
+    + 'applies the account\'s own rates — ' + bits.join(", ") + '.'
+    + (r.why ? ' <span style="color:var(--ppc-orange)">' + _pEsc(r.why)
+               + '</span>' : '')
     + '</div>';
 }
 
-/* ---- the date window ------------------------------------------------------
+/* Every panel that could not be filled, listed once at the top. Deliberately
+ * at the top rather than in each empty section: somebody opening a screen with
+ * three blank panels should learn why once, before scrolling past three
+ * separate apologies. */
+function ppcAvailabilityNote(av){
+  if(!av) return "";
+  const off = Object.keys(av).filter(function(k){
+    return av[k] && !av[k].ok && av[k].why;
+  });
+  if(!off.length) return "";
+  let h = '<div class="ppc-note warn"><b>Some panels on this page cannot be '
+    + 'drawn from what is stored.</b><ul style="margin:5px 0 0 16px;padding:0">';
+  off.forEach(function(k){ h += '<li>' + _pEsc(av[k].why) + '</li>'; });
+  return h + '</ul></div>';
+}
+
+function ppcProductNote(av){
+  const p = av && av.ad_products;
+  if(!p || !p.why) return "";
+  return '<div class="ppc-note warn">' + _pEsc(p.why) + '</div>';
+}
+
+/* ---- the shared window ----------------------------------------------------
  *
- * Shared state, because all three pages answer for the same window and moving
- * from one to another with the dates silently reset is how two screens end up
- * being compared across different months. */
+ * All three screens answer for the same window, because moving between them
+ * with the dates silently reset is how two screens get compared across
+ * different months. */
 const PPCWIN = {days: 30, start: "", end: ""};
 
-function ppcWindowBar(onchange){
-  const btn = function(d){
-    return '<button class="db-chip' + (PPCWIN.days === d && !PPCWIN.start ? " on" : "")
-      + '" onclick="ppcSetDays(' + d + ',' + jsArg(onchange) + ')">'
-      + d + ' days</button>';
-  };
-  return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'
-    + 'margin:0 0 10px">'
-    + btn(7) + btn(14) + btn(30) + btn(90)
-    + '<span class="cc" style="font-size:11.5px;margin-left:6px">'
-    + (PPCWIN.start ? _pEsc(PPCWIN.start + " to " + PPCWIN.end)
-                    : "last " + PPCWIN.days + " days")
-    + '</span></div>';
+function ppcSeg(days, onchange){
+  return '<div class="ppc-seg">'
+    + [7, 14, 30, 90].map(function(d){
+        return '<button class="' + (PPCWIN.days === d && !PPCWIN.start ? "on" : "")
+          + '" onclick="ppcSetDays(' + d + ',' + jsArg(onchange) + ')">'
+          + d + ' days</button>';
+      }).join("")
+    + '</div>';
 }
 
 function ppcSetDays(d, fn){
@@ -223,56 +319,43 @@ function ppcSetDays(d, fn){
   if(fn && typeof window[fn] === "function") window[fn]();
 }
 
-/* Every panel that could not be filled, listed once at the top of a page.
- *
- * Deliberately at the TOP and not where each panel would be: somebody opening
- * a screen with three empty sections should learn why in one place before
- * scrolling past three separate apologies. */
-function ppcAvailabilityNote(av){
-  if(!av) return "";
-  const off = Object.keys(av).filter(function(k){
-    return av[k] && !av[k].ok && av[k].why;
-  });
-  if(!off.length) return "";
-  let h = '<div class="odp-note warn" style="padding:10px 12px;margin:0 0 10px;'
-    + 'font-size:11.5px;line-height:1.6">'
-    + '<b>Some panels on this page cannot be drawn from what is stored.</b>'
-    + '<ul style="margin:5px 0 0 16px;padding:0">';
-  off.forEach(function(k){ h += '<li>' + _pEsc(av[k].why) + '</li>'; });
-  return h + '</ul></div>';
+/* The mockup's filter row: labels ABOVE their controls, COMPARE TO pushed
+ * right with the compared range beside it. */
+function ppcFilterRow(j, onchange){
+  const w = (j && j.window) || {};
+  return '<div class="ppc-filters">'
+    + '<div><div class="ppc-flabel">Date range</div>'
+    +   '<div class="ppc-fctl ppc-fctl-wide">'
+    +   _pEsc((w.start || "") + " to " + (w.end || "")) + '</div></div>'
+    + '<div><div class="ppc-flabel">Range</div>' + ppcSeg(30, onchange) + '</div>'
+    + '<div style="margin-left:auto">'
+    +   '<div class="ppc-flabel">Compare to</div>'
+    +   '<div style="display:flex;align-items:center;gap:10px">'
+    +     '<div class="ppc-fctl">Previous period</div>'
+    +     '<span style="font-size:12px;color:var(--ppc-dim)">'
+    +     _pEsc((w.compare_start || "") + " – " + (w.compare_end || ""))
+    +     '</span></div></div>'
+    + '</div>';
 }
 
-/* Sponsored Brands and Display are separate report types. If the account runs
- * them and they are not stored, every ACOS on these screens is flattering --
- * which is worth one sentence rather than a footnote nobody reads. */
-function ppcProductNote(av){
-  const p = av && av.ad_products;
-  if(!p || !p.why) return "";
-  return '<div class="cc" style="font-size:11.5px;margin:0 0 10px;padding:8px 11px;'
-    + 'border:1px solid var(--warn-line);background:var(--warn-bg);'
-    + 'border-radius:6px;line-height:1.6"><i class="ti ti-alert-triangle"></i> '
-    + _pEsc(p.why) + '</div>';
-}
-
-/* A sortable table header cell. The three pages all want the same behaviour and
- * had no business each inventing it. */
+/* A sortable header cell, in the mockup's ↕ / ↑ / ↓ form. */
 function ppcTh(label, key, state, fn, align, help){
   const on = (state.sort === key);
-  return '<th style="text-align:' + (align || "left") + ';white-space:nowrap;'
-    + 'cursor:pointer;font-size:11.5px" onclick="' + fn + '(' + jsArg(key) + ')"'
+  return '<th class="ppc-sortable"'
+    + (align ? ' style="text-align:' + align + '"' : '')
+    + ' onclick="' + fn + '(' + jsArg(key) + ')"'
     + (help ? ' title="' + _pEsc(help) + '"' : '') + '>'
     + _pEsc(label)
-    + '<span style="margin-left:3px;opacity:' + (on ? "1" : ".3") + ';color:'
-    + (on ? PPC_ACCENT : "inherit") + '">'
+    + (help ? '<span class="ppc-i">ⓘ</span>' : '')
+    + '<span class="ppc-sortarrow' + (on ? " on" : "") + '">'
     + (on ? (state.desc ? "↓" : "↑") : "↕") + '</span></th>';
 }
 
 /* Sort rows by a key, nulls always last.
  *
- * A null is "not measured", and letting it sort as zero would put every
- * campaign with no data at the profitable end of a profit sort -- or the
- * cheapest end of an ACOS sort, which is where somebody looks for what is
- * working. */
+ * A null is "not measured". Letting it sort as zero puts every campaign with no
+ * data at the profitable end of a profit sort, or the cheapest end of an ACOS
+ * sort -- which is exactly where somebody looks for what is working. */
 function ppcSortRows(rows, key, desc){
   return (rows || []).slice().sort(function(a, b){
     const x = a[key], y = b[key];
@@ -288,33 +371,42 @@ function ppcSortRows(rows, key, desc){
   });
 }
 
-/* The opportunity badge. Our own score, so the tooltip says what it means --
- * a number between 0 and 100 with no explanation is something nobody can act
- * on, which is the failure mode of copying a competitor's screen. */
+/* The opportunity badge: a rounded rectangle, transparent tint, no border --
+ * green at 40 and over, orange below. Our own score, so the tooltip says what
+ * it means: a number between 0 and 100 with no explanation is something nobody
+ * can act on, which is the failure mode of copying a competitor's screen. */
 function ppcOpp(v){
   if(v === null || v === undefined)
     return ppcDash("No spend in this window, so there is nothing to gain or "
                    + "lose by changing it.");
-  const good = Number(v) >= 40;
-  const col = good ? "#3fb950" : "#d29922";
-  const bg = good ? "rgba(63,185,80,0.15)" : "rgba(210,153,34,0.15)";
-  return '<span title="How much there is to gain by looking at this one: money '
-    + 'at stake, how far past break-even it is, and clicks that bought no '
-    + 'order. 40 and over is worth opening." style="display:inline-block;'
-    + 'min-width:34px;text-align:center;padding:3px 6px;border-radius:6px;'
-    + 'font-size:12.5px;font-weight:700;color:' + col + ';background:' + bg
-    + '">' + Number(v) + '</span>';
+  return '<span class="ppc-opp ' + (Number(v) >= 40 ? "hi" : "lo")
+    + '" title="How much there is to gain by looking at this one: money at '
+    + 'stake, how far past break-even it is, and clicks that bought no order. '
+    + '40 and over is worth opening.">' + Number(v) + '</span>';
 }
 
-/* Profit, coloured. Blank when the account has no measured rates -- see
- * ppcRatesNote. A profit column full of zeros on an account with no cost data
- * would read as "every campaign breaks exactly even". */
-function ppcProfit(v, cur){
+/* Profit, coloured. Cyan positive, orange negative on the term screens; the
+ * campaign table asks for green/red and passes `tone`. Blank when the account
+ * has no measured rates -- a profit column full of zeros would read as "every
+ * campaign breaks exactly even". */
+function ppcProfit(v, cur, tone){
   if(v === null || v === undefined)
     return ppcDash("Not worked out — this account has no measured fee rate or "
                    + "no costed orders in this window.");
   const n = Number(v);
-  const col = n > 0 ? PPC_ACCENT : (n < 0 ? "#d29922" : "var(--ink2)");
+  const pos = (tone === "greenred") ? "var(--ppc-green)" : "var(--ppc-cyan)";
+  const neg = (tone === "greenred") ? "var(--ppc-red)" : "var(--ppc-orange)";
+  const col = n > 0 ? pos : (n < 0 ? neg : "var(--ppc-muted)");
   return '<span style="color:' + col + ';font-weight:600">'
        + ppcMoney(n, cur) + '</span>';
+}
+
+/* A legend row, centred under a chart, in the mockup's "● Label" form. */
+function ppcLegend(items){
+  return '<div class="ppc-legend">'
+    + items.map(function(it){
+        return '<span><span class="dot" style="color:' + it[1] + '">●</span> '
+          + _pEsc(it[0]) + '</span>';
+      }).join("")
+    + '</div>';
 }
