@@ -86,10 +86,41 @@ const DRPC_NAV = [
   ["activity", "⚡", "Activity + decisions", 1],
 ];
 
+/* A PAGE THAT SHOWS NOTHING AT ALL IS THE ONE FAILURE WITH NO DIAGNOSIS.
+ *
+ *     "the dr ppc console displays no content, it is working not at all"
+ *
+ * Everything here drew into #drpc_main, which only exists once drpcShell() has
+ * run. So any failure BEFORE that -- and any failure of drpcShell itself --
+ * wrote its error message into a node that was not there, and the screen stayed
+ * empty with nothing in it to say why. An error you cannot see is worse than
+ * the error.
+ *
+ * Three changes, all of them about never being silent:
+ *   the shell is rebuilt whenever the main pane is missing, not only when the
+ *     host looks empty -- a host holding stray whitespace used to skip it
+ *   drpcMain falls back to the host itself when the main pane is absent
+ *   every render is wrapped, so a fault in one panel reports itself instead of
+ *     taking the page down with it
+ */
 function drpcOnOpen(){
   const host = document.getElementById("drppcconsole_body");
   if(!host) return;
-  if(!host.innerHTML) drpcShell();
+  // Rebuilt when the frame is not actually there, rather than when the host
+  // merely looks non-empty. Whitespace between the tags in the template is
+  // enough to make innerHTML truthy, and that alone would have skipped the
+  // shell for ever and left every later write with nowhere to go.
+  if(!document.getElementById("drpc_main")) drpcShell();
+  if(!document.getElementById("drpc_main")){
+    // The frame itself could not be built. Say so where somebody will see it.
+    // No hex fallback: static/js may not name a colour (test_one_palette.py),
+    // and if the stylesheet really is missing the browser's default text colour
+    // is readable anyway -- which is the case this message exists for.
+    host.innerHTML = '<div style="padding:22px;color:var(--ppc-red)">'
+      + 'The Dr PPC Console could not draw its frame. Reload the page; if it '
+      + 'persists the console\'s stylesheet or script did not load.</div>';
+    return;
+  }
   drpcLoad();
 }
 
@@ -145,7 +176,12 @@ function drpcGo(page){
 
 function drpcMain(html){
   const m = document.getElementById("drpc_main");
-  if(m) m.innerHTML = html;
+  if(m){ m.innerHTML = html; return; }
+  // NOWHERE TO DRAW IS NOT A REASON TO DRAW NOWHERE. This used to return
+  // quietly, so a message meant for the reader -- including every error message
+  // -- disappeared. The host is always there; use it.
+  const host = document.getElementById("drppcconsole_body");
+  if(host) host.innerHTML = html;
 }
 
 function drpcFoot(ts, ok){

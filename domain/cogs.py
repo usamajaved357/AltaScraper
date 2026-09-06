@@ -51,10 +51,27 @@ def cost_from_sku(sku):
 
 
 def resolve(overrides, account_id, sku):
-    """(cost, source) for one SKU. source is 'manual', 'sku', or ''.
+    """(cost, source) for one SKU. source is 'manual' or ''.
 
-    A manual override always wins: someone typed it because the SKU was wrong or
-    absent, and a parsed number must never quietly overrule a person.
+    A COST IS SOMETHING YOU SET. NOTHING IS READ OUT OF THE SKU ANY MORE.
+
+        "lets remove the cogs from sku things entirely, lets keep it simple, if
+         the cogs of the sku are set by the user by bulk upload or one by one
+         per sku, consider them for profit calculation"
+
+    This used to fall through to cost_from_sku() -- the number before the first
+    underscore of a generated SKU. It was a guess dressed as data: it happened to
+    be right for SKUs this app generated and could never be right for a SKU
+    somebody named by hand, and nothing on any screen distinguished the two.
+
+    Every value that parse was supplying has been written into the override store
+    by migrate_sku_costs.py, so nothing lost its cost when this changed -- 18
+    SKUs covering all 50 costed order lines. They are now costs the owner OWNS:
+    visible in the Listings COGS column, replaceable by cost-sheet upload, and
+    overridable per order.
+
+    NO COST IS NOT A ZERO COST. A SKU nobody has costed returns None, and every
+    caller is written to leave the profit blank rather than call it free.
     """
     key = "%s::%s" % (account_id, sku)
     if overrides and key in overrides:
@@ -62,9 +79,6 @@ def resolve(overrides, account_id, sku):
             return float(overrides[key]), "manual"
         except (TypeError, ValueError):
             pass
-    c = cost_from_sku(sku)
-    if c is not None:
-        return c, "sku"
     return None, ""
 
 

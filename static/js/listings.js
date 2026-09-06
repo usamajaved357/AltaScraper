@@ -760,7 +760,23 @@ function passFilter(r){
   if(FILTER==="refused")return isRefusedByAmazon(r.status);
   if(FILTER==="blocked")return isBlockedByOurChecks(r.status);
   if(FILTER==="approved")return r.status==="APPROVED"||r.status==="API_READY";
-  if(FILTER==="live")return r.status==="LIVE";
+  // THE TILE AND THIS FILTER MUST ASK THE SAME QUESTION.
+  //
+  // This was r.status==="LIVE", the stored word. summary() counts a row as LIVE
+  // by asking Amazon's catalogue -- isActuallyLive -- precisely because a
+  // listing that went live months ago can still carry a stale IP_HOLD from a
+  // failed attempt before that. So the tile counted it and this hid it: the
+  // number said one thing and the list under it another, which is the exact
+  // complaint this page has had before.
+  if(FILTER==="live"){
+    if(String(r.status||"").toUpperCase()==="LIVE") return true;
+    if(typeof isActuallyLive === "function"
+       && typeof _liveCatSetsForCurrentView === "function"){
+      const s = _liveCatSetsForCurrentView();
+      return isActuallyLive(r, s.skus, s.asins, s.liveGroupShown);
+    }
+    return false;
+  }
   // THE FOUR STATUSES. Asked of liststatus.js, not tested here, so the tile
   // that COUNTS them and the filter that HIDES the rest cannot disagree.
   if(FILTER==="queued")return (typeof lsIsQueued==="function") && lsIsQueued(r);
@@ -1937,7 +1953,19 @@ function card(r){
   const _rest = r.restricted;
   const _restProhibited = !!(_rest && _rest.matches && _rest.matches.some(m=>m.tier==="PROHIBITED"));
   const _restFlag = !!(_rest && _rest.matched);
-  const _st = String(r.status||"").toUpperCase();
+  // THE STATUS THIS ROW IS ACTUALLY IN, not the word left in the database.
+  //
+  // This read r.status raw, and the dot two lines below already does not: it
+  // asks Amazon's catalogue through isActuallyLive(). So a listing that went
+  // live months ago, whose stored status still says IP_HOLD from a failed
+  // attempt before that, showed a quiet dot AND a red blocker icon on the same
+  // tile -- and the table and detailed views showed it as LIVE.
+  //
+  // Exactly the disagreement this page has had before, fixed in the tiles and
+  // in the table and missed here. _shownStatus is the one answer (Rule 12).
+  const _st = (typeof _shownStatus === "function")
+    ? String(_shownStatus(r) || "").toUpperCase()
+    : String(r.status || "").toUpperCase();
   const _blocker = (_st==="IP_HOLD" || _st==="ERROR");
   const realIssue = _restFlag || _blocker;
   const flagRed = _restProhibited || _blocker;   // gated-only -> amber
@@ -1964,7 +1992,7 @@ function card(r){
   return `<div class="tile ${selected?'sel':''} ${_isDup?'dup':''} ${flagRed?'flag':(realIssue?'flagamber':'')}" data-sku="${esc(r.sku)}">
     <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openListing('${esc(r.sku)}')">
       ${thumb}
-      <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
+      <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(_st||r.status||'')}"></span>
       ${rowSelectBox(r, "tilesel")}
       ${realIssue?`<span class="tileflag ${flagRed?'red':'amber'}" title="${flagRed?'Restricted / blocked — open to see why':'Restricted — docs required'}"><i class="ti ti-alert-triangle"></i></span>`:''}
       ${claimBadge(r)}
@@ -2234,8 +2262,19 @@ function _dwShell(r, urls, priceStr, risks){
   const asinBit = ownAsin
     ? `<a class="dw2-asin" href="https://www.amazon.${_dwTld(r)}/dp/${esc(ownAsin)}" target="_blank" rel="noopener" title="Open ${esc(ownAsin)} on Amazon in a new tab">${esc(ownAsin)}</a>`
     : (srcAsin ? `<span class="dw2-asin src" title="The competitor ASIN in the SKU \u2014 the reference this listing was built from, NOT our listing">ref ${esc(srcAsin)}</span>` : "");
+  // THE DRAWER IS WHERE SOMEBODY GOES TO CHECK, so it must not be the one place
+  // still showing the stale word. This printed r.status raw, while every list
+  // view -- and the `live` flag three lines above -- had already worked out that
+  // a listing carrying an old IP_HOLD is on Amazon. Opening it to find out why
+  // it was held would have shown the hold that no longer applies.
+  const _shown = (typeof _shownStatus === "function")
+    ? String(_shownStatus(r) || "").toUpperCase()
+    : String(r.status || "").toUpperCase();
   const bar = `<div class="dw2-bar">
-      <span class="badge ${badgeClass(r.status)}">${esc(r.status||'\u2014')}</span>
+      <span class="badge ${badgeClass(_shown)}"${
+        _shown !== String(r.status||"").toUpperCase()
+          ? ` title="Amazon is showing this listing, so it is live. Its stored status still says ${esc(r.status||'')} from an earlier attempt."`
+          : ""}>${esc(_shown||'\u2014')}</span>
       ${risks.join("")}
       ${asinBit}
       <span class="dw2-spacer"></span>

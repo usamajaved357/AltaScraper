@@ -723,14 +723,30 @@ def cohorts(config_path, workspace_id, marketplace, start, end, rows=None,
     return out
 
 
-def wasted_spend(config_path, workspace_id, marketplace, start, end):
+def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None):
     """Spend that bought clicks and no orders. OUR DEFINITION, SAID OUT LOUD.
 
     Orbit shows a "wasted spend" figure and does not define it. This one is:
     the spend on search terms that took at least one click and produced no
-    order, in the stored report's window. Not "ACOS above target" -- that is a
-    judgement about price; this is money that bought traffic which bought
-    nothing, which nobody disputes.
+    order. Not "ACOS above target" -- that is a judgement about price; this is
+    money that bought traffic which bought nothing, which nobody disputes.
+
+    IT DOES NOT MOVE WITH THE DATE PICKER, AND IT CANNOT.
+
+    `start` and `end` are accepted and IGNORED, deliberately. The figure comes
+    from the stored Search Term Report, and that report is one fixed window
+    chosen when it was pulled -- it carries no per-day breakdown, so there is no
+    way to ask it what was wasted last Tuesday.
+
+    They used to be accepted and silently ignored, which was worse than not
+    taking them at all: the caller asked for 7 days, then 14, then 90, and got
+    251.56 every time; and the page compared it against a "previous period" that
+    was the same query, so the change arrow could only ever read zero. Measured
+    on nestwell_goods across four windows: identical to the penny in all of them.
+
+    So the window this figure ACTUALLY covers is returned with it, for the screen
+    to print, and `comparable` says plainly that there is nothing to compare it
+    against.
     """
     # SCOPED TO THE NEWEST REPORT, like everything else that reads this table.
     #
@@ -764,6 +780,21 @@ def wasted_spend(config_path, workspace_id, marketplace, start, end):
     return {"spend": _f(r["s"]), "terms": int(r["n"]),
             "definition": "spend on search terms that took a click and "
                           "produced no order",
+            # THE WINDOW THIS FIGURE REALLY COVERS -- the report's own, not the
+            # one on the date picker. Sent so the card can print it instead of
+            # sitting under a range it does not answer for.
+            "report_start": meta.get("date_from") or "",
+            "report_end": meta.get("date_to") or "",
+            "follows_date_picker": False,
+            # And there is nothing to compare it with: the same query answers
+            # for every window, so a change arrow would always read zero.
+            "comparable": False,
+            "comparable_why": (
+                "This comes from the stored Search Term Report, which covers %s "
+                "to %s and carries no day-by-day breakdown. It does not change "
+                "with the dates above, and there is no earlier report to compare "
+                "it against, so no change is shown rather than a nil one."
+                % (meta.get("date_from") or "?", meta.get("date_to") or "?")),
             "why": ""}
 
 

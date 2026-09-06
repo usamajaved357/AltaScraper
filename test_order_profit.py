@@ -185,17 +185,38 @@ conn.commit()
 check("a source with unknown postage gives no cost, rather than a low one",
       oc.tracked_cost(CFG, WS, MKT, "NOSHIP", "2026-08-13T00:00:00Z"), None)
 
-print("\n== the two modes ==")
-check("the account's mode is read from config", oc.mode_for(lambda: json.load(open(CFG)), WS),
+print("\n== a cost comes from two places, and both are places you typed it ==")
+#     "lets remove the cogs from sku things entirely, lets keep it simple"
+#
+# The chain used to be: order override, then TRACKED mode's supplier price, then
+# a typed product cost, then the number in the SKU. Two of those four were
+# things nobody had set, and they are gone. `mode` is still accepted so no
+# caller breaks, and is ignored.
+check("the account's mode is still readable", oc.mode_for(lambda: json.load(open(CFG)), WS),
       "tracked")
-check("an account that has not chosen gets the simple one",
-      oc.mode_for(lambda: json.load(open(CFG)), "plain_co"), "sku")
+
+# THE ONE THAT CHANGED, TWICE OVER. This account is on tracked mode AND the SKU
+# carries 7.00 -- and neither is a cost anybody set, so neither is used.
 cost, src = oc.resolve(CFG, WS, MKT, "7.00_3Days_B0G1K5B7QS",
                        "2026-08-12T00:30:00Z", oc.MODE_TRACKED)
-check("tracked mode uses the supplier price", (cost, src), (7.0, "tracked"))
+check("tracked mode no longer supplies a cost", (cost, src), (None, ""))
 cost2, src2 = oc.resolve(CFG, WS, MKT, "7.00_3Days_B0G1K5B7QS",
                          "2026-08-12T00:30:00Z", oc.MODE_SKU)
-check("sku mode uses the cost written in the SKU", (cost2, src2), (7.0, "sku"))
+check("nor is the number in the SKU read", (cost2, src2), (None, ""))
+check("  and the mode makes no difference to that", cost, cost2)
+
+# What DOES supply one: a cost set against the product...
+cost3, src3 = oc.resolve(CFG, WS, MKT, "7.00_3Days_B0G1K5B7QS",
+                         "2026-08-12T00:30:00Z", oc.MODE_SKU,
+                         overrides={"%s::7.00_3Days_B0G1K5B7QS" % WS: 4.25})
+check("a cost set against the product is used", (cost3, src3), (4.25, "manual"))
+# ...and a cost typed against ONE order, which beats it and applies to that
+# order alone.
+cost4, src4 = oc.resolve(CFG, WS, MKT, "7.00_3Days_B0G1K5B7QS",
+                         "2026-08-12T00:30:00Z", oc.MODE_SKU,
+                         overrides={"%s::7.00_3Days_B0G1K5B7QS" % WS: 4.25},
+                         order_override=6.10)
+check("a cost typed against one order wins", (cost4, src4), (6.10, "manual-order"))
 
 print("\n== a correction to ONE order beats everything, and stays there ==")
 cost3, src3 = oc.resolve(CFG, WS, MKT, "7.00_3Days_B0G1K5B7QS",
@@ -210,9 +231,19 @@ conn.execute("INSERT INTO order_lines (workspace_id, marketplace, order_id,"
              (WS, MKT, "Z1", "2026-08-12T00:30:00Z", "B0G1K5B7QS",
               "7.00_3Days_B0G1K5B7QS", 1, 29.99, 4.08))
 conn.commit()
-f1 = oc.freeze_range(CFG, WS, MKT, "2026-08-01", "2026-08-31", oc.MODE_TRACKED)
-check("the new line is costed", f1["priced"], 1)
-f2 = oc.freeze_range(CFG, WS, MKT, "2026-08-01", "2026-08-31", oc.MODE_TRACKED)
+# A COST HAS TO HAVE BEEN SET, or there is nothing to freeze. This used to rely
+# on the SKU carrying 7.00; nothing reads a SKU for a cost any more, so the cost
+# is supplied the way it now genuinely arrives -- set against the product.
+_OV = {"%s::7.00_3Days_B0G1K5B7QS" % WS: 5.25}
+f0 = oc.freeze_range(CFG, WS, MKT, "2026-08-01", "2026-08-31", oc.MODE_TRACKED)
+check("with no cost set, nothing is frozen", f0["priced"], 0)
+check("  and it is counted as unpriced rather than passed over",
+      f0["unpriced"] >= 1, True)
+f1 = oc.freeze_range(CFG, WS, MKT, "2026-08-01", "2026-08-31", oc.MODE_TRACKED,
+                     overrides=_OV)
+check("the new line is costed once a cost exists", f1["priced"], 1)
+f2 = oc.freeze_range(CFG, WS, MKT, "2026-08-01", "2026-08-31", oc.MODE_TRACKED,
+                     overrides=_OV)
 check("a second pass leaves it alone", f2["priced"], 0)
 check("  because it already had one", f2["already_had_one"], 1)
 
