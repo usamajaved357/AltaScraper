@@ -307,6 +307,43 @@ def daily(config_path, workspace_id, marketplace, start, end):
     return out
 
 
+def daily_by_ad_product(config_path, workspace_id, marketplace, start, end):
+    """Spend per day, split by ad product. -> {dates, series}.
+
+    The campaign screen's stacked chart. Read from ads_campaign_daily rather
+    than ads_daily because that is the only table carrying `ad_product` at a
+    grain the split needs -- and because the campaign grain is what the rest of
+    that screen is about, so the two cannot disagree.
+
+    A product with no rows contributes NO SERIES, rather than a flat line along
+    the floor. An empty band labelled "Sponsored Brands" is a claim that Brands
+    ran and returned nothing, which is a different thing from not being pulled.
+    """
+    conn = _db.get_db(config_path)
+    dates, acc = [], {}
+    d0 = _dt.date.fromisoformat(start)
+    d1 = _dt.date.fromisoformat(end)
+    d = d0
+    while d <= d1:
+        dates.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    idx = {v: i for i, v in enumerate(dates)}
+
+    for r in conn.execute(
+            "SELECT date, COALESCE(ad_product,'?') p, SUM(spend) s "
+            "FROM ads_campaign_daily WHERE workspace_id=? AND marketplace=? "
+            "AND date>=? AND date<=? GROUP BY date, p",
+            (workspace_id, marketplace, start, end)):
+        p = str(r["p"])
+        if p not in acc:
+            acc[p] = [None] * len(dates)
+        i = idx.get(r["date"])
+        if i is not None:
+            acc[p][i] = _f(r["s"])
+    return {"dates": dates,
+            "series": [{"key": k, "values": v} for k, v in sorted(acc.items())]}
+
+
 def totals_for(config_path, workspace_id, marketplace, start, end):
     """The window's headline figures. Asks ads_sync, which owns the grain."""
     from domain import ads_sync as _as
@@ -329,6 +366,102 @@ def totals_for(config_path, workspace_id, marketplace, start, end):
         "cvr_pct": _rate(t["orders"], clicks, nd=2),
         "cpa": _rate(spend, t["orders"], pct=False, nd=2),
     })
+    return out
+
+
+def today_bar(config_path, workspace_id, marketplace):
+    """Today against yesterday, for the strip across the top of the page.
+
+    The mockup's TODAY bar. Amazon's advertising figures for today are partial
+    all day and arrive late, so a missing figure here is the normal state before
+    lunchtime rather than a fault -- it reports None and the strip shows a dash.
+    Drawing a confident 0.00 at nine in the morning would say the day's
+    advertising had sold nothing.
+    """
+    today = _dt.date.today().isoformat()
+    yday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+    now = totals_for(config_path, workspace_id, marketplace, today, today)
+    prev = totals_for(config_path, workspace_id, marketplace, yday, yday)
+    return {"date": today, "compare_date": yday,
+            "now": now, "previous": prev, "change": change(now, prev)}
+
+
+def trail(config_path, workspace_id, marketplace, days=7):
+    """One card per day: the spend curve through it, the total, and the units.
+
+    The mockup draws each card as spend accumulating BY HOUR. There are no
+    hourly advertising figures -- Amazon refuses timeUnit HOURLY on this report
+    type, measured, its own words: "configuration timeUnit is not supported for
+    this report type". So each card carries the day's own cumulative shape at
+    the finest grain that exists, and the page says the curve is a day rather
+    than pretending to twenty-four measured hours.
+    """
+    end = _dt.date.today()
+    start = end - _dt.timedelta(days=int(days) - 1)
+    rows = daily(config_path, workspace_id, marketplace,
+                 start.isoformat(), end.isoformat())
+    # THE CURVE IS THE WINDOW ACCUMULATING, not the day. Said in the caption
+    # rather than drawn as if it were hours.
+    run, out = 0.0, []
+    for r in rows:
+        sp = r["spend"]
+        if sp is not None:
+            run += float(sp)
+        out.append({
+            "date": r["date"],
+            "spend": sp,
+            "orders": r["orders"],
+            "cumulative": round(run, 2),
+            "today": (r["date"] == end.isoformat()),
+        })
+    return out
+
+
+def per_click_trend(rows, fee_rate, cogs_rate):
+    """Daily profit per click. The mockup's "Profit per Click Trend".
+
+    None on a day with no clicks -- dividing by nothing is undefined, and a 0.00
+    on the chart's zero line would read as a day that broke exactly even.
+    Refuses entirely when the rates behind profit cannot be measured.
+    """
+    if fee_rate is None or cogs_rate is None:
+        return None
+    out = []
+    for r in rows or []:
+        sales, spend, clicks = r.get("ad_sales"), r.get("spend"), r.get("clicks")
+        if sales is None or spend is None or not clicks:
+            out.append(None)
+            continue
+        profit = (float(sales) - float(spend) - float(sales) * float(fee_rate)
+                  - float(sales) * float(cogs_rate))
+        out.append(round(profit / float(clicks), 3))
+    return out
+
+
+def efficiency_trend(rows, breakeven_acos_pct):
+    """Daily "efficiency score". OUR OWN DEFINITION, STATED.
+
+    Orbit shows a score and does not say what it is, and a number nobody can
+    explain is a number nobody can act on. This one is simply how far the day's
+    ACOS sits from this account's break-even, expressed so that 100 is
+    break-even and higher is better:
+
+        score = 100 x (break-even ACOS / the day's ACOS)
+
+    A day that spent nothing scores nothing (None, not 0). A day that sold
+    nothing has an undefined ACOS and so an undefined score -- it is a bad day,
+    but it is not a measurable score, and inventing one would put it on the
+    chart next to days that were measured.
+    """
+    if not breakeven_acos_pct:
+        return None
+    out = []
+    for r in rows or []:
+        acos = r.get("acos_pct")
+        if acos is None or acos <= 0:
+            out.append(None)
+            continue
+        out.append(round(100.0 * float(breakeven_acos_pct) / float(acos), 1))
     return out
 
 

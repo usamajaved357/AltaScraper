@@ -331,6 +331,48 @@ CREATE INDEX IF NOT EXISTS idx_returns_order
    vocabulary -- "Delivered", "DELIVERED", "Signed for", "Parcel delivered" --
    and mapping them onto a common word loses information the seller sometimes
    needs. Both are kept: the mapped one to group by, the original to read. */
+/* THE COSTS AMAZON KNOWS NOTHING ABOUT, and the one Amazon charges but attaches
+   to no order.
+
+   The P&L is built from what Amazon reports, and Amazon reports nothing about
+   the accountant, the software, the postage bought elsewhere or the packaging.
+   A profit figure that leaves those out is not a business's profit, and no
+   amount of care with fees fixes that.
+
+   IT ALSO CATCHES THE ONE REAL CHARGE THE ORDER-JOINED QUERIES CANNOT SEE.
+   Measured on nestwell_goods: the per-order fees come to 1.28 of "other" while
+   the account was actually charged 61.28. The missing 60.00 is the monthly
+   selling subscription, which Amazon posts against the ACCOUNT and not against
+   any sale -- so a query that joins fees to orders can never find it. domain/
+   pnl.py has reported it as an unattributed fixed cost since the fee work; this
+   is where it stops being a note and starts being subtracted.
+
+   MONTHLY, WITH A START AND AN OPTIONAL END, rather than one row per month.
+   A subscription of 30.00 a month entered once should appear in March, April
+   and May without being retyped, and should STOP appearing when it is
+   cancelled. `starts` and `ends` are dates; `ends` NULL means "still running".
+   One-offs are entered with starts == ends.
+
+   THE AMOUNT IS PER MONTH and is apportioned by day across whatever window the
+   P&L is asked for, because a P&L for 12 days of a month should not carry a
+   whole month's rent. domain/expenses.py owns that arithmetic. */
+CREATE TABLE IF NOT EXISTS manual_expenses (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT,               -- NULL = the whole account, every market
+    name         TEXT NOT NULL,      -- "Amazon selling subscription"
+    category     TEXT,               -- free text, for grouping on screen
+    amount       REAL NOT NULL,      -- per month, in `currency`
+    currency     TEXT,
+    starts       TEXT NOT NULL,      -- YYYY-MM-DD, the first month it applies
+    ends         TEXT,               -- NULL while it is still being charged
+    note         TEXT,
+    created_at   TEXT,
+    updated_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_manexp_ws
+    ON manual_expenses(workspace_id, marketplace, starts);
+
 CREATE TABLE IF NOT EXISTS order_tracking (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id    TEXT NOT NULL,
@@ -1110,6 +1152,21 @@ _ADDED_COLUMNS = [
     ("finance_daily", "cogs_units", "INTEGER"),
     ("finance_daily", "tax", "REAL"),
     ("finance_daily", "refund_tax", "REAL"),
+    # COUPON AND DEAL FEES, OUT OF "other".
+    #
+    # Amazon charges a fee every time a coupon is redeemed and a flat fee to run
+    # a Lightning or Best Deal. Both used to land in other_fees beside the
+    # monthly subscription and the digital services fee, where they cannot be
+    # told apart -- and they are the only ones in that bucket a seller can do
+    # something about, because they are the price of a promotion that was a
+    # choice.
+    #
+    # NULL, NOT 0, ON EVERY ROW ALREADY STORED. A row synced before this column
+    # existed has its coupon fees inside other_fees, and writing 0.00 here would
+    # claim they were measured at nothing. domain/pnl.py reports the line as
+    # unknown for those windows rather than as nought.
+    ("finance_daily", "promo_fees", "REAL"),
+    ("order_fees", "promo_fees", "REAL"),
     ("sourcing_sources", "shipping_override", "REAL"),
     # The percentage profit target. In SCHEMA too, for databases created after
     # this; here so the ones that already exist gain it without being rebuilt.

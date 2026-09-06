@@ -1,0 +1,524 @@
+/* static/css/ppc.css -- the three advertising screens, to the mockups.
+ *
+ * orbit-ppc-v3.jsx, orbit-search-terms-v4.jsx and orbit-campaign-analytics-v2.jsx
+ * were drawn deliberately, and this is those drawings: the palette, the type
+ * scale, the panel padding and the gaps, taken from the JSX rather than
+ * approximated.
+ *
+ * WHY THE COLOURS LIVE HERE AND NOT IN THE JS.
+ * The mockups name their colours as literal hexes. static/js may not
+ * (test_one_palette.py), and for a good reason -- a screen that invents its own
+ * shade of green is how an app stops looking like one app. So the mockup's
+ * palette is declared once, here, as tokens, and the JavaScript refers to them
+ * by name. The hexes are the mockup's, unchanged; only their address moved.
+ *
+ * These are DELIBERATELY NOT the app's --ok/--red/--gold. The PPC screens were
+ * designed against Orbit's darker ground (#0d1117 against the app's #1a1d23),
+ * and mixing the two palettes on one page is what makes a screen look
+ * half-finished. Everything outside these three screens keeps the app's own.
+ */
+
+:root{
+  /* ---- the mockup's palette, verbatim from `const s` in orbit-ppc-v3.jsx --- */
+  --ppc-bg:        #0d1117;   /* page ground, darker than the app's */
+  --ppc-surface:   #161b22;   /* every panel */
+  --ppc-surface2:  #1c2128;   /* a card inside a panel, and inputs */
+  --ppc-border:    #30363d;
+  --ppc-text:      #e6edf3;
+  --ppc-muted:     #8b949e;
+  --ppc-dim:       #6e7681;
+
+  --ppc-green:     #3fb950;
+  --ppc-red:       #f85149;
+  --ppc-orange:    #d29922;
+  --ppc-blue:      #58a6ff;
+  --ppc-cyan:      #39d2c0;
+  --ppc-purple:    #bc8cff;
+  --ppc-magenta:   #e570ff;   /* the CTR sparkline */
+  --ppc-gold:      #c9a84c;   /* the revenue/sales bars */
+
+  /* The ACoS heatmap's four bands, and the profitability map's seven. */
+  --ppc-heat1:     #22863a;   /* < 26% */
+  --ppc-heat2:     #2ea043;   /* < 35% */
+  --ppc-heat3:     #d29922;   /* < 43% */
+  --ppc-heat4:     #f85149;   /* > 43% */
+  --ppc-acos6:     #e87a1e;   /* 40-60% band on the campaign map */
+  --ppc-acos7:     #c0304a;   /* > 100% */
+
+  /* Cohort bar, muted on purpose -- the campaign mockup's darker set. */
+  --ppc-cohort-ok:   #2ea043;
+  --ppc-cohort-mid:  #c9862a;
+  --ppc-cohort-bad:  #c04b45;
+
+  /* Transparent badge grounds. Written out rather than composed at runtime so
+     one badge cannot drift from another. */
+  --ppc-green-bg:  rgba(63,185,80,0.15);
+  --ppc-red-bg:    rgba(248,81,73,0.15);
+  --ppc-orange-bg: rgba(210,153,34,0.18);
+  --ppc-blue-bg:   rgba(88,166,255,0.10);
+  --ppc-cyan-bg:   rgba(57,210,192,0.18);
+  --ppc-gold-bg:   rgba(240,192,0,0.18);
+}
+
+/* ---- the page ---------------------------------------------------------- */
+/* maxWidth 1200 centred, padding "24px 40px 60px" -- straight off the mockup's
+   <main>. The app's own screens run full-bleed; these three do not, because the
+   mockup's whole layout is built around a fixed measure. */
+.ppc-page{
+  background: var(--ppc-bg);
+  color: var(--ppc-text);
+  font-size: 14px;
+  padding: 24px 40px 60px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.ppc-page h1{ font-size: 28px; font-weight: 700; margin: 0; }
+.ppc-page .ppc-sub{ color: var(--ppc-muted); font-size: 14px; margin: 4px 0 24px; }
+
+/* ---- panels ------------------------------------------------------------ */
+.ppc-panel{
+  background: var(--ppc-surface);
+  border: 1px solid var(--ppc-border);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+.ppc-panel-sm{ padding: 20px; }
+.ppc-panel-title{ font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.ppc-panel-title-lg{ font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+.ppc-panel-title-sm{ font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+
+/* The ⓘ the mockup puts after most titles and labels. */
+.ppc-i{ font-size: 12px; opacity: .5; cursor: help; margin-left: 3px; }
+
+/* ---- the TODAY bar ----------------------------------------------------- */
+.ppc-today{
+  display: flex; align-items: center;
+  background: var(--ppc-surface);
+  border: 1px solid var(--ppc-border);
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  flex-wrap: wrap; gap: 8px 0;
+}
+.ppc-today-label{ flex: 1; min-width: 90px; }
+.ppc-today-label b{ font-size: 13px; font-weight: 700; color: var(--ppc-green); display: block; }
+.ppc-today-label span{ font-size: 11px; color: var(--ppc-muted); }
+.ppc-today-stat{ flex: 1; text-align: center; min-width: 92px; }
+.ppc-today-stat .k{ font-size: 10px; color: var(--ppc-muted);
+  text-transform: uppercase; letter-spacing: .3px; }
+.ppc-today-stat .v{ font-size: 20px; font-weight: 700; }
+.ppc-today-stat .c{ font-size: 12px; font-weight: 600; }
+
+/* ---- the day-trail cards ----------------------------------------------- */
+.ppc-trail{
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 6px; margin: 12px 0 24px;
+}
+.ppc-trail-card{
+  background: var(--ppc-surface);
+  border: 1px solid var(--ppc-border);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex; flex-direction: column;
+}
+.ppc-trail-head{ display: flex; justify-content: space-between; align-items: center; }
+.ppc-trail-head .d{ font-size: 10px; color: var(--ppc-muted);
+  font-weight: 600; text-transform: uppercase; }
+.ppc-trail-head .t{ font-size: 10px; color: var(--ppc-green); font-weight: 700; }
+.ppc-trail-chart{ flex: 1; min-height: 55px; margin: 6px 0; }
+.ppc-trail-spend{ font-size: 16px; font-weight: 700; color: var(--ppc-cyan); }
+.ppc-trail-units{ font-size: 11px; color: var(--ppc-muted); }
+
+/* ---- the joined time-range buttons ------------------------------------- */
+.ppc-seg{ display: flex; }
+.ppc-seg button{
+  padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--ppc-border);
+  background: var(--ppc-surface); color: var(--ppc-muted);
+  border-radius: 0; margin: 0;
+}
+.ppc-seg button:first-child{ border-radius: 6px 0 0 6px; }
+.ppc-seg button:last-child{ border-radius: 0 6px 6px 0; }
+.ppc-seg button.on{
+  border-color: var(--ppc-blue); background: var(--ppc-blue); color: #fff;
+}
+
+/* ---- the filter row (labels ABOVE their controls) ---------------------- */
+.ppc-filters{ display: flex; gap: 16px; margin-bottom: 20px;
+  align-items: flex-end; flex-wrap: wrap; }
+.ppc-flabel{ font-size: 11px; color: var(--ppc-dim); text-transform: uppercase;
+  font-weight: 600; margin-bottom: 4px; }
+.ppc-fctl{
+  padding: 8px 14px; background: var(--ppc-surface);
+  border: 1px solid var(--ppc-border); border-radius: 6px;
+  font-size: 13px; color: var(--ppc-text); cursor: pointer;
+}
+.ppc-fctl-wide{ min-width: 160px; }
+
+/* ---- KPI cards --------------------------------------------------------- */
+.ppc-kpis{ display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 12px; margin-bottom: 12px; }
+.ppc-kpis.last{ margin-bottom: 24px; }
+.ppc-kpi{
+  background: var(--ppc-surface);
+  border: 1px solid var(--ppc-border);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+.ppc-kpi .k{ font-size: 11px; color: var(--ppc-muted); text-transform: uppercase;
+  letter-spacing: .5px; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 4px; }
+.ppc-kpi .row{ display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.ppc-kpi .v{ font-size: 28px; font-weight: 700; color: var(--ppc-text); }
+.ppc-kpi .c{ font-size: 13px; font-weight: 600; }
+.ppc-kpi .spark{ height: 28px; }
+
+/* A card inside a panel -- the profitability grid's six. */
+.ppc-sub-card{
+  background: var(--ppc-surface2);
+  border: 1px solid var(--ppc-border);
+  border-radius: 8px;
+  padding: 16px;
+}
+.ppc-sub-card .k{ font-size: 11px; color: var(--ppc-muted);
+  text-transform: uppercase; letter-spacing: .3px; margin-bottom: 6px; }
+.ppc-sub-card .v{ font-size: 28px; font-weight: 700; }
+.ppc-sub-card .n{ font-size: 12px; color: var(--ppc-muted); margin-top: 4px; }
+.ppc-grid3{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.ppc-grid2{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ppc-grid-3-2{ display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+.ppc-mb12{ margin-bottom: 12px; }
+.ppc-mb16{ margin-bottom: 16px; }
+
+/* ---- tables ------------------------------------------------------------ */
+.ppc-table{ width: 100%; border-collapse: collapse; }
+.ppc-table th{
+  font-size: 11px; color: var(--ppc-muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .3px;
+  padding: 10px 12px; text-align: right; white-space: nowrap;
+}
+.ppc-table th:first-child{ text-align: left; }
+.ppc-table thead tr:last-child{ border-bottom: 1px solid var(--ppc-border); }
+.ppc-table td{ padding: 10px 12px; text-align: right; font-size: 14px; }
+.ppc-table td:first-child{ text-align: left; }
+.ppc-table tbody tr{ border-bottom: 1px solid var(--ppc-border); }
+.ppc-table tbody tr:hover{ background: rgba(255,255,255,0.02); }
+.ppc-table .grouphead th{
+  font-size: 10px; color: var(--ppc-dim); text-align: center;
+  border-bottom: 1px solid var(--ppc-border); padding: 4px 12px;
+  text-transform: none; letter-spacing: 0; font-weight: 400;
+}
+.ppc-sortable{ cursor: pointer; }
+.ppc-sortarrow{ margin-left: 3px; opacity: .3; }
+.ppc-sortarrow.on{ opacity: 1; color: var(--ppc-cyan); }
+
+/* The profit column carries a faint blue ground on the campaign screens. */
+.ppc-col-profit{ background: var(--ppc-blue-bg); }
+
+/* ---- badges ------------------------------------------------------------ */
+.ppc-badge{
+  display: inline-block; font-size: 11px; font-weight: 700;
+  padding: 3px 14px; border-radius: 4px; text-transform: uppercase;
+}
+.ppc-badge.broad{  background: var(--ppc-orange-bg); color: var(--ppc-orange); }
+.ppc-badge.phrase{ background: var(--ppc-green-bg);  color: var(--ppc-green); }
+.ppc-badge.exact{  background: var(--ppc-cyan-bg);   color: var(--ppc-cyan); }
+.ppc-badge.plain{
+  background: transparent; color: var(--ppc-dim);
+  font-size: 11px; font-weight: 400; padding: 0;
+  letter-spacing: -.3px; text-transform: none;
+}
+.ppc-badge.pt{
+  background: rgba(57,210,192,0.2); color: var(--ppc-cyan);
+  font-size: 9px; font-weight: 700; padding: 2px 6px;
+  border-radius: 3px; margin-left: 6px; text-transform: none;
+}
+.ppc-badge.sp{ background: var(--ppc-gold-bg); color: #f0c000; }
+.ppc-badge.sb{ background: var(--ppc-blue-bg); color: var(--ppc-blue); }
+.ppc-badge.sd{ background: rgba(188,140,255,0.18); color: var(--ppc-purple); }
+.ppc-badge.enabled{ background: var(--ppc-green-bg); color: var(--ppc-green);
+  font-size: 10px; padding: 2px 8px; }
+
+/* The efficiency verdict beside the score. SOLID, not a tint -- the mockup
+   fills this one, and its dark text is what makes a solid green legible. */
+.ppc-verdict{
+  color: #000; font-size: 11px; padding: 2px 8px;
+  border-radius: 3px; font-weight: 600;
+}
+.ppc-verdict.good{  background: var(--ppc-green); }
+.ppc-verdict.watch{ background: var(--ppc-orange); }
+.ppc-verdict.poor{  background: var(--ppc-red); }
+
+/* The opportunity score: a rounded rectangle, no border, transparent tint. */
+.ppc-opp{
+  display: inline-block; min-width: 34px; text-align: center;
+  padding: 3px 6px; border-radius: 6px;
+  font-size: 13px; font-weight: 700;
+}
+.ppc-opp.hi{ background: rgba(63,185,80,0.15);  color: var(--ppc-green); }
+.ppc-opp.lo{ background: rgba(210,153,34,0.15); color: var(--ppc-orange); }
+
+/* A change figure, in a pill. */
+.ppc-chg{
+  font-size: 11px; border-radius: 14px; padding: 3px 10px; white-space: nowrap;
+}
+.ppc-chg.good{ background: var(--ppc-green-bg); color: var(--ppc-green); }
+.ppc-chg.bad{  background: var(--ppc-red-bg);   color: var(--ppc-red); }
+.ppc-chg.flat{ color: var(--ppc-muted); }
+
+/* ---- inputs ------------------------------------------------------------ */
+.ppc-input{
+  padding: 6px 12px; background: var(--ppc-surface2);
+  border: 1px solid var(--ppc-border); border-radius: 4px;
+  color: var(--ppc-text); font-size: 13px; outline: none;
+}
+.ppc-input:focus{ border-color: var(--ppc-blue); }
+.ppc-pill-input{ border-radius: 16px; padding: 6px 14px; }
+.ppc-btn{
+  padding: 6px 14px; background: var(--ppc-surface2);
+  border: 1px solid var(--ppc-border); border-radius: 4px;
+  color: var(--ppc-text); font-size: 13px; cursor: pointer;
+}
+.ppc-btn:hover{ border-color: var(--ppc-blue); }
+/* The filter pills. Orange when active on the campaign screen, per its mockup. */
+.ppc-pill{
+  padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  background: transparent; color: var(--ppc-muted);
+  border: 1px solid var(--ppc-border); border-radius: 4px;
+}
+.ppc-pill.on{ background: var(--ppc-orange); border-color: var(--ppc-orange);
+  color: #000; }
+.ppc-pill.on-green{ background: var(--ppc-green); border-color: var(--ppc-green);
+  color: #000; }
+
+/* ---- the Search Terms screen ------------------------------------------- */
+/* Its mockup runs to 1400 rather than 1200: the table carries thirteen columns
+   and the extra measure is what keeps them off a horizontal scrollbar. */
+.ppc-page.wide{ max-width: 1400px; padding: 24px 28px 60px; }
+
+/* The "?" bubble the mockup uses instead of ⓘ: a 16px ring, not a glyph. */
+.ppc-q{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid var(--ppc-dim); color: var(--ppc-dim);
+  font-size: 10px; font-weight: 600; margin-left: 4px;
+  vertical-align: middle; line-height: 1; cursor: help;
+}
+
+/* Search Terms' KPI cards sit at gap 6 and their value is 26px, a size down
+   from the PPC Analytics cards, with the change in a pill beside it. */
+.ppc-kpis.tight{ gap: 6px; margin-bottom: 6px; }
+.ppc-kpis.tight.last{ margin-bottom: 24px; }
+.ppc-kpi.st .v{ font-size: 26px; }
+.ppc-kpi.st .row{ align-items: center; margin-bottom: 0; }
+
+/* Rounded filter pills. Cyan when active on this screen -- the campaign screen
+   uses orange, and each mockup is explicit about its own. */
+.ppc-rpill{
+  padding: 4px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
+  border-radius: 16px; background: transparent; color: var(--ppc-muted);
+  border: 1px solid var(--ppc-border);
+}
+.ppc-rpill.on{ background: var(--ppc-cyan); border-color: var(--ppc-cyan);
+  color: #000; }
+.ppc-filterlabel{ font-size: 12px; color: var(--ppc-muted); font-weight: 600; }
+
+/* The ten summary cells: their own bordered boxes with a gap, not a shared grid. */
+.ppc-sumgrid{ display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 4px; margin-bottom: 4px; }
+.ppc-sumgrid.last{ margin-bottom: 12px; }
+.ppc-sumcell{
+  background: var(--ppc-surface2); border: 1px solid var(--ppc-border);
+  border-radius: 6px; padding: 10px 14px;
+}
+.ppc-sumcell .k{ font-size: 10px; color: var(--ppc-muted);
+  text-transform: uppercase; letter-spacing: .3px; margin-bottom: 2px; }
+.ppc-sumcell .v{ font-size: 18px; font-weight: 700; }
+.ppc-sumcell .c{ font-size: 12px; font-weight: 600; margin-left: 6px; }
+
+/* The ACoS range slider: 160px fixed, deliberately NOT flexible -- it sits
+   between its label and its caption and stretching it pushes both off. */
+.ppc-slider{ width: 160px; position: relative; height: 20px;
+  display: flex; align-items: center; }
+.ppc-slider .track{ width: 100%; height: 4px;
+  background: var(--ppc-border); border-radius: 2px; }
+.ppc-slider .fill{ position: absolute; left: 0; height: 4px;
+  background: var(--ppc-cyan); border-radius: 2px; }
+.ppc-slider input[type=range]{
+  position: absolute; left: 0; width: 100%; margin: 0;
+  accent-color: var(--ppc-cyan); background: transparent;
+}
+
+/* The Search Terms table: tighter rows, a cyan-tinted profit column, and the
+   expanded row indented past the badge and the chevron. */
+.ppc-table.terms td{ padding: 7px 8px; vertical-align: middle; }
+.ppc-table.terms th{ font-size: 12px; padding: 10px 8px;
+  text-transform: none; letter-spacing: 0; }
+.ppc-table.terms thead tr{ border-bottom: 2px solid var(--ppc-border); }
+.ppc-col-profit-cy{ background: rgba(57,210,192,0.06); }
+.ppc-termexp{ background: var(--ppc-surface2); }
+.ppc-termexp td{ padding: 10px 8px 10px 84px; font-size: 13px;
+  text-align: left; }
+.ppc-table tbody tr.open{ background: var(--ppc-surface2); }
+
+/* ---- the Campaign Analytics screen -------------------------------------- */
+/* Every column of the breakdown table carries its own faint tint, so the eye
+   can group "the click columns" and "the money columns" without a rule between
+   them. Straight off the mockup's colTints array. */
+.ppc-tint-blue{   background: rgba(88,166,255,0.06); }
+.ppc-tint-purple{ background: rgba(188,140,255,0.06); }
+.ppc-tint-green{  background: rgba(63,185,80,0.06); }
+.ppc-tint-teal{   background: rgba(57,210,192,0.06); }
+/* The profit column is tinted more strongly than the rest -- it is the column
+   the table exists for. */
+.ppc-tint-profit{ background: rgba(88,166,255,0.10); }
+
+.ppc-break table{ width: 100%; border-collapse: collapse; margin-top: 20px; }
+.ppc-break th{
+  font-size: 11px; color: var(--ppc-muted); padding: 8px 10px;
+  font-weight: 600; border-bottom: 1px solid var(--ppc-border);
+  text-align: right; white-space: nowrap;
+}
+.ppc-break th:first-child{ text-align: left; }
+.ppc-break td{
+  padding: 8px 10px; text-align: right;
+  font-family: "SF Mono", Consolas, ui-monospace, monospace; font-size: 13px;
+}
+.ppc-break td:first-child{
+  text-align: left; font-family: inherit;
+}
+.ppc-break tbody tr{ border-bottom: 1px solid var(--ppc-border); }
+.ppc-break .sect td{
+  padding: 14px 10px 6px; font-size: 11px; color: var(--ppc-muted);
+  font-weight: 600; text-transform: uppercase; letter-spacing: .8px;
+  font-family: inherit; text-align: left; border: 0;
+}
+.ppc-break .sect:first-child td{ padding-top: 10px; }
+.ppc-dot{ width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; margin-right: 8px; }
+
+/* The profitability map sits on the page ground, DARKER than its panel. */
+.ppc-map{ background: var(--ppc-bg); border-radius: 6px;
+  padding: 8px 4px 4px; position: relative; }
+
+/* The cohort bar and its five cards. */
+.ppc-cohortbar{ display: flex; height: 22px; border-radius: 4px;
+  overflow: hidden; margin-bottom: 14px; }
+.ppc-cohorts{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.ppc-cohort{
+  background: var(--ppc-surface2); border: 1px solid var(--ppc-border);
+  border-radius: 8px; padding: 12px 16px;
+}
+.ppc-cohort.all{ border: 2px solid var(--ppc-orange); }
+.ppc-cohort .k{ font-size: 11px; font-weight: 600; letter-spacing: .5px;
+  display: flex; align-items: center; gap: 6px; }
+.ppc-cohort .n{ font-size: 28px; font-weight: 700; margin: 4px 0 2px; }
+.ppc-cohort .s{ font-size: 12px; color: var(--ppc-muted); }
+
+/* Top Campaigns: pills at radius 14, a header row on the raised surface. */
+.ppc-tpill{
+  padding: 3px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  border-radius: 14px; background: transparent; color: var(--ppc-muted);
+  border: 1px solid var(--ppc-border);
+}
+.ppc-tpill.on{ background: var(--ppc-orange); border-color: var(--ppc-orange);
+  color: #000; }
+.ppc-table.camp thead tr{ background: var(--ppc-surface2); }
+.ppc-table.camp th{ font-size: 12px; padding: 9px 8px;
+  text-transform: none; letter-spacing: 0; }
+.ppc-table.camp td{ padding: 7px 8px; }
+.ppc-table.camp tbody tr.open{ background: rgba(255,255,255,0.02); }
+
+/* The expanded campaign: a blue rule down the left, indented past the chevron. */
+.ppc-campexp{
+  border-left: 3px solid var(--ppc-blue); margin-left: 38px;
+  padding: 14px 0 14px 16px; background: rgba(255,255,255,0.01);
+}
+.ppc-campexp .boxes{ display: grid; grid-template-columns: repeat(6, 1fr);
+  gap: 4px; margin-bottom: 14px; }
+.ppc-campexp .box{
+  background: var(--ppc-surface2); border: 1px solid var(--ppc-border);
+  border-radius: 4px; padding: 8px 12px; text-align: center;
+}
+.ppc-campexp .box.profit{ background: rgba(88,166,255,0.10); }
+.ppc-campexp .box .k{ font-size: 10px; color: var(--ppc-muted);
+  text-transform: uppercase; letter-spacing: .8px; margin-bottom: 2px; }
+.ppc-campexp .box .v{ font-size: 16px; font-weight: 700; }
+/* The sub-table's headers are WHITE, not muted. The mockup is explicit, and it
+   is what separates the nested table from the one above it. */
+.ppc-campexp table{ width: 100%; border-collapse: collapse; }
+.ppc-campexp th{ text-align: right; font-size: 12px; color: var(--ppc-text);
+  padding: 8px; font-weight: 600; }
+.ppc-campexp th:first-child, .ppc-campexp th:nth-child(2){ text-align: left; }
+.ppc-campexp td{ padding: 7px 8px; text-align: right; font-size: 13px; }
+.ppc-campexp td:first-child, .ppc-campexp td:nth-child(2){ text-align: left; }
+.ppc-campexp tbody tr{ border-bottom: 1px solid var(--ppc-border); }
+.ppc-campexp thead tr{ border-bottom: 1px solid var(--ppc-border); }
+
+@media (max-width: 1100px){
+  .ppc-cohorts{ grid-template-columns: repeat(2, 1fr); }
+  .ppc-campexp .boxes{ grid-template-columns: repeat(3, 1fr); }
+  .ppc-sumgrid{ grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---- legends ----------------------------------------------------------- */
+.ppc-legend{
+  display: flex; gap: 24px; font-size: 12px;
+  justify-content: center; margin-bottom: 12px; flex-wrap: wrap;
+}
+.ppc-legend .dot{ margin-right: 4px; }
+
+/* ---- the heatmap ------------------------------------------------------- */
+.ppc-heat{ border-collapse: collapse; width: 100%; }
+.ppc-heat th{ font-size: 9px; color: var(--ppc-dim); padding: 2px 1px;
+  text-align: center; font-weight: 400; }
+.ppc-heat td{ padding: 1px; }
+.ppc-heat .day{ font-size: 11px; color: var(--ppc-muted); text-align: right;
+  padding-right: 6px; font-weight: 500; }
+.ppc-heat .cell{ width: 100%; height: 22px; border-radius: 2px; }
+
+/* ---- the expanded campaign row ----------------------------------------- */
+.ppc-expand{
+  margin-left: 38px; border-left: 3px solid var(--ppc-blue);
+  padding: 12px 14px; background: rgba(255,255,255,0.01);
+}
+.ppc-statboxes{ display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 4px; margin-bottom: 10px; }
+.ppc-statbox{
+  background: var(--ppc-surface2); border: 1px solid var(--ppc-border);
+  border-radius: 4px; padding: 9px 11px; text-align: center;
+}
+.ppc-statbox .k{ font-size: 10px; color: var(--ppc-muted);
+  text-transform: uppercase; letter-spacing: .8px; }
+.ppc-statbox .v{ font-size: 16px; font-weight: 700; margin-top: 2px; }
+.ppc-statbox.profit{ background: var(--ppc-blue-bg); }
+/* The sub-table's headers are WHITE, not muted -- the mockup is explicit. */
+.ppc-subtable th{ font-size: 12px; color: var(--ppc-text); font-weight: 600; }
+
+/* ---- a figure that could not be worked out ----------------------------- */
+.ppc-dash{ opacity: .45; color: var(--ppc-muted); }
+.ppc-note{
+  font-size: 11.5px; line-height: 1.6; padding: 9px 11px;
+  border: 1px solid var(--ppc-border); border-radius: 6px;
+  color: var(--ppc-muted); margin-bottom: 10px;
+}
+.ppc-note.warn{ border-color: var(--ppc-orange); color: var(--ppc-text);
+  background: rgba(210,153,34,0.08); }
+
+/* ---- narrow screens ---------------------------------------------------- */
+/* The mockup is a 1200px desktop drawing. Below that the seven day-trail cards
+   and the four-across KPI rows stop being readable long before they stop
+   fitting, so they reflow rather than shrink. */
+@media (max-width: 1100px){
+  .ppc-kpis{ grid-template-columns: repeat(2, 1fr); }
+  .ppc-grid3{ grid-template-columns: 1fr; }
+  .ppc-grid2, .ppc-grid-3-2{ grid-template-columns: 1fr; }
+  .ppc-trail{ grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 720px){
+  .ppc-page{ padding: 16px 14px 40px; }
+  .ppc-kpis{ grid-template-columns: 1fr; }
+  .ppc-trail{ grid-template-columns: repeat(2, 1fr); }
+}

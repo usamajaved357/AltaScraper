@@ -94,6 +94,12 @@
 <!-- The compact expanded-order panel: the Sourcing page's bar, cards and pills
      applied to an order -- see static/js/orders_panel.js. -->
 <link rel="stylesheet" href="/static/css/orders_panel.css?v={{ ASSET_V }}">
+<!-- The three advertising screens, drawn to their own mockups
+     (orbit-ppc-v3.jsx and the two beside it). Its palette is deliberately NOT
+     the app's: those pages were designed against Orbit's darker ground, and
+     every token it defines is prefixed --ppc- so nothing else can pick them up
+     by accident. Scoped under .ppc-page, so it cannot reach another screen. -->
+<link rel="stylesheet" href="/static/css/ppc.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -956,6 +962,25 @@
         <div id="sales_orgppc"></div>
       </div>
 
+      <!-- THE PROFIT AND LOSS, line by line.
+           /sales/pnl has existed since the fee work and nothing in the browser
+           called it -- a finished endpoint with no way to reach it is a feature
+           nobody has. It answers for the same window as the rest of this page.
+
+           It is also where the two things the statement cannot know on its own
+           are asked for: the costs Amazon never sees (the accountant, the
+           software, the packaging), and whether VAT applies. Neither is ever
+           assumed -- VAT is shown both ways and taken off nothing. -->
+      <div class="wspanel-sec">
+        <div class="wstoolbar bleed" style="margin-top:18px">
+          <div><h3 style="margin:0"><i class="ti ti-report-money"></i> Profit and loss</h3>
+          <div class="sub">Every line, with what Amazon actually charged where it has settled and this account's own measured rate where it has not. Nothing is assumed: a figure that cannot be known says so.</div></div>
+          <span class="spacer" style="flex:1"></span>
+          <button class="db-chip" onclick="pnlLoad()"><i class="ti ti-refresh"></i> Work it out</button>
+        </div>
+        <div id="pnl_body" style="padding:4px 0"></div>
+      </div>
+
       <!-- WHICH CAMPAIGN SPENT IT. The split above says how much of the revenue
            was paid for; this says what each campaign cost to get it, over the
            same period the rest of the screen is showing. Sortable, and it opens
@@ -983,41 +1008,13 @@
          of hourly spend and the day x hour ACoS heatmap. There are no hourly
          figures stored for this account, and the page says so where each would
          have been rather than drawing a curve through hours nobody measured. -->
-    <div id="sec_ppcanalytics" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-chart-histogram"></i> PPC Analytics</h2>
-        <div class="sub">Advertising spend, sales, efficiency and campaign performance. Every figure is measured from stored Amazon data — nothing here changes a bid, a budget or a campaign.</div></div>
-        <span class="spacer" style="flex:1"></span>
-        <button class="db-chip" onclick="ppcaLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-      </div>
-      <div id="ppca_body" style="padding:4px 0"></div>
-    </div>
-
-    <!-- SEARCH TERMS. What people actually typed, one row each. -->
-    <div id="sec_ppcterms" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-search"></i> Search Terms</h2>
-        <div class="sub">Search term performance across all campaigns and keywords. Read-only.</div></div>
-        <span class="spacer" style="flex:1"></span>
-        <button class="db-chip" onclick="ppctExport()"
-                title="Every search term, not just the ones on screen.">
-          <i class="ti ti-download"></i> Export</button>
-        <button class="db-chip" onclick="ppctLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-      </div>
-      <div id="ppct_body" style="padding:4px 0"></div>
-    </div>
-
-    <!-- CAMPAIGN ANALYTICS. Every campaign, with its own search terms folded
-         underneath it. -->
-    <div id="sec_ppccampaigns" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-target-arrow"></i> Campaign Analytics</h2>
-        <div class="sub">Campaign type breakdown, match type performance, and every campaign with the search terms it bought. Read-only.</div></div>
-        <span class="spacer" style="flex:1"></span>
-        <button class="db-chip" onclick="ppccLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-      </div>
-      <div id="ppcc_body" style="padding:4px 0"></div>
-    </div>
+    <!-- Each of the three draws its OWN heading, filter row and panels, because
+         each is a whole mockup rather than a body inside the app's chrome. The
+         wstoolbar the other screens carry is deliberately absent: it would put
+         a second title above the mockup's own. -->
+    <div id="sec_ppcanalytics" class="wspanel"><div id="ppca_body"></div></div>
+    <div id="sec_ppcterms" class="wspanel"><div id="ppct_body"></div></div>
+    <div id="sec_ppccampaigns" class="wspanel"><div id="ppcc_body"></div></div>
 
     <div id="sec_ppc" class="wspanel">
       <div class="wstoolbar bleed">
@@ -2278,6 +2275,7 @@
 <!-- The three advertising screens. ppcshared.js first: the other three call its
      formatters, and a page that loads before it would draw "undefined". -->
 <script src="/static/js/ppcshared.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppccharts.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ppcanalytics.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ppcterms.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ppccampaigns.js?v={{ ASSET_V }}"></script>
@@ -2462,6 +2460,10 @@
 <!-- The stock-cost bar under the Profit card. AFTER sales.js: it uses _sFetch
      and _sAcct, and is drawn from salesDrawCards. -->
 <script src="/static/js/cogsmode.js?v={{ ASSET_V }}"></script>
+<!-- The P&L, and the costs Amazon never sees. AFTER sales.js for the same
+     reason: it reads the window the Sales page is showing through _sQuery(), so
+     the statement and the charts above it cannot answer for different months. -->
+<script src="/static/js/pnl.js?v={{ ASSET_V }}"></script>
 <!-- AFTER both. traffic.js draws with salesCombo and formats with _sNum rather
      than carrying its own copies, which would drift from these on the first fix
      made to either. (Order is not load-bearing -- these are function

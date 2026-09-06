@@ -103,8 +103,23 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         now = _pa.totals_for(CONFIG_PATH, aid, mkt, start, end)
         before = _pa.totals_for(CONFIG_PATH, aid, mkt, pstart, pend)
         camps = _pa.campaigns(CONFIG_PATH, aid, mkt, start, end, rates)
+        days = _pa.daily(CONFIG_PATH, aid, mkt, start, end)
+
+        # The panels the mockup draws that are not simple totals. Each is
+        # computed once here rather than per panel, because they all read the
+        # same daily rows and the same measured rates.
+        terms = _pa.terms(CONFIG_PATH, aid, mkt, rates)
+        wasted_prev = _pa.wasted_spend(CONFIG_PATH, aid, mkt, pstart, pend)
 
         return jsonify({
+            "today": _pa.today_bar(CONFIG_PATH, aid, mkt),
+            "trail": _pa.trail(CONFIG_PATH, aid, mkt, 7),
+            "per_click": _pa.per_click_trend(days, rates.get("fee_rate"),
+                                             rates.get("cogs_rate")),
+            "efficiency": _pa.efficiency_trend(
+                days, rates.get("breakeven_acos_pct")),
+            "branded": _pa.branded_split(terms),
+            "wasted_previous": wasted_prev,
             "ok": True, "account": aid, "marketplace": mkt,
             "window": {"start": start, "end": end,
                        "compare_start": pstart, "compare_end": pend},
@@ -115,7 +130,7 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             # None per metric when the previous window has no data. A move from
             # nothing to something is not a rise, and +100% would read as one.
             "change": _pa.change(now, before),
-            "daily": _pa.daily(CONFIG_PATH, aid, mkt, start, end),
+            "daily": days,
             "cohorts": _pa.cohorts(CONFIG_PATH, aid, mkt, start, end, camps, rates),
             "wasted": _pa.wasted_spend(CONFIG_PATH, aid, mkt, start, end),
             "by_ad_product": _pa.by_group(camps, "ad_product"),
@@ -209,6 +224,8 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "by_ad_product": _pa.by_group(camps, "ad_product"),
             "by_match_type": _pa.by_group(terms, "match_type"),
             "daily": _pa.daily(CONFIG_PATH, aid, mkt, start, end),
+            "daily_by_product": _pa.daily_by_ad_product(CONFIG_PATH, aid, mkt,
+                                                        start, end),
             "terms_by_campaign": by_campaign,
         })
 

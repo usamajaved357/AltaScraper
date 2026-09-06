@@ -37,7 +37,8 @@ import datetime as _dt
 from data import db as _db
 from domain import finance_data as _fd
 
-_COLS = ("referral_fees", "fba_fees", "other_fees", "principal", "tax",
+_COLS = ("referral_fees", "fba_fees", "other_fees", "promo_fees",
+         "principal", "tax",
          "refunds", "refund_tax", "refund_units", "refund_fees_returned",
          "promos", "units")
 

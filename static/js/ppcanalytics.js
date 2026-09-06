@@ -1,23 +1,34 @@
-/* static/js/ppcanalytics.js -- the PPC Analytics screen.
+/* static/js/ppcanalytics.js -- the PPC Analytics screen, to orbit-ppc-v3.jsx.
  *
- * Advertising spend, sales, efficiency and campaign performance for a window,
- * against the window before it.
+ * The mockup's sections, in its order, with its spacing:
  *
- * WHAT IS HERE AND WHAT IS DELIBERATELY NOT
- * The build spec asks for a "Day trail" of seven cards, each a cumulative
- * spend-by-HOUR curve, and an ACoS heatmap of day x hour. Neither is drawn,
- * because there are no hourly advertising figures stored for this account --
- * every row Amazon has sent is one whole day. Both panels say so in place of
- * the chart. Drawing a smooth curve through twenty-four hours nobody measured
- * would be indistinguishable from a measurement, and the spec's instruction to
- * "stub it with placeholder data" is the one thing this screen has already been
- * told off for twice.
+ *     h1 + subtitle
+ *     TODAY bar                  6 stats, evenly spread, change under each
+ *     Day trail                  7 cards, mini cumulative curve, range buttons
+ *     Filters                    labels ABOVE controls, COMPARE TO pushed right
+ *     KPI row 1                  SPEND / SALES / ACOS / ROAS, with sparklines
+ *     KPI row 2                  IMPRESSIONS / CLICKS / CTR / PURCHASES
+ *     Branded vs Non-Branded     donut left, table right, 250px 1fr
+ *     Profitability Analysis     flow line, then 3 + 3 cards
+ *     Revenue, Ad Spend & Profit gold bars + red line + cyan line
+ *     Profit/Click + Efficiency  two area charts with gradient shadows
+ *     ACoS Heatmap + TACoS       3fr / 2fr
+ *     Budget & Pacing            two stats, separator, bars + line
+ *     ASIN Performance           grouped header table
  *
- * Everything else on the spec is real: the KPI rows, the profitability figures,
- * the revenue/spend/profit chart, the TACOS trend, the cohorts, the campaign
- * table and the per-ASIN table all come from stored rows.
+ * WHAT THE MOCKUP DRAWS THAT THE DATA CANNOT SUPPORT, AND WHAT IS DONE ABOUT IT
+ * The Day trail's curve is "cumulative ad spend BY HOUR" and the heatmap is
+ * day x hour. There are no hourly figures: Amazon refuses timeUnit HOURLY on
+ * this report type -- measured, in its own words, "configuration timeUnit is
+ * not supported for this report type". Hourly Amazon ad data comes from
+ * Marketing Stream, a separate push integration this app does not have.
  *
- * NOTHING HERE WRITES. No bid, no budget, no campaign state (CLAUDE.md Rule 8).
+ * So the trail keeps its seven cards and its curve, drawn at the finest grain
+ * that exists, and its caption says which. The heatmap keeps its panel and its
+ * legend and says what it needs. Neither is filled with invented hours -- that
+ * is the one thing these screens have been told off for twice.
+ *
+ * NOTHING HERE WRITES. No bid, no budget, no campaign state (Rule 8).
  */
 
 const PPCA = {data: null, loading: false, sort: "spend", desc: true,
@@ -25,28 +36,29 @@ const PPCA = {data: null, loading: false, sort: "spend", desc: true,
 
 async function ppcaLoad(){
   const host = document.getElementById("ppca_body");
-  if(!host) return;
-  if(PPCA.loading) return;
+  if(!host || PPCA.loading) return;
   PPCA.loading = true;
-  host.innerHTML = '<div class="cc" style="padding:18px">'
-    + '<span class="genspin"></span> Reading the advertising figures…</div>';
+  host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
+    + 'color:var(--ppc-muted)"><span class="genspin"></span> '
+    + 'Reading the advertising figures…</div></div>';
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
     const j = await (await fetch("/ppc/analytics/overview?" + qs)).json();
     PPCA.loading = false;
     if(!j || !j.ok){
-      host.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
+      host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
+        + 'color:var(--ppc-red)">'
         + _pEsc((j && j.error) || "Could not read the advertising figures.")
-        + '</div>';
+        + '</div></div>';
       return;
     }
     PPCA.data = j;
     ppcaRender();
   }catch(e){
     PPCA.loading = false;
-    host.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
-      + 'Could not read the advertising figures.</div>';
+    host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
+      + 'color:var(--ppc-red)">Could not read the advertising figures.</div></div>';
   }
 }
 
@@ -55,7 +67,6 @@ function ppcaSort(key){
   else { PPCA.sort = key; PPCA.desc = true; }
   ppcaRender();
 }
-
 function ppcaTab(t){ PPCA.tab = t; ppcaRender(); }
 function ppcaFilter(v){ PPCA.q = (v || "").toLowerCase(); ppcaRender(); }
 
@@ -63,353 +74,522 @@ function ppcaRender(){
   const host = document.getElementById("ppca_body");
   const j = PPCA.data;
   if(!host || !j) return;
-  const cur = "GBP";
+  const cur = j.currency || "GBP";
   const t = j.totals || {}, ch = j.change || {}, av = j.availability || {};
 
-  let h = ppcWindowBar("ppcaLoad");
+  let h = '<div class="ppc-page">'
+    + '<h1>PPC Analytics</h1>'
+    + '<p class="ppc-sub">Advertising spend, sales, efficiency, and campaign '
+    + 'performance</p>';
 
-  // NOTHING STORED AT ALL is a different screen from a quiet month, and the
-  // difference is the first thing to say.
   if(!t.has_data){
-    host.innerHTML = h + ppcUnavailable(
-      "No advertising figures for this window",
+    h += ppcUnavailable("No advertising figures for this window",
       (av.campaigns && av.campaigns.why)
         || "Nothing is stored for this account and marketplace in this window.");
+    host.innerHTML = h + '</div>';
     return;
   }
 
-  h += ppcAvailabilityNote(av);
+  h += ppcaToday(j, cur);
+  h += ppcaTrail(j, cur);
+  h += ppcFilterRow(j, "ppcaLoad");
+  h += ppcaKpis(j, cur, t, ch);
   h += ppcProductNote(av);
-  h += ppcRatesNote(j.rates);
-
-  // ---- the headline figures ------------------------------------------
-  h += ppcCards([
-    ppcCard({label: "Spend", value: ppcMoney(t.spend, cur),
-             change: ppcChange(ch.spend, "down"),
-             help: "What Amazon charged for the ads in this window."}),
-    ppcCard({label: "Ad sales", value: ppcMoney(t.sales, cur),
-             change: ppcChange(ch.sales, "up"),
-             help: "Sales Amazon attributes to those ads. Not the same as total "
-                 + "sales — an organic sale is not in here."}),
-    ppcCard({label: "ACOS", value: ppcPct(t.acos_pct),
-             change: ppcChange(ch.acos_pct, "down"),
-             help: "Spend divided by AD sales. How much of the advertised "
-                 + "revenue the advertising ate. Lower is better."}),
-    ppcCard({label: "TACOS", value: ppcPct(t.tacos_pct),
-             change: ppcChange(ch.tacos_pct, "down"),
-             help: "Spend divided by ALL sales, advertised and organic "
-                 + "together. The honest measure of what advertising costs the "
-                 + "business."}),
-  ]);
-  h += ppcCards([
-    ppcCard({label: "ROAS", value: ppcX(t.roas),
-             change: ppcChange(ch.roas, "up"),
-             help: "Ad sales for every pound of spend."}),
-    ppcCard({label: "Impressions", value: ppcNum(t.impressions),
-             change: ppcChange(ch.impressions, "up"),
-             help: "How many times the ads were shown."}),
-    ppcCard({label: "Clicks", value: ppcNum(t.clicks),
-             change: ppcChange(ch.clicks, "up"),
-             help: "How many times somebody clicked one."}),
-    ppcCard({label: "CTR", value: ppcPct(t.ctr_pct, "", 2),
-             change: ppcChange(ch.ctr_pct, "up"),
-             help: "Clicks per impression."}),
-  ]);
-  h += ppcCards([
-    ppcCard({label: "Orders", value: ppcNum(t.orders),
-             change: ppcChange(ch.orders, "up"),
-             help: "Orders Amazon attributes to the ads."}),
-    ppcCard({label: "CVR", value: ppcPct(t.cvr_pct, "", 2),
-             change: ppcChange(ch.cvr_pct, "up"),
-             help: "Orders per click."}),
-    ppcCard({label: "CPC", value: ppcMoney(t.cpc, cur),
-             change: ppcChange(ch.cpc, "down"),
-             help: "What each click cost on average."}),
-    ppcCard({label: "CPA", value: ppcMoney(t.cpa, cur),
-             change: ppcChange(ch.cpa, "down"),
-             help: "What each attributed order cost in advertising."}),
-  ]);
-
-  // ---- profitability --------------------------------------------------
+  h += ppcaBranded(j, cur);
   h += ppcaProfitability(j, cur);
+  h += ppcaRevenueChart(j, cur);
+  h += ppcaTrends(j, cur);
+  h += ppcaHeatAndTacos(j, cur);
+  h += ppcaBudget(j, cur);
+  h += ppcaAsinTable(j, cur);
 
-  // ---- the chart ------------------------------------------------------
-  h += ppcaChart(j, cur);
-
-  // ---- the two panels that cannot be honest ---------------------------
-  //
-  // Named, in the place they would have been, so it is obvious they were
-  // considered rather than forgotten.
-  if(av.hourly && !av.hourly.ok){
-    h += ppcUnavailable("Day trail — cumulative spend by hour", av.hourly.why);
-    h += ppcUnavailable("ACoS heatmap — day × hour", av.hourly.why);
-  }
-
-  // ---- cohorts --------------------------------------------------------
-  h += ppcaCohorts(j, cur);
-
-  // ---- the tables -----------------------------------------------------
-  h += ppcaTables(j, cur);
-
-  host.innerHTML = h;
-  if(typeof altaChartsInView === "function"){
-    try{ altaChartsInView(host); }catch(e){}
-  }
+  host.innerHTML = h + '</div>';
 }
 
-/* Is the advertising making money, and where is the line?
- *
- * BREAK-EVEN ACOS IS THE ONE FIGURE ON THIS SCREEN WORTH ACTING ON. It is what
- * is left of a pound after Amazon's fee and the stock, so it is the most an ad
- * can cost before the sale stops being worth having -- and it is measured from
- * this account rather than assumed, because a 60%-margin product and a
- * 15%-margin one do not become unprofitable at the same ACOS. */
-function ppcaProfitability(j, cur){
-  const r = j.rates || {}, t = j.totals || {}, w = j.wasted || {};
-  const be = r.breakeven_acos_pct;
-  const acos = t.acos_pct;
-  let verdict = "";
-  if(be !== null && be !== undefined && acos !== null && acos !== undefined){
-    const ok = acos < be;
-    verdict = '<span style="color:' + (ok ? "var(--ok,#3fb950)" : "var(--red)")
-      + ';font-weight:600">' + (ok ? "Profitable" : "Losing money")
-      + '</span> — ACOS ' + ppcPct(acos) + ' against a break-even of '
-      + ppcPct(be);
-  }else{
-    verdict = '<span class="cc">Cannot be judged: this account has no measured '
-      + 'break-even ACOS for this window.</span>';
-  }
+function _ppcaRound1(v){ return Math.round(Number(v) * 10) / 10; }
 
-  return '<div class="panelcard" style="padding:14px 16px;border-radius:8px;'
-    + 'margin:0 0 10px">'
-    + '<div style="font-weight:600;margin-bottom:6px">Profitability</div>'
-    + '<div style="font-size:12.5px;margin-bottom:10px">' + verdict + '</div>'
-    + ppcCards([
-        ppcCard({label: "Break-even ACOS", value: ppcPct(be),
-                 note: (r.cogs_basis || ""),
-                 help: "What is left of a pound of revenue after Amazon's fee "
-                     + "and the stock cost. Spend more than this on an ad and "
-                     + "the sale loses money. Measured from this account, not "
-                     + "a rule of thumb."}),
-        ppcCard({label: "Wasted spend", value: ppcMoney(w.spend, cur, w.why),
-                 note: (w.terms ? w.terms + " search terms" : ""),
-                 why: w.why,
-                 help: "Spend on search terms that took at least one click and "
-                     + "produced no order. Not 'ACOS above target' — that is a "
-                     + "judgement about price. This is money that bought "
-                     + "traffic which bought nothing."}),
-        ppcCard({label: "Amazon's fee", value: ppcPct(
-                   (r.fee_rate === null || r.fee_rate === undefined)
-                     ? null : r.fee_rate * 100),
-                 note: (r.fee_rate_basis || ""),
-                 help: "Measured from what Amazon has actually charged this "
-                     + "account on settled orders."}),
-        ppcCard({label: "Stock cost", value: ppcPct(
-                   (r.cogs_rate === null || r.cogs_rate === undefined)
-                     ? null : r.cogs_rate * 100),
-                 note: (r.cogs_basis || ""),
-                 help: "What the goods cost, as a share of what they sold for, "
-                     + "across the orders in this window that have a cost "
-                     + "recorded."}),
-      ])
-    + '</div>';
-}
-
-/* Spend, ad sales, total sales and TACOS over the window.
- *
- * Drawn with salesCombo -- the app's own chart, the one the Sales page uses --
- * so the two screens look like one app and a reader is not relearning the key.
- * A day with no advertising row leaves a GAP rather than a point on the floor:
- * "we did not advertise" and "we advertised and spent nothing" are different,
- * and only the chart can tell you which. */
-function ppcaChart(j, cur){
-  const d = j.daily || [];
-  if(!d.length) return "";
-  const cols = d.map(function(x){ return x.date; });
-  const has = function(k){
-    return d.some(function(x){ return x[k] !== null && x[k] !== undefined; });
-  };
-  const lines = [];
-  if(has("spend"))
-    lines.push({key: "ad_spend", values: d.map(function(x){ return x.spend; })});
-  if(has("ad_sales"))
-    lines.push({key: "ad_sales", values: d.map(function(x){ return x.ad_sales; })});
-  if(has("total_sales"))
-    lines.push({key: "total_sales",
-                values: d.map(function(x){ return x.total_sales; })});
-  if(!lines.length) return "";
-
-  let h = '<div class="panelcard" style="padding:14px 16px;border-radius:8px;'
-    + 'margin:0 0 10px">'
-    + '<div style="font-weight:600;margin-bottom:2px">Revenue, ad spend and what '
-    + 'it returned</div>'
-    + '<div class="cc" style="font-size:11.5px;margin-bottom:8px">'
-    + 'Hover for the day\'s figures · drag across to zoom · click a name below '
-    + 'to hide that line. A gap is a day with nothing stored, not a day with no '
-    + 'spend.</div>'
-    + '<div id="ppca_chart">'
-    + salesCombo({id: "ppca_combo", columns: cols, bars: null, lines: lines,
-                  currency: cur, unit: "day",
-                  width: scChartWidth("ppca_chart", 1365), height: 320})
-    + '</div></div>';
-
-  // TACOS ON ITS OWN, because it is a percentage and the chart above is money.
-  // Putting a rate on a money axis draws it as a flat line along the floor --
-  // the same reason the app's other rate charts are separate.
-  if(has("tacos_pct")){
-    h += '<div class="panelcard" style="padding:14px 16px;border-radius:8px;'
-      + 'margin:0 0 10px">'
-      + '<div style="font-weight:600;margin-bottom:2px">TACOS over time</div>'
-      + '<div class="cc" style="font-size:11.5px;margin-bottom:8px">'
-      + 'Advertising spend as a share of <b>all</b> sales that day, organic '
-      + 'included. Its own chart because it is a rate, and a rate on a money '
-      + 'axis draws as a flat line.</div>'
-      + '<div id="ppca_tacos">'
-      + salesCombo({id: "ppca_tacos_c", columns: cols, bars: null,
-                    lines: [{key: "tacos",
-                             values: d.map(function(x){ return x.tacos_pct; })}],
-                    unit: "day", kind: "pct",
-                    width: scChartWidth("ppca_tacos", 1365), height: 240})
+/* ---- 1. the TODAY strip -------------------------------------------------- */
+function ppcaToday(j, cur){
+  const d = j.today || {};
+  const n = d.now || {}, c = d.change || {};
+  // Amazon's advertising figures for today are partial all day and arrive late,
+  // so an empty strip before lunchtime is normal rather than a fault.
+  const why = "Amazon has sent no advertising figures for today yet. They "
+            + "arrive through the day and are complete only after it ends.";
+  const stat = function(label, value, chg, good){
+    const v = (chg === null || chg === undefined) ? null : Number(chg);
+    const col = (v === null || v === 0) ? "var(--ppc-muted)"
+      : (((good === "up") ? v > 0 : v < 0) ? "var(--ppc-green)" : "var(--ppc-red)");
+    return '<div class="ppc-today-stat">'
+      + '<div class="k">' + label + '</div>'
+      + '<div class="v">' + value + '</div>'
+      + '<div class="c" style="color:' + col + '">'
+      +   (v === null
+            ? '<span class="ppc-dash" title="Nothing stored for yesterday to '
+              + 'compare against.">—</span>'
+            : ((v > 0 ? "+" : "") + v.toFixed(1) + "%"))
       + '</div></div>';
-  }
-  return h;
-}
-
-/* The five buckets. "No sales" and "No activity" are kept apart on purpose:
- * one is money gone for nothing, the other is a campaign that did not run, and
- * merging them would put 84 campaigns' wasted spend in the same box as 148 that
- * cost nothing. */
-function ppcaCohorts(j, cur){
-  const c = j.cohorts || {};
-  if(!c.all || !c.all.n) return "";
-  const order = ["profitable", "marginal", "unprofitable", "no_sales",
-                 "no_activity", "unclassified"];
-  const tone = {profitable: "#3fb950", marginal: "#d29922",
-                unprofitable: "#f85149", no_sales: "#c04b45",
-                no_activity: "#6e7681", unclassified: "#8b949e"};
-  let h = '<div class="panelcard" style="padding:14px 16px;border-radius:8px;'
-    + 'margin:0 0 10px">'
-    + '<div style="font-weight:600;margin-bottom:2px">How the campaigns are '
-    + 'doing</div>'
-    + '<div class="cc" style="font-size:11.5px;margin-bottom:10px">'
-    + 'Sorted against this account\'s own break-even ACOS. '
-    + '<b>Marginal</b> means profitable but within a tenth of break-even, where '
-    + 'a small rise in cost per click takes it under.</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,'
-    + 'minmax(150px,1fr));gap:6px">';
-  h += '<div class="panelcard" style="padding:11px 13px;border-radius:8px;'
-    + 'border:2px solid var(--gold)">'
-    + '<div class="cc" style="font-size:10.5px;text-transform:uppercase;'
-    + 'letter-spacing:.7px">All</div>'
-    + '<div style="font-size:24px;font-weight:600">' + c.all.n + '</div>'
-    + '<div class="cc" style="font-size:10.5px">' + ppcMoney(c.all.spend, cur)
-    + ' spend</div></div>';
-  order.forEach(function(k){
-    const b = c[k];
-    if(!b || !b.n) return;
-    h += '<div class="panelcard" style="padding:11px 13px;border-radius:8px">'
-      + '<div class="cc" style="font-size:10.5px;text-transform:uppercase;'
-      + 'letter-spacing:.7px;color:' + tone[k] + '">'
-      + '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;'
-      + 'background:' + tone[k] + ';margin-right:5px"></span>'
-      + _pEsc(b.label || k) + '</div>'
-      + '<div style="font-size:24px;font-weight:600">' + b.n + '</div>'
-      + '<div class="cc" style="font-size:10.5px">' + ppcMoney(b.spend, cur)
-      + ' spend · ' + ppcMoney(b.sales, cur) + ' sales</div></div>';
-  });
-  return h + '</div></div>';
-}
-
-/* Campaigns and products, on two tabs of one panel. */
-function ppcaTables(j, cur){
-  const isC = (PPCA.tab === "campaigns");
-  let h = '<div class="panelcard" style="padding:0;border-radius:8px;'
-    + 'overflow:hidden">'
-    + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'
-    + 'padding:12px 14px">'
-    + '<button class="db-chip' + (isC ? " on" : "") + '" '
-    + 'onclick="ppcaTab(\'campaigns\')">Campaigns'
-    + (j.campaign_count ? ' <span class="cc">' + j.campaign_count + '</span>' : '')
-    + '</button>'
-    + '<button class="db-chip' + (!isC ? " on" : "") + '" '
-    + 'onclick="ppcaTab(\'asins\')">Products'
-    + ((j.asins || []).length ? ' <span class="cc">' + j.asins.length + '</span>' : '')
-    + '</button>'
-    + '<input placeholder="Filter…" oninput="ppcaFilter(this.value)" '
-    + 'style="font-size:12px;padding:5px 9px;min-width:170px;margin-left:auto">'
+  };
+  return '<div class="ppc-today">'
+    + '<div class="ppc-today-label"><b>TODAY</b><span>'
+    + _pEsc(d.date || "") + '</span></div>'
+    + stat("AD SPEND", ppcMoney0(n.spend, cur, why), c.spend, "down")
+    + stat("AD SALES", ppcMoney0(n.sales, cur, why), c.sales, "up")
+    + stat("TOTAL SALES", ppcMoney0(n.total_sales, cur, why), c.total_sales, "up")
+    + stat("ACOS", ppcPct(n.acos_pct, why), c.acos_pct, "down")
+    + stat("TACOS", ppcPct(n.tacos_pct, why), c.tacos_pct, "down")
+    + stat("ROAS", ppcX(n.roas, why), c.roas, "up")
     + '</div>';
-  h += isC ? ppcaCampaignTable(j, cur) : ppcaAsinTable(j, cur);
+}
+
+/* ---- 2. the day trail ---------------------------------------------------- */
+function ppcaTrail(j, cur){
+  const rows = j.trail || [];
+  if(!rows.length) return "";
+  const cum = rows.map(function(r){ return r.cumulative; });
+  const MON = ["JAN","FEB","MAR","APR","MAY","JUN",
+               "JUL","AUG","SEP","OCT","NOV","DEC"];
+  const DOW = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+
+  let h = '<div style="display:flex;align-items:center;justify-content:'
+    + 'space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">'
+    + '<div><div style="font-size:18px;font-weight:700">Day trail</div>'
+    + '<div style="font-size:12px;color:var(--ppc-muted)">Cumulative ad spend '
+    + 'by day · Amazon publishes no hourly figures for this report, so each '
+    + 'curve is days rather than hours</div></div>'
+    + ppcSeg(30, "ppcaLoad") + '</div>'
+    + '<div class="ppc-trail">';
+
+  rows.forEach(function(r, i){
+    const day = new Date(r.date + "T00:00:00");
+    const lbl = isNaN(day.getTime()) ? r.date
+      : (DOW[day.getDay()] + " " + MON[day.getMonth()] + " " + day.getDate());
+    h += '<div class="ppc-trail-card">'
+      + '<div class="ppc-trail-head"><span class="d">' + _pEsc(lbl) + '</span>'
+      +   (r.today ? '<span class="t">Today</span>' : '') + '</div>'
+      + '<div class="ppc-trail-chart">'
+      +   ppcMiniLine(cum.slice(0, i + 1), "var(--ppc-cyan)") + '</div>'
+      + '<div class="ppc-trail-spend">'
+      +   ppcMoney(r.spend, cur, "No advertising row stored for this day. That "
+          + "is not the same as having spent nothing.") + '</div>'
+      + '<div class="ppc-trail-units">'
+      +   (r.orders === null || r.orders === undefined ? "—"
+           : (Math.round(r.orders) + " order"
+              + (Math.round(r.orders) === 1 ? "" : "s")))
+      + '</div></div>';
+  });
   return h + '</div>';
 }
 
-function ppcaCampaignTable(j, cur){
-  let rows = (j.campaigns || []);
-  if(PPCA.q){
-    rows = rows.filter(function(r){
-      return String(r.name || "").toLowerCase().indexOf(PPCA.q) >= 0;
-    });
-  }
-  rows = ppcSortRows(rows, PPCA.sort, PPCA.desc);
-  if(!rows.length){
-    return '<div class="cc" style="padding:16px">No campaigns match.</div>';
-  }
-  const tone = {profitable: "#3fb950", marginal: "#d29922",
-                unprofitable: "#f85149", no_sales: "#c04b45",
-                no_activity: "#6e7681"};
-  let h = '<div style="overflow-x:auto"><table class="kv ordtable" '
-    + 'style="width:100%;min-width:1000px"><thead><tr>'
-    + ppcTh("Opp", "opportunity", PPCA, "ppcaSort", "left",
-            "How much there is to gain by looking at this one.")
-    + ppcTh("Campaign", "name", PPCA, "ppcaSort", "left")
-    + ppcTh("Status", "status", PPCA, "ppcaSort", "left")
-    + ppcTh("Profit", "profit", PPCA, "ppcaSort", "right",
-            "Estimated: Amazon's attributed sales less the spend, this "
-            + "account's measured fee and its measured stock cost.")
-    + ppcTh("Spend", "spend", PPCA, "ppcaSort", "right")
-    + ppcTh("Sales", "sales", PPCA, "ppcaSort", "right")
-    + ppcTh("ACOS", "acos_pct", PPCA, "ppcaSort", "right")
-    + ppcTh("ROAS", "roas", PPCA, "ppcaSort", "right")
-    + ppcTh("Clicks", "clicks", PPCA, "ppcaSort", "right")
-    + ppcTh("CPC", "cpc", PPCA, "ppcaSort", "right")
-    + ppcTh("Orders", "orders", PPCA, "ppcaSort", "right")
-    + '</tr></thead><tbody>';
-  rows.forEach(function(r){
-    h += '<tr>'
-      + '<td>' + ppcOpp(r.opportunity) + '</td>'
-      + '<td style="font-size:11.5px;max-width:280px;overflow-wrap:anywhere">'
-      +   _pEsc(r.name || r.campaign_id)
-      +   (r.cohort ? '<div style="font-size:10px;color:' + (tone[r.cohort] || "")
-                      + '">' + _pEsc((j.cohorts && j.cohorts[r.cohort]
-                                      && j.cohorts[r.cohort].label) || r.cohort)
-                      + '</div>' : '')
-      + '</td>'
-      + '<td style="font-size:11px">' + _pEsc(r.status || "") + '</td>'
-      + '<td style="text-align:right">' + ppcProfit(r.profit, cur) + '</td>'
-      + '<td style="text-align:right">' + ppcMoney(r.spend, cur) + '</td>'
-      + '<td style="text-align:right">' + ppcMoney(r.sales, cur) + '</td>'
-      + '<td style="text-align:right">' + ppcPct(r.acos_pct,
-          "No attributed sales, so ACOS is undefined — not 0%.") + '</td>'
-      + '<td style="text-align:right">' + ppcX(r.roas) + '</td>'
-      + '<td style="text-align:right">' + ppcNum(r.clicks) + '</td>'
-      + '<td style="text-align:right">' + ppcMoney(r.cpc, cur) + '</td>'
-      + '<td style="text-align:right">' + ppcNum(r.orders) + '</td>'
-      + '</tr>';
-  });
-  h += '</tbody></table></div>';
-  if(j.campaign_count > (j.campaigns || []).length){
-    h += '<div class="cc" style="padding:9px 14px;font-size:11.5px">Showing the '
-      + (j.campaigns || []).length + ' biggest spenders of ' + j.campaign_count
-      + '. Campaign Analytics lists them all.</div>';
-  }
-  return h;
+/* ---- 3. the two KPI rows ------------------------------------------------- */
+function ppcaKpis(j, cur, t, ch){
+  const d = j.daily || [];
+  const col = function(k){ return d.map(function(r){ return r[k]; }); };
+
+  return '<div class="ppc-kpis">'
+    + ppcKpi({label: "SPEND", value: ppcMoney0(t.spend, cur),
+              change: ppcChangeBare(ch.spend, "down"),
+              spark: ppcSparkline(col("spend"), "var(--ppc-red)"),
+              help: "What Amazon charged for the ads in this window."})
+    + ppcKpi({label: "SALES", value: ppcMoney0(t.sales, cur),
+              change: ppcChangeBare(ch.sales, "up"),
+              spark: ppcSparkline(col("ad_sales"), "var(--ppc-green)"),
+              help: "Sales Amazon attributes to those ads. An organic sale is "
+                  + "not in here."})
+    + ppcKpi({label: "ACOS", value: ppcPct(t.acos_pct),
+              change: ppcChangeBare(ch.acos_pct, "down"),
+              spark: ppcSparkline(col("acos_pct"), "var(--ppc-orange)"),
+              help: "Spend divided by AD sales. How much of the advertised "
+                  + "revenue the advertising ate. Lower is better."})
+    + ppcKpi({label: "ROAS", value: ppcX(t.roas),
+              change: ppcChangeBare(ch.roas, "up"),
+              spark: ppcSparkline(col("roas"), "var(--ppc-blue)"),
+              help: "Ad sales for every pound of spend."})
+    + '</div>'
+    + '<div class="ppc-kpis last">'
+    + ppcKpi({label: "IMPRESSIONS", value: ppcNum(t.impressions),
+              change: ppcChangeBare(ch.impressions, "up"),
+              spark: ppcSparkline(col("impressions"), "var(--ppc-blue)"),
+              help: "How many times the ads were shown."})
+    + ppcKpi({label: "CLICKS", value: ppcNum(t.clicks),
+              change: ppcChangeBare(ch.clicks, "up"),
+              spark: ppcSparkline(col("clicks"), "var(--ppc-green)"),
+              help: "How many times somebody clicked one."})
+    + ppcKpi({label: "CTR", value: ppcPct(t.ctr_pct, "", 2),
+              change: ppcChangeBare(ch.ctr_pct, "up"),
+              spark: ppcSparkline(col("ctr_pct"), "var(--ppc-magenta)"),
+              help: "Clicks per impression."})
+    + ppcKpi({label: "PURCHASES", value: ppcNum(t.orders),
+              change: ppcChangeBare(ch.orders, "up"),
+              spark: ppcSparkline(col("orders"), "var(--ppc-green)"),
+              help: "Orders Amazon attributes to the ads."})
+    + '</div>';
 }
 
-/* Per product: what the advertising did, beside what the listing did.
+/* ---- 4. branded vs non-branded ------------------------------------------ */
+function ppcaBranded(j, cur){
+  const b = j.branded || {};
+  const head = '<div class="ppc-panel">'
+    + '<div class="ppc-panel-title">Branded vs Non-Branded Analysis</div>';
+
+  if(b.why || (!b.branded && !b.non_branded)){
+    // ppc_view.is_branded answers NULL, not False, when no brand words are set
+    // -- "not set up: not 'no', which is a claim". A donut here would show a
+    // confident 0% branded for an account that never typed its brand in.
+    return head + '<div style="font-size:12px;color:var(--ppc-muted);'
+      + 'line-height:1.6">' + _pEsc(b.why || "Nothing to split yet.")
+      + '</div></div>';
+  }
+
+  const br = b.branded || {}, nb = b.non_branded || {};
+  const totSpend = (br.spend || 0) + (nb.spend || 0);
+  const totSales = (br.sales || 0) + (nb.sales || 0);
+  const share = function(v, tot){
+    if(v === null || v === undefined || !tot) return "";
+    return ' <span style="color:var(--ppc-muted);font-size:12px">('
+      + Math.round(100 * v / tot) + '%)</span>';
+  };
+  const row = function(metric, x, y, fmt){
+    return '<tr style="border-top:1px solid var(--ppc-border)">'
+      + '<td style="padding:10px 0;color:var(--ppc-muted);text-align:left">'
+      +   metric + '</td>'
+      + '<td style="padding:10px 0;text-align:center">' + fmt(x) + '</td>'
+      + '<td style="padding:10px 0;text-align:right;color:var(--ppc-orange)">'
+      +   fmt(y) + '</td></tr>';
+  };
+
+  return head
+    + '<div style="display:grid;grid-template-columns:250px 1fr;gap:24px;'
+    + 'align-items:start">'
+    + '<div style="display:flex;justify-content:center;padding-top:10px">'
+    +   ppcDonut([{label: "Branded", value: br.spend || 0,
+                   colour: "var(--ppc-blue)"},
+                  {label: "Non-Branded", value: nb.spend || 0,
+                   colour: "var(--ppc-orange)"}], 170)
+    + '</div>'
+    + '<table style="width:100%;border-collapse:collapse">'
+    + '<thead><tr>'
+    + '<th style="text-align:left;font-size:12px;color:var(--ppc-muted);'
+    +   'padding:8px 0;font-weight:600;text-transform:uppercase;width:30%">'
+    +   'Metric</th>'
+    + '<th style="text-align:center;font-size:12px;color:var(--ppc-blue);'
+    +   'padding:8px 0;font-weight:600;text-transform:uppercase;width:35%">'
+    +   'Branded</th>'
+    + '<th style="text-align:right;font-size:12px;color:var(--ppc-orange);'
+    +   'padding:8px 0;font-weight:600;text-transform:uppercase;width:35%">'
+    +   'Non-Branded</th>'
+    + '</tr></thead><tbody>'
+    + row("Spend", br.spend, nb.spend, function(v){
+        return ppcMoney(v, cur) + share(v, totSpend); })
+    + row("Sales", br.sales, nb.sales, function(v){
+        return ppcMoney(v, cur) + share(v, totSales); })
+    + row("ACoS", br.acos_pct, nb.acos_pct, function(v){ return ppcPct(v); })
+    + row("RoAS", br.roas, nb.roas, function(v){ return ppcX(v); })
+    + row("CVR", br.cvr_pct, nb.cvr_pct, function(v){ return ppcPct(v, "", 2); })
+    + '</tbody></table></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;'
+    + 'margin-top:14px;flex-wrap:wrap;gap:8px">'
+    + '<div style="display:flex;gap:20px;font-size:12px;color:var(--ppc-muted)">'
+    +   '<span><span style="color:var(--ppc-blue)">●</span> Branded</span>'
+    +   '<span><span style="color:var(--ppc-orange)">●</span> Non-Branded</span>'
+    + '</div>'
+    + '<div style="font-size:11px;color:var(--ppc-muted)">'
+    +   (b.branded_terms || 0) + ' branded terms · '
+    +   (b.non_branded_terms || 0) + ' non-branded terms</div>'
+    + '</div></div>';
+}
+
+/* ---- 5. profitability --------------------------------------------------- */
+function ppcaProfitability(j, cur){
+  const r = j.rates || {}, t = j.totals || {}, w = j.wasted || {};
+  const wp = j.wasted_previous || {};
+  const win = j.window || {};
+  const be = r.breakeven_acos_pct, acos = t.acos_pct;
+  const period = _pEsc((win.start || "") + " – " + (win.end || ""));
+
+  // The mockup's flow line: stock → fees → break-even | verdict.
+  let flow = '<div style="font-size:13px;color:var(--ppc-muted);'
+    + 'margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap;'
+    + 'align-items:center">'
+    + '<span>Stock cost: <strong style="color:var(--ppc-text)">'
+    +   ppcPct(r.cogs_rate === null || r.cogs_rate === undefined
+               ? null : r.cogs_rate * 100) + '</strong></span>'
+    + '<span style="color:var(--ppc-dim)">→</span>'
+    + '<span style="color:var(--ppc-orange)">Amazon fees: <strong>'
+    +   ppcPct(r.fee_rate === null || r.fee_rate === undefined
+               ? null : r.fee_rate * 100) + '</strong> (measured)</span>'
+    + '<span style="color:var(--ppc-dim)">→</span>'
+    + '<span>Break-even ACOS: <strong style="color:var(--ppc-text)">'
+    +   ppcPct(be) + '</strong><span class="ppc-i" title="What is left of a '
+    +   'pound of revenue after Amazon\'s fee and the stock. Spend more than '
+    +   'this on an ad and the sale loses money.">ⓘ</span></span>';
+  if(be !== null && be !== undefined && acos !== null && acos !== undefined){
+    const ok = acos < be;
+    flow += '<span style="color:var(--ppc-dim)">|</span>'
+      + '<span style="color:' + (ok ? "var(--ppc-green)" : "var(--ppc-red)")
+      + ';font-weight:600">ACOS: ' + ppcPct(acos) + ' — '
+      + (ok ? "Profitable" : "Losing money") + '</span>';
+  }
+  flow += '</div>';
+
+  // Wasted spend, and whether it moved. FALLING IS GOOD -- the mockup is
+  // explicit, and it is the opposite of the default reading of a red arrow.
+  let wchange = null;
+  if(w.spend !== null && w.spend !== undefined
+     && wp.spend !== null && wp.spend !== undefined && wp.spend){
+    wchange = _ppcaRound1(100 * (w.spend - wp.spend) / Math.abs(wp.spend));
+  }
+  const wpct = (w.spend !== null && w.spend !== undefined && t.spend)
+    ? _ppcaRound1(100 * w.spend / t.spend) : null;
+
+  let net = null;
+  if(r.fee_rate !== null && r.fee_rate !== undefined
+     && r.cogs_rate !== null && r.cogs_rate !== undefined
+     && t.sales !== null && t.sales !== undefined
+     && t.spend !== null && t.spend !== undefined){
+    net = Math.round((t.sales - t.spend - t.sales * r.fee_rate
+                      - t.sales * r.cogs_rate) * 100) / 100;
+  }
+  const perClick = (net !== null && t.clicks)
+    ? Math.round((net / t.clicks) * 1000) / 1000 : null;
+  const eff = (be && acos) ? _ppcaRound1(100 * be / acos) : null;
+  const effBadge = (eff === null) ? "" :
+    '<span class="ppc-verdict '
+    + (eff >= 100 ? "good" : eff >= 70 ? "watch" : "poor") + '">'
+    + (eff >= 100 ? "Good" : eff >= 70 ? "Watch" : "Poor") + '</span>';
+
+  return '<div class="ppc-panel">'
+    + '<div class="ppc-panel-title-lg">Profitability Analysis</div>'
+    + flow
+    + '<div class="ppc-grid3 ppc-mb12">'
+    +   ppcSubCard({label: "TACOS", value: ppcPct(t.tacos_pct),
+                    change: ppcChangeText((j.change || {}).tacos_pct, "down"),
+                    note: period,
+                    help: "Spend divided by ALL sales, advertised and organic "
+                        + "together. Rising is bad — advertising is taking a "
+                        + "larger share of the whole business."})
+    +   ppcSubCard({label: "WASTED SPEND",
+                    value: ppcMoney0(w.spend, cur, w.why), why: w.why,
+                    change: (wchange === null ? "" :
+                             ppcChangeText(wchange, "down")),
+                    note: (wpct === null ? period
+                           : (wpct.toFixed(1) + "% of total spend")),
+                    note2: (w.terms ? (w.terms + " terms clicked, none ordered")
+                                    : ""),
+                    help: "Spend on search terms that took at least one click "
+                        + "and produced no order. Not 'ACOS above target' — "
+                        + "that is a judgement about price. This is money that "
+                        + "bought traffic which bought nothing."})
+    +   ppcSubCard({label: "BREAK-EVEN ACOS", value: ppcPct(be),
+                    note: ((be !== null && be !== undefined
+                            && acos !== null && acos !== undefined)
+                      ? ('<span style="color:' + (acos < be ? "var(--ppc-green)"
+                          : "var(--ppc-red)") + '">Current ACOS: '
+                         + ppcPct(acos) + ' — '
+                         + (acos < be ? "Profitable" : "Losing money") + '</span>')
+                      : _pEsc(r.cogs_basis || "")),
+                    help: "Measured from this account's own fee and stock "
+                        + "rates, not a rule of thumb. A 60%-margin product "
+                        + "and a 15%-margin one do not stop being worth "
+                        + "advertising at the same ACOS."})
+    + '</div>'
+    + '<div class="ppc-grid3">'
+    +   ppcSubCard({label: "PROFIT / CLICK",
+                    value: (perClick === null ? null : ppcMoney(perClick, cur)),
+                    why: "Needs both a measured fee rate and a measured stock "
+                       + "cost, and clicks in the window.",
+                    note: period,
+                    help: "Estimated profit for the window, divided by the "
+                        + "clicks that were paid for."})
+    +   ppcSubCard({label: "EFFICIENCY SCORE",
+                    value: (eff === null ? null : eff.toFixed(2)),
+                    why: "Needs a measured break-even ACOS and attributed sales.",
+                    badge: effBadge,
+                    note: "100 is break-even. Higher is better.",
+                    help: "Our own measure, defined here rather than borrowed: "
+                        + "100 × break-even ACOS ÷ actual ACOS. At 100 the "
+                        + "advertising exactly breaks even; above it, it makes "
+                        + "money."})
+    +   ppcSubCard({label: "NET PROFIT",
+                    value: (net === null ? null : ppcMoney0(net, cur)),
+                    colour: (net === null ? "" : (net >= 0 ? "var(--ppc-green)"
+                                                           : "var(--ppc-red)")),
+                    why: "Needs both measured rates.",
+                    note: period,
+                    help: "Attributed sales, less the spend, less this "
+                        + "account's measured Amazon fee and stock cost."})
+    + '</div></div>';
+}
+
+/* ---- 6. revenue, ad spend and profit ------------------------------------ */
+function ppcaRevenueChart(j, cur){
+  const d = j.daily || [];
+  if(!d.length) return "";
+  const r = j.rates || {};
+  const canProfit = (r.fee_rate !== null && r.fee_rate !== undefined
+                     && r.cogs_rate !== null && r.cogs_rate !== undefined);
+  const profit = d.map(function(x){
+    if(!canProfit || x.ad_sales === null || x.spend === null) return null;
+    return Math.round((x.ad_sales - x.spend - x.ad_sales * r.fee_rate
+                       - x.ad_sales * r.cogs_rate) * 100) / 100;
+  });
+  const lines = [{values: d.map(function(x){ return x.spend; }),
+                  colour: "var(--ppc-red)"}];
+  if(canProfit) lines.push({values: profit, colour: "var(--ppc-cyan)"});
+
+  return '<div class="ppc-panel">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+    +   '<span class="ppc-panel-title" style="margin:0">Revenue, Ad Spend '
+    +   '&amp; Profitability</span>'
+    +   '<span class="ppc-i" title="Total sales as bars, with what the '
+    +   'advertising cost and returned over them. A gap is a day with nothing '
+    +   'stored, not a day of no spend.">ⓘ</span></div>'
+    + ppcLegend([["Ad Spend", "var(--ppc-red)"]]
+        .concat(canProfit ? [["Profit", "var(--ppc-cyan)"]] : [])
+        .concat([["Total Revenue", "var(--ppc-gold)"]]))
+    + ppcComposed({
+        columns: d.map(function(x){ return x.date; }),
+        bars: {values: d.map(function(x){ return x.total_sales; }),
+               colour: "var(--ppc-gold)"},
+        lines: lines, currency: cur, height: 300})
+    + '</div>';
+}
+
+/* ---- 7. the two trend charts -------------------------------------------- */
+function ppcaTrends(j, cur){
+  const d = j.daily || [];
+  const cols = d.map(function(x){ return x.date; });
+  const pc = j.per_click, eff = j.efficiency;
+  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+
+  const panel = function(title, help, body){
+    return '<div class="ppc-panel ppc-panel-sm" style="margin-bottom:0">'
+      + '<div class="ppc-panel-title-sm">' + title
+      + '<span class="ppc-i" title="' + _pEsc(help) + '">ⓘ</span></div>'
+      + body + '</div>';
+  };
+  const missing = function(text){
+    return '<div style="font-size:12px;color:var(--ppc-muted);line-height:1.6">'
+      + _pEsc(text) + '</div>';
+  };
+
+  const left = (pc && pc.some(function(v){ return v !== null; }))
+    ? ppcArea({columns: cols, values: pc, colour: "var(--ppc-green)",
+               height: 200, refLineY: 0,
+               yFormat: function(v){ return sym + v.toFixed(2); }})
+    : missing((j.rates || {}).why || "Profit per click needs a measured fee "
+        + "rate and a measured stock cost. Without both there is no honest way "
+        + "to say what a click earned.");
+
+  const right = (eff && eff.some(function(v){ return v !== null; }))
+    ? ppcArea({columns: cols, values: eff, colour: "var(--ppc-cyan)",
+               height: 200, refLineY: 100,
+               yFormat: function(v){ return String(Math.round(v)); }})
+    : missing("The efficiency score is the day's ACOS against this account's "
+        + "break-even ACOS, and neither can be measured for this window.");
+
+  return '<div class="ppc-grid2 ppc-mb16">'
+    + panel("Profit per Click Trend",
+            "Estimated profit for the day, divided by the clicks paid for. The "
+            + "dashed line is zero: below it, each click cost more than it "
+            + "brought in.", left)
+    + panel("Spend Efficiency Score Trend",
+            "100 × break-even ACOS ÷ the day's ACOS. The dashed line is 100 — "
+            + "break-even. Our own measure, so it is defined rather than "
+            + "borrowed.", right)
+    + '</div>';
+}
+
+/* ---- 8. heatmap + TACoS -------------------------------------------------- */
+function ppcaHeatAndTacos(j, cur){
+  const d = j.daily || [];
+  const av = j.availability || {};
+  const hourWhy = (av.hourly && av.hourly.why) || "";
+
+  // The heatmap needs day x hour and there are no hours. The panel, its legend
+  // and the reason stay; the grid is not invented.
+  const heat = '<div class="ppc-panel ppc-panel-sm" style="margin-bottom:0">'
+    + '<div class="ppc-panel-title-sm">ACoS Heatmap — Day × Hour'
+    + '<span class="ppc-i" title="Which hours of which days the advertising '
+    + 'converts.">ⓘ</span></div>'
+    + '<div style="font-size:12px;color:var(--ppc-muted);line-height:1.6;'
+    + 'margin-bottom:12px">' + _pEsc(hourWhy) + '</div>'
+    + ppcHeatmap(null) + '</div>';
+
+  const tacos = d.map(function(x){ return x.tacos_pct; });
+  const hasT = tacos.some(function(v){ return v !== null; });
+  const tp = '<div class="ppc-panel ppc-panel-sm" style="margin-bottom:0">'
+    + '<div class="ppc-panel-title-sm">TACoS Over Time</div>'
+    + (hasT
+        ? ppcArea({columns: d.map(function(x){ return x.date; }),
+                   values: tacos, colour: "var(--ppc-orange)", height: 220,
+                   yFormat: function(v){ return v.toFixed(0) + "%"; }})
+        : '<div style="font-size:12px;color:var(--ppc-muted)">No total sales '
+          + 'are stored for these days, so advertising cannot be compared '
+          + 'against them.</div>')
+    + '</div>';
+
+  return '<div class="ppc-grid-3-2 ppc-mb16">' + heat + tp + '</div>';
+}
+
+/* ---- 9. budget and pacing ------------------------------------------------ */
+function ppcaBudget(j, cur){
+  const d = j.daily || [];
+  const t = j.totals || {};
+  if(!d.length) return "";
+  const days = t.days || d.length || 1;
+  const avgSpend = (t.spend === null || t.spend === undefined)
+    ? null : t.spend / days;
+  const avgSales = (t.total_sales === null || t.total_sales === undefined)
+    ? null : t.total_sales / days;
+
+  const refs = [];
+  if(avgSales !== null) refs.push({value: avgSales, colour: "var(--ppc-green)",
+                                   label: "Avg Sales", side: "left"});
+  if(avgSpend !== null) refs.push({value: avgSpend, colour: "var(--ppc-red)",
+                                   label: "Avg Spend", side: "right"});
+
+  return '<div class="ppc-panel">'
+    + '<div class="ppc-panel-title">Budget &amp; Pacing'
+    + '<span class="ppc-i" title="What was spent against what came in, day by '
+    + 'day, with each one\'s average marked.">ⓘ</span></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">'
+    + '<div><div style="font-size:11px;color:var(--ppc-green);'
+    +   'text-transform:uppercase;font-weight:600">Total spend</div>'
+    +   '<div style="font-size:28px;font-weight:700">'
+    +   ppcMoney0(t.spend, cur) + '</div>'
+    +   '<div style="font-size:12px;color:var(--ppc-muted)">'
+    +   (avgSpend === null ? "—" : ppcMoney(avgSpend, cur) + "/day avg")
+    +   '</div></div>'
+    + '<div><div style="font-size:11px;color:var(--ppc-muted);'
+    +   'text-transform:uppercase;font-weight:600">Total sales</div>'
+    +   '<div style="font-size:28px;font-weight:700">'
+    +   ppcMoney0(t.total_sales, cur) + '</div>'
+    +   '<div style="font-size:12px;color:var(--ppc-muted)">'
+    +   (avgSales === null ? "—" : ppcMoney(avgSales, cur) + "/day avg")
+    +   '</div></div></div>'
+    + '<div style="height:1px;background:var(--ppc-border);margin:16px 0"></div>'
+    + ppcLegend([["Ad Spend", "var(--ppc-red)"], ["Sales", "var(--ppc-gold)"]])
+    + ppcComposed({
+        columns: d.map(function(x){ return x.date; }),
+        bars: {values: d.map(function(x){ return x.total_sales; }),
+               colour: "var(--ppc-gold)"},
+        lines: [{values: d.map(function(x){ return x.spend; }),
+                 colour: "var(--ppc-red)"}],
+        refLines: refs, currency: cur, height: 260})
+    + '</div>';
+}
+
+/* ---- 10. ASIN performance ------------------------------------------------
  *
- * The two halves come from different reports and mean different things -- CVR
- * here is the LISTING's units per session, from the Business Report, not the
- * ad's orders per click. Two conversion rates in one column would be
- * meaningless, so the column says which. */
+ * The mockup's grouped header: a thin row above the columns reading
+ * (blank) | PROFIT | TRAFFIC across five | PAID across four.
+ *
+ * The two halves are different reports and mean different things -- CVR here is
+ * the LISTING's units per session from the Business Report, not the ad's orders
+ * per click. Two conversion rates in one column would be meaningless, so the
+ * column says which.
+ */
 function ppcaAsinTable(j, cur){
   let rows = (j.asins || []);
   if(PPCA.q){
@@ -419,52 +599,73 @@ function ppcaAsinTable(j, cur){
     });
   }
   rows = ppcSortRows(rows, PPCA.sort === "name" ? "asin" : PPCA.sort, PPCA.desc);
+
+  let h = '<div class="ppc-panel" style="margin-bottom:0">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;'
+    + 'margin-bottom:16px;flex-wrap:wrap;gap:10px">'
+    + '<div class="ppc-panel-title" style="margin:0">ASIN Performance'
+    +   '<span class="ppc-i" title="Every advertised product, with what the '
+    +   'listing did beside what the advertising did.">ⓘ</span></div>'
+    + '<input class="ppc-input" placeholder="Search by ASIN or title…" '
+    +   'style="width:220px" oninput="ppcaFilter(this.value)">'
+    + '</div>';
+
   if(!rows.length){
-    return '<div class="cc" style="padding:16px">No products match.</div>';
+    return h + '<div style="color:var(--ppc-muted);padding:8px 0">'
+      + 'No products match.</div></div>';
   }
-  let h = '<div style="overflow-x:auto"><table class="kv ordtable" '
-    + 'style="width:100%;min-width:1020px"><thead><tr>'
-    + '<th style="width:34%">Product<span class="th-sub">ASIN, title</span></th>'
+
+  h += '<div style="overflow-x:auto"><table class="ppc-table" '
+    + 'style="min-width:950px"><thead>'
+    + '<tr class="grouphead"><th></th><th>PROFIT</th>'
+    +   '<th colspan="4">TRAFFIC</th><th colspan="5">PAID</th></tr>'
+    + '<tr>'
+    + ppcTh("ASIN", "asin", PPCA, "ppcaSort", "left")
     + ppcTh("Profit", "profit", PPCA, "ppcaSort", "right",
             "Estimated from this account's measured fee and stock cost.")
-    + ppcTh("Spend", "spend", PPCA, "ppcaSort", "right")
-    + ppcTh("Ad sales", "sales", PPCA, "ppcaSort", "right")
-    + ppcTh("ACOS", "acos_pct", PPCA, "ppcaSort", "right")
-    + ppcTh("Clicks", "clicks", PPCA, "ppcaSort", "right")
     + ppcTh("Sessions", "sessions", PPCA, "ppcaSort", "right",
             "Visits to the listing, from the Business Report — all traffic, "
             + "not just advertising.")
-    + ppcTh("Views", "page_views", PPCA, "ppcaSort", "right")
-    + ppcTh("Buy box", "buy_box_pct", PPCA, "ppcaSort", "right")
+    + ppcTh("Page Views", "page_views", PPCA, "ppcaSort", "right")
     + ppcTh("CVR", "cvr_pct", PPCA, "ppcaSort", "right",
             "The LISTING's conversion: units per session. Not the ad's orders "
             + "per click.")
+    + ppcTh("Buy Box", "buy_box_pct", PPCA, "ppcaSort", "right")
+    + ppcTh("Impr", "impressions", PPCA, "ppcaSort", "right")
+    + ppcTh("Clicks", "clicks", PPCA, "ppcaSort", "right")
+    + ppcTh("Spend", "spend", PPCA, "ppcaSort", "right")
+    + ppcTh("Orders", "orders", PPCA, "ppcaSort", "right")
+    + ppcTh("Sales", "sales", PPCA, "ppcaSort", "right")
     + '</tr></thead><tbody>';
+
   rows.forEach(function(r){
     h += '<tr>'
-      + '<td style="min-width:220px"><div style="display:flex;gap:8px;'
+      + '<td style="min-width:230px"><div style="display:flex;gap:8px;'
       +   'align-items:center">'
-      +   (r.img ? '<img src="' + _pEsc(r.img) + '" style="width:30px;height:30px;'
-                   + 'object-fit:contain;border-radius:4px" loading="lazy">'
-                 : '<span class="cc" style="width:30px;text-align:center">'
-                   + '<i class="ti ti-photo-off"></i></span>')
-      +   '<div style="min-width:0"><code style="font-size:10.5px;'
-      +     'color:var(--accent2)">' + _pEsc(r.asin) + '</code>'
-      +     '<div class="cc" style="font-size:10.5px;overflow:hidden;'
+      +   (r.img ? '<img src="' + _pEsc(r.img) + '" style="width:32px;height:32px;'
+                   + 'object-fit:contain;border-radius:4px;border:1px solid '
+                   + 'var(--ppc-border)" loading="lazy">'
+               : '<span style="width:32px;height:32px;border-radius:4px;'
+                 + 'border:1px solid var(--ppc-border);display:inline-block">'
+                 + '</span>')
+      +   '<div style="min-width:0">'
+      +     '<div style="font-size:12px;font-weight:600;color:var(--ppc-cyan)">'
+      +       _pEsc(r.asin) + '</div>'
+      +     '<div style="font-size:11px;color:var(--ppc-muted);overflow:hidden;'
       +       'text-overflow:ellipsis;white-space:nowrap;max-width:230px">'
       +       _pEsc(r.title || "") + '</div></div></div></td>'
-      + '<td style="text-align:right">' + ppcProfit(r.profit, cur) + '</td>'
-      + '<td style="text-align:right">' + ppcMoney(r.spend, cur) + '</td>'
-      + '<td style="text-align:right">' + ppcMoney(r.sales, cur) + '</td>'
-      + '<td style="text-align:right">' + ppcPct(r.acos_pct,
-          "No attributed sales, so ACOS is undefined — not 0%.") + '</td>'
-      + '<td style="text-align:right">' + ppcNum(r.clicks) + '</td>'
-      + '<td style="text-align:right">' + ppcNum(r.sessions,
-          "No Business Report data stored for this product in this window.") + '</td>'
-      + '<td style="text-align:right">' + ppcNum(r.page_views) + '</td>'
-      + '<td style="text-align:right">' + ppcPct(r.buy_box_pct) + '</td>'
-      + '<td style="text-align:right">' + ppcPct(r.cvr_pct, "", 2) + '</td>'
+      + '<td>' + ppcProfit(r.profit, cur, "greenred") + '</td>'
+      + '<td>' + ppcNum(r.sessions, "No Business Report data stored for this "
+                        + "product in this window.") + '</td>'
+      + '<td>' + ppcNum(r.page_views) + '</td>'
+      + '<td>' + ppcPct(r.cvr_pct, "", 1) + '</td>'
+      + '<td>' + ppcPct(r.buy_box_pct) + '</td>'
+      + '<td>' + ppcNum(r.impressions) + '</td>'
+      + '<td>' + ppcNum(r.clicks) + '</td>'
+      + '<td>' + ppcMoney0(r.spend, cur) + '</td>'
+      + '<td>' + ppcNum(r.orders) + '</td>'
+      + '<td>' + ppcMoney0(r.sales, cur) + '</td>'
       + '</tr>';
   });
-  return h + '</tbody></table></div>';
+  return h + '</tbody></table></div></div>';
 }

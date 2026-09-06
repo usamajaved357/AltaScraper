@@ -4158,6 +4158,12 @@ def build_app(backend=None):
                                _state=_state, _active_account=_active_account,
                                _save_account=_acc_for_cogs.save_account,
                                _cogs_overrides=lambda: _COGS_OVERRIDE)
+    # The costs Amazon knows nothing about -- the accountant, the software, the
+    # packaging -- and the monthly selling subscription it charges against the
+    # account rather than any order. Its own file (Rule 7).
+    import routes.expenses_routes as _expenses_routes
+    _expenses_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                              _state=_state, _active_account=_active_account)
     # The three advertising screens: PPC Analytics, Search Terms, Campaign
     # Analytics. One computation layer (domain/ppc_analytics.py) behind all
     # three, so they cannot quote three different ACOSes for one window.
