@@ -4707,6 +4707,30 @@ def build_app(backend=None):
     # browser that has one cached has no reason to ask for it again, so a deploy
     # could fix a screen on the server while the person looking at it kept
     # running yesterday's JavaScript -- the fix is live and invisible, which is
+    # SEED THE PRODUCT COSTS, ONCE PER DATABASE.
+    #
+    # The cost used to be read out of the SKU. That is gone -- a cost is
+    # something the owner sets -- and every value the parse was supplying had to
+    # be written into the product store first, or profit would have gone blank
+    # everywhere the moment this shipped.
+    #
+    # Done here rather than by hand because THERE IS MORE THAN ONE DATABASE.
+    # The deployed instance has its own, and nobody has a shell on it; a
+    # migration that only ever ran on a laptop would leave the live app costing
+    # nothing for every order that arrives from now on.
+    #
+    # Runs ONCE and records that it did (app_migrations). Repeating it would put
+    # back any cost somebody has since deleted on purpose, which is worse than
+    # not running at all. Never raises: costing must not stop the app booting.
+    try:
+        import migrate_sku_costs as _seed_costs
+        _seed_res = _seed_costs.run_once(CONFIG_PATH)
+        if _seed_res.get("ran"):
+            print("[cogs] seeded %d product cost(s) from SKUs, once"
+                  % _seed_res.get("wrote", 0))
+    except Exception as _e:
+        print("[cogs] could not seed product costs: %s" % str(_e)[:160])
+
     # the most confusing possible outcome and impossible to tell apart from "the
     # fix did not work".
     #

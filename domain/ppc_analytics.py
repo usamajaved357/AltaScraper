@@ -155,10 +155,17 @@ def availability(config_path, workspace_id, marketplace):
     NO_ADS = ("No advertising data is stored for this account and marketplace "
               "yet. It arrives from the Advertising API sync — check Settings › "
               "Advertising, then the Jobs screen.")
-    NO_HOURS = ("Amazon has not been asked for hourly advertising figures on "
-                "this account, and none are stored, so this cannot be drawn. "
-                "Every stored row is one whole day. Drawing a curve through "
-                "hours nobody measured would look exactly like a measurement.")
+    # WHETHER HOURS EXIST IS domain/ams.py's QUESTION, NOT THIS FILE'S.
+    #
+    # This used to answer a flat False with its own sentence. Two panels and a
+    # banner each need the same answer, and the day an AWS queue does appear
+    # exactly one thing should change -- so the test lives in one module (Rule
+    # 12), and it tests for STORED ROWS rather than for an environment variable.
+    # See ams.available(): a queue URL can be set hours before the first message
+    # lands, and a screen that switched on the variable would abandon a correct
+    # daily chart for an empty hourly one.
+    from domain import ams as _ams
+    _hourly = _ams.status(config_path)
 
     return {
         "campaigns": {"ok": bool(camp), "rows": camp, "why": "" if camp else NO_ADS},
@@ -176,8 +183,16 @@ def availability(config_path, workspace_id, marketplace):
             "why": "" if sales else
                    ("No daily sales are stored, so TACOS and anything comparing "
                     "advertising against total sales cannot be worked out.")},
-        # THE TWO PANELS THAT CANNOT BE HONEST TODAY.
-        "hourly": {"ok": False, "rows": 0, "why": NO_HOURS},
+        # HOURLY, ANSWERED BY THE ONE MODULE THAT KNOWS. `ok` follows stored
+        # rows, never the environment -- so the panels that fall back to daily
+        # figures keep doing so until hours actually arrive. `configured` and
+        # `missing_env` are carried through for the diagnostic, so someone who
+        # has set the AWS variables can see that they landed without the screen
+        # pretending the data did.
+        "hourly": {"ok": _hourly["available"], "rows": 0,
+                   "why": "" if _hourly["available"] else _hourly["why"],
+                   "configured": _hourly["configured"],
+                   "missing_env": _hourly["missing_env"]},
         "ad_products": {
             "ok": bool(products), "products": sorted(products),
             "why": "" if len(products) > 1 else
@@ -474,21 +489,29 @@ def today_bar(config_path, workspace_id, marketplace):
 
 
 def trail(config_path, workspace_id, marketplace, days=7):
-    """One card per day: the spend curve through it, the total, and the units.
+    """One card per day: that day's own total, and the units it sold.
 
     The mockup draws each card as spend accumulating BY HOUR. There are no
     hourly advertising figures -- Amazon refuses timeUnit HOURLY on this report
     type, measured, its own words: "configuration timeUnit is not supported for
-    this report type". So each card carries the day's own cumulative shape at
-    the finest grain that exists, and the page says the curve is a day rather
-    than pretending to twenty-four measured hours.
+    this report type". They would come from Marketing Stream, which needs an
+    AWS queue that is deliberately not being built (see domain/ams.py).
+
+    SO THE CARD DRAWS `spend`, THE DAY'S OWN TOTAL, AS ONE BAR. It drew
+    `cumulative` -- the window adding up -- which is still returned because the
+    hover reports it, but is no longer the shape: a running total can only
+    climb, so the last card always towered over the first and a quiet Saturday
+    looked like the account's biggest day. It also implied hours, which is the
+    one thing these panels must not do.
+
+    None is preserved and never turned into 0.0: a day with no stored row is not
+    a day that spent nothing, and the bar leaves an empty track for it rather
+    than a nought sitting on the floor.
     """
     end = _dt.date.today()
     start = end - _dt.timedelta(days=int(days) - 1)
     rows = daily(config_path, workspace_id, marketplace,
                  start.isoformat(), end.isoformat())
-    # THE CURVE IS THE WINDOW ACCUMULATING, not the day. Said in the caption
-    # rather than drawn as if it were hours.
     run, out = 0.0, []
     for r in rows:
         sp = r["spend"]
@@ -552,11 +575,34 @@ def efficiency_trend(rows, breakeven_acos_pct):
     return out
 
 
-def change(now, before):
-    """Percentage change per metric, or None. Never a change against nothing.
+# METRICS THAT ARE ALREADY A PERCENTAGE MOVE IN POINTS, NOT IN PER CENT.
+#
+# ACOS going 24.3% -> 28.4% is +4.1 POINTS. Reported as a percentage change it
+# is +16.9%, which is a true statement about a different question and reads as
+# far worse news than it is. The same trap catches CTR, CVR, TACOS and the
+# buy-box share.
+#
+# Money and counts -- spend, sales, clicks, impressions, orders -- move in per
+# cent, because "spend rose 4.1 points" means nothing.
+_POINT_METRICS = frozenset((
+    "acos_pct", "tacos_pct", "ctr_pct", "cvr_pct", "buy_box_pct",
+    "margin_pct", "refund_rate", "unit_session_pct",
+))
 
-    A move from no data to a number is not a rise, and rendering it as +100%
-    invites somebody to celebrate a sync finishing.
+
+def change(now, before):
+    """How each metric moved, and in the RIGHT UNIT. -> {key: number or None}.
+
+    A ratio moves in percentage POINTS; money and counts move in per cent. Which
+    is which is not cosmetic: +4.1pts and +16.9% describe the same ACOS move and
+    only one of them is the one anybody means.
+
+    `change_units` below says which was used for each, so the screen can print
+    "pts" rather than leaving the reader to assume.
+
+    NEVER A CHANGE AGAINST NOTHING. A move from no data to a number is not a
+    rise, and rendering it as +100% invites somebody to celebrate a sync
+    finishing.
     """
     out = {}
     for k, v in (now or {}).items():
@@ -564,11 +610,23 @@ def change(now, before):
         if not isinstance(v, (int, float)) or not isinstance(b, (int, float)):
             out[k] = None
             continue
+        if k in _POINT_METRICS:
+            # A ratio of zero before is still a real starting point -- 0% ACOS
+            # rising to 30% is +30 points -- so this does NOT bail out on a zero
+            # base the way the percentage branch has to.
+            out[k] = round(float(v) - float(b), 1)
+            continue
         if not b:
             out[k] = None
             continue
         out[k] = round(100.0 * (float(v) - float(b)) / abs(float(b)), 1)
     return out
+
+
+def change_units(now=None):
+    """Which unit each change is in: 'pts' or 'pct'. For the screen to print."""
+    keys = list((now or {}).keys()) or list(_POINT_METRICS)
+    return {k: ("pts" if k in _POINT_METRICS else "pct") for k in keys}
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +781,140 @@ def cohorts(config_path, workspace_id, marketplace, start, end, rows=None,
     return out
 
 
-def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None):
+def _report_window_spend(config_path, workspace_id, marketplace, start, end):
+    """Account spend over the search-term report's OWN window, or None."""
+    if not (start and end):
+        return None
+    try:
+        conn = _db.get_db(config_path)
+        r = conn.execute(
+            "SELECT ROUND(SUM(spend),2) s FROM ads_daily WHERE workspace_id=? "
+            "AND marketplace=? AND asin=? AND date>=? AND date<=?",
+            (workspace_id, marketplace, ACCOUNT_TOTAL, str(start),
+             str(end))).fetchone()
+        return _f(r["s"]) if r else None
+    except Exception:
+        return None
+
+
+def efficiency_score(totals, rates_info, wasted_info, cvr_baseline=None):
+    """The headline 0-100 efficiency score. -> dict, or a stated refusal.
+
+    THREE PARTS, WEIGHTED, AND EVERY ONE OF THEM PUBLISHED:
+
+        0.50  how far ACOS sits under break-even
+        0.30  how normal the conversion rate is against its own history
+        0.20  how little of the spend bought clicks and no orders
+
+    Distinct from efficiency_trend() below, which is the DAILY line and answers a
+    narrower question -- break-even over that day's ACOS. Both are ours, both are
+    stated; this one is the summary, that one is the shape.
+
+    IT REFUSES RATHER THAN GUESSES. A score is a single number people act on, so
+    a part that cannot be measured makes the whole thing unavailable and says
+    which part was missing. Scoring on two legs out of three and not saying so
+    would be worse than no score: it looks identical to a real one.
+    """
+    missing = []
+    acos = (totals or {}).get("acos_pct")
+    be = (rates_info or {}).get("breakeven_acos_pct")
+    if acos is None:
+        missing.append("this window has no ACOS — the ads made no attributed "
+                       "sales")
+    if not be:
+        missing.append("this account has no break-even ACOS — its fee or cost "
+                       "rate could not be measured")
+    # THE WASTED SHARE MUST DIVIDE TWO FIGURES THAT COVER THE SAME DAYS.
+    #
+    # wasted_spend comes from the Search Term Report, whose window is fixed and
+    # is usually ~30 days. totals["spend"] is the window on the date picker. On
+    # a 14-day view the first divided by the second gave 144% -- "more than all
+    # of the spend was wasted", which is arithmetic on two different periods and
+    # not a fact about anything.
+    #
+    # `report_spend` is the spend over the REPORT's own window, passed in by the
+    # caller. Without it this part cannot be scored honestly, and the score is
+    # withheld rather than computed on mismatched periods.
+    spend = (wasted_info or {}).get("report_spend")
+    wasted = (wasted_info or {}).get("spend")
+    if spend is None or wasted is None:
+        missing.append("wasted spend cannot be compared with the spend over the "
+                       "same days")
+    cvr = (totals or {}).get("cvr_pct")
+
+    if missing:
+        return {"score": None, "band": "", "parts": {}, "why": (
+            "The efficiency score needs all three of its parts and is not shown "
+            "on two: " + "; ".join(missing) + ".")}
+
+    # 1. ACOS against break-even. At break-even this is 0; at half of it, 50.
+    acos_part = max(0.0, 1.0 - (float(acos) / float(be))) * 100.0
+
+    # 2. Conversion rate against its own history. Without a baseline this part
+    # cannot be scored, so the whole score is not shown -- see above.
+    if cvr is None or not cvr_baseline or cvr_baseline.get("sd") in (None, 0):
+        return {"score": None, "band": "", "parts": {}, "why": (
+            "The efficiency score needs the conversion rate measured against "
+            "its own history, and this account has too little of it yet. The "
+            "other two parts are on the page separately.")}
+    z = abs(float(cvr) - float(cvr_baseline["mean"])) / float(cvr_baseline["sd"])
+    cvr_part = max(0.0, 1.0 - z / 2.0) * 100.0
+
+    # 3. The share of spend that bought clicks and no orders.
+    share = (float(wasted) / float(spend)) if spend else 0.0
+    wasted_part = max(0.0, 1.0 - share) * 100.0
+
+    score = round(0.50 * acos_part + 0.30 * cvr_part + 0.20 * wasted_part, 2)
+    band = "Poor" if score < 50 else ("Average" if score <= 75 else "Good")
+    return {
+        "score": score, "band": band,
+        "parts": {
+            "acos": {"weight": 0.50, "value": round(acos_part, 2),
+                     "why": "ACOS %.1f%% against a break-even of %.1f%%"
+                            % (acos, be)},
+            "cvr": {"weight": 0.30, "value": round(cvr_part, 2),
+                    "why": "conversion rate %.2f%%, %.1f standard deviations "
+                           "from its own %d-day mean"
+                           % (cvr, z, cvr_baseline.get("n") or 0)},
+            "wasted": {"weight": 0.20, "value": round(wasted_part, 2),
+                       "why": "%.1f%% of spend bought clicks and no orders"
+                              % (share * 100.0)},
+        },
+        "bands": {"poor": "< 50", "average": "50-75", "good": "> 75"},
+        "why": "",
+    }
+
+
+def cvr_baseline(config_path, workspace_id, marketplace, end, days=60):
+    """The conversion rate's own mean and spread, for the score above.
+
+    Sixty complete days, ending the day BEFORE the window being scored, so the
+    days being judged are not part of what they are judged against.
+    """
+    import datetime as _d
+
+    try:
+        e = _d.date.fromisoformat(str(end)[:10]) - _d.timedelta(days=1)
+    except Exception:
+        return None
+    s = e - _d.timedelta(days=int(days) - 1)
+    rows = daily(config_path, workspace_id, marketplace, s.isoformat(),
+                 e.isoformat())
+    vals = []
+    for r in rows:
+        c, o = _f(r.get("clicks")), _f(r.get("orders"))
+        if c:
+            vals.append(100.0 * (o or 0.0) / c)
+    if len(vals) < 14:
+        return None
+    mean = sum(vals) / len(vals)
+    sd = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
+    return {"mean": round(mean, 4), "sd": round(sd, 4), "n": len(vals),
+            "start": s.isoformat(), "end": e.isoformat()}
+
+
+def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None,
+                 min_clicks=0, min_spend=0.0):
     """Spend that bought clicks and no orders. OUR DEFINITION, SAID OUT LOUD.
 
     Orbit shows a "wasted spend" figure and does not define it. This one is:
@@ -770,6 +961,19 @@ def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None):
             "WHERE workspace_id=? AND marketplace=? AND report_id=? "
             "AND COALESCE(clicks,0) > 0 AND COALESCE(orders,0) = 0",
             (workspace_id, marketplace, meta["report_id"])).fetchone()
+        # AND THE SAME THING WORTH ACTING ON.
+        #
+        # Most of these terms are one or two clicks and a few pence -- true, and
+        # useless as a list. The floor is a SECOND figure beside the total, never
+        # instead of it: quietly reporting only the actionable part would
+        # understate the waste, which is the opposite of the point.
+        big = conn.execute(
+            "SELECT ROUND(SUM(spend),2) s, COUNT(*) n FROM ppc_search_terms "
+            "WHERE workspace_id=? AND marketplace=? AND report_id=? "
+            "AND COALESCE(orders,0) = 0 "
+            "AND (COALESCE(clicks,0) >= ? OR COALESCE(spend,0) >= ?)",
+            (workspace_id, marketplace, meta["report_id"],
+             int(min_clicks or 3), float(min_spend or 1.0))).fetchone()
     except Exception:
         return {"spend": None, "terms": 0,
                 "why": "No search term report is stored."}
@@ -780,6 +984,18 @@ def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None):
     return {"spend": _f(r["s"]), "terms": int(r["n"]),
             "definition": "spend on search terms that took a click and "
                           "produced no order",
+            # The actionable subset, beside the total and never instead of it.
+            "actionable_spend": (_f(big["s"]) if big else None),
+            "actionable_terms": int((big["n"] if big else 0) or 0),
+            "actionable_rule": ("at least %d clicks, or at least %.2f spent"
+                                % (int(min_clicks or 3), float(min_spend or 1.0))),
+            # THE SPEND OVER THE REPORT'S OWN WINDOW, so anything expressing
+            # wasted spend as a SHARE divides two figures covering the same
+            # days. Dividing it by the date picker's spend gave 144% on a
+            # 14-day view -- more than all of it, which is not a fact.
+            "report_spend": _report_window_spend(
+                config_path, workspace_id, marketplace,
+                meta.get("date_from"), meta.get("date_to")),
             # THE WINDOW THIS FIGURE REALLY COVERS -- the report's own, not the
             # one on the date picker. Sent so the card can print it instead of
             # sitting under a range it does not answer for.

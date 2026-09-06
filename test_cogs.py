@@ -64,6 +64,61 @@ check("with neither, there is no cost", cogs.resolve({}, WS, "46 pcs wrench"), (
 check("an override can rescue an uncosted SKU",
       cogs.resolve({"jack_uk::46 pcs wrench": 4.5}, WS, "46 pcs wrench"), (4.5, "manual"))
 
+print("\n=== AMAZON SPELLS THE SAME SKU TWO WAYS, and both must find the cost ===")
+# Measured on nestwell_goods, 7 Sep 2026, the day the Finances role was granted:
+#   Orders API    10.99_3Days_B0GGSNN4Q6
+#   Finances API  10.99_3DAYS_B0GGSNN4Q6
+# Same product, one seller. The cost was stored under the first and the finance
+# parser asked with the second, so cost of goods came back 0.0% covered on an
+# account that is fully costed -- every one of those orders reporting its profit
+# as unknown.
+#
+# It was always latent and never showed, because resolve() used to fall back to
+# reading the leading number out of the SKU, and that parse never looks past the
+# first underscore -- so "3DAYS" and "3Days" agreed BY ACCIDENT. Removing that
+# fallback took the accident away and left the flaw visible.
+_mix = {"nestwell_goods::10.99_3Days_B0GGSNN4Q6": 10.99}
+check("the spelling it was stored under still works",
+      cogs.resolve(_mix, "nestwell_goods", "10.99_3Days_B0GGSNN4Q6"), (10.99, "manual"))
+check("  and the spelling Amazon's Finances feed uses finds it too",
+      cogs.resolve(_mix, "nestwell_goods", "10.99_3DAYS_B0GGSNN4Q6"), (10.99, "manual"))
+check("  and surrounding space is not a different SKU",
+      cogs.resolve(_mix, "nestwell_goods", "  10.99_3days_B0GGSNN4Q6 "), (10.99, "manual"))
+# THE FOLD IS CASE AND SPACE ONLY. A SKU is an identifier its seller chose, and
+# two that differ by a character are entitled to be two products.
+check("a genuinely different SKU is still a different SKU",
+      cogs.resolve(_mix, "nestwell_goods", "10.99_3Days_B0GGSNN4Q7"), (None, ""))
+check("  punctuation is not folded away",
+      cogs.resolve({"a::grill-large": 5.0}, "a", "grill large"), (None, ""))
+check("  and the account is not folded either",
+      cogs.resolve(_mix, "NESTWELL_GOODS", "10.99_3DAYS_B0GGSNN4Q6"), (None, ""))
+check("an empty SKU matches nothing, not the first thing stored",
+      cogs.resolve(_mix, "nestwell_goods", ""), (None, ""))
+check("  and neither does a blank one", cogs.resolve(_mix, "nestwell_goods", "   "), (None, ""))
+
+print("\n=== one entry per SKU, whatever case it arrives in ===")
+# A cost typed against one spelling and then cleared against the other would
+# leave the first still standing -- a cost the owner believes they deleted, still
+# quietly pricing their orders.
+from domain import cogs_store as _cstore
+_CFG2 = os.path.join(TMP, "store", "config.json")
+os.makedirs(os.path.dirname(_CFG2), exist_ok=True)
+json.dump({"accounts": []}, open(_CFG2, "w"))
+_cstore.load(_CFG2, force=True)
+_cstore.set_cost(_CFG2, "acct", "9.50_3Days_B0AAAAAAAA", 9.50)
+_cstore.set_cost(_CFG2, "acct", "9.50_3DAYS_B0AAAAAAAA", 11.00)
+_live = _cstore.all_overrides(_CFG2)
+check("setting the other spelling EDITS the row, not adds a second",
+      len([k for k in _live if k.startswith("acct::")]), 1)
+check("  and the new value is the one that answers",
+      cogs.resolve(_live, "acct", "9.50_3Days_B0AAAAAAAA"), (11.0, "manual"))
+_cstore.set_cost(_CFG2, "acct", "9.50_3days_b0aaaaaaaa", None)
+check("clearing by a third spelling really clears it",
+      cogs.resolve(_cstore.all_overrides(_CFG2), "acct", "9.50_3Days_B0AAAAAAAA"),
+      (None, ""))
+check("  leaving nothing behind for that account",
+      [k for k in _cstore.all_overrides(_CFG2) if k.startswith("acct::")], [])
+
 print("\n=== dashboard.py and the sales screen use the SAME resolver ===")
 import dashboard as dash
 check("dashboard delegates the SKU parse",

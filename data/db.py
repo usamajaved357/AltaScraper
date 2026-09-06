@@ -464,6 +464,22 @@ CREATE INDEX IF NOT EXISTS idx_drppc_rules_ws
    a new row, because a ledger that can be edited is not evidence of anything.
 
    NOTHING IN THIS TABLE REACHES AMAZON. It records what was decided here. */
+/* ONE-OFF JOBS THAT HAVE ALREADY BEEN DONE.
+   -----------------------------------------------------------------------
+   Not schema migrations -- _migrate() handles those, and they are safe to
+   re-run because adding a column that exists is a no-op. This is for jobs that
+   change DATA, where running twice is not harmless.
+
+   The one that needed it: seeding the per-product cost store from the numbers
+   that used to be read out of SKUs. Re-running it after somebody DELETED a cost
+   they had decided was wrong would put it straight back, which is the opposite
+   of what they asked for. So it is recorded here and never repeats. */
+CREATE TABLE IF NOT EXISTS app_migrations (
+    name      TEXT PRIMARY KEY,
+    ran_at    TEXT NOT NULL,
+    detail    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS drppc_events (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,

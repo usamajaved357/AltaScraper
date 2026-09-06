@@ -202,6 +202,123 @@ check("fees are marked as lower-is-better", fee["good"], "down")
 from auth.guard import feature_for, required_permission
 check("the raw diagnostic is feature-gated", feature_for("/sales/finance-raw"), "sales")
 
+print("\n=== a SKU that SOLD can be mapped, even if the snapshot forgot it ===")
+# THE SNAPSHOT IS NOT THE SAME THING AS "WHAT THIS ACCOUNT SELLS", and a SKU
+# missing from it loses its fees off every per-product figure -- the product's
+# row shows the sale with none of the fees that came with it, which reads as it
+# doing better than it is.
+#
+# Measured 7 Sep 2026, the day the Finances role was granted:
+#   nestwell_goods   4 of its 16 selling SKUs were not in the snapshot
+#   selvora_limited  4 of 4 -- including OO-96JX-Z7ND, 52 orders, 1,757.97
+# On selvora NOT ONE fee could reach a product row.
+from data import db as _fdb
+_c = _fdb.get_db(CFG)
+for _i, (_sku, _asin) in enumerate([("SOLD-ONLY-SKU", "B0SOLDONLY"),
+                                    ("SKU-RED", "B0RELISTED")]):
+    _c.execute(
+        "INSERT INTO order_lines (workspace_id, marketplace, order_id, "
+        " purchase_date, asin, sku, title, units, revenue, currency, status) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (WS, MKT, "999-%d" % _i, "2026-08-01", _asin, _sku, "t", 1, 10.0,
+         "GBP", "Shipped"))
+_c.commit()
+
+# No live snapshot exists for this temp account at all, so this is also the
+# case the note in sku_map() calls out: an account whose catalogue has never
+# been pulled used to map NOTHING.
+_m = fd.sku_map(CFG, WS, MKT)
+check("a SKU with no snapshot row is mapped from what it sold as",
+      _m.get("SOLD-ONLY-SKU"), "B0SOLDONLY")
+check("  and its fees therefore reach a product row",
+      fd._Acc({"SOLD-ONLY-SKU": "B0SOLDONLY"}).asin_for("SOLD-ONLY-SKU"),
+      "B0SOLDONLY")
+
+# THE SNAPSHOT WINS WHERE BOTH KNOW A SKU. It is what Amazon says is listed
+# TODAY; an order line records what was true when it shipped, and a relisted
+# SKU can have moved ASIN since. Asserted by building the map with a snapshot
+# that disagrees with the order line inserted above.
+import domain.live_snapshots as _ls_mod
+_real_get = _ls_mod.get
+_ls_mod.get = lambda *a, **k: {"items": [{"sku": "SKU-RED", "asin": "B0RED00001"}]}
+try:
+    _m2 = fd.sku_map(CFG, WS, MKT)
+finally:
+    _ls_mod.get = _real_get
+check("the snapshot's ASIN wins over an older order line",
+      _m2.get("SKU-RED"), "B0RED00001")
+check("  while the sold-only SKU is still picked up",
+      _m2.get("SOLD-ONLY-SKU"), "B0SOLDONLY")
+check("a SKU with neither is still unknown", _m2.get("NO-SUCH-SKU"), None)
+
+print("\n=== a cost typed against ONE order reaches the finance figures ===")
+# It did not. The finance path priced by product alone, so an order the owner
+# had corrected by hand kept its corrected profit on the Orders screen and lost
+# it in the Sales daily figures -- the same order reporting two numbers with
+# nothing to say which was right.
+#
+#     "yes make the finance path honour per-order costs too same logic should
+#      exist as for sales bar we prioritize per order costs"
+from domain import order_cogs as _oc
+from domain import cogs as _cogs2
+
+# 203-1 ships 2 of SKU-RED. The product cost says 10.00 a unit; this one order
+# was corrected to 4.00 a unit.
+_c.execute(
+    "INSERT INTO order_lines (workspace_id, marketplace, order_id, "
+    " purchase_date, asin, sku, title, units, revenue, currency, status, "
+    " cogs, cogs_source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    (WS, MKT, "203-1", "2026-08-01", "B0RED00001", "SKU-RED", "t", 2, 40.0,
+     "GBP", "Shipped", 4.00, "manual-order"))
+_c.commit()
+
+_PROD = {"%s::SKU-RED" % WS: 10.00}
+_rows_p, _ = fd.parse_events(EVENTS, SKUMAP, cost_lookup=_cogs2.lookup(_PROD, WS))
+_tot_p = [r for r in _rows_p if r["asin"] == "*" and r["date"] == "2026-08-01"][0]
+check("priced by product alone, 2 units cost 2 x 10.00", _tot_p["cogs"], 20.0)
+
+_rows_o, _ = fd.parse_events(
+    EVENTS, SKUMAP,
+    cost_lookup=_oc.line_cost_fn(CFG, WS, None, overrides=_PROD))
+_tot_o = [r for r in _rows_o if r["asin"] == "*" and r["date"] == "2026-08-01"][0]
+check("  the cost typed against THAT order wins: 2 x 4.00", _tot_o["cogs"], 8.0)
+check("  and the units are unchanged", _tot_o["units"], _tot_p["units"])
+
+# THE CORRECTION APPLIES TO THAT ORDER ALONE. SKU-GHOST ships on the same
+# event and was never corrected, so it must still take the product cost.
+_PROD2 = dict(_PROD); _PROD2["%s::SKU-GHOST" % WS] = 3.00
+_rows_g, _ = fd.parse_events(
+    EVENTS, SKUMAP,
+    cost_lookup=_oc.line_cost_fn(CFG, WS, None, overrides=_PROD2))
+_tot_g = [r for r in _rows_g if r["asin"] == "*" and r["date"] == "2026-08-01"][0]
+check("an uncorrected line on the same order keeps the product cost",
+      _tot_g["cogs"], 11.0)                       # 2 x 4.00 corrected + 1 x 3.00
+
+# AND IT IS FOUND WHATEVER CASE AMAZON REPORTS THE SKU IN, which is the same
+# trap as cogs_store.norm(): order_lines holds one spelling, the Finances feed
+# can send another, and keyed literally the correction would be missed.
+_UP = {"FinancialEvents": {"ShipmentEventList": [{
+    "AmazonOrderId": "203-1", "PostedDate": "2026-08-01T10:00:00Z",
+    "ShipmentItemList": [{"SellerSKU": "sku-red", "QuantityShipped": 2,
+                          "ItemChargeList": [], "ItemFeeList": []}]}]}}
+_rows_u, _ = fd.parse_events(
+    _UP, {"sku-red": "B0RED00001"},
+    cost_lookup=_oc.line_cost_fn(CFG, WS, None, overrides=_PROD))
+_tot_u = [r for r in _rows_u if r["asin"] == "*"][0]
+check("  a differently-cased SKU still finds its per-order cost",
+      _tot_u["cogs"], 8.0)
+
+# A DIFFERENT ORDER OF THE SAME PRODUCT IS NOT CORRECTED.
+_OTHER = {"FinancialEvents": {"ShipmentEventList": [{
+    "AmazonOrderId": "203-NEVER-CORRECTED", "PostedDate": "2026-08-01T10:00:00Z",
+    "ShipmentItemList": [{"SellerSKU": "SKU-RED", "QuantityShipped": 1,
+                          "ItemChargeList": [], "ItemFeeList": []}]}]}}
+_rows_n, _ = fd.parse_events(
+    _OTHER, SKUMAP, cost_lookup=_oc.line_cost_fn(CFG, WS, None, overrides=_PROD))
+_tot_n = [r for r in _rows_n if r["asin"] == "*"][0]
+check("another order of the same product takes the product cost",
+      _tot_n["cogs"], 10.0)
+
 os.environ.pop("ALTASCRAPER_DB", None)
 shutil.rmtree(TMP, ignore_errors=True)
 print("\nFAILURES: %d" % len(fails))

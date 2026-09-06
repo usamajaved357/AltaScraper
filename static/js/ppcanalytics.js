@@ -4,7 +4,7 @@
  *
  *     h1 + subtitle
  *     TODAY bar                  6 stats, evenly spread, change under each
- *     Day trail                  7 cards, mini cumulative curve, range buttons
+ *     Day trail                  7 cards, one bar each, range buttons
  *     Filters                    labels ABOVE controls, COMPARE TO pushed right
  *     KPI row 1                  SPEND / SALES / ACOS / ROAS, with sparklines
  *     KPI row 2                  IMPRESSIONS / CLICKS / CTR / PURCHASES
@@ -21,12 +21,25 @@
  * day x hour. There are no hourly figures: Amazon refuses timeUnit HOURLY on
  * this report type -- measured, in its own words, "configuration timeUnit is
  * not supported for this report type". Hourly Amazon ad data comes from
- * Marketing Stream, a separate push integration this app does not have.
+ * Marketing Stream, which needs an AWS SQS queue.
  *
- * So the trail keeps its seven cards and its curve, drawn at the finest grain
- * that exists, and its caption says which. The heatmap keeps its panel and its
- * legend and says what it needs. Neither is filled with invented hours -- that
- * is the one thing these screens have been told off for twice.
+ * THAT IS NOT BEING BUILT, BY INSTRUCTION -- there is no AWS account:
+ *
+ *     "Skip Phase 4 entirely (AMS/AWS). Owner doesn't have an AWS account.
+ *      Build the graceful degradation fallbacks instead"
+ *
+ * So these are not placeholders waiting on a queue; they are the screen. Each
+ * is the same question asked at the grain that exists, and each says so in its
+ * own caption rather than leaving the reader to assume hours:
+ *
+ *     TODAY bar    the latest COMPLETE day, labelled with its date and how far
+ *                  behind Amazon is -- never "today" unless it really is
+ *     Day trail    one bar per day, all scaled to the busiest day in view
+ *     Heatmap      ACoS by day of week, no hour axis
+ *
+ * Nothing is filled with invented hours -- that is the one thing these screens
+ * have been told off for twice. domain/ams.py holds the on-ramp for the day an
+ * AWS queue does appear; until then it reports absent and nothing calls it.
  *
  * NOTHING HERE WRITES. No bid, no budget, no campaign state (Rule 8).
  */
@@ -263,7 +276,20 @@ function ppcaToday(j, cur){
 function ppcaTrail(j, cur){
   const rows = j.trail || [];
   if(!rows.length) return "";
-  const cum = rows.map(function(r){ return r.cumulative; });
+  // ONE BAR PER CARD, ALL SEVEN ON THE SAME SCALE.
+  //
+  // These were cumulative curves: each card drew the WINDOW accumulating up to
+  // its day, so the line only ever climbed, the last card always towered over
+  // the first, and a quiet Saturday looked like the account's biggest day. The
+  // shape also implied hours, which is exactly what this data does not have.
+  //
+  // The maximum is taken across the whole trail rather than per card, because
+  // that is what makes the seven comparable by eye. Per card, every bar would
+  // be full height and the row would say nothing.
+  const spends = rows.map(function(r){ return r.spend; })
+    .filter(function(v){ return v !== null && v !== undefined && !isNaN(Number(v)); })
+    .map(Number);
+  const top = spends.length ? Math.max.apply(null, spends) : 0;
   const MON = ["JAN","FEB","MAR","APR","MAY","JUN",
                "JUL","AUG","SEP","OCT","NOV","DEC"];
   const DOW = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
@@ -271,13 +297,13 @@ function ppcaTrail(j, cur){
   let h = '<div style="display:flex;align-items:center;justify-content:'
     + 'space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">'
     + '<div><div style="font-size:18px;font-weight:700">Day trail</div>'
-    + '<div style="font-size:12px;color:var(--ppc-muted)">Cumulative ad spend '
-    + 'by day · Amazon publishes no hourly figures for this report, so each '
-    + 'curve is days rather than hours</div></div>'
+    + '<div style="font-size:12px;color:var(--ppc-muted)">Ad spend per day, '
+    + 'each bar against the busiest day in view · Amazon publishes no hourly '
+    + 'figures for this report, so a day is the finest grain there is</div></div>'
     + ppcSeg(30, "ppcaLoad") + '</div>'
     + '<div class="ppc-trail">';
 
-  rows.forEach(function(r, i){
+  rows.forEach(function(r){
     const day = new Date(r.date + "T00:00:00");
     const lbl = isNaN(day.getTime()) ? r.date
       : (DOW[day.getDay()] + " " + MON[day.getMonth()] + " " + day.getDate());
@@ -296,6 +322,9 @@ function ppcaTrail(j, cur){
                    ? "no row stored" : ppcMoney(r.spend, cur)),
       "Orders: " + (r.orders === null || r.orders === undefined
                     ? "—" : Math.round(r.orders)),
+      // The running total is still worth having -- it is just not what the bar
+      // draws any more, so it is named for what it is rather than implied by a
+      // climbing line.
       "Spent so far this window: " + ppcMoney(r.cumulative, cur),
       "", "Click to show this day only.",
     ].join("\n");
@@ -304,7 +333,7 @@ function ppcaTrail(j, cur){
       + '<div class="ppc-trail-head"><span class="d">' + _pEsc(lbl) + '</span>'
       +   (r.today ? '<span class="t">Today</span>' : '') + '</div>'
       + '<div class="ppc-trail-chart">'
-      +   ppcMiniLine(cum.slice(0, i + 1), "var(--ppc-cyan)") + '</div>'
+      +   ppcMiniBar(r.spend, top, "var(--ppc-cyan)") + '</div>'
       + '<div class="ppc-trail-spend">'
       +   ppcMoney(r.spend, cur, "No advertising row stored for this day. That "
           + "is not the same as having spent nothing.") + '</div>'
@@ -321,42 +350,47 @@ function ppcaTrail(j, cur){
 function ppcaKpis(j, cur, t, ch){
   const d = j.daily || [];
   const col = function(k){ return d.map(function(r){ return r[k]; }); };
+  // WHICH UNIT EACH ARROW IS IN, decided by the server so every screen agrees.
+  // ACOS and CTR are already percentages and move in POINTS; spend, sales,
+  // clicks and impressions move in per cent. 24.3% to 28.4% is +4.1pts, and
+  // calling it +16.9% answers a question nobody asked.
+  const cu = j.change_units || {};
 
   return '<div class="ppc-kpis">'
     + ppcKpi({label: "SPEND", value: ppcMoney0(t.spend, cur),
-              change: ppcChangeBare(ch.spend, "down"),
+              change: ppcChangeBare(ch.spend, "down", "", cu.spend),
               spark: ppcSparkline(col("spend"), "var(--ppc-red)"),
               help: "What Amazon charged for the ads in this window."})
     + ppcKpi({label: "SALES", value: ppcMoney0(t.sales, cur),
-              change: ppcChangeBare(ch.sales, "up"),
+              change: ppcChangeBare(ch.sales, "up", "", cu.sales),
               spark: ppcSparkline(col("ad_sales"), "var(--ppc-green)"),
               help: "Sales Amazon attributes to those ads. An organic sale is "
                   + "not in here."})
     + ppcKpi({label: "ACOS", value: ppcPct(t.acos_pct),
-              change: ppcChangeBare(ch.acos_pct, "down"),
+              change: ppcChangeBare(ch.acos_pct, "down", "", cu.acos_pct),
               spark: ppcSparkline(col("acos_pct"), "var(--ppc-orange)"),
               help: "Spend divided by AD sales. How much of the advertised "
                   + "revenue the advertising ate. Lower is better."})
     + ppcKpi({label: "ROAS", value: ppcX(t.roas),
-              change: ppcChangeBare(ch.roas, "up"),
+              change: ppcChangeBare(ch.roas, "up", "", cu.roas),
               spark: ppcSparkline(col("roas"), "var(--ppc-blue)"),
               help: "Ad sales for every pound of spend."})
     + '</div>'
     + '<div class="ppc-kpis last">'
     + ppcKpi({label: "IMPRESSIONS", value: ppcNum(t.impressions),
-              change: ppcChangeBare(ch.impressions, "up"),
+              change: ppcChangeBare(ch.impressions, "up", "", cu.impressions),
               spark: ppcSparkline(col("impressions"), "var(--ppc-blue)"),
               help: "How many times the ads were shown."})
     + ppcKpi({label: "CLICKS", value: ppcNum(t.clicks),
-              change: ppcChangeBare(ch.clicks, "up"),
+              change: ppcChangeBare(ch.clicks, "up", "", cu.clicks),
               spark: ppcSparkline(col("clicks"), "var(--ppc-green)"),
               help: "How many times somebody clicked one."})
     + ppcKpi({label: "CTR", value: ppcPct(t.ctr_pct, "", 2),
-              change: ppcChangeBare(ch.ctr_pct, "up"),
+              change: ppcChangeBare(ch.ctr_pct, "up", "", cu.ctr_pct),
               spark: ppcSparkline(col("ctr_pct"), "var(--ppc-magenta)"),
               help: "Clicks per impression."})
     + ppcKpi({label: "PURCHASES", value: ppcNum(t.orders),
-              change: ppcChangeBare(ch.orders, "up"),
+              change: ppcChangeBare(ch.orders, "up", "", cu.orders),
               spark: ppcSparkline(col("orders"), "var(--ppc-green)"),
               help: "Orders Amazon attributes to the ads."})
     + '</div>';
@@ -504,7 +538,7 @@ function ppcaProfitability(j, cur){
     + flow
     + '<div class="ppc-grid3 ppc-mb12">'
     +   ppcSubCard({label: "TACOS", value: ppcPct(t.tacos_pct),
-                    change: ppcChangeText((j.change || {}).tacos_pct, "down"),
+                    change: ppcChangeText((j.change || {}).tacos_pct, "down", "", (j.change_units||{}).tacos_pct),
                     note: period,
                     // The divisor is stated, because it is NOT simply the
                     // window's sales: Amazon's advertising feed runs about two
@@ -555,15 +589,7 @@ function ppcaProfitability(j, cur){
                     note: period,
                     help: "Estimated profit for the window, divided by the "
                         + "clicks that were paid for."})
-    +   ppcSubCard({label: "EFFICIENCY SCORE",
-                    value: (eff === null ? null : eff.toFixed(2)),
-                    why: "Needs a measured break-even ACOS and attributed sales.",
-                    badge: effBadge,
-                    note: "100 is break-even. Higher is better.",
-                    help: "Our own measure, defined here rather than borrowed: "
-                        + "100 × break-even ACOS ÷ actual ACOS. At 100 the "
-                        + "advertising exactly breaks even; above it, it makes "
-                        + "money."})
+    +   _ppcaEfficiencyCard(j, eff, effBadge)
     +   ppcSubCard({label: "NET PROFIT",
                     value: (net === null ? null : ppcMoney0(net, cur)),
                     colour: (net === null ? "" : (net >= 0 ? "var(--ppc-green)"
@@ -573,6 +599,56 @@ function ppcaProfitability(j, cur){
                     help: "Attributed sales, less the spend, less this "
                         + "account's measured Amazon fee and stock cost."})
     + '</div></div>';
+}
+
+/* THE HEADLINE EFFICIENCY SCORE, WITH ITS WORKING SHOWN.
+ *
+ * Three parts, weighted 0.50 / 0.30 / 0.20 -- how far ACOS sits under
+ * break-even, how normal the conversion rate is against its own history, and
+ * how little of the spend bought clicks and no orders. Bands: under 50 poor,
+ * 50-75 average, over 75 good.
+ *
+ * A single 0-100 number is the kind of thing people act on without asking how it
+ * was made, so every part, its weight and its reasoning are on the hover. And
+ * when one part cannot be measured the score is NOT shown: two legs out of three
+ * looks exactly like a real score and is not one.
+ *
+ * The older ratio -- break-even over actual ACOS -- is still the DAILY trend
+ * below, which answers a narrower question and is a shape rather than a verdict.
+ */
+function _ppcaEfficiencyCard(j, eff, effBadge){
+  const s = j.efficiency_score || {};
+  if(s.score === null || s.score === undefined){
+    return ppcSubCard({
+      label: "EFFICIENCY SCORE", value: null,
+      why: s.why || "One of its three parts could not be measured.",
+      note: _pEsc(s.why || ""),
+      help: "Three parts, weighted: 50% how far ACOS sits under break-even, "
+          + "30% how normal the conversion rate is against its own history, "
+          + "20% how little of the spend bought clicks and no orders. Not shown "
+          + "unless all three can be measured — a score built on two of them "
+          + "looks identical to a real one."});
+  }
+  const p = s.parts || {};
+  const line = function(k, label){
+    const x = p[k];
+    if(!x) return "";
+    return label + " " + Number(x.value).toFixed(0) + " × "
+      + Number(x.weight).toFixed(2) + " — " + x.why;
+  };
+  return ppcSubCard({
+    label: "EFFICIENCY SCORE",
+    value: Number(s.score).toFixed(2),
+    badge: '<span class="ppc-opp ' + (s.band === "Good" ? "hi" : "lo")
+         + '">' + _pEsc(s.band) + '</span>',
+    note: _pEsc("under 50 poor · 50-75 average · over 75 good"),
+    note2: _pEsc((p.wasted || {}).why || ""),
+    help: "Our own measure, and here is all of it:\n"
+        + line("acos", "· ACOS part") + "\n"
+        + line("cvr", "· conversion part") + "\n"
+        + line("wasted", "· waste part") + "\n"
+        + "Weighted 0.50 / 0.30 / 0.20 and added. Every input is Amazon's own "
+        + "figure; the weighting is ours."});
 }
 
 /* ---- 6. revenue, ad spend and profit ------------------------------------ */

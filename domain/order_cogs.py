@@ -149,6 +149,112 @@ def resolve(config_path, workspace_id, marketplace, sku, when, mode,
     return None, ""
 
 
+def frozen_costs(config_path, workspace_id, marketplace=None, order_ids=None):
+    """{(order_id, folded SKU): (cost, source)} -- the costs already ON the lines.
+
+    A per-order correction is not held anywhere separate: set_for_order writes it
+    straight into order_lines.cogs with source 'manual-order'. So "the cost typed
+    against this one order" and "the cost frozen onto this line when it was first
+    seen" are the same column, and reading that column is how any screen honours
+    the first without re-deriving the second.
+
+    FOLDED, because Amazon spells one SKU two ways -- order_lines holds
+    10.99_3Days_B0GGSNN4Q6 and the Finances feed says 10.99_3DAYS_B0GGSNN4Q6.
+    Keyed literally, the finance path would miss every per-order cost on an
+    account whose feed disagrees with its orders about capitals. Same fold, same
+    reason, as cogs_store.norm() -- which is the function used, not a copy of it.
+
+    MARKETPLACE IS OPTIONAL AND DEFAULTS TO ALL. An Amazon order id is unique
+    across marketplaces, so leaving it out cannot collide -- and the finance
+    path needs it left out, because finances are stored under the account's
+    DEFAULT marketplace while an order line carries the one it actually sold in.
+    Filtering there would silently find no cost at all.
+
+    order_ids None means EVERY order, which is what a finance pull wants. An
+    empty list means NONE, which is what a screen drawing an order it has no id
+    for wants -- and the difference matters: read the other way round, asking
+    about no orders would load the account's entire history to answer.
+    """
+    from domain import cogs_store as _cstore
+    if order_ids is not None and not len(order_ids):
+        return {}
+    q = ("SELECT order_id, sku, cogs, cogs_source FROM order_lines "
+         "WHERE workspace_id=? AND cogs IS NOT NULL")
+    args = [str(workspace_id or "")]
+    if marketplace:
+        q += " AND marketplace=?"
+        args.append(str(marketplace))
+    ids = [str(o) for o in (order_ids or []) if str(o or "")]
+    if ids:
+        q += " AND order_id IN (%s)" % ",".join("?" * len(ids))
+        args.extend(ids)
+    out = {}
+    try:
+        for r in _db.get_db(config_path).execute(q, args).fetchall():
+            out[(str(r["order_id"] or ""), _cstore.norm(r["sku"]))] = (
+                r["cogs"], r["cogs_source"])
+    except Exception:
+        # Never lose a whole screen, or a whole finance pull, over this read.
+        return {}
+    return out
+
+
+def line_cost_fn(config_path, workspace_id, marketplace=None, when=None,
+                 mode=None, overrides=None, order_ids=None, frozen=None,
+                 default_order_id=""):
+    """(sku, order_id) -> (cost, source). THE trust order, for every screen.
+
+    THIS WAS A CLOSURE INSIDE routes/orders_routes.py AND NOWHERE ELSE, so the
+    Orders screen honoured a per-order cost and the finance path did not -- the
+    same order reporting one profit on Orders and a different one in the Sales
+    daily figures, with nothing on either screen to say which was right. Moved
+    here so both call it (Rule 12); the route's behaviour is unchanged.
+
+        "yes make the finance path honour per-order costs too same logic should
+         exist as for sales bar we prioritize per order costs"
+
+    In order, stopping at the first answer:
+
+      1. THE COST ON THE ORDER LINE. A correction typed against that one order,
+         or the cost frozen onto it when it was first seen. Frozen deliberately:
+         looked up fresh instead, an order from July picks up August's supplier
+         price and last month's profit moves every time a supplier does.
+      2. THE COST SET AGAINST THE PRODUCT, by upload or one SKU at a time.
+      3. Nothing -- and nothing is NOT zero.
+
+    `when` and `mode` are accepted so callers need not change, and are unused:
+    resolve() ignores mode, and `when` only ever fed tracked mode, which is gone.
+
+    `default_order_id` is for a caller built for ONE order, which then asks by
+    SKU alone -- the Orders screen does exactly that, a function per order while
+    a list is drawn. Without it the returned function would look up the empty
+    order id and find none of the frozen costs it had just loaded.
+    """
+    from domain import cogs as _cogs
+    from domain import cogs_store as _cstore
+    have = (frozen if frozen is not None
+            else frozen_costs(config_path, workspace_id, marketplace, order_ids))
+
+    def _f(sku, order_id=None):
+        oid = str(order_id if order_id else default_order_id or "")
+        hit = have.get((oid, _cstore.norm(sku)))
+        if hit and hit[0] is not None:
+            try:
+                return round(float(hit[0]), 4), (hit[1] or "frozen")
+            except (TypeError, ValueError):
+                pass
+        try:
+            return resolve(config_path, workspace_id, marketplace, sku, when,
+                           mode or DEFAULT_MODE, overrides=overrides,
+                           order_override=None)
+        except Exception:
+            # Never lose the whole row over a cost lookup. Falling back keeps
+            # the previous answer rather than reporting "no cost", which would
+            # read as a product nobody has costed -- a different, wrong finding.
+            return _cogs.resolve(overrides or {}, workspace_id, sku)
+    return _f
+
+
 def freeze_range(config_path, workspace_id, marketplace, start, end, mode,
                  overrides=None, force=False):
     """Work out and store the cost of every order line in a window.

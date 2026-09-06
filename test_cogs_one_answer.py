@@ -68,14 +68,42 @@ falsy("the request-wide resolver is no longer passed to a profit call",
       or "line_breakdown(items, row.get(\"total\"), cost_of," in OR)
 
 print("\n== it reads the STORED cost, which is what Sales shows ==")
-truthy("the frozen value is looked up first", "SELECT sku, cogs, cogs_source FROM order_lines" in OR)
-truthy("  scoped to this account, marketplace and order",
-       "WHERE workspace_id=? AND marketplace=? AND order_id=?" in OR)
-truthy("  and only where a cost exists", "AND cogs IS NOT NULL" in OR)
-truthy("  preferred over re-deriving", "hit and hit[0] is not None" in OR)
+# THE RESOLVER MOVED, AND THAT IS THE POINT OF THIS SECTION NOW. It was written
+# out inside _cost_fn_for in orders_routes and NOWHERE ELSE -- which is exactly
+# how the finance path came to disagree with this screen about the same order:
+# it could not call a closure. So these assert the guarantees where they now
+# live, in domain/order_cogs.line_cost_fn, and that BOTH paths ask it.
+_OC = open(os.path.join(HERE, "domain", "order_cogs.py"), encoding="utf-8").read()
+truthy("there is one shared line resolver", "def line_cost_fn(" in _OC)
+truthy("  and the Orders screen delegates to it", "_oc.line_cost_fn(" in OR)
+_FF = open(os.path.join(HERE, "domain", "finance_fetch.py"), encoding="utf-8").read()
+truthy("  and so does the finance pull", "_oc.line_cost_fn(" in _FF)
+falsy("    which no longer prices by product alone",
+      "cost_lookup=_cogs.lookup(" in _FF)
+
+_lcf = _OC.split("def line_cost_fn(")[1].split("\ndef ")[0]
+_frz = _OC.split("def frozen_costs(")[1].split("\ndef ")[0]
+truthy("the frozen value is looked up first",
+       "SELECT order_id, sku, cogs, cogs_source FROM order_lines" in _frz)
+truthy("  scoped to the account", "WHERE workspace_id=? AND cogs IS NOT NULL" in _frz)
+truthy("  and only where a cost exists", "AND cogs IS NOT NULL" in _frz)
+truthy("  preferred over re-deriving", "hit and hit[0] is not None" in _lcf)
 truthy("and why re-deriving would be wrong is recorded",
-       "two derivations are two things to keep in step" in OR
-       or "not to re-derive" in OR)
+       "moves every time a supplier does" in _lcf)
+# THE FOLD MATTERS HERE TOO. order_lines holds 10.99_3Days_... and the Finances
+# feed says 10.99_3DAYS_... -- keyed literally, the finance path would miss
+# every per-order cost on an account whose feed disagrees about capitals.
+truthy("the SKU is folded, not matched letter for letter", "_cstore.norm(" in _frz)
+truthy("  through the one folder, not a copy of it", "cogs_store" in _frz)
+# NOT FILTERED BY MARKETPLACE for the finance path: finance rows are stored
+# under the account's DEFAULT marketplace while an order line carries the one
+# it sold in, so filtering would find no cost at all.
+truthy("the finance pull asks across marketplaces",
+       "_oc.line_cost_fn(config_path, _aid, None," in _FF)
+# "no orders" and "every order" are different questions, and reading one as the
+# other would load an account's whole history to answer about nothing.
+truthy("an empty order list means none, not all",
+       "if order_ids is not None and not len(order_ids)" in _frz)
 
 print("\n== a missing cost is still unknown, never zero ==")
 # order_cogs says it outright: "NO COST IS NOT A ZERO COST ... Zero would make it
@@ -84,15 +112,21 @@ print("\n== a missing cost is still unknown, never zero ==")
 OC = open(os.path.join(HERE, "domain", "order_cogs.py"), encoding="utf-8").read()
 truthy("the rule is stated where costs are resolved", "NO COST IS NOT A ZERO COST" in OC)
 truthy("  and resolve returns None, not 0", "return None, \"\"" in OC)
-falsy("the new path never substitutes a zero", "or 0.0)" in
-      OR.split("def _cost_fn_for")[1].split("def ")[0])
+falsy("the new path never substitutes a zero", "or 0.0)" in _lcf)
 
 print("\n== a lookup failure does not lose the row ==")
 # Reporting "no cost" because a query failed would read as a product nobody has
 # costed -- a different, and wrong, finding.
-_fn = OR.split("def _cost_fn_for")[1].split("\n    def ")[0]
-truthy("it falls back to the old resolver", "_cogs.resolve(overrides, account_id, sku)" in _fn)
-truthy("  rather than reporting no cost", "Never lose the whole row" in _fn)
+truthy("it falls back to the older resolver",
+       "_cogs.resolve(overrides or {}, workspace_id, sku)" in _lcf)
+truthy("  rather than reporting no cost", "Never lose the whole row" in _lcf)
+truthy("  and a failed frozen read returns nothing rather than raising",
+       "return {}" in _frz)
+# The finance pull has the same protection one level up: the fees are the thing
+# being fetched, and losing the whole pull over the cost side of it would be a
+# bigger loss than falling back to product costs.
+truthy("a finance pull is never lost over the cost lookup",
+       "Never lose a finance pull over the cost side" in _FF)
 
 print("\n== the frozen lookup actually finds a frozen cost ==")
 # Run it, rather than trust the SQL by eye.

@@ -100,36 +100,63 @@ function ppcX(v, why){
  * A null change is NOT 0%. It means the period before had nothing to compare
  * against, which is every account in its first month of advertising, and
  * rendering that as "0.0%, no change" claims a measurement nobody made. */
-function ppcChangeText(v, good, why){
+/* A RATIO MOVES IN POINTS, MONEY MOVES IN PER CENT, AND THE ARROW SAYS WHICH.
+ *
+ * ACOS going 24.3% -> 28.4% is +4.1 POINTS. Written as a percentage change it
+ * is +16.9%, which is a true answer to a question nobody asked and reads as far
+ * worse news than it is. The server decides which unit each metric uses
+ * (ppc_analytics.change_units) and it is printed, so nobody has to assume.
+ */
+function ppcChangeText(v, good, why, unit){
   if(v === null || v === undefined){
     return '<span class="ppc-chg flat" title="'
       + _pEsc(why || "Nothing stored for the period before this one, so there "
               + "is nothing to compare against. This is not a change of zero.")
       + '">—</span>';
   }
+  const sfx = (unit === "pts") ? "pts" : "%";
   const n = Number(v);
-  if(!n) return '<span class="ppc-chg flat">— 0%</span>';
+  if(!n){
+    // A FLAT ZERO CAN MEAN TWO THINGS and the tooltip says so: genuinely
+    // unchanged, or a comparison period whose data does not reach this grain.
+    return '<span class="ppc-chg flat" title="No change against the period '
+      + 'before — or the comparison period has no figure at this level of '
+      + 'detail. A 0% here is not always flat traffic.">— 0' + sfx + '</span>';
+  }
   const up = n > 0;
   const isGood = (good === "up") ? up : (good === "down" ? !up : null);
   const cls = (isGood === null) ? "flat" : (isGood ? "good" : "bad");
-  return '<span class="ppc-chg ' + cls + '">'
-       + (up ? "↗" : "↘") + " " + Math.abs(n).toFixed(1) + '%</span>';
+  return '<span class="ppc-chg ' + cls + '" title="'
+       + (sfx === "pts"
+          ? "Percentage POINTS. This metric is already a percentage, so a move "
+            + "from 24.3% to 28.4% is +4.1pts — not +16.9%."
+          : "Percentage change against the period before this one.")
+       + '">' + (up ? "↗" : "↘") + " " + Math.abs(n).toFixed(1) + sfx
+       + '</span>';
 }
 
 /* The bare arrow-and-figure the KPI card uses, without the pill. */
-function ppcChangeBare(v, good, why){
+function ppcChangeBare(v, good, why, unit){
   if(v === null || v === undefined){
     return '<span class="ppc-kpi-c ppc-dash" title="'
       + _pEsc(why || "No data for the period before this one.") + '">—</span>';
   }
+  // Same rule as ppcChangeText: a metric that IS a percentage moves in points.
+  const sfx = (unit === "pts") ? "pts" : "%";
   const n = Number(v);
   const up = n > 0;
   const isGood = (good === "up") ? up : (good === "down" ? !up : null);
   const col = (isGood === null) ? "var(--ppc-muted)"
             : (isGood ? "var(--ppc-green)" : "var(--ppc-red)");
-  return '<span class="c" style="color:' + col + '">'
+  return '<span class="c" style="color:' + col + '" title="'
+       + (sfx === "pts"
+          ? "Percentage POINTS — this metric is already a percentage."
+          : "Percentage change against the period before.")
+       + (n === 0 ? " A 0 here can also mean the comparison period has no "
+                    + "figure at this level of detail." : "")
+       + '">'
        + (n === 0 ? "—" : (up ? "↗" : "↘")) + " "
-       + Math.abs(n).toFixed(1) + '%</span>';
+       + Math.abs(n).toFixed(1) + sfx + '</span>';
 }
 
 /* ---- sparkline ------------------------------------------------------------
@@ -188,6 +215,50 @@ function ppcMiniLine(points, colour){
     + '<path d="' + fill + '" fill="url(#' + id + ')"/>'
     + '<path d="' + d.trim() + '" fill="none" stroke="' + colour
     + '" stroke-width="1.5"/></svg>';
+}
+
+/* ONE DAY'S TOTAL, AS A BAR. The day-trail card's chart when there are no
+ * hourly figures to curve.
+ *
+ * The mockup draws each card as spend ACCUMULATING THROUGH THE DAY, hour by
+ * hour, which needs Amazon Marketing Stream. Without it the cards drew the
+ * WINDOW accumulating instead -- a line that can only ever climb, so the last
+ * card always towered over the first and a quiet Saturday looked like the
+ * account's biggest day. It answered a question nobody asked, and it answered
+ * it in a shape that implied hours.
+ *
+ * So one bar, one day, all seven scaled against the same maximum -- which is
+ * what makes the cards comparable by eye, and is the honest shape for one
+ * number per day.
+ *
+ *   value  this day's own total, null when no row is stored
+ *   max    the largest value across the whole trail, passed in so every card
+ *          shares a scale. Worked out per card, each bar would be full height
+ *          and the row would say nothing at all.
+ *
+ * A DAY WITH NO ROW IS NOT A DAY THAT SPENT NOTHING, so it draws the empty
+ * track and no bar, rather than a zero-height bar sitting on the floor looking
+ * like a measured nought.
+ */
+function ppcMiniBar(value, max, colour){
+  const w = 120, h = 50;
+  const track = '<rect x="0" y="0" width="' + w + '" height="' + h + '" '
+    + 'fill="var(--ppc-border)" fill-opacity="0.25"/>';
+  const svg = function(inner){
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" '
+      + 'style="width:100%;height:100%" preserveAspectRatio="none">'
+      + track + inner + '</svg>';
+  };
+  if(value === null || value === undefined || isNaN(Number(value))) return svg("");
+  const top = Number(max) || 0;
+  // Every day at nought is a real answer -- a flat empty row, not seven full
+  // bars, which is what dividing by a zero maximum would draw.
+  const frac = top > 0 ? Math.max(0, Math.min(1, Number(value) / top)) : 0;
+  const bh = frac * h;
+  if(bh <= 0) return svg("");
+  return svg('<rect x="6" y="' + (h - bh).toFixed(1) + '" width="' + (w - 12)
+    + '" height="' + bh.toFixed(1) + '" fill="' + colour
+    + '" fill-opacity="0.85"/>');
 }
 
 /* ---- a KPI card -----------------------------------------------------------
