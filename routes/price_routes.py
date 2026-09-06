@@ -141,15 +141,26 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         means the number this screen warns about and the number the repricer
         works to are the same number (Rule 12).
         """
+        # THE COST THE OWNER SET, not one read out of the SKU.
+        #
+        # This called cost_from_sku(), which parsed the number before the first
+        # underscore of a generated SKU. That parse is gone from every cost path
+        # -- a cost is something you set, by upload, by the Listings COGS
+        # column, or per order. A floor built on a guessed cost warns about a
+        # price that was never in danger, or fails to warn about one that is.
         from domain import cogs as _cogs
+        from domain import cogs_store as _cstore
         cost = None
         try:
-            cost = _cogs.cost_from_sku(sku)
+            cost, _src = _cogs.resolve(
+                _cstore.all_overrides(CONFIG_PATH),
+                (acc or {}).get("id") or "", sku)
         except Exception:
             cost = None
         if cost is None:
-            return None, ("This SKU records no source cost, so there is no floor "
-                          "to check the new price against.")
+            return None, ("No cost has been set for this SKU, so there is no "
+                          "floor to check the new price against. Set one on the "
+                          "Listings COGS column or by uploading a cost sheet.")
         try:
             from domain import source_repo as _repo
             from domain import sourcing as _sourcing

@@ -20,13 +20,27 @@ Asked for as a toggle on the page:
            product, applying to every order past and future. Simple, and right
            for stock bought once at a known price.
 
-WHERE A COST COMES FROM, IN ORDER OF TRUST
-  1. a correction typed against THAT ONE ORDER -- always wins, and applies to
-     that order alone: "my typed cogs win but it should be only for that order
-     not all time frames and all orders"
-  2. in TRACKED mode, the supplier price in force when the order arrived
-  3. a cost typed against the product (domain/cogs.py overrides)
-  4. the cost built into the SKU
+WHERE A COST COMES FROM -- TWO PLACES, AND BOTH ARE PLACES YOU TYPED IT
+  1. a cost typed against THAT ONE ORDER -- always wins, and applies to that
+     order alone: "my typed cogs win but it should be only for that order not
+     all time frames and all orders"
+  2. the cost set against the product, by bulk upload or one SKU at a time
+  3. nothing -- and nothing is NOT zero
+
+That is the whole list, by instruction: "lets remove the cogs from sku things
+entirely, lets keep it simple". Two things used to sit in this chain and are
+gone:
+
+  the cost read out of the SKU -- the number before the first underscore of a
+    generated SKU. A guess dressed as data, right only for SKUs this app
+    generated itself and impossible for one named by hand, with nothing on any
+    screen to tell the two apart. Every value it was supplying was written into
+    the product store by migrate_sku_costs.py first, so no figure went blank
+    when it went: 18 SKUs covering all 50 costed order lines.
+
+  TRACKED mode -- the supplier price the repricer had recorded before the order
+    arrived. A third cost nobody had set. `mode` is still accepted by the
+    functions below so no caller breaks, and is ignored.
 
 THE SUPPLIER PRICE ALREADY INCLUDES THEIR POSTAGE -- "the source price is actual
 source price including shipping" -- so nothing is added for inbound carriage.
@@ -106,23 +120,32 @@ def resolve(config_path, workspace_id, marketplace, sku, when, mode,
     """
     from domain import cogs as _cogs
 
+    # TWO SOURCES, IN ORDER, AND NOTHING ELSE.
+    #
+    #     "if the cogs of the sku are set by the user by bulk upload or one by
+    #      one per sku, consider them for profit calculation, if those cogs are
+    #      filled and also a person has put in the cogs per order in the all
+    #      orders page, consider those cogs for profit calculation"
+    #
+    #   1. a cost typed against THIS ONE ORDER -- wins, and applies to that
+    #      order alone
+    #   2. the cost set against the product, by upload or one at a time
+    #   3. nothing. Not a guess, not a zero.
+    #
+    # `mode` is still accepted so every caller keeps working, and is IGNORED.
+    # Tracked mode used to sit between the two above, taking the supplier price
+    # the repricer happened to have recorded before the order arrived. It was a
+    # third cost nobody had set, on an account where all sixteen of its frozen
+    # costs turned out to come from the SKU parse anyway.
     if order_override is not None:
         try:
             return round(float(order_override), 4), "manual-order"
         except (TypeError, ValueError):
             pass
 
-    if mode == MODE_TRACKED:
-        c = tracked_cost(config_path, workspace_id, marketplace, sku, when)
-        if c is not None:
-            return c, "tracked"
-
-    # Both modes fall back here: a typed cost, then the SKU's own. In TRACKED
-    # mode this covers orders from before the repricer ever saw that product,
-    # which would otherwise have no cost at all.
     cost, src = _cogs.resolve(overrides or {}, workspace_id, sku)
     if cost is not None:
-        return round(float(cost), 4), ("manual" if src == "manual" else "sku")
+        return round(float(cost), 4), "manual"
     return None, ""
 
 

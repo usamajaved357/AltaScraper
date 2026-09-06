@@ -135,13 +135,27 @@ truthy("  and says which it is", '"cogs_source": src' in D)
 truthy("  with the reason recorded",
        "disappeared from the screen it was typed on" in D)
 
-print("\n=== and the resolver's precedence is unchanged ===")
-# A typed cost beats the SKU; the SKU beats nothing; 0.00 in a SKU means UNKNOWN.
-check("a manual cost wins", C.resolve({"a::9.99_3Days_B0X": 4.0}, "a",
-                                      "9.99_3Days_B0X"), (4.0, "manual"))
-check("otherwise the SKU is read", C.resolve({}, "a", "9.99_3Days_B0X"),
-      (9.99, "sku"))
-check("0.00 in a SKU is unknown, not free", C.resolve({}, "a", "0.00_3Days_B0X"),
+print("\n=== a cost is something you SET, and nothing else ===")
+#     "lets remove the cogs from sku things entirely, lets keep it simple, if
+#      the cogs of the sku are set by the user by bulk upload or one by one per
+#      sku, consider them for profit calculation"
+#
+# The resolver used to fall through to the number before the first underscore of
+# a generated SKU. That was a guess dressed as data: right only for SKUs this app
+# generated, impossible for one named by hand, and nothing on screen told the two
+# apart. Every value it supplied was written into this store first
+# (migrate_sku_costs.py), so no figure went blank when it went.
+check("a cost you set is used", C.resolve({"a::9.99_3Days_B0X": 4.0}, "a",
+                                          "9.99_3Days_B0X"), (4.0, "manual"))
+# THE ONE THAT CHANGED. The SKU says 9.99 and it is ignored.
+check("a SKU with a number in it is NOT read as a cost",
+      C.resolve({}, "a", "9.99_3Days_B0X"), (None, ""))
+check("  a hand-named SKU is unknown too, as it always was",
+      C.resolve({}, "a", "AltaboltaVoo Ceiling Fan"), (None, ""))
+# NO COST IS NOT A ZERO COST -- the rule that outlives the change. Zero would
+# make a product look infinitely profitable, and that is precisely the one
+# somebody would then buy more of.
+check("unknown is None, never 0", C.resolve({}, "a", "0.00_3Days_B0X"),
       (None, ""))
 check("a hand-made SKU has no cost", C.resolve({}, "a", "46 pcs wrench"),
       (None, ""))

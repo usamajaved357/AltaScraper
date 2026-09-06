@@ -65,19 +65,37 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account,
         if not wsid:
             return jsonify({"ok": False,
                             "error": "open an account workspace first"}), 400
+        # THERE IS ONLY ONE RULE NOW, so this reports the rule rather than
+        # offering a choice that no longer changes anything.
+        #
+        #     "lets remove the cogs from sku things entirely, lets keep it
+        #      simple"
+        #
+        # Both modes used to end in a cost nobody had set -- tracked took the
+        # supplier price the repricer happened to have recorded, and both fell
+        # through to the number in the SKU. A toggle that alters nothing is
+        # worse than no toggle: somebody flips it, watches for a change, and
+        # concludes the costs themselves are broken.
         mode = _oc.mode_for(_cfg, wsid)
         return jsonify({
             "ok": True, "mode": mode, "modes": list(_oc.MODES),
+            "retired": True,
+            "rule": ("A cost comes from one of two places, and both are places "
+                     "you typed it: a cost set against THIS ORDER wins and "
+                     "applies to that order alone; otherwise the cost set "
+                     "against the product, by bulk upload or one SKU at a time. "
+                     "A product nobody has costed shows no profit rather than a "
+                     "flattering one."),
             "explain": {
                 _oc.MODE_TRACKED:
-                    "Each order costs what the supplier was charging at the "
-                    "moment it arrived. Needs the repricer to be watching that "
-                    "product; orders from before it started fall back to the "
-                    "cost in the SKU.",
+                    "Retired. This used to take the supplier price the repricer "
+                    "had recorded before the order arrived — a cost nobody had "
+                    "set. It no longer affects anything.",
                 _oc.MODE_SKU:
-                    "Every order of a product costs the same: the price built "
-                    "into its SKU, or a cost you have typed against it. "
-                    "Changing that cost changes past orders too.",
+                    "The only rule. A cost you set against the product applies "
+                    "to every order of it; a cost you set against one order "
+                    "beats it, for that order alone. Nothing is read out of the "
+                    "SKU any more.",
             },
         })
 

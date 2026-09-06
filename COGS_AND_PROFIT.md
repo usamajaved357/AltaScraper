@@ -31,54 +31,59 @@ It is not yet a number to run the business on, and the app says so itself
 
 # Part 1 — Cost of goods
 
-## Where a cost comes from, in order of trust
+## Where a cost comes from — two places, and both are places you typed it
 
-`domain/order_cogs.py:100` `resolve()` is the one place that decides. It tries,
-in this order, and stops at the first answer:
+> **Changed 6 Sep 2026, by instruction:** *"lets remove the cogs from sku things
+> entirely, lets keep it simple, if the cogs of the sku are set by the user by
+> bulk upload or one by one per sku, consider them for profit calculation, if
+> those cogs are filled and also a person has put in the cogs per order in the
+> all orders page, consider those cogs."*
 
-1. **A correction typed against that one order** → source `manual-order`
-   Wins over everything, and applies to that order alone. Asked for in exactly
-   those terms: *"my typed cogs win but it should be only for that order not all
-   time frames and all orders."*
-2. **The supplier price in force when the order arrived** → source `tracked`
-   Only in `tracked` mode. The newest reading taken *at or before* the moment
-   the order arrived — a later reading describes a price that order never paid.
-3. **A cost typed against the product** → source `manual`
-   From `cogs_overrides.json`. Applies to every order, past and future.
-4. **The cost written into the SKU** → source `sku`
+`domain/order_cogs.py` `resolve()` is the one place that decides. It tries, in
+this order, and stops at the first answer:
 
-If none of them answer, the cost is `None`. **Never `0`.** A zero cost makes a
+1. **A cost typed against that one order** → source `manual-order`
+   Wins, and applies to that order alone. Set on the Orders page, one at a time
+   or by bulk file. Asked for in exactly those terms: *"my typed cogs win but it
+   should be only for that order not all time frames and all orders."*
+2. **A cost set against the product** → source `manual`
+   From `cogs_overrides.json`, set on the Listings COGS column or by uploading a
+   cost sheet. Applies to every order of that product, past and future.
+3. **Nothing.**
+
+If neither answers, the cost is `None`. **Never `0`.** A zero cost makes a
 product look infinitely profitable, and that is precisely the product somebody
 would then order more of.
 
-## The SKU carries the cost
+### Two sources were removed, and why
 
-The generator builds SKUs as `{source_cost}_{N}Days_{COMPETITOR_ASIN}` — for
-example `13.02_3Days_B0D25XZLMJ`. So the cost is already written on every SKU the
-app generated, and does not need entering again.
+**The cost read out of the SKU.** The generator builds SKUs as
+`{source_cost}_{N}Days_{COMPETITOR_ASIN}` — `13.02_3Days_B0D25XZLMJ` — and the
+app used to read `13.02` as the cost. It was a guess dressed as data: correct
+only for SKUs this app generated, impossible for one named by hand
+(`AltaboltaVoo Ceiling Fan`, `46 pcs wrench`), and indistinguishable from a real
+cost on every screen that showed it.
 
-`domain/cogs.py:35` `cost_from_sku()` reads everything before the first
-underscore and accepts it if it is a positive number. Two traps it handles:
+**`tracked` mode.** The supplier price the repricer happened to have recorded
+before the order arrived — a third cost nobody had set. The `cogs_mode` setting
+still exists so no caller breaks, and no longer changes anything.
 
-- **`0.00` means unknown, not free.** `build_sku` writes `0.00` when it had no
-  cost to write, so a zero is rejected rather than believed.
-- **The ASIN in that SKU is the *competitor's*, not ours** (CLAUDE.md Rule 1).
-  Only the leading cost is ever read from it. Nothing here uses that ASIN to
-  identify one of our listings.
+### Nothing lost its cost when they went
 
-Hand-made SKUs — `AltaboltaVoo Ceiling Fan`, `46 pcs wrench` — carry no cost and
-never can. Those need a typed one.
+Measured before the change: **every** cost in the database came from the SKU
+parse — 50 of 50 costed order lines — and the product store held **one** entry.
+Removing the parse alone would have taken profit, margin, contribution and
+break-even ACOS to *unknown* on every screen at once.
 
-## The two modes
+So `migrate_sku_costs.py` ran first and copied those values into the product
+store, exactly as though they had been uploaded: **18 SKUs covering all 50
+costed lines**. Measured after: jack_uk 18 of 18 still costed, nestwell_goods 32
+of 62, sales COGS £278.17 and break-even ACOS 53.3% — all unchanged. The five
+SKUs that resolve to nothing are the hand-named ones, which had no cost before
+either.
 
-Set per account (`cogs_mode`), same as VAT. `domain/order_cogs.py:50`.
-
-- **`sku`** — the cost in the SKU, overridden by a cost typed against the
-  product. Simple, and right for stock bought once at a known price.
-- **`tracked`** — the repricer checks each supplier every few hours and records
-  the price *with the time it was read*. An order is costed at the price that was
-  true when it arrived. Falls back to the `sku` rule for orders placed before the
-  repricer ever saw that product.
+They are now costs the owner **owns**: visible in the Listings COGS column,
+replaceable by cost-sheet upload, and overridable per order.
 
 ## What is *not* in the cost of goods
 

@@ -45,14 +45,21 @@ check("  nor this one", cogs.cost_from_sku("AltaboltaVoo Ceiling Fan"), None)
 check("  nor a random code", cogs.cost_from_sku("1U-OMQC-HX2V"), None)
 check("empty is not zero", cogs.cost_from_sku(""), None)
 
-print("\n=== a person always beats the SKU ===")
+print("\n=== the ONLY cost is the one somebody set ===")
+# The SKU is no longer read for a cost at all. It used to be the fallback --
+# the number before the first underscore of a generated SKU -- and that is gone:
+# right only for SKUs this app generated, impossible for one named by hand, and
+# indistinguishable from a real cost on every screen that showed it.
 ov = {"jack_uk::15.09_3DAYS_B0F7D29MFZ": 12.00}
-check("a manual override wins",
+check("a cost you set is used",
       cogs.resolve(ov, WS, "15.09_3DAYS_B0F7D29MFZ"), (12.0, "manual"))
-check("  and is scoped to its account",
-      cogs.resolve(ov, "other_acct", "15.09_3DAYS_B0F7D29MFZ"), (15.09, "sku"))
-check("without an override the SKU is used",
-      cogs.resolve({}, WS, "15.09_3DAYS_B0F7D29MFZ"), (15.09, "sku"))
+# SCOPED TO THE ACCOUNT. The keys share one flat file across every workspace, so
+# this is the check that one account's costs cannot leak into another's -- and
+# the other account now gets NOTHING rather than the SKU's number.
+check("  and is scoped to its account, which now means no cost at all",
+      cogs.resolve(ov, "other_acct", "15.09_3DAYS_B0F7D29MFZ"), (None, ""))
+check("a SKU with a number in it is not a cost",
+      cogs.resolve({}, WS, "15.09_3DAYS_B0F7D29MFZ"), (None, ""))
 check("with neither, there is no cost", cogs.resolve({}, WS, "46 pcs wrench"), (None, ""))
 check("an override can rescue an uncosted SKU",
       cogs.resolve({"jack_uk::46 pcs wrench": 4.5}, WS, "46 pcs wrench"), (4.5, "manual"))
@@ -77,7 +84,14 @@ def shipment(date, lines):
 
 SKUMAP = {"10.00_3Days_B0AAAAAAAA": "B0OURS00001",
           "46 pcs wrench": "B0OURS00002"}
-LOOK = cogs.lookup({}, WS)
+# THE COST IS SET, not read out of the SKU. This used to pass an empty override
+# map and rely on "10.00_3Days_..." parsing to 10.00 -- which is exactly the
+# behaviour that has been removed: a cost is now something the owner sets, by
+# upload or one SKU at a time.
+#
+# The fixture means the same thing either way: one SKU costed at 10.00 and one
+# hand-named SKU with no cost at all, which is what every check below turns on.
+LOOK = cogs.lookup({"%s::10.00_3Days_B0AAAAAAAA" % WS: 10.00}, WS)
 
 # Day 1: everything costed.  2 units at 10.00 cost, 60.00 revenue, 9.00 fees.
 ev1 = {"FinancialEvents": {"ShipmentEventList": [
@@ -151,7 +165,12 @@ print("\n=== a cost typed later reaches a day only when that day is re-pulled ==
 # If this ever stops working the on-screen note becomes a lie, which is worse
 # than a blank profit: the user follows it, sees nothing change, and concludes
 # the profit figure itself is broken.
-LOOK2 = cogs.lookup({"jack_uk::46 pcs wrench": 5.00}, WS)
+# BOTH costs are set now: the one that was already set, plus the hand-named SKU
+# somebody has just typed a cost for. The generated SKU's cost has to be carried
+# forward explicitly, because nothing reads it out of the SKU any more -- which
+# is the whole change, and this is the fixture admitting it.
+LOOK2 = cogs.lookup({"%s::10.00_3Days_B0AAAAAAAA" % WS: 10.00,
+                     "%s::46 pcs wrench" % WS: 5.00}, WS)
 rows2b, notes2b = fd.parse_events(ev2, SKUMAP, cost_lookup=LOOK2)
 tot2b = [r for r in rows2b if r["asin"] == "*"][0]
 check("the override prices the previously uncosted unit", tot2b["cogs_units"], 2)
