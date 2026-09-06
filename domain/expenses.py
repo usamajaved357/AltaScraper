@@ -253,19 +253,24 @@ def for_window(config_path, workspace_id, marketplace, start, end):
     }
 
 
-def suggest(config_path, workspace_id, marketplace, start, end):
-    """The fixed Amazon charge nobody has entered yet, offered ready to add.
+def account_level_charge(config_path, workspace_id, marketplace, start, end):
+    """What Amazon charged the ACCOUNT that belongs to no order. -> float.
 
-    domain/pnl.py can already SEE the monthly subscription -- it is the gap
-    between what Amazon charged the account and what the order-joined fees
-    account for -- and until now all it could do was print a note asking
-    somebody to treat it as a fixed cost. Reading a note and retyping a number
-    is the step nobody takes, so this hands back the figure and the wording, and
-    the screen offers a button.
+    The monthly selling subscription is the usual one. Amazon posts it against
+    the account rather than a sale, so every order-joined fee query in the app
+    is blind to it by construction -- measured at 60.00 on nestwell_goods
+    against 1.28 of "other" the per-order query could see.
 
-    Returns None when there is nothing to suggest, or when something matching is
-    already recorded -- offering to add a cost that is already subtracted is how
-    it ends up subtracted twice.
+    THE SAME NUMBER WHICHEVER CALENDAR THE SCREEN IS ON. It is what Amazon
+    charged in the window, less what the orders account for; neither half
+    depends on whether the caller is thinking in orders or in settlements. The
+    Finance screen derived it from a totals field that only held in settlement
+    mode, so the overhead line read 65.51 on one tab and 0.00 on the other for
+    the same month and the same charge.
+
+    Never negative: when the orders account for MORE than Amazon charged, there
+    is no account-level charge to find, and a negative here would be subtracted
+    from profit as though it were income.
     """
     conn = _db.get_db(config_path)
     charged = conn.execute(
@@ -280,9 +285,28 @@ def suggest(config_path, workspace_id, marketplace, start, end):
         "WHERE o2.workspace_id=? AND o2.marketplace=? "
         "AND substr(o2.purchase_date,1,10)>=? AND substr(o2.purchase_date,1,10)<=?",
         (workspace_id, marketplace, start, end)).fetchone()
-
     gap = round(float((charged["o"] if charged else 0) or 0)
                 - float((attributed["o"] if attributed else 0) or 0), 2)
+    return max(0.0, gap)
+
+
+def suggest(config_path, workspace_id, marketplace, start, end):
+    """The fixed Amazon charge nobody has entered yet, offered ready to add.
+
+    domain/pnl.py can already SEE the monthly subscription -- it is the gap
+    between what Amazon charged the account and what the order-joined fees
+    account for -- and until now all it could do was print a note asking
+    somebody to treat it as a fixed cost. Reading a note and retyping a number
+    is the step nobody takes, so this hands back the figure and the wording, and
+    the screen offers a button.
+
+    Returns None when there is nothing to suggest, or when something matching is
+    already recorded -- offering to add a cost that is already subtracted is how
+    it ends up subtracted twice.
+    """
+    # ONE READER OF THAT GAP, shared with the Finance screen's overhead line so
+    # the two cannot report different figures for the same charge (Rule 12).
+    gap = account_level_charge(config_path, workspace_id, marketplace, start, end)
     if gap <= 0:
         return None
 

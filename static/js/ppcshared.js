@@ -295,6 +295,49 @@ function ppcProductNote(av){
   return '<div class="ppc-note warn">' + _pEsc(p.why) + '</div>';
 }
 
+/* ---- reloading without blanking the screen --------------------------------
+ *
+ *     "when i change the range the whole screen dissappears and then reappear
+ *      after loading, normally the filters change results in a franction of
+ *      seconds without blinking the screen"
+ *
+ * All three screens wiped innerHTML and drew a spinner. What is already on
+ * screen is still TRUE -- it is simply for the previous window -- so it stays,
+ * dimmed, with a small bar saying so. Only a first load, with nothing worth
+ * keeping, draws the spinner on its own.
+ *
+ * WHOLLY DEFENSIVE. This is decoration around the real work; a missing element
+ * must never stop a render that would otherwise have succeeded. */
+function ppcBusy(hostId, on){
+  try{
+    const host = document.getElementById(hostId);
+    if(!host || typeof host.querySelector !== "function") return;
+    const page = host.querySelector(".ppc-page");
+    if(page && page.style) page.style.opacity = on ? "0.55" : "";
+    const barId = hostId + "_busy";
+    let bar = document.getElementById(barId);
+    if(on && !bar && page && typeof document.createElement === "function"){
+      bar = document.createElement("div");
+      bar.id = barId;
+      bar.className = "ppc-busy";
+      bar.innerHTML = '<span class="genspin"></span> Updating…';
+      if(typeof page.prepend === "function") page.prepend(bar);
+      else if(typeof page.insertBefore === "function")
+        page.insertBefore(bar, page.firstChild);
+    }else if(!on && bar && typeof bar.remove === "function"){
+      bar.remove();
+    }
+  }catch(e){ /* never let the busy state break the page */ }
+}
+
+/* Arm the draw-in animation on charts just inserted. The hover and drag
+ * handlers are inline on the SVG salesCombo returns, so they need nothing. */
+function ppcArm(hostId){
+  if(typeof altaChartsInView !== "function") return;
+  try{ altaChartsInView(document.getElementById(hostId) || document); }
+  catch(e){}
+}
+
 /* ---- the shared window ----------------------------------------------------
  *
  * All three screens answer for the same window, because moving between them

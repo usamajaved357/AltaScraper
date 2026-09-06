@@ -447,8 +447,67 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         "values": flat["values"], "content": flat["content"],
                         "multi": flat["multi"], "skipped": flat["skipped"],
                         "issues": issues, "summary": summary,
+                        # WHICH KIND OF LISTING THIS IS. See _offer_shape.
+                        "shape": _offer_shape(got.get("attributes") or {}),
                         "amazon_status": (", ".join(_st) if isinstance(_st, list)
                                           else str(_st or ""))})
+
+    def _offer_shape(attrs):
+        """Is this a product this account created, or an offer on somebody else's?
+
+            "the items i listed were same in both, but i did mee too on
+             nestwell goods so they were not used using the app"
+
+        The two are completely different things and the drawer showed them
+        identically, which is how twenty-six of them were once diagnosed as
+        "misfiled" and nearly moved to another account -- they were not misfiled,
+        they were me-too offers made in Seller Central.
+
+        MEASURED, NOT INFERRED FROM A COUNT. An offer-only listing carries
+        `merchant_suggested_asin`: the seller naming the ASIN they are joining.
+        A product this app created never does -- CLAUDE.md Rule 1 forbids
+        sending it -- so its presence is the fact, and the handful of attributes
+        beside it is only corroboration.
+
+        Returns a dict the drawer renders; `kind` is "offer" or "own", and
+        "unknown" when Amazon returned no attributes at all, because an empty
+        answer is not evidence of either.
+        """
+        attrs = attrs if isinstance(attrs, dict) else {}
+        if not attrs:
+            return {"kind": "unknown", "attributes": 0, "asin": "",
+                    "why": ("Amazon returned no attributes for this SKU, so "
+                            "there is nothing to tell the two apart by.")}
+
+        # The attribute is a list of {value: "B0..."} like every other one.
+        raw = attrs.get("merchant_suggested_asin")
+        asin = ""
+        if isinstance(raw, list) and raw:
+            first = raw[0]
+            asin = str((first or {}).get("value") or "") if isinstance(first, dict) \
+                else str(first or "")
+        elif isinstance(raw, str):
+            asin = raw
+
+        if asin:
+            return {
+                "kind": "offer", "attributes": len(attrs), "asin": asin,
+                "why": ("This is an OFFER on an ASIN somebody else created — a "
+                        "me-too listing, made in Seller Central rather than by "
+                        "this app. Amazon holds %d attributes for it because "
+                        "the product data belongs to the ASIN, not to you. "
+                        "Editing the title, images or description here cannot "
+                        "change what shoppers see: that is the ASIN's, and only "
+                        "its owner can change it. Price, stock and handling "
+                        "time ARE yours and can be changed."
+                        % len(attrs)),
+            }
+        return {
+            "kind": "own", "attributes": len(attrs), "asin": "",
+            "why": ("This is your own product listing — the product data on the "
+                    "ASIN is yours, so editing it here changes what shoppers "
+                    "see."),
+        }
 
     @app.route("/live/pull_row", methods=["POST"])
     def live_pull_row():

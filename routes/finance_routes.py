@@ -25,9 +25,20 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         sitting in the database. See routes/scope.py for the order and for the
         twenty-four places that were each deciding this for themselves.
         """
+        # `account` IS THE NAME, and `id` still answers.
+        #
+        #     "Standardize the account parameter name across all routes. Pick
+        #      ONE name — use 'account' everywhere."
+        #
+        # This one was missed and still read `id` alone, so a caller using the
+        # standard spelling fell through to whichever workspace happened to be
+        # open -- silently, and on a page of money. request_account.named() is
+        # the shared reader; `id` is kept behind it so nothing that already
+        # works stops working.
+        import domain.request_account as _req_acct
         return _scope_mod.resolve(
             state=_state, account=_active_account() or {},
-            asked_id=request.args.get("id"),
+            asked_id=(_req_acct.named(request) or request.args.get("id")),
             asked_marketplace=request.args.get("marketplace"),
             with_data=_marketplace_with_data,
             # The record must follow the id. This screen reads its figures by
@@ -90,8 +101,30 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                       acc.get("label") or wsid))}), 400
         start, end = _range()
         from domain import sales_data as _sd
-        rows, totals = _contrib.by_product(CONFIG_PATH, wsid, mkt, start, end,
-                                           vat_rate=_sd.vat_rate_for(_cfg, wsid))
+        # TWO CALENDARS, AND THE SCREEN SAYS WHICH IS ON.
+        #
+        #   settlement  finance_daily -- money that has MOVED. Ties to the
+        #               payout, and lags: measured on nestwell_goods for August
+        #               it returns ONE product on an account where forty-five
+        #               sold, which reads as "nothing sold" unless it is labelled.
+        #   orders      order_lines -- everything PLACED in the window, settled
+        #               or not. Fifteen products for the same month. Ties to
+        #               what was sold.
+        #
+        # Neither is the truer figure; they answer different questions. The
+        # default is orders because that is the one somebody opening a month
+        # expects to see, and the reply names the basis either way.
+        basis = (request.args.get("basis") or "orders").strip().lower()
+        if basis not in ("orders", "settlement"):
+            basis = "orders"
+        vat = _sd.vat_rate_for(_cfg, wsid)
+        if basis == "settlement":
+            rows, totals = _contrib.by_product(CONFIG_PATH, wsid, mkt,
+                                               start, end, vat_rate=vat)
+            totals.setdefault("basis", "settlement")
+        else:
+            rows, totals = _contrib.by_product_orders(CONFIG_PATH, wsid, mkt,
+                                                      start, end, vat_rate=vat)
         # WHY IT IS EMPTY, WHEN IT IS EMPTY.
         #
         # "Nothing in this period yet — press Sync" was the same sentence for
@@ -201,11 +234,124 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         except Exception:
             pass
 
+        # WHAT THE ACCOUNT WAS CHARGED THAT NO PRODUCT ROW CARRIES, plus the
+        # costs Amazon never sees. Together these are the gap between what the
+        # products contributed and what the business actually kept.
+        overhead = _finance_overhead(wsid, mkt, start, end, totals)
+
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "account_label": acc.get("label") or wsid,
                         "empty_note": empty_note, "have": have,
                         "start": start, "end": end,
+                        "basis": basis,
                         "rows": rows, "totals": totals,
                         "notes": notes,
+                        "overhead": overhead,
+                        # The window before this one, same length, for the
+                        # "vs prev" figures the cards carry.
+                        "previous": _finance_previous(wsid, mkt, start, end,
+                                                      basis),
                         "ads_connected": totals.get("ad_spend") is not None,
                         "currency": totals.get("currency") or ""})
+
+    def _finance_previous(wsid, mkt, start, end, basis):
+        """The same window, immediately before. Totals only.
+
+        Every "vs prev 30d" on the cards is against this. Returns None rather
+        than zeros when the earlier window has nothing -- a move from no data to
+        a number is not a rise, and rendering it as one invites somebody to
+        celebrate a sync finishing.
+        """
+        import datetime as _dt
+        try:
+            s = _dt.date.fromisoformat(start)
+            e = _dt.date.fromisoformat(end)
+        except ValueError:
+            return None
+        span = (e - s).days + 1
+        pe = s - _dt.timedelta(days=1)
+        ps = pe - _dt.timedelta(days=span - 1)
+        from domain import sales_data as _sd
+        try:
+            fn = (_contrib.by_product if basis == "settlement"
+                  else _contrib.by_product_orders)
+            _rows, tot = fn(CONFIG_PATH, wsid, mkt, ps.isoformat(),
+                            pe.isoformat(), vat_rate=_sd.vat_rate_for(_cfg, wsid))
+        except Exception:
+            return None
+        if not _rows:
+            return None
+        tot["start"] = ps.isoformat()
+        tot["end"] = pe.isoformat()
+        return tot
+
+    def _finance_overhead(wsid, mkt, start, end, totals):
+        """The gap between contribution and net profit, itemised as far as it can be.
+
+        THE SPEC ASKS FOR EIGHT NAMED AMAZON FEE TYPES -- fba_inbound_transportation,
+        fba_disposal, deal_participation and the rest. THOSE ARE NOT STORED.
+        domain/finance_data buckets every charge into referral, FBA, promo or
+        "other", and only the bucket survives; the fee TYPE Amazon sent is not
+        kept. So the accordion shows the two lines that ARE knowable -- what
+        Amazon charged the account outside any order, and the costs entered by
+        hand -- and says plainly that the rest cannot be broken down yet rather
+        than inventing eight rows of plausible names.
+
+        That is a real limitation with a real fix (keep the fee type on the way
+        in), and naming it is how it gets fixed rather than papered over.
+        """
+        out = {"items": [], "total": 0.0, "why": ""}
+
+        # THE SAME CHARGE WHICHEVER CALENDAR IS ON. This read
+        # totals["unattributed_fees"], which is derived by comparing Amazon's
+        # settled figures against the product ROWS -- a comparison that only
+        # holds when those rows came from the settlement feed. On the order
+        # calendar the rows cover far more revenue than Amazon has settled, so
+        # the gap came out nought and the overhead line read 65.51 on one tab
+        # and 0.00 on the other, for the same month and the same subscription.
+        # domain/expenses owns the figure now and neither half of it depends on
+        # the basis (Rule 12).
+        try:
+            from domain import expenses as _exp0
+            unatt = _exp0.account_level_charge(CONFIG_PATH, wsid, mkt, start, end)
+        except Exception:
+            unatt = float(totals.get("unattributed_fees") or 0.0)
+        if unatt:
+            out["items"].append({
+                "label": "Amazon charges that belong to no order",
+                "amount": round(unatt, 2),
+                "note": ("The monthly selling subscription is the usual one. "
+                         "Amazon posts these against the account rather than a "
+                         "sale, so no per-product row can carry them."),
+                "children": [],
+            })
+
+        try:
+            from domain import expenses as _exp
+            man = _exp.for_window(CONFIG_PATH, wsid, mkt, start, end)
+        except Exception:
+            man = {"total": 0.0, "items": [], "recorded": 0}
+        out["items"].append({
+            "label": "Your own costs",
+            # RECORDED NONE AND SPENT NONE ARE DIFFERENT, and the accordion says
+            # which: None reads "not recorded", 0.00 is a measurement.
+            "amount": (round(float(man.get("total") or 0), 2)
+                       if man.get("recorded") else None),
+            "note": ("The accountant, the software, the packaging — Amazon "
+                     "reports none of it." if man.get("recorded") else
+                     "Nothing recorded, so nothing has been subtracted for it."),
+            "children": [{"label": x["name"], "amount": x["in_window"]}
+                         for x in (man.get("items") or [])],
+        })
+
+        out["total"] = round(unatt + float(man.get("total") or 0), 2)
+        out["why"] = (
+            "Amazon sends a type with every charge — storage, inbound "
+            "transportation, disposal, deal participation — but this app keeps "
+            "only the bucket it falls into, so those cannot be listed "
+            "separately yet. The total above is right; the breakdown inside it "
+            "is not available.")
+        c = totals.get("contribution")
+        out["contribution"] = c
+        out["net_profit"] = (round(c - out["total"], 2) if c is not None else None)
+        return out

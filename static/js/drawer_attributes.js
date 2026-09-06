@@ -52,6 +52,72 @@ function lvKeys(sku){
 }
 
 /* Fetch once. Re-entrant: a second call while one is in flight does nothing. */
+/* IS THIS YOUR PRODUCT, OR YOUR OFFER ON SOMEBODY ELSE'S?
+ *
+ *     "the items i listed were same in both, but i did mee too on nestwell
+ *      goods so they were not used using the app"
+ *
+ * The drawer showed both identically, and that is how twenty-six me-too offers
+ * were once diagnosed as "misfiled under the wrong account" and nearly moved --
+ * which would have taken the other account's own listings away.
+ *
+ * The distinction matters every time somebody edits: on an offer, the title,
+ * the images and the description belong to the ASIN and cannot be changed from
+ * here however many times Save is pressed. Price, stock and handling are yours.
+ * Saying so up front is the difference between a screen that refuses and one
+ * that explains. */
+function lvShapeBar(L){
+  const s = L && L.shape;
+  if(!s || s.kind === "unknown") return "";
+  if(s.kind !== "offer") return "";          // your own product: nothing to warn
+  return '<div class="lv-issues" style="border-left:3px solid var(--warn)">'
+    + '<b>This is a me-too offer, not your own product listing.</b>'
+    + (s.asin ? ' <code>' + esc(s.asin) + '</code>' : "")
+    + '<div class="lv-issue" style="opacity:.85">' + esc(s.why || "") + '</div>'
+    + '</div>';
+}
+
+/* One of Amazon's errors, with the two values named.
+ *
+ *     "Row 38 -> ASIN B0H8TFYNB9 -> 'number_of_items' (Merchant 1 / Amazon 2)
+ *      Catalogue ASIN is a 2-PACK; we submit a 1-pack."
+ *
+ * Amazon's message says the values differ and leaves you to work out which is
+ * whose. The one that matters is that the FIRST is yours and the second is the
+ * ASIN's -- and the correct response is usually NOT to copy the ASIN's, because
+ * a mismatch on pack size normally means the barcode matched the wrong product
+ * entirely. Copying it would build a piggyback listing on somebody else's ASIN,
+ * which Rule 1 forbids.
+ *
+ * THE ATTRIBUTE NAME COMES FROM THE STRUCTURED FIELD, never the prose. Reading
+ * it out of the message text is exactly the "The"/"Your" phantom-field bug the
+ * parsing rule in CLAUDE.md was written for; the numbers below are read from
+ * the text only after the name has come from `attributes`. */
+function lvIssueHtml(i){
+  const names = (i.attributes || []).filter(Boolean);
+  let extra = "";
+  // Amazon writes these as "... Merchant: 1 ... Amazon: 2" or "(1 / 2)". Only
+  // read them when Amazon named an attribute in its structured field -- prose
+  // alone is never enough to label a value.
+  if(names.length){
+    const m = String(i.message || "")
+      .match(/merchant[^0-9a-z]{0,4}([\w.\-]+)[\s\S]{0,40}?amazon[^0-9a-z]{0,4}([\w.\-]+)/i);
+    if(m){
+      extra = '<div class="lv-issue" style="opacity:.85">'
+        + '<b>Yours:</b> ' + esc(m[1])
+        + ' &nbsp;·&nbsp; <b>The ASIN\'s:</b> ' + esc(m[2])
+        + '<div style="margin-top:3px">A mismatch here usually means the '
+        + 'barcode matched a DIFFERENT product, not that your value is wrong. '
+        + 'Copying the ASIN\'s value would join somebody else\'s product rather '
+        + 'than fix yours.</div></div>';
+    }
+  }
+  return '<div class="lv-issue">' + esc(i.message || "")
+    + (names.length ? ' <span class="lv-issf">(' + esc(names.join(", "))
+                      + ')</span>' : "")
+    + '</div>' + extra;
+}
+
 function lvEnsure(r){
   if(!lvWants(r)) return;
   const sku = String(r.sku);
@@ -76,6 +142,11 @@ function lvEnsure(r){
                          // which on a shared ASIN can be another seller's
                          // contribution. Two different facts, so two fields.
                          summary:j.summary||{},
+                         // Whether this is your own product or an offer on
+                         // somebody else's ASIN. The two were indistinguishable
+                         // here, which is how a set of me-too offers was once
+                         // diagnosed as "misfiled" and nearly moved.
+                         shape:j.shape||null,
                          amazon_status:j.amazon_status||""};
     }
   }).catch(e => {
@@ -266,12 +337,10 @@ function lvBanner(r){
               + 'Fill ' + only + ' empty field(s) from Amazon</button>' : "")
     + '<button class="lv-refresh" onclick="lvRefresh(\'' + esc(sku) + '\')">refresh</button>'
     + '</div>'
+    + lvShapeBar(L)
     + (issues.length
         ? '<div class="lv-issues"><b>Amazon reports ' + issues.length + ' error(s) on this listing:</b>'
-          + issues.slice(0,6).map(i => '<div class="lv-issue">' + esc(i.message||"")
-              + (i.attributes && i.attributes.length
-                  ? ' <span class="lv-issf">(' + esc(i.attributes.join(", ")) + ')</span>' : "")
-              + '</div>').join("")
+          + issues.map(lvIssueHtml).slice(0,6).join("")
           + '</div>'
         : "")
     + ((L.skipped||[]).length

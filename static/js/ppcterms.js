@@ -34,9 +34,13 @@ async function ppctLoad(){
   const host = document.getElementById("ppct_body");
   if(!host || PPCT.loading) return;
   PPCT.loading = true;
-  host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
-    + 'color:var(--ppc-muted)"><span class="genspin"></span> '
-    + 'Reading the search terms…</div></div>';
+  // The screen stays on and dims rather than going blank -- see ppcBusy.
+  ppcBusy("ppct_body", true);
+  if(!PPCT.data){
+    host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
+      + 'color:var(--ppc-muted)"><span class="genspin"></span> '
+      + 'Reading the search terms…</div></div>';
+  }
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
@@ -53,8 +57,13 @@ async function ppctLoad(){
     ppctRender();
   }catch(e){
     PPCT.loading = false;
-    host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
-      + 'color:var(--ppc-red)">Could not read the search terms.</div></div>';
+    ppcBusy("ppct_body", false);
+    if(!PPCT.data){
+      host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
+        + 'color:var(--ppc-red)">Could not read the search terms.</div></div>';
+    }else if(typeof toast === "function"){
+      toast("Could not refresh the search terms — showing the last ones.");
+    }
   }
 }
 
@@ -280,6 +289,9 @@ function ppctRender(){
 
   h += ppctTable(rows, cur);
   host.innerHTML = h + '</div></div>';
+  PPCT.loading = false;
+  ppcBusy("ppct_body", false);
+  ppcArm("ppct_body");
 }
 
 /* The summary bar. Its figures are the FILTERED rows -- the mockup calls them

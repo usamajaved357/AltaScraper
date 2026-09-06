@@ -38,9 +38,22 @@ async function ppcaLoad(){
   const host = document.getElementById("ppca_body");
   if(!host || PPCA.loading) return;
   PPCA.loading = true;
-  host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
-    + 'color:var(--ppc-muted)"><span class="genspin"></span> '
-    + 'Reading the advertising figures…</div></div>';
+  // THE SCREEN DOES NOT GO BLANK WHILE A FILTER RELOADS.
+  //
+  //     "when i change the range the whole screen dissappears and then
+  //      reappear after loading"
+  //
+  // It did, because this wiped innerHTML and put a spinner in its place. What
+  // is on screen is still true until the new figures arrive -- it is simply
+  // for a different window -- so it stays, dimmed slightly, with a small bar
+  // saying what is happening. Only a FIRST load, with nothing to keep, draws
+  // the spinner on its own.
+  ppcaBusy(true);
+  if(!PPCA.data){
+    host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
+      + 'color:var(--ppc-muted)"><span class="genspin"></span> '
+      + 'Reading the advertising figures…</div></div>';
+  }
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
@@ -57,9 +70,44 @@ async function ppcaLoad(){
     ppcaRender();
   }catch(e){
     PPCA.loading = false;
-    host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
-      + 'color:var(--ppc-red)">Could not read the advertising figures.</div></div>';
+    ppcaBusy(false);
+    if(!PPCA.data){
+      host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
+        + 'color:var(--ppc-red)">Could not read the advertising figures.'
+        + '</div></div>';
+    }else if(typeof toast === "function"){
+      // The figures already on screen are still true, for the window they were
+      // fetched for. Replacing them with an error would throw away something
+      // correct to report something transient.
+      toast("Could not refresh the advertising figures — showing the last ones.");
+    }
   }
+}
+
+/* The dim-and-say-so state a filter change uses instead of a blank screen.
+ *
+ * WHOLLY DEFENSIVE. This is decoration around the real work, and a missing
+ * element or an older browser must never be able to stop a render that would
+ * otherwise have succeeded -- the figures matter, the dimming does not. */
+function ppcaBusy(on){
+  try{
+    const host = document.getElementById("ppca_body");
+    if(!host || typeof host.querySelector !== "function") return;
+    const page = host.querySelector(".ppc-page");
+    if(page && page.style) page.style.opacity = on ? "0.55" : "";
+    let bar = document.getElementById("ppca_busy");
+    if(on && !bar && page && typeof document.createElement === "function"){
+      bar = document.createElement("div");
+      bar.id = "ppca_busy";
+      bar.className = "ppc-busy";
+      bar.innerHTML = '<span class="genspin"></span> Updating…';
+      if(typeof page.prepend === "function") page.prepend(bar);
+      else if(typeof page.insertBefore === "function")
+        page.insertBefore(bar, page.firstChild);
+    }else if(!on && bar && typeof bar.remove === "function"){
+      bar.remove();
+    }
+  }catch(e){ /* never let the busy state break the page */ }
 }
 
 function ppcaSort(key){
@@ -104,9 +152,58 @@ function ppcaRender(){
   h += ppcaAsinTable(j, cur);
 
   host.innerHTML = h + '</div>';
+  PPCA.loading = false;
+  ppcaBusy(false);
+  // Arm the draw-in animation on every chart just inserted, the same call the
+  // Sales page makes. The hover and drag handlers are inline on the SVG that
+  // salesCombo returns, so they need nothing.
+  if(typeof altaChartsInView === "function"){
+    try{ altaChartsInView(host); }catch(e){}
+  }
 }
 
 function _ppcaRound1(v){ return Math.round(Number(v) * 10) / 10; }
+
+/* Every chart on this page goes through the app's OWN engine.
+ *
+ *     "i can not interact with graphs when hover over or other features which i
+ *      have in my other graphs, i.e. sales graph"
+ *
+ * Right: the first build drew bare SVG, which is a picture. salesCombo carries
+ * the hover card, the drag-to-zoom and the clickable key that the Sales page
+ * has had all along, and reusing it is also the only way these charts stay
+ * identical to that one as it changes (Rule 12).
+ *
+ * The series KEYS matter: salescharts.js looks each one up in SC_SERIES for its
+ * colour, its label and whether it is filled, so a chart here and a chart there
+ * cannot end up drawing "Ad spend" in two different reds.
+ */
+function ppcaChart(o){
+  if(typeof salesCombo !== "function") return "";
+  const cols = o.columns || [];
+  if(!cols.length) return "";
+  // A series Amazon has sent nothing for is DROPPED, not drawn flat along the
+  // floor -- salesCombo already does that for lines; this keeps a bars series
+  // from claiming a row of zeros.
+  const bars = (o.bars && (o.bars.values || []).some(function(v){
+    return v !== null && v !== undefined; })) ? o.bars : null;
+  return salesCombo({
+    id: o.id, onZoom: "ppcaZoomTo", columns: cols, unit: "day",
+    bars: bars, lines: o.lines || [], currency: o.currency,
+    width: scChartWidth(o.host || "ppca_body", 1120),
+    height: o.height || 300,
+  });
+}
+
+/* Dragging across any chart on this page narrows the window to those days.
+ * salesCombo hands back the two column labels it was drawn with, which are
+ * dates, so they are the range. */
+function ppcaZoomTo(from, to){
+  if(!from || !to) return;
+  PPCWIN.start = String(from).slice(0, 10);
+  PPCWIN.end = String(to).slice(0, 10);
+  ppcaLoad();
+}
 
 /* ---- 1. the TODAY strip -------------------------------------------------- */
 function ppcaToday(j, cur){
@@ -130,9 +227,27 @@ function ppcaToday(j, cur){
             : ((v > 0 ? "+" : "") + v.toFixed(1) + "%"))
       + '</div></div>';
   };
+  // IT IS ONLY "TODAY" WHEN IT IS.
+  //
+  //     "the top banner of today ad spend adsales etc that is returning no
+  //      data, that behavior is inaccurate"
+  //
+  // It was asking for today, and Amazon's advertising reports lag -- measured
+  // on 6 Sep, the newest stored day was the 4th. Six dashes on an account with
+  // plenty of data reads as "the advertising did nothing", which is false. The
+  // strip now reports the latest day Amazon HAS sent, and says which day that
+  // is and how far behind it is, so nobody reads it as this morning's.
+  const lag = d.lag_days;
+  const heading = d.is_today ? "TODAY"
+    : (lag === 1 ? "YESTERDAY" : "LATEST DAY");
+  const sub = !d.date ? "no advertising data"
+    : (d.is_today ? _pEsc(d.date)
+       : (_pEsc(d.date) + " · Amazon is " + lag + " day"
+          + (lag === 1 ? "" : "s") + " behind"));
   return '<div class="ppc-today">'
-    + '<div class="ppc-today-label"><b>TODAY</b><span>'
-    + _pEsc(d.date || "") + '</span></div>'
+    + '<div class="ppc-today-label"><b>' + heading + '</b><span title="'
+    + 'Amazon publishes advertising figures a day or two in arrears, so the '
+    + 'newest complete day is not usually today.">' + sub + '</span></div>'
     + stat("AD SPEND", ppcMoney0(n.spend, cur, why), c.spend, "down")
     + stat("AD SALES", ppcMoney0(n.sales, cur, why), c.sales, "up")
     + stat("TOTAL SALES", ppcMoney0(n.total_sales, cur, why), c.total_sales, "up")
@@ -164,7 +279,26 @@ function ppcaTrail(j, cur){
     const day = new Date(r.date + "T00:00:00");
     const lbl = isNaN(day.getTime()) ? r.date
       : (DOW[day.getDay()] + " " + MON[day.getMonth()] + " " + day.getDate());
-    h += '<div class="ppc-trail-card">'
+    // EVERY CARD ANSWERS ON HOVER AND OPENS ON CLICK.
+    //
+    //     "day trail graph also dont interact like other graphs"
+    //
+    // These are 120px wide, so a full hover card would be bigger than the
+    // thing it describes -- but a card that reports nothing at all is the
+    // complaint. So each carries its own figures as a native tooltip, and
+    // clicking one narrows the whole page to that day, which is what the
+    // drag-zoom does on the big charts.
+    const tip = [
+      r.date,
+      "Spend: " + (r.spend === null || r.spend === undefined
+                   ? "no row stored" : ppcMoney(r.spend, cur)),
+      "Orders: " + (r.orders === null || r.orders === undefined
+                    ? "—" : Math.round(r.orders)),
+      "Spent so far this window: " + ppcMoney(r.cumulative, cur),
+      "", "Click to show this day only.",
+    ].join("\n");
+    h += '<div class="ppc-trail-card" title="' + _pEsc(tip) + '" '
+      + 'onclick="ppcaZoomTo(' + jsArg(r.date) + ',' + jsArg(r.date) + ')">'
       + '<div class="ppc-trail-head"><span class="d">' + _pEsc(lbl) + '</span>'
       +   (r.today ? '<span class="t">Today</span>' : '') + '</div>'
       + '<div class="ppc-trail-chart">'
@@ -433,9 +567,9 @@ function ppcaRevenueChart(j, cur){
     return Math.round((x.ad_sales - x.spend - x.ad_sales * r.fee_rate
                        - x.ad_sales * r.cogs_rate) * 100) / 100;
   });
-  const lines = [{values: d.map(function(x){ return x.spend; }),
-                  colour: "var(--ppc-red)"}];
-  if(canProfit) lines.push({values: profit, colour: "var(--ppc-cyan)"});
+  const lines = [{key: "ad_spend",
+                  values: d.map(function(x){ return x.spend; })}];
+  if(canProfit) lines.push({key: "ad_profit", values: profit});
 
   return '<div class="ppc-panel">'
     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
@@ -444,14 +578,12 @@ function ppcaRevenueChart(j, cur){
     +   '<span class="ppc-i" title="Total sales as bars, with what the '
     +   'advertising cost and returned over them. A gap is a day with nothing '
     +   'stored, not a day of no spend.">ⓘ</span></div>'
-    + ppcLegend([["Ad Spend", "var(--ppc-red)"]]
-        .concat(canProfit ? [["Profit", "var(--ppc-cyan)"]] : [])
-        .concat([["Total Revenue", "var(--ppc-gold)"]]))
-    + ppcComposed({
-        columns: d.map(function(x){ return x.date; }),
-        bars: {values: d.map(function(x){ return x.total_sales; }),
-               colour: "var(--ppc-gold)"},
-        lines: lines, currency: cur, height: 300})
+    + '<div class="ppc-charthint">Hover for the day\'s figures · drag across to '
+    + 'zoom into those days · click a name below to hide that line</div>'
+    + ppcaChart({id: "ppca_rev", columns: d.map(function(x){ return x.date; }),
+                 bars: {key: "total_sales", label: "Total revenue",
+                        values: d.map(function(x){ return x.total_sales; })},
+                 lines: lines, currency: cur, height: 300})
     + '</div>';
 }
 
@@ -474,17 +606,15 @@ function ppcaTrends(j, cur){
   };
 
   const left = (pc && pc.some(function(v){ return v !== null; }))
-    ? ppcArea({columns: cols, values: pc, colour: "var(--ppc-green)",
-               height: 200, refLineY: 0,
-               yFormat: function(v){ return sym + v.toFixed(2); }})
+    ? ppcaChart({id: "ppca_pc", columns: cols, currency: cur, height: 210,
+                 lines: [{key: "cpc", label: "Profit per click", values: pc}]})
     : missing((j.rates || {}).why || "Profit per click needs a measured fee "
         + "rate and a measured stock cost. Without both there is no honest way "
         + "to say what a click earned.");
 
   const right = (eff && eff.some(function(v){ return v !== null; }))
-    ? ppcArea({columns: cols, values: eff, colour: "var(--ppc-cyan)",
-               height: 200, refLineY: 100,
-               yFormat: function(v){ return String(Math.round(v)); }})
+    ? ppcaChart({id: "ppca_eff", columns: cols, height: 210,
+                 lines: [{key: "roas", label: "Efficiency score", values: eff}]})
     : missing("The efficiency score is the day's ACOS against this account's "
         + "break-even ACOS, and neither can be measured for this window.");
 
@@ -501,29 +631,125 @@ function ppcaTrends(j, cur){
 }
 
 /* ---- 8. heatmap + TACoS -------------------------------------------------- */
+/* ACoS BY DAY OF WEEK, WHICH IS A HEATMAP THIS DATA CAN ACTUALLY FILL.
+ *
+ * The mockup's grid is day x HOUR, and there are no hourly figures -- Amazon
+ * refuses timeUnit HOURLY on this report. The first build therefore drew an
+ * empty grid and a paragraph, which is honest and useless.
+ *
+ * Every stored day HAS a day of the week, so the same question -- when does the
+ * advertising convert -- is answerable one step coarser. Rows are Mon..Sun,
+ * columns are the weeks of the window, and each cell is that day's ACOS.
+ *
+ * SHADED BY BAND, NOT BY RANK. The hourly sales heatmap scales each row against
+ * its own peak, which is right for volume: a product selling three a day still
+ * has a best hour. ACOS is not volume -- 25% is good and 80% is bad whatever
+ * the rest of the grid looks like -- so the mockup's four bands are used as
+ * absolutes, and the legend under it means what it says.
+ */
+function ppcaHeatmap(daily){
+  const rows = (daily || []).filter(function(x){
+    return x.acos_pct !== null && x.acos_pct !== undefined;
+  });
+  if(rows.length < 3) return null;
+
+  const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weeks = [];            // [{label, cells: [7]}]
+  const byKey = {};
+  (daily || []).forEach(function(x){
+    const dt = new Date(x.date + "T00:00:00");
+    if(isNaN(dt.getTime())) return;
+    const dow = (dt.getDay() + 6) % 7;                 // Monday = 0
+    const monday = new Date(dt);
+    monday.setDate(dt.getDate() - dow);
+    const wk = monday.toISOString().slice(0, 10);
+    if(!byKey[wk]){
+      byKey[wk] = {label: wk, cells: new Array(7).fill(null)};
+      weeks.push(byKey[wk]);
+    }
+    byKey[wk].cells[dow] = x;
+  });
+  weeks.sort(function(a, b){ return a.label < b.label ? -1 : 1; });
+
+  const band = function(a){
+    if(a === null || a === undefined) return null;
+    if(a < 26) return "var(--ppc-heat1)";
+    if(a < 35) return "var(--ppc-heat2)";
+    if(a < 43) return "var(--ppc-heat3)";
+    return "var(--ppc-heat4)";
+  };
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun",
+               "Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  let h = '<div style="overflow-x:auto"><table class="ppc-heat"><thead><tr>'
+    + '<th style="width:40px"></th>';
+  weeks.forEach(function(w){
+    const d = new Date(w.label + "T00:00:00");
+    h += '<th>' + (isNaN(d.getTime()) ? _pEsc(w.label)
+                   : (MON[d.getMonth()] + " " + d.getDate())) + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+  DOW.forEach(function(name, i){
+    h += '<tr><td class="day">' + name + '</td>';
+    weeks.forEach(function(w){
+      const x = w.cells[i];
+      const c = x ? band(x.acos_pct) : null;
+      // A day with no advertising row draws an EMPTY cell, not a green one.
+      // Green would say the advertising did well that day.
+      const tip = x
+        ? (x.date + " — ACOS " + Number(x.acos_pct).toFixed(1) + "%"
+           + (x.spend !== null && x.spend !== undefined
+              ? ", spent " + Number(x.spend).toFixed(2) : ""))
+        : "no advertising figures stored for this day";
+      h += '<td><div class="cell" title="' + _pEsc(tip) + '" style="background:'
+        + (c || "transparent") + '"></div></td>';
+    });
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>'
+    + '<div style="display:flex;gap:14px;margin-top:10px;font-size:11px;'
+    + 'color:var(--ppc-muted);flex-wrap:wrap">'
+    + [["var(--ppc-heat1)", "<26%"], ["var(--ppc-heat2)", "<35%"],
+       ["var(--ppc-heat3)", "<43%"], ["var(--ppc-heat4)", ">43%"]]
+      .map(function(l){
+        return '<span style="display:flex;align-items:center;gap:4px">'
+          + '<span style="width:12px;height:12px;border-radius:2px;background:'
+          + l[0] + ';display:inline-block"></span>' + l[1] + '</span>';
+      }).join("")
+    + '</div>';
+  return h;
+}
+
 function ppcaHeatAndTacos(j, cur){
   const d = j.daily || [];
   const av = j.availability || {};
-  const hourWhy = (av.hourly && av.hourly.why) || "";
+  const grid = ppcaHeatmap(d);
 
-  // The heatmap needs day x hour and there are no hours. The panel, its legend
-  // and the reason stay; the grid is not invented.
   const heat = '<div class="ppc-panel ppc-panel-sm" style="margin-bottom:0">'
-    + '<div class="ppc-panel-title-sm">ACoS Heatmap — Day × Hour'
-    + '<span class="ppc-i" title="Which hours of which days the advertising '
-    + 'converts.">ⓘ</span></div>'
-    + '<div style="font-size:12px;color:var(--ppc-muted);line-height:1.6;'
-    + 'margin-bottom:12px">' + _pEsc(hourWhy) + '</div>'
-    + ppcHeatmap(null) + '</div>';
+    + '<div class="ppc-panel-title-sm">ACoS heatmap — day of week'
+    + '<span class="ppc-i" title="Which days the advertising converts. Hover a '
+    + 'cell for that day\'s ACOS and spend.">ⓘ</span></div>'
+    + '<div style="font-size:11.5px;color:var(--ppc-muted);line-height:1.6;'
+    + 'margin-bottom:10px">'
+    + (grid
+        ? 'One cell per day, shaded by its ACOS band. The mockup asks for day × '
+          + 'hour; Amazon publishes no hourly figures for this report, so this '
+          + 'is the same question one step coarser — and every cell is measured.'
+        : _pEsc((av.hourly && av.hourly.why) || ""))
+    + '</div>'
+    + (grid || '<div style="font-size:12px;color:var(--ppc-muted)">Not enough '
+               + 'days with an ACOS in this window to draw one.</div>')
+    + '</div>';
 
   const tacos = d.map(function(x){ return x.tacos_pct; });
   const hasT = tacos.some(function(v){ return v !== null; });
   const tp = '<div class="ppc-panel ppc-panel-sm" style="margin-bottom:0">'
-    + '<div class="ppc-panel-title-sm">TACoS Over Time</div>'
+    + '<div class="ppc-panel-title-sm">TACoS over time</div>'
+    + '<div class="ppc-charthint">Hover for the day · drag across to zoom</div>'
     + (hasT
-        ? ppcArea({columns: d.map(function(x){ return x.date; }),
-                   values: tacos, colour: "var(--ppc-orange)", height: 220,
-                   yFormat: function(v){ return v.toFixed(0) + "%"; }})
+        ? ppcaChart({id: "ppca_tacos", height: 230,
+                     columns: d.map(function(x){ return x.date; }),
+                     lines: [{key: "tacos", values: tacos}]})
         : '<div style="font-size:12px;color:var(--ppc-muted)">No total sales '
           + 'are stored for these days, so advertising cannot be compared '
           + 'against them.</div>')
@@ -569,14 +795,15 @@ function ppcaBudget(j, cur){
     +   (avgSales === null ? "—" : ppcMoney(avgSales, cur) + "/day avg")
     +   '</div></div></div>'
     + '<div style="height:1px;background:var(--ppc-border);margin:16px 0"></div>'
-    + ppcLegend([["Ad Spend", "var(--ppc-red)"], ["Sales", "var(--ppc-gold)"]])
-    + ppcComposed({
-        columns: d.map(function(x){ return x.date; }),
-        bars: {values: d.map(function(x){ return x.total_sales; }),
-               colour: "var(--ppc-gold)"},
-        lines: [{values: d.map(function(x){ return x.spend; }),
-                 colour: "var(--ppc-red)"}],
-        refLines: refs, currency: cur, height: 260})
+    + '<div class="ppc-charthint">Hover for the day\'s figures · drag across to '
+    + 'zoom · click a name below to hide that line. The averages above are the '
+    + 'lines to pace against.</div>'
+    + ppcaChart({id: "ppca_budget", height: 260, currency: cur,
+                 columns: d.map(function(x){ return x.date; }),
+                 bars: {key: "total_sales", label: "Sales",
+                        values: d.map(function(x){ return x.total_sales; })},
+                 lines: [{key: "ad_spend",
+                          values: d.map(function(x){ return x.spend; })}]})
     + '</div>';
 }
 

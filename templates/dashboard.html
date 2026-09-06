@@ -2272,13 +2272,6 @@
      own template, its own parser on the server and its own per-row report. -->
 <script src="/static/js/ordercosts.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ordertracking.js?v={{ ASSET_V }}"></script>
-<!-- The three advertising screens. ppcshared.js first: the other three call its
-     formatters, and a page that loads before it would draw "undefined". -->
-<script src="/static/js/ppcshared.js?v={{ ASSET_V }}"></script>
-<script src="/static/js/ppccharts.js?v={{ ASSET_V }}"></script>
-<script src="/static/js/ppcanalytics.js?v={{ ASSET_V }}"></script>
-<script src="/static/js/ppcterms.js?v={{ ASSET_V }}"></script>
-<script src="/static/js/ppccampaigns.js?v={{ ASSET_V }}"></script>
 <!-- The compact expanded-order panel. orders.js checks for it at DRAW time and
      falls back to its own long version, so a load failure costs the layout
      rather than the order details. -->
@@ -2464,6 +2457,16 @@
      reason: it reads the window the Sales page is showing through _sQuery(), so
      the statement and the charts above it cannot answer for different months. -->
 <script src="/static/js/pnl.js?v={{ ASSET_V }}"></script>
+<!-- The three advertising screens. AFTER salescharts.js, which is the point:
+     every chart on them is drawn by salesCombo, so they get the same hover
+     card, the same drag-to-zoom and the same clickable key the Sales page has,
+     and cannot drift from it. ppcshared.js first within the group -- the other
+     three call its formatters. -->
+<script src="/static/js/ppcshared.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppccharts.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppcanalytics.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppcterms.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppccampaigns.js?v={{ ASSET_V }}"></script>
 <!-- AFTER both. traffic.js draws with salesCombo and formats with _sNum rather
      than carrying its own copies, which would drift from these on the first fix
      made to either. (Order is not load-bearing -- these are function

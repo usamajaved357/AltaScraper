@@ -238,6 +238,198 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
     return rows, totals
 
 
+def by_product_orders(config_path, workspace_id, marketplace, start, end,
+                      vat_rate=None):
+    """The same table, on the ORDER calendar rather than the money calendar.
+
+    WHY BOTH EXIST, AND WHY THIS ONE IS USUALLY THE USEFUL ONE.
+    by_product above reads finance_daily -- money that has actually MOVED -- and
+    Amazon settles days after the sale. Measured on nestwell_goods for August:
+    that view returns ONE product, on an account where forty-five ASINs sold.
+    The table is correct and nearly empty, and a screen that shows one row for a
+    busy month gets read as "nothing sold".
+
+    This reads order_lines: every order PLACED in the window, whether Amazon has
+    settled it or not. Forty of them, against the one. It ties to what was sold;
+    the settlement view ties to the payout. Neither is the truer number -- they
+    answer different questions -- so the screen offers both and says which is on.
+
+    FEES ARE THE HYBRID, NOT AN ESTIMATE THROUGHOUT. Each order carries its own
+    settled fees where Amazon has sent them, and the account's measured rate
+    where it has not, exactly as domain/pnl.py does it -- and the rate is asked
+    of domain/order_profit, not worked out again here (Rule 12). Every reply says
+    how much of the window is which.
+
+    REFUNDS KEEP THEIR OWN DATE. The owner's decision, unchanged: a refund
+    belongs to the day the money moved, not the day of the sale, so a month
+    already read does not change afterwards.
+
+    Returns (rows, totals) in the SAME shape as by_product, so the screen can
+    switch between them without knowing which produced what.
+    """
+    from domain import order_profit as _op
+
+    conn = _db.get_db(config_path)
+
+    # ---- what sold, on the order calendar --------------------------------
+    lines = list(conn.execute(
+        "SELECT asin, MIN(title) title, SUM(units) units, "
+        "       ROUND(SUM(COALESCE(revenue,0)),2) revenue, "
+        "       ROUND(SUM(COALESCE(cogs,0) * COALESCE(units,1)),2) cogs, "
+        "       SUM(CASE WHEN cogs IS NULL THEN 0 ELSE COALESCE(units,1) END) "
+        "         cogs_units, MAX(currency) currency "
+        "FROM order_lines WHERE workspace_id=? AND marketplace=? "
+        "AND substr(purchase_date,1,10)>=? AND substr(purchase_date,1,10)<=? "
+        "AND COALESCE(asin,'') <> '' GROUP BY asin",
+        (workspace_id, marketplace, start, end)))
+
+    # ---- Amazon's own fees, per ASIN, where the order has settled ---------
+    settled = {}
+    for r in conn.execute(
+            "SELECT o.asin, ROUND(SUM(COALESCE(f.referral_fees,0) "
+            "  + COALESCE(f.fba_fees,0) + COALESCE(f.other_fees,0)),2) fees, "
+            "  ROUND(SUM(COALESCE(o.revenue,0)),2) rev "
+            "FROM order_lines o JOIN order_fees f "
+            "  ON f.workspace_id=o.workspace_id AND f.marketplace=o.marketplace "
+            "  AND f.order_id=o.order_id "
+            "WHERE o.workspace_id=? AND o.marketplace=? "
+            "AND substr(o.purchase_date,1,10)>=? "
+            "AND substr(o.purchase_date,1,10)<=? "
+            "AND COALESCE(o.asin,'') <> '' GROUP BY o.asin",
+            (workspace_id, marketplace, start, end)):
+        settled[r["asin"]] = {"fees": _f(r["fees"]), "revenue": _f(r["rev"])}
+
+    rate, rate_basis, rate_detail = _op.fee_rate(config_path, workspace_id,
+                                                 marketplace, end)
+
+    # ---- advertising, per ASIN -------------------------------------------
+    ads = {}
+    for r in conn.execute(
+            "SELECT asin, ROUND(SUM(COALESCE(spend,0)),2) spend FROM ads_daily "
+            "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
+            "AND asin<>'*' GROUP BY asin",
+            (workspace_id, marketplace, start, end)):
+        ads[r["asin"]] = _f(r["spend"])
+    ads_connected = bool(ads)
+
+    # ---- refunds, on their own date --------------------------------------
+    refunds = {}
+    try:
+        for r in conn.execute(
+                "SELECT asin, ROUND(SUM(COALESCE(refunds,0)),2) refunds, "
+                "  SUM(COALESCE(refund_units,0)) ru, "
+                "  ROUND(SUM(COALESCE(promos,0)),2) promos "
+                "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
+                "AND date>=? AND date<=? AND asin<>'*' GROUP BY asin",
+                (workspace_id, marketplace, start, end)):
+            refunds[r["asin"]] = dict(r)
+    except Exception:
+        refunds = {}
+
+    names, parents = {}, {}
+    try:
+        from domain import catalogue as _cat
+        idx = _cat.merged(config_path, [(workspace_id, marketplace)])
+        for ln in lines:
+            got = _cat.look(idx, None, ln["asin"]) or {}
+            if got.get("title"):
+                names[ln["asin"]] = got["title"]
+    except Exception:
+        pass
+    try:
+        for r in conn.execute(
+                "SELECT DISTINCT asin, parent_asin FROM sales_daily "
+                "WHERE workspace_id=? AND marketplace=? AND asin<>'*' "
+                "AND COALESCE(parent_asin,'') <> ''",
+                (workspace_id, marketplace)):
+            parents[r["asin"]] = r["parent_asin"]
+    except Exception:
+        parents = {}
+
+    rows = []
+    est_rev_total, actual_fee_total = 0.0, 0.0
+    for ln in lines:
+        asin = ln["asin"]
+        revenue = _f(ln["revenue"])
+        units = int(ln["units"] or 0)
+        costed = int(ln["cogs_units"] or 0)
+        cogs = _f(ln["cogs"])
+
+        # THE HYBRID. What Amazon actually charged on the settled part, its own
+        # measured rate on the rest -- never one applied to everything.
+        s = settled.get(asin) or {}
+        fees_actual = _f(s.get("fees"))
+        unsettled_rev = max(0.0, revenue - _f(s.get("revenue")))
+        fees = round(fees_actual + unsettled_rev * float(rate or 0), 2)
+        est_rev_total += unsettled_rev
+        actual_fee_total += fees_actual
+
+        rf = refunds.get(asin) or {}
+        refund = _f(rf.get("refunds"))
+        ad = ads.get(asin)
+
+        vat, net_rev, basis = _sd.vat_for({"principal": revenue, "tax": None},
+                                          vat_rate)
+        net = round(revenue - fees - refund, 2)
+
+        # The same rule as everywhere else, called not repeated: a bucket with
+        # any uncosted unit reports no contribution at all, because uncosted
+        # units bring revenue and no cost and only ever flatter.
+        contribution = _sd.profit_for([{
+            "units_shipped": units, "cogs_units": costed,
+            "cogs": cogs, "net_proceeds": net}])
+        # AND ADVERTISING COMES OFF IT. Only when it is known: subtracting an
+        # unknown ad spend as if it were nought makes every advertised product
+        # look better than it is, by exactly what is being spent on it.
+        if contribution is not None and ad is not None:
+            contribution = round(contribution - ad, 2)
+
+        row = {
+            "asin": asin,
+            "title": names.get(asin) or (ln["title"] or ""),
+            "parent_asin": parents.get(asin) or "",
+            "units": units,
+            "units_ordered": units,
+            "revenue": revenue,
+            "vat": vat, "net_revenue": net_rev, "vat_basis": basis,
+            "ordered_sales": revenue,
+            "fees": fees,
+            "refunds": refund,
+            "refund_units": int(rf.get("ru") or 0),
+            "refund_fees_returned": 0.0,
+            "reimbursements": 0.0,
+            "promos": _f(rf.get("promos")),
+            "cogs": cogs,
+            "cogs_units": costed,
+            "uncosted_units": max(0, units - costed),
+            "net_proceeds": net,
+            "ad_spend": (round(ad, 2) if ad is not None else None),
+            "contribution": contribution,
+            "currency": ln["currency"] or "",
+        }
+        row["margin_pct"] = (round(contribution / revenue * 100, 2)
+                             if (contribution is not None and revenue) else None)
+        rows.append(row)
+
+    rows.sort(key=lambda x: (-(x["revenue"] or 0), x["asin"]))
+    totals = totals_for(rows)
+    totals.update(unattributed(conn, workspace_id, marketplace, start, end, rows))
+    if totals.get("contribution") is not None and totals.get("unattributed_fees"):
+        totals["account_contribution"] = round(
+            totals["contribution"] - totals["unattributed_fees"], 2)
+
+    # HOW MUCH OF THIS IS AMAZON'S OWN FIGURE. A table whose fees are four
+    # fifths estimated is a different document from one that is not.
+    totals["basis"] = "orders"
+    totals["fee_rate"] = rate
+    totals["fee_rate_basis"] = rate_basis
+    totals["fee_rate_detail"] = rate_detail
+    totals["fees_actual"] = round(actual_fee_total, 2)
+    totals["estimated_revenue"] = round(est_rev_total, 2)
+    totals["ads_connected"] = ads_connected
+    return rows, totals
+
+
 def unattributed(conn, workspace_id, marketplace, start, end, rows):
     """What the account was charged and paid that no product row carries.
 
