@@ -235,7 +235,7 @@ def cogs_by_order_date(config_path, workspace_id, marketplace, start, end):
 
 
 def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
-                           fee_rate=0.15, vat_rate=None):
+                           fee_rate=None, vat_rate=None):
     """A whole day's economics on the ORDER's calendar, settled or not.
 
     WHY THIS EXISTS. by_order_date() can only speak for orders Amazon has
@@ -291,7 +291,24 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
         vr = float(vat_rate) if vat_rate else 0.0
     except (TypeError, ValueError):
         vr = 0.0
-    rate = float(fee_rate or 0)
+    # AN UNKNOWN FEE RATE IS NOT A FEE OF NOTHING.
+    #
+    # This read `float(fee_rate or 0)`, and order_profit.fee_rate returns None
+    # whenever it cannot measure a rate -- a new account, one with no settled
+    # orders yet, one whose settlement feed has not arrived. None became 0.0,
+    # every unsettled order was estimated to cost nothing in fees, and the day's
+    # profit was overstated by the whole referral fee. Silently, and precisely
+    # when the app knew least.
+    #
+    # The default was 0.15 for the same reason and is no better: measured on
+    # this owner's own accounts, nestwell and selvora pay about 18% because
+    # Amazon charges VAT on its fees. A fee rate is a measurement, not a
+    # constant, so there is no number to fall back to -- only an answer of
+    # "not known", which the callers can then report.
+    try:
+        rate = None if fee_rate is None else float(fee_rate)
+    except (TypeError, ValueError):
+        rate = None
 
     out = {}
     for r in rows:
@@ -304,6 +321,10 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
             "units": 0, "cogs": 0.0, "cogs_units": 0,
             "orders_settled": 0, "orders_estimated": 0,
             "fees_estimated": 0.0, "reimbursements": 0.0,
+            # Orders whose fee could not be estimated at all, because this
+            # account has no measured fee rate. Separate from orders_estimated:
+            # one is a figure with a stated method, the other is a gap.
+            "orders_fee_unknown": 0, "revenue_fee_unknown": 0.0,
             # How much of the day's VAT we worked out rather than were told,
             # so a figure that is partly our arithmetic can say so.
             "vat_derived": 0.0, "orders_vat_derived": 0,
@@ -363,12 +384,21 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
             gross = float(r["gross"] or 0)
             vat = round(gross * vr / (1.0 + vr), 2) if vr else 0.0
             net = round(gross - vat, 2)
-            est = round(net * rate, 2)
             o["principal"] += net
             o["tax"] += vat
-            o["referral_fees"] += est
-            o["fees_estimated"] += est
-            o["orders_estimated"] += 1
+            if rate is None:
+                # NO RATE, SO NO ESTIMATE. Adding 0.00 here would make the day
+                # report a fee it never worked out, and "estimated 0.00" reads
+                # as "we checked and it is nothing". Counted separately so the
+                # screen can say how much of the window is uncosted.
+                o["orders_fee_unknown"] = o.get("orders_fee_unknown", 0) + 1
+                o["revenue_fee_unknown"] = round(
+                    o.get("revenue_fee_unknown", 0.0) + net, 2)
+            else:
+                est = round(net * rate, 2)
+                o["referral_fees"] += est
+                o["fees_estimated"] += est
+                o["orders_estimated"] += 1
 
     for o in out.values():
         for k, v in list(o.items()):
