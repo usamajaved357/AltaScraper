@@ -182,7 +182,12 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         # computed once here rather than per panel, because they all read the
         # same daily rows and the same measured rates.
         terms = _pa.terms(CONFIG_PATH, aid, mkt, rates)
-        wasted_prev = _pa.wasted_spend(CONFIG_PATH, aid, mkt, pstart, pend)
+        # NO "PREVIOUS WASTED SPEND". It used to be fetched for the earlier
+        # window and compared -- but wasted_spend reads the stored Search Term
+        # Report, which is ONE fixed window with no day breakdown, so the two
+        # calls returned the identical figure and the change arrow could only
+        # ever read zero. Measured across 7, 14, 30 and 90 days: 251.56 every
+        # time. A comparison that cannot vary is not a comparison.
 
         return jsonify({
             "today": _pa.today_bar(CONFIG_PATH, aid, mkt),
@@ -192,7 +197,6 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "efficiency": _pa.efficiency_trend(
                 days, rates.get("breakeven_acos_pct")),
             "branded": _pa.branded_split(terms),
-            "wasted_previous": wasted_prev,
             "ok": True, "account": aid, "marketplace": mkt,
             "window": {"start": start, "end": end,
                        "compare_start": pstart, "compare_end": pend},

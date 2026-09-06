@@ -468,13 +468,18 @@ function ppcaProfitability(j, cur){
   }
   flow += '</div>';
 
-  // Wasted spend, and whether it moved. FALLING IS GOOD -- the mockup is
-  // explicit, and it is the opposite of the default reading of a red arrow.
-  let wchange = null;
-  if(w.spend !== null && w.spend !== undefined
-     && wp.spend !== null && wp.spend !== undefined && wp.spend){
-    wchange = _ppcaRound1(100 * (w.spend - wp.spend) / Math.abs(wp.spend));
-  }
+  // WASTED SPEND SHOWS NO CHANGE, AND THAT IS THE HONEST ANSWER.
+  //
+  // The mockup puts a falling-is-good arrow here, and this used to draw one by
+  // comparing wasted spend against "the previous period". Both calls read the
+  // stored Search Term Report, which is ONE fixed window with no day-by-day
+  // breakdown -- so both returned the identical figure and the arrow read zero
+  // for ever. Measured across 7, 14, 30 and 90 days: 251.56 every time.
+  //
+  // An arrow that cannot move is not information. The card states the window the
+  // figure really covers instead, which is the thing somebody actually needs to
+  // know about it.
+  const wchange = (w.comparable === false) ? null : null;
   const wpct = (w.spend !== null && w.spend !== undefined && t.spend)
     ? _ppcaRound1(100 * w.spend / t.spend) : null;
 
@@ -519,12 +524,16 @@ function ppcaProfitability(j, cur){
                              ppcChangeText(wchange, "down")),
                     note: (wpct === null ? period
                            : (wpct.toFixed(1) + "% of total spend")),
-                    note2: (w.terms ? (w.terms + " terms clicked, none ordered")
+                    note2: (w.terms ? (w.terms + " terms clicked, none ordered"
+                             + (w.report_start ? (" · from the search-term "
+                                + "report covering " + _pEsc(w.report_start)
+                                + " to " + _pEsc(w.report_end)) : ""))
                                     : ""),
                     help: "Spend on search terms that took at least one click "
                         + "and produced no order. Not 'ACOS above target' — "
                         + "that is a judgement about price. This is money that "
-                        + "bought traffic which bought nothing."})
+                        + "bought traffic which bought nothing. "
+                        + (w.comparable_why || "")})
     +   ppcSubCard({label: "BREAK-EVEN ACOS", value: ppcPct(be),
                     note: ((be !== null && be !== undefined
                             && acos !== null && acos !== undefined)

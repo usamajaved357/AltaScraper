@@ -149,7 +149,19 @@ truthy("  and says so rather than offering it again",
 // or the app's, not a choice anybody makes in this drawer. On those the two
 // icons light neither way, so the badge is the only thing that says what the
 // listing actually is.
-truthy("the real status is shown as well", /class="badge \$\{badgeClass\(r\.status\)\}"/.test(SH));
+// THE REAL STATUS, WHICH IS NOT ALWAYS THE STORED ONE. This used to check for
+// badgeClass(r.status) literally. r.status is the word in the database, and a
+// listing that went live months ago can still carry an IP_HOLD from a failed
+// attempt before that -- every list view already works that out and shows LIVE,
+// so the drawer was the one place still showing the hold that no longer applied,
+// on the screen somebody opens precisely to find out why it was held.
+// _shownStatus is the shared answer; the stored word is kept on hover.
+truthy("the real status is shown as well",
+       /class="badge \$\{badgeClass\(_shown\)\}"/.test(SH));
+truthy("  worked out rather than read straight off the row",
+       /_shownStatus\(r\)/.test(SH));
+truthy("  and the stored word is still available on hover",
+       /stored status still says/.test(SH));
 truthy("  using the same class the card and the table use",
        /badgeClass\(/.test(L));
 
