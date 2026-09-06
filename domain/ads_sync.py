@@ -499,6 +499,11 @@ def stray_marketplaces(config_path, workspace_id, keep):
     return out
 
 
+# Every table the advertising sync files by marketplace, and therefore every
+# table a wrongly-scoped profile could have written copies into.
+_MARKETPLACE_TABLES = ("ads_daily", "ads_campaign_daily", "ads_placement_daily")
+
+
 def drop_marketplace(config_path, workspace_id, marketplace, dry_run=True):
     """Delete one marketplace's advertising rows for one account.
 
@@ -511,15 +516,26 @@ def drop_marketplace(config_path, workspace_id, marketplace, dry_run=True):
     conn = _db.get_db(config_path)
     mkt = str(marketplace or "").strip().upper()
     counts = {}
-    for t in ("ads_daily", "ads_campaign_daily"):
-        counts[t] = conn.execute(
-            "SELECT COUNT(*) FROM %s WHERE workspace_id=? AND marketplace=?" % t,
-            (workspace_id, mkt)).fetchone()[0]
+    # ads_placement_daily is here because it is the same family: written by the
+    # same sync, from the same profile, and therefore capable of the same
+    # duplication. Left out, a later clean-up would tidy two tables and leave
+    # the third holding copies nobody remembers are there.
+    for t in _MARKETPLACE_TABLES:
+        try:
+            counts[t] = conn.execute(
+                "SELECT COUNT(*) FROM %s WHERE workspace_id=? AND marketplace=?"
+                % t, (workspace_id, mkt)).fetchone()[0]
+        except Exception:
+            counts[t] = 0
     if dry_run:
         return {"dry_run": True, "marketplace": mkt, "would_delete": counts}
-    for t in ("ads_daily", "ads_campaign_daily"):
-        conn.execute("DELETE FROM %s WHERE workspace_id=? AND marketplace=?" % t,
-                     (workspace_id, mkt))
+    for t in _MARKETPLACE_TABLES:
+        try:
+            conn.execute(
+                "DELETE FROM %s WHERE workspace_id=? AND marketplace=?" % t,
+                (workspace_id, mkt))
+        except Exception:
+            pass
     conn.commit()
     return {"dry_run": False, "marketplace": mkt, "deleted": counts}
 
