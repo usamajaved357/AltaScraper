@@ -492,15 +492,27 @@ def branded_split(rows, brands):
 
 
 def report_meta(config_path, workspace_id, marketplace):
-    """Which report is loaded, and when it covers. None when there is none."""
+    """Which report is loaded, and when it covers. None when there is none.
+
+    ORDERED BY THE ROW ID AS WELL AS THE TIMESTAMP, and that is not fussiness.
+    uploaded_at is stored to the SECOND, and two reports genuinely can land
+    inside one -- the sync stores several in a row, and a re-run stores two
+    almost at once. On a tie, ORDER BY uploaded_at alone picks whichever the
+    database happens to return first, which can be the OLDER report; and since
+    this function decides what every screen shows, that means the whole app
+    quietly displaying superseded figures.
+
+    MAX(id) breaks it definitively: the column is an autoincrement, so a later
+    row always has a larger one.
+    """
     from data import db as _db
     try:
         conn = _db.get_db(config_path)
         r = conn.execute(
             "SELECT report_id, MIN(date_from) a, MAX(date_to) b, "
-            "       COUNT(*) n, MAX(uploaded_at) up "
+            "       COUNT(*) n, MAX(uploaded_at) up, MAX(id) mid "
             "FROM ppc_search_terms WHERE workspace_id=? AND marketplace=? "
-            "GROUP BY report_id ORDER BY up DESC LIMIT 1",
+            "GROUP BY report_id ORDER BY up DESC, mid DESC LIMIT 1",
             (workspace_id, marketplace)).fetchone()
     except Exception:
         return None
@@ -531,6 +543,115 @@ def load_rows(config_path, workspace_id, marketplace, report_id=None):
         return []
 
 
+def stored_totals(config_path, workspace_id, marketplace):
+    """How much is REALLY stored: the newest report's rows, not every report's.
+
+    THE ONE PLACE THAT COUNTS THEM (Rule 12), because counting them the obvious
+    way is wrong and looks right.
+
+    ppc_search_terms keeps one row per term PER REPORT, and the API sync names
+    each report after the window it covers -- ads_api_2026-08-06_2026-09-04. Sync
+    again tomorrow and the window has moved, so the id is new and BOTH reports
+    are in the table. load_rows has always taken the newest, so the screens were
+    right; but every plain COUNT(*) and SUM(spend) over the table added them
+    together.
+
+    MEASURED on nestwell_goods/UK: two overlapping reports, 774 rows and 821
+    rows, sharing 572 of their terms. An unfiltered count reported 1,595 terms
+    and 531.42 of spend where the truth was 821 and 274.49 -- close enough to
+    double to look plausible, and growing by one report every day the sync ran.
+    """
+    from data import db as _db
+
+    m = report_meta(config_path, workspace_id, marketplace)
+    if not m:
+        return {"report_id": "", "terms": 0, "spend": None, "sales": None,
+                "date_from": "", "date_to": ""}
+    try:
+        conn = _db.get_db(config_path)
+        r = conn.execute(
+            "SELECT COUNT(*) n, ROUND(SUM(spend),2) sp, ROUND(SUM(sales),2) sa "
+            "FROM ppc_search_terms WHERE workspace_id=? AND marketplace=? "
+            "AND report_id=?",
+            (workspace_id, marketplace, m["report_id"])).fetchone()
+    except Exception:
+        return {"report_id": m["report_id"], "terms": 0, "spend": None,
+                "sales": None, "date_from": m.get("date_from") or "",
+                "date_to": m.get("date_to") or ""}
+    return {"report_id": m["report_id"], "terms": int((r["n"] if r else 0) or 0),
+            "spend": (r["sp"] if r else None), "sales": (r["sa"] if r else None),
+            "date_from": m.get("date_from") or "",
+            "date_to": m.get("date_to") or ""}
+
+
+# How many fetched reports to keep per account and marketplace. The newest is
+# the only one anything READS; the rest are kept so a window that has aged out of
+# Amazon's rolling report is not thrown away the moment it is replaced.
+KEEP_API_REPORTS = 3
+
+
+def prune_superseded(config_path, workspace_id, marketplace, keep_report_id):
+    """Clear out fetched reports nothing can use any more. -> rows removed.
+
+    An API report is named for the window it covers, so a later sync writes a
+    NEW id and the old rows stay for ever -- one more copy of nearly the same
+    terms every day the sync runs.
+
+    TWO RULES, AND BOTH ARE CONSERVATIVE.
+
+    A report whose window sits entirely inside the kept one is superseded: every
+    day it covers is covered again, so nothing is lost by dropping it.
+
+    The rest are capped rather than deleted on sight. Windows usually OVERLAP
+    rather than nest -- measured here, the old report ran 6 Aug to 4 Sep and the
+    new one 7 Aug to 5 Sep, so the old one is the only record of 6 August. It is
+    not read by anything, but discarding a day's evidence to save a few hundred
+    rows is a poor trade, so the newest few are kept and only genuinely old ones
+    go.
+
+    ONLY REPORTS THIS APP FETCHED. A report somebody UPLOADED by hand is never
+    touched: it may cover a period Amazon will no longer serve, and it is not
+    this function's business to decide that is worthless.
+    """
+    from data import db as _db
+
+    removed = 0
+    try:
+        conn = _db.get_db(config_path)
+        keep = conn.execute(
+            "SELECT MIN(date_from) a, MAX(date_to) b FROM ppc_search_terms "
+            "WHERE workspace_id=? AND marketplace=? AND report_id=?",
+            (workspace_id, marketplace, keep_report_id)).fetchone()
+        if not keep or not keep["a"]:
+            return 0
+        cur = conn.execute(
+            "DELETE FROM ppc_search_terms WHERE workspace_id=? AND "
+            "marketplace=? AND report_id<>? AND report_id LIKE 'ads_api_%' "
+            "AND date_from >= ? AND date_to <= ?",
+            (workspace_id, marketplace, keep_report_id, keep["a"], keep["b"]))
+        removed += cur.rowcount or 0
+
+        # And the cap, so the table cannot grow by a report a day for ever.
+        # Same tiebreak as report_meta: to the second, several reports can share
+        # a timestamp, and a cap that trimmed the wrong end would delete the
+        # newest.
+        old = [r["report_id"] for r in conn.execute(
+            "SELECT report_id, MAX(uploaded_at) up, MAX(id) mid "
+            "FROM ppc_search_terms WHERE workspace_id=? AND marketplace=? "
+            "AND report_id LIKE 'ads_api_%' "
+            "GROUP BY report_id ORDER BY up DESC, mid DESC",
+            (workspace_id, marketplace))][KEEP_API_REPORTS:]
+        for rid in old:
+            cur = conn.execute(
+                "DELETE FROM ppc_search_terms WHERE workspace_id=? AND "
+                "marketplace=? AND report_id=?", (workspace_id, marketplace, rid))
+            removed += cur.rowcount or 0
+        conn.commit()
+        return removed
+    except Exception:
+        return removed
+
+
 def store_rows(config_path, workspace_id, marketplace, rows, report_id=None,
                date_from="", date_to=""):
     """Keep an ingested report. Re-uploading the same id REPLACES it.
@@ -538,6 +659,9 @@ def store_rows(config_path, workspace_id, marketplace, rows, report_id=None,
     Replaces rather than adds, because uploading the same file twice is the
     normal accident and doubling every figure is the worst possible response to
     it. Returns (report_id, rows_kept).
+
+    AND CLEARS OUT THE ONES THIS ONE SUPERSEDES -- see prune_superseded. Without
+    that the table grows by a near-duplicate report every day the sync runs.
     """
     from data import db as _db
 
@@ -567,6 +691,8 @@ def store_rows(config_path, workspace_id, marketplace, rows, report_id=None,
              _i(r.get("orders")), _i(r.get("units")), now))
         n += 1
     conn.commit()
+    if n:
+        prune_superseded(config_path, workspace_id, marketplace, rid)
     return rid, n
 
 
