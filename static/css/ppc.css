@@ -550,6 +550,30 @@
   .ppc-trail{ grid-template-columns: repeat(2, 1fr); }
 }
 
+/* The profitability map's hover card. The mockup's shape: dark, bordered,
+ * dropped shadow, the figures right-aligned against their labels. */
+.ppc-maptip{
+  position: absolute; z-index: 5; pointer-events: none;
+  min-width: 210px; max-width: 260px;
+  background: var(--ppc-surface2); border: 1px solid var(--ppc-border);
+  border-radius: 6px; padding: 10px 12px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  font-size: 12px;
+}
+.ppc-maptip .t{
+  font-size: 13px; font-weight: 700; margin-bottom: 7px;
+  word-break: break-word; line-height: 1.3;
+}
+.ppc-maptip .l{
+  display: flex; justify-content: space-between; gap: 12px; padding: 2px 0;
+  color: var(--ppc-muted);
+}
+.ppc-maptip .l b{ color: var(--ppc-text); font-weight: 600; }
+.ppc-maptip .n{
+  margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--ppc-border);
+  font-size: 10px; color: var(--ppc-dim); line-height: 1.4;
+}
+
 /* ---- Live Tracker ---------------------------------------------------------
  * The mockup's six cards with a gold top border and a faint corner glow, and
  * its chart container darker than the page. Those parts of the design are good

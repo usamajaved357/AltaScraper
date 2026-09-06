@@ -20,7 +20,10 @@
 
 const PPCC = {data: null, loading: false, sort: "spend", desc: true, q: "",
               type: "All", status: "All", open: null, minSpend: "",
-              maxAcos: 200, highlight: null};
+              maxAcos: 200, highlight: null,
+              // The plotted dots, kept so the map's hover can find the campaign
+              // under the pointer without re-deriving the geometry.
+              dots: [], mapCur: "GBP"};
 
 async function ppccLoad(){
   const host = document.getElementById("ppcc_body");
@@ -161,6 +164,61 @@ function ppccRender(){
 }
 
 /* ---- 1. the breakdown panel --------------------------------------------- */
+/* WHAT THE RING SHOULD DIVIDE.
+ *
+ *     "the circular graph should show up movement with a particular number of
+ *      stats"
+ *
+ * The mockup's ring splits spend between Sponsored Products and Sponsored
+ * Brands, and shows two segments because that account runs both. This one runs
+ * only Sponsored Products -- measured: by_ad_product has exactly one entry --
+ * so the same ring is one complete circle of one colour, which tells nobody
+ * anything and looks broken.
+ *
+ * Inventing a second product would be a lie. But the panel is called "Campaign
+ * & Match Type Breakdown", and the match types ARE a real division of the same
+ * spend, from Amazon, with five live categories on this account. So when there
+ * is only one ad product the ring divides by match type instead, and the caption
+ * underneath says which of the two it is dividing.
+ *
+ * Neither is a default: the ring always divides something real and always names
+ * it.
+ */
+function _ppccRing(prods, matches, NICE, PCOL, MCOL){
+  const useProducts = (prods || []).filter(function(p){
+    return (p.spend || 0) > 0; }).length > 1;
+  if(useProducts){
+    return {
+      caption: "Total spend, split by ad product",
+      segments: prods.map(function(p){
+        const k = String(p.key).toUpperCase();
+        return {label: NICE[k] || p.key, value: p.spend || 0,
+                colour: PCOL[k] || "var(--ppc-muted)"};
+      }),
+    };
+  }
+  const live = (matches || []).filter(function(m){ return (m.spend || 0) > 0; });
+  if(live.length > 1){
+    return {
+      caption: "Total spend, split by match type — this account runs only one "
+               + "ad product, so the product split would be one whole circle",
+      segments: live.map(function(m){
+        const k = String(m.key).toUpperCase();
+        return {label: String(m.key).replace(/_/g, " "), value: m.spend || 0,
+                colour: MCOL[k] || "var(--ppc-muted)"};
+      }),
+    };
+  }
+  return {
+    caption: "Total spend",
+    segments: (prods || []).map(function(p){
+      const k = String(p.key).toUpperCase();
+      return {label: NICE[k] || p.key, value: p.spend || 0,
+              colour: PCOL[k] || "var(--ppc-muted)"};
+    }),
+  };
+}
+
 function ppccBreakdown(j, cur){
   const prods = j.by_ad_product || [], matches = j.by_match_type || [];
   const dbp = j.daily_by_product || {};
@@ -181,8 +239,45 @@ function ppccBreakdown(j, cur){
                  "ppc-tint-blue", "ppc-tint-purple", "ppc-tint-purple",
                  "ppc-tint-blue", "ppc-tint-blue", "ppc-tint-green",
                  "ppc-tint-teal"];
-  const HEADS = ["TYPE", "CLICKS", "CTR", "CPC", "CPA", "SPEND", "% SPEND",
-                 "SALES", "ACOS", "PROFIT", "% PROFIT"];
+  // EVERY COLUMN SAYS HOW IT WAS WORKED OUT.
+  //
+  //     "in the tables there i see the circular i marks that should display the
+  //      logic when the user hower over it"
+  //
+  // The ⓘ was on some headings and not others, and where it was present it
+  // named the metric rather than the arithmetic. A column called PROFIT on an
+  // advertising screen is the one people most need the method for: Amazon
+  // attributes SALES to a campaign and attributes neither the fee nor the stock
+  // cost, so the profit here is this account's own measured rates applied to
+  // those sales. Saying that on hover is the difference between a number
+  // somebody can act on and one they have to trust.
+  const HEADS = [
+    ["TYPE", "The match type Amazon reported for the search term, or the ad "
+             + "product for the campaign rows below."],
+    ["CLICKS", "Clicks Amazon attributed to this group in the window."],
+    ["CTR", "Clicks ÷ impressions. Recomputed over the whole group, not "
+            + "averaged across its rows — averaging lets one quiet row weigh as "
+            + "much as a busy one."],
+    ["CPC", "Spend ÷ clicks. Blank when there were no clicks, which is not a "
+            + "cost per click of nothing."],
+    ["CPA", "Spend ÷ ad orders — what one order cost to buy. Blank when there "
+            + "were no orders."],
+    ["SPEND", "What Amazon charged for these ads. Its figure, not an estimate."],
+    ["% SPEND", "This group's share of the window's total ad spend."],
+    ["SALES", "Sales Amazon ATTRIBUTED to these ads within its own attribution "
+              + "window. Not the same as total sales, and not everything these "
+              + "ads influenced."],
+    ["ACOS", "Spend ÷ attributed ad sales. Blank when the ads made no "
+             + "attributed sales — that is not an ACOS of nought, it is spend "
+             + "that bought none."],
+    ["PROFIT", "ESTIMATED. Amazon attributes sales to a campaign but not the "
+               + "referral fee or the stock cost, so this is attributed sales "
+               + "minus spend, minus this account's own MEASURED fee rate and "
+               + "cost rate applied to those sales. Blank when either rate "
+               + "could not be measured — a profit built on a guessed margin is "
+               + "how a working campaign gets switched off."],
+    ["% PROFIT", "This group's share of the window's total estimated profit."],
+  ];
 
   const row = function(r, colour, label){
     const cells = [
@@ -205,7 +300,8 @@ function ppccBreakdown(j, cur){
   let table = '<div style="overflow-x:auto"><table>'
     + '<thead><tr>'
     + HEADS.map(function(x, i){
-        return '<th class="' + TINTS[i] + '">' + x + '</th>';
+        return '<th class="' + TINTS[i] + '">' + _pEsc(x[0])
+          + '<span class="ppc-i" title="' + _pEsc(x[1]) + '">ⓘ</span></th>';
       }).join("")
     + '</tr></thead><tbody>';
 
@@ -237,7 +333,7 @@ function ppccBreakdown(j, cur){
   // line is the shape you can hover a single day on.
   const KEYMAP = {SPONSORED_PRODUCTS: "ad_spend", SPONSORED_BRANDS: "ad_sales",
                   SPONSORED_DISPLAY: "roas"};
-  const lines = (dbp.series || [])
+  let lines = (dbp.series || [])
     .filter(function(s){
       return (s.values || []).some(function(v){
         return v !== null && v !== undefined; });
@@ -247,9 +343,34 @@ function ppccBreakdown(j, cur){
       return {key: KEYMAP[k] || "ad_spend", label: NICE[k] || s.key,
               values: s.values};
     });
+  let cols = dbp.dates || [];
+  let chartNote = "Spend per day by ad product";
+
+  // ONE BAND IS NOT A BREAKDOWN.
+  //
+  //     "the line graph should also have more data than there is"
+  //
+  // With a single ad product this chart is one line, and a chart with one line
+  // needs no key and shows no composition. The placement report -- top of
+  // search, product pages, the rest of Amazon -- is the same spend cut a second
+  // way, from Amazon, with a figure for every day. So when the product split
+  // has nothing to compare, the day chart splits by placement instead and says
+  // which it is showing. Nothing is invented either way; the data simply is not
+  // there for the first cut and is for the second.
+  const pd = j.placement_daily || {};
+  const PKEY = ["ad_spend", "ad_sales", "roas", "clicks"];
+  if(lines.length < 2 && (pd.series || []).length > 1){
+    lines = pd.series.map(function(s, i){
+      return {key: PKEY[i % PKEY.length], label: s.label, values: s.values};
+    });
+    cols = pd.dates || [];
+    chartNote = "Spend per day by placement — this account runs one ad product, "
+              + "so a split by product would be a single line";
+  }
+
   const chart = (lines.length && typeof salesCombo === "function")
     ? salesCombo({id: "ppcc_spend", onZoom: "ppccZoomTo",
-                  columns: dbp.dates || [], bars: null, lines: lines,
+                  columns: cols, bars: null, lines: lines,
                   currency: cur, unit: "day",
                   width: scChartWidth("ppcc_body", 820), height: 280})
     : "";
@@ -263,18 +384,15 @@ function ppccBreakdown(j, cur){
     + '<div style="display:grid;grid-template-columns:260px 1fr;gap:24px;'
     +   'margin-top:16px;align-items:center">'
     + '<div style="text-align:center">'
-    +   ppcDonut(prods.map(function(p){
-          const k = String(p.key).toUpperCase();
-          return {label: NICE[k] || p.key, value: p.spend || 0,
-                  colour: PCOL[k] || "var(--ppc-muted)"};
-        }), 220)
-    +   '<div style="font-size:12px;color:var(--ppc-muted)">Total Spend</div>'
+    +   ppcDonut(_ppccRing(prods, matches, NICE, PCOL, MCOL).segments, 220)
+    +   '<div style="font-size:12px;color:var(--ppc-muted)">'
+    +   _pEsc(_ppccRing(prods, matches, NICE, PCOL, MCOL).caption) + '</div>'
     +   '<div style="font-size:26px;font-weight:700">'
     +   ppcMoney0(totalSpend, cur) + '</div>'
     + '</div>'
     + '<div>'
     +   (chart
-          ? ('<div class="ppc-charthint">Spend per day by ad product · hover '
+          ? ('<div class="ppc-charthint">' + _pEsc(chartNote) + ' · hover '
              + 'for the day · drag across to zoom · click a name to hide it'
              + '</div>' + chart)
           : '<div style="font-size:12px;color:var(--ppc-muted)">No daily '
@@ -282,11 +400,13 @@ function ppccBreakdown(j, cur){
     + '</div>'
     + '</div>'
     + table
-    + ppcLegend(prods.map(function(p){
-        const k = String(p.key).toUpperCase();
-        return [(NICE[k] || p.key) + " (" + ppcMoney0(p.spend, cur) + ")",
-                PCOL[k] || "var(--ppc-muted)"];
-      }))
+    // The legend names whatever the RING divided, not always the products --
+    // a key that lists two products beside a ring split five ways is worse than
+    // no key at all.
+    + ppcLegend(_ppccRing(prods, matches, NICE, PCOL, MCOL).segments
+        .map(function(sg){
+          return [sg.label + " (" + ppcMoney0(sg.value, cur) + ")", sg.colour];
+        }))
     + '</div>';
 }
 
@@ -372,23 +492,42 @@ function ppccMap(j, cur){
     + 'font-size="12" text-anchor="middle" transform="rotate(-90 14 '
     + ((Y0 + Y1) / 2) + ')">Estimated Profit</text>';
 
+  // THE CROSSHAIR, drawn once and moved on hover rather than one per dot.
+  //
+  //     "the campaign profitablity map displays two lines intersecting over a
+  //      point when somebody hower over it and displays specific information"
+  //
+  // Right, and it did not: every dot carried a native <title>, which is the
+  // browser's own yellow box -- it appears after a pause, cannot be styled, and
+  // gives no sense of WHERE on the two axes the campaign sits. The point of this
+  // chart is the position, so the hover has to show the position.
   const salesMax = Math.max.apply(null,
     rows.map(function(r){ return r.sales || 0; })) || 1;
-  rows.forEach(function(r){
+  svg += '<line id="ppcc_ch_x" x1="0" y1="0" x2="0" y2="0" '
+    + 'stroke="var(--ppc-cyan)" stroke-width="1" stroke-dasharray="4 3" '
+    + 'opacity="0" pointer-events="none"/>'
+    + '<line id="ppcc_ch_y" x1="0" y1="0" x2="0" y2="0" '
+    + 'stroke="var(--ppc-cyan)" stroke-width="1" stroke-dasharray="4 3" '
+    + 'opacity="0" pointer-events="none"/>';
+
+  PPCC.dots = [];
+  rows.forEach(function(r, i){
+    const cx = mapX(r.spend), cy = mapY(r.profit);
     const rad = Math.max(4, Math.sqrt((r.sales || 0) / salesMax * 100) * 0.9);
-    svg += '<circle cx="' + mapX(r.spend).toFixed(1) + '" cy="'
-      + mapY(r.profit).toFixed(1) + '" r="' + rad.toFixed(1) + '" fill="'
-      + band(r.acos_pct) + '" opacity="0.85" style="cursor:pointer" '
-      + 'onclick="ppccHighlight(' + jsArg(String(r.campaign_id)) + ')">'
-      + '<title>' + _pEsc(String(r.name || r.campaign_id))
-      + "\nSpend: " + _pEsc(ppcMoney(r.spend, cur).replace(/<[^>]+>/g, ""))
-      + "\nSales: " + _pEsc(ppcMoney(r.sales, cur).replace(/<[^>]+>/g, ""))
-      + "\nProfit: " + _pEsc(ppcMoney(r.profit, cur).replace(/<[^>]+>/g, ""))
-      + "\nACOS: " + (r.acos_pct === null || r.acos_pct === undefined
-                      ? "no sales" : (r.acos_pct + "%"))
-      + '</title></circle>';
+    PPCC.dots.push({x: cx, y: cy, r: r});
+    svg += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1)
+      + '" r="' + rad.toFixed(1) + '" fill="' + band(r.acos_pct)
+      + '" opacity="0.85" style="cursor:pointer" '
+      + 'onmouseenter="ppccDot(' + i + ',evt)" onmouseleave="ppccDotOut()" '
+      + 'onclick="ppccHighlight(' + jsArg(String(r.campaign_id)) + ')"/>';
   });
+  // The plot bounds, so the crosshair can be drawn to the axes.
+  svg += '<rect id="ppcc_plot" x="' + X0 + '" y="' + Y0 + '" width="'
+    + (X1 - X0) + '" height="' + (Y1 - Y0) + '" fill="none" '
+    + 'pointer-events="none" data-x0="' + X0 + '" data-x1="' + X1
+    + '" data-y0="' + Y0 + '" data-y1="' + Y1 + '"/>';
   svg += '</svg>';
+  PPCC.mapCur = cur;
 
   const legend = [["var(--ppc-green)", "< 15%"], ["var(--ppc-heat2)", "15–25%"],
                   ["var(--ppc-orange)", "25–40%"], ["var(--ppc-acos6)", "40–60%"],
@@ -417,8 +556,72 @@ function ppccMap(j, cur){
     + '<div style="display:flex;gap:14px;margin:10px 0 12px;font-size:11px;'
     +   'color:var(--ppc-muted);align-items:center;flex-wrap:wrap">'
     +   '<span style="font-weight:600">ACOS:</span>' + legend + '</div>'
-    + '<div class="ppc-map">' + svg + '</div>'
+    + '<div class="ppc-map" style="position:relative">' + svg
+    +   '<div id="ppcc_tip" class="ppc-maptip" style="display:none"></div>'
+    + '</div>'
     + '</div>';
+}
+
+/* The hover: move the two rules onto the point, and say what sits there.
+ *
+ * The figures are the ones the dot is POSITIONED by -- spend across, profit up,
+ * with the sales that set its size and the ACOS that set its colour -- so the
+ * card explains the picture rather than repeating the table. */
+function ppccDot(i, evt){
+  const d = (PPCC.dots || [])[i];
+  const tip = document.getElementById("ppcc_tip");
+  const plot = document.getElementById("ppcc_plot");
+  const lx = document.getElementById("ppcc_ch_x");
+  const ly = document.getElementById("ppcc_ch_y");
+  if(!d || !tip || !plot) return;
+  const X0 = +plot.getAttribute("data-x0"), X1 = +plot.getAttribute("data-x1");
+  const Y0 = +plot.getAttribute("data-y0"), Y1 = +plot.getAttribute("data-y1");
+  if(lx){
+    lx.setAttribute("x1", d.x); lx.setAttribute("x2", d.x);
+    lx.setAttribute("y1", Y0);  lx.setAttribute("y2", Y1);
+    lx.setAttribute("opacity", "1");
+  }
+  if(ly){
+    ly.setAttribute("x1", X0);  ly.setAttribute("x2", X1);
+    ly.setAttribute("y1", d.y); ly.setAttribute("y2", d.y);
+    ly.setAttribute("opacity", "1");
+  }
+  const r = d.r, cur = PPCC.mapCur || "GBP";
+  const line = function(k, v){
+    return '<div class="l"><span>' + k + '</span><b>' + v + '</b></div>';
+  };
+  tip.innerHTML = '<div class="t">' + _pEsc(String(r.name || r.campaign_id))
+    + '</div>'
+    + line("Ad spend", ppcMoney(r.spend, cur))
+    + line("Ad sales", ppcMoney(r.sales, cur))
+    + line("Estimated profit", ppcProfit(r.profit, cur, "greenred"))
+    + line("ACOS", ppcPct(r.acos_pct, "No attributed sales, so there is nothing "
+                                      + "to divide the spend by."))
+    + line("Orders", ppcNum(r.orders))
+    + '<div class="n">Across: spend · Up: profit · Size: sales · Colour: ACOS'
+    + '</div>';
+  // Positioned against the chart box, so it follows the dot rather than the
+  // pointer -- the pointer is already on the dot.
+  try{
+    const box = plot.ownerSVGElement.getBoundingClientRect();
+    const vb = plot.ownerSVGElement.viewBox.baseVal;
+    const sx = box.width / (vb.width || 1);
+    tip.style.left = Math.min(box.width - 230, Math.max(0, d.x * sx + 14)) + "px";
+    tip.style.top = Math.max(0, d.y * (box.height / (vb.height || 1)) - 10) + "px";
+  }catch(e){
+    tip.style.left = "20px";
+    tip.style.top = "20px";
+  }
+  tip.style.display = "block";
+}
+
+function ppccDotOut(){
+  const tip = document.getElementById("ppcc_tip");
+  if(tip) tip.style.display = "none";
+  ["ppcc_ch_x", "ppcc_ch_y"].forEach(function(id){
+    const el = document.getElementById(id);
+    if(el) el.setAttribute("opacity", "0");
+  });
 }
 
 /* ---- 3. the cohorts ------------------------------------------------------ */
