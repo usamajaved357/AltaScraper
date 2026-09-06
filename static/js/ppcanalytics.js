@@ -321,42 +321,47 @@ function ppcaTrail(j, cur){
 function ppcaKpis(j, cur, t, ch){
   const d = j.daily || [];
   const col = function(k){ return d.map(function(r){ return r[k]; }); };
+  // WHICH UNIT EACH ARROW IS IN, decided by the server so every screen agrees.
+  // ACOS and CTR are already percentages and move in POINTS; spend, sales,
+  // clicks and impressions move in per cent. 24.3% to 28.4% is +4.1pts, and
+  // calling it +16.9% answers a question nobody asked.
+  const cu = j.change_units || {};
 
   return '<div class="ppc-kpis">'
     + ppcKpi({label: "SPEND", value: ppcMoney0(t.spend, cur),
-              change: ppcChangeBare(ch.spend, "down"),
+              change: ppcChangeBare(ch.spend, "down", "", cu.spend),
               spark: ppcSparkline(col("spend"), "var(--ppc-red)"),
               help: "What Amazon charged for the ads in this window."})
     + ppcKpi({label: "SALES", value: ppcMoney0(t.sales, cur),
-              change: ppcChangeBare(ch.sales, "up"),
+              change: ppcChangeBare(ch.sales, "up", "", cu.sales),
               spark: ppcSparkline(col("ad_sales"), "var(--ppc-green)"),
               help: "Sales Amazon attributes to those ads. An organic sale is "
                   + "not in here."})
     + ppcKpi({label: "ACOS", value: ppcPct(t.acos_pct),
-              change: ppcChangeBare(ch.acos_pct, "down"),
+              change: ppcChangeBare(ch.acos_pct, "down", "", cu.acos_pct),
               spark: ppcSparkline(col("acos_pct"), "var(--ppc-orange)"),
               help: "Spend divided by AD sales. How much of the advertised "
                   + "revenue the advertising ate. Lower is better."})
     + ppcKpi({label: "ROAS", value: ppcX(t.roas),
-              change: ppcChangeBare(ch.roas, "up"),
+              change: ppcChangeBare(ch.roas, "up", "", cu.roas),
               spark: ppcSparkline(col("roas"), "var(--ppc-blue)"),
               help: "Ad sales for every pound of spend."})
     + '</div>'
     + '<div class="ppc-kpis last">'
     + ppcKpi({label: "IMPRESSIONS", value: ppcNum(t.impressions),
-              change: ppcChangeBare(ch.impressions, "up"),
+              change: ppcChangeBare(ch.impressions, "up", "", cu.impressions),
               spark: ppcSparkline(col("impressions"), "var(--ppc-blue)"),
               help: "How many times the ads were shown."})
     + ppcKpi({label: "CLICKS", value: ppcNum(t.clicks),
-              change: ppcChangeBare(ch.clicks, "up"),
+              change: ppcChangeBare(ch.clicks, "up", "", cu.clicks),
               spark: ppcSparkline(col("clicks"), "var(--ppc-green)"),
               help: "How many times somebody clicked one."})
     + ppcKpi({label: "CTR", value: ppcPct(t.ctr_pct, "", 2),
-              change: ppcChangeBare(ch.ctr_pct, "up"),
+              change: ppcChangeBare(ch.ctr_pct, "up", "", cu.ctr_pct),
               spark: ppcSparkline(col("ctr_pct"), "var(--ppc-magenta)"),
               help: "Clicks per impression."})
     + ppcKpi({label: "PURCHASES", value: ppcNum(t.orders),
-              change: ppcChangeBare(ch.orders, "up"),
+              change: ppcChangeBare(ch.orders, "up", "", cu.orders),
               spark: ppcSparkline(col("orders"), "var(--ppc-green)"),
               help: "Orders Amazon attributes to the ads."})
     + '</div>';
@@ -504,7 +509,7 @@ function ppcaProfitability(j, cur){
     + flow
     + '<div class="ppc-grid3 ppc-mb12">'
     +   ppcSubCard({label: "TACOS", value: ppcPct(t.tacos_pct),
-                    change: ppcChangeText((j.change || {}).tacos_pct, "down"),
+                    change: ppcChangeText((j.change || {}).tacos_pct, "down", "", (j.change_units||{}).tacos_pct),
                     note: period,
                     // The divisor is stated, because it is NOT simply the
                     // window's sales: Amazon's advertising feed runs about two
@@ -555,15 +560,7 @@ function ppcaProfitability(j, cur){
                     note: period,
                     help: "Estimated profit for the window, divided by the "
                         + "clicks that were paid for."})
-    +   ppcSubCard({label: "EFFICIENCY SCORE",
-                    value: (eff === null ? null : eff.toFixed(2)),
-                    why: "Needs a measured break-even ACOS and attributed sales.",
-                    badge: effBadge,
-                    note: "100 is break-even. Higher is better.",
-                    help: "Our own measure, defined here rather than borrowed: "
-                        + "100 × break-even ACOS ÷ actual ACOS. At 100 the "
-                        + "advertising exactly breaks even; above it, it makes "
-                        + "money."})
+    +   _ppcaEfficiencyCard(j, eff, effBadge)
     +   ppcSubCard({label: "NET PROFIT",
                     value: (net === null ? null : ppcMoney0(net, cur)),
                     colour: (net === null ? "" : (net >= 0 ? "var(--ppc-green)"
@@ -573,6 +570,56 @@ function ppcaProfitability(j, cur){
                     help: "Attributed sales, less the spend, less this "
                         + "account's measured Amazon fee and stock cost."})
     + '</div></div>';
+}
+
+/* THE HEADLINE EFFICIENCY SCORE, WITH ITS WORKING SHOWN.
+ *
+ * Three parts, weighted 0.50 / 0.30 / 0.20 -- how far ACOS sits under
+ * break-even, how normal the conversion rate is against its own history, and
+ * how little of the spend bought clicks and no orders. Bands: under 50 poor,
+ * 50-75 average, over 75 good.
+ *
+ * A single 0-100 number is the kind of thing people act on without asking how it
+ * was made, so every part, its weight and its reasoning are on the hover. And
+ * when one part cannot be measured the score is NOT shown: two legs out of three
+ * looks exactly like a real score and is not one.
+ *
+ * The older ratio -- break-even over actual ACOS -- is still the DAILY trend
+ * below, which answers a narrower question and is a shape rather than a verdict.
+ */
+function _ppcaEfficiencyCard(j, eff, effBadge){
+  const s = j.efficiency_score || {};
+  if(s.score === null || s.score === undefined){
+    return ppcSubCard({
+      label: "EFFICIENCY SCORE", value: null,
+      why: s.why || "One of its three parts could not be measured.",
+      note: _pEsc(s.why || ""),
+      help: "Three parts, weighted: 50% how far ACOS sits under break-even, "
+          + "30% how normal the conversion rate is against its own history, "
+          + "20% how little of the spend bought clicks and no orders. Not shown "
+          + "unless all three can be measured — a score built on two of them "
+          + "looks identical to a real one."});
+  }
+  const p = s.parts || {};
+  const line = function(k, label){
+    const x = p[k];
+    if(!x) return "";
+    return label + " " + Number(x.value).toFixed(0) + " × "
+      + Number(x.weight).toFixed(2) + " — " + x.why;
+  };
+  return ppcSubCard({
+    label: "EFFICIENCY SCORE",
+    value: Number(s.score).toFixed(2),
+    badge: '<span class="ppc-opp ' + (s.band === "Good" ? "hi" : "lo")
+         + '">' + _pEsc(s.band) + '</span>',
+    note: _pEsc("under 50 poor · 50-75 average · over 75 good"),
+    note2: _pEsc((p.wasted || {}).why || ""),
+    help: "Our own measure, and here is all of it:\n"
+        + line("acos", "· ACOS part") + "\n"
+        + line("cvr", "· conversion part") + "\n"
+        + line("wasted", "· waste part") + "\n"
+        + "Weighted 0.50 / 0.30 / 0.20 and added. Every input is Amazon's own "
+        + "figure; the weighting is ours."});
 }
 
 /* ---- 6. revenue, ad spend and profit ------------------------------------ */

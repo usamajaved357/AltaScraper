@@ -188,6 +188,7 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         # calls returned the identical figure and the change arrow could only
         # ever read zero. Measured across 7, 14, 30 and 90 days: 251.56 every
         # time. A comparison that cannot vary is not a comparison.
+        _wasted = _pa.wasted_spend(CONFIG_PATH, aid, mkt, start, end)
 
         return jsonify({
             "today": _pa.today_bar(CONFIG_PATH, aid, mkt),
@@ -209,7 +210,17 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "change": _pa.change(now, before),
             "daily": days,
             "cohorts": _pa.cohorts(CONFIG_PATH, aid, mkt, start, end, camps, rates),
-            "wasted": _pa.wasted_spend(CONFIG_PATH, aid, mkt, start, end),
+            "wasted": _wasted,
+            # The headline 0-100 score, with all three parts and their weights,
+            # so the number can be argued with rather than merely trusted. It
+            # reports a refusal, naming the missing part, rather than scoring on
+            # two legs out of three -- which would look identical to a real one.
+            "efficiency_score": _pa.efficiency_score(
+                now, rates, _wasted,
+                _pa.cvr_baseline(CONFIG_PATH, aid, mkt, end)),
+            # Which unit each change arrow is in. A ratio moves in POINTS and
+            # money in per cent; 24.3% to 28.4% is +4.1pts, not +16.9%.
+            "change_units": _pa.change_units(now),
             "by_ad_product": _pa.by_group(camps, "ad_product"),
             "campaigns": camps[:100],
             "campaign_count": len(camps),
