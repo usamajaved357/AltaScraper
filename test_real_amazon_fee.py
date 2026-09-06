@@ -315,8 +315,31 @@ if _ws_with:
     print("     %s -> x%.4f from %d product(s) (%.2f taken / %.2f quoted)"
           % (_ws_with, _mult, _m["samples"], _m["actual_fees"],
              _m["quoted_fees"]))
-    check("  the multiplier is actual over quoted", round(_mult, 4),
-          round(_m["actual_fees"] / _m["quoted_fees"], 4))
+    # THE REPORTED PAIR IS ROUNDED TO PENNIES; THE MULTIPLIER IS NOT. This
+    # asked for agreement at four decimal places between round(_mult, 4) and a
+    # ratio recomputed from actual_fees/quoted_fees -- and those two are
+    # reported by measure_multiplier() at 2dp, while the multiplier itself
+    # divides the unrounded totals. So the check was demanding more precision
+    # than its own inputs carry, and passed only while the rounding happened
+    # not to cross a boundary.
+    #
+    # It crossed one on 7 Sep 2026, the day the Finances role was granted and
+    # real settled fees arrived: quoted 80.9965139 rounds to 81.00, so the
+    # recomputation gives 99.21/81.00 = 1.224815 -> 1.2248, while the true
+    # ratio is 1.2248675 -> 1.2249. The multiplier was right; the expectation
+    # was built from lossy figures.
+    #
+    # So the tolerance is DERIVED from how much the rounding can move the
+    # answer rather than being a looser constant picked to make this pass -- a
+    # penny either way on each side, carried through the division. It stays
+    # honest at any size, which a fixed 3dp would not: the smaller the quoted
+    # total, the more a half-penny matters.
+    _ratio = _m["actual_fees"] / _m["quoted_fees"]
+    _slack = _ratio * (0.005 / _m["actual_fees"] + 0.005 / _m["quoted_fees"])
+    truthy("  the multiplier is actual over quoted (within penny rounding)",
+           abs(_mult - _ratio) <= _slack)
+    print("     stored %.6f vs %.6f recomputed from the 2dp pair, slack %.6f"
+          % (_mult, _ratio, _slack))
     truthy("  and it says what it was measured from", "measured across" in _why)
     # THE PROOF IT IS RIGHT: a product with no sales of its own, priced off the
     # scaled quote, lands on the same rate the account's settled orders show.

@@ -52,6 +52,64 @@ def key(account_id, sku):
     return "%s::%s" % (str(account_id or ""), str(sku or ""))
 
 
+def norm(sku):
+    """A SKU folded to the form used for MATCHING only. Never for storing.
+
+    AMAZON SPELLS THE SAME SKU TWO WAYS, and both are its own answer:
+
+        Orders API    10.99_3Days_B0GGSNN4Q6
+        Finances API  10.99_3DAYS_B0GGSNN4Q6
+
+    Same product, same listing, one seller. Measured on nestwell_goods the day
+    the Finances role was granted: the finance sync reported three SKUs as
+    unmapped -- 10.99_3DAYS_B0GGSNN4Q6, 15.09_3DAYS_B0F7D29MFZ,
+    6.89_2DAYS_B0GY4MTGKD -- while costs for all three were sitting in the store
+    under the mixed-case spelling. Cost of goods came back 0.0% covered on an
+    account that is fully costed, so every one of those orders would have shown
+    its profit as unknown.
+
+    This was always latent. It never showed because resolve() used to fall back
+    to reading the number out of the SKU name, and that parse takes the leading
+    number and never looks at the rest, so "3DAYS" and "3Days" gave the same
+    answer by accident. Removing that fallback -- the right change -- took the
+    accident away and left the flaw showing.
+
+    Case and surrounding space only. NOT punctuation, NOT internal spaces: a SKU
+    is an identifier the seller chose, and "grill-large" and "grill large" are
+    entitled to be two different products.
+    """
+    return str(sku or "").strip().upper()
+
+
+def find(overrides, account_id, sku):
+    """The stored cost for one SKU: (value, matched_key), else (None, "").
+
+    Exact first, so nothing about the normal path changes or slows. Only a MISS
+    pays for the fold, and only then does it scan -- the store holds tens of
+    costs, not thousands, so a scan on the way to "no cost known" is free.
+
+    Takes the dict rather than reading the module's own, because resolve() is
+    handed an overrides dict by its callers and the finance parser carries one
+    across a whole sync. One matcher either way (Rule 12).
+    """
+    if not overrides:
+        return None, ""
+    k = key(account_id, sku)
+    if k in overrides:
+        return overrides[k], k
+    want = "%s::%s" % (str(account_id or ""), norm(sku))
+    if not norm(sku):
+        return None, ""
+    for other in overrides:
+        s = str(other)
+        if "::" not in s:
+            continue
+        acct, _, other_sku = s.partition("::")
+        if "%s::%s" % (acct, norm(other_sku)) == want:
+            return overrides[other], s
+    return None, ""
+
+
 def load(config_path, force=False):
     """Read the file into the dict, in place. Safe to call more than once.
 
@@ -150,6 +208,15 @@ def set_cost(config_path, account_id, sku, cost):
     """
     load(config_path)
     k = key(account_id, sku)
+    # ONE ENTRY PER SKU, WHATEVER CASE IT ARRIVES IN. Amazon hands the same SKU
+    # back in two spellings (see norm()), so a cost typed against one and then
+    # cleared against the other would leave the first still standing -- a cost
+    # the owner believes they deleted, still quietly pricing their orders. If a
+    # cost is already stored under another spelling, that is the row we edit.
+    if k not in _OVERRIDES:
+        _got, _k = find(_OVERRIDES, account_id, sku)
+        if _k:
+            k = _k
     if cost in (None, "", "null"):
         with _LOCK:
             _OVERRIDES.pop(k, None)

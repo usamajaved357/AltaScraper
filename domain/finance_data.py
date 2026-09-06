@@ -394,22 +394,64 @@ def store(config_path, workspace_id, marketplace, rows, source="finances_api"):
 
 
 def sku_map(config_path, account_id, marketplace):
-    """SKU -> ASIN from the catalogue the app already holds.
+    """SKU -> ASIN from the catalogue the app already holds, AND from what sold.
 
-    Read from the live snapshot rather than fetched, because this runs inside a
+    Read from what is on disk rather than fetched, because this runs inside a
     finance pull and a second Amazon report there would double its cost for
-    information that is already on disk.
+    information the app already has.
+
+    THE SNAPSHOT IS NOT THE SAME THING AS "WHAT THIS ACCOUNT SELLS", and a SKU
+    missing from it loses its fees off every per-product figure. asin_for() files
+    an unmapped SKU's money against the account total only, which keeps the
+    headline right -- deliberately -- but means the product's own row shows the
+    sale with none of the fees that came with it. That reads as a product doing
+    better than it is, which is the direction that gets more of it ordered.
+
+    Measured 7 Sep 2026, the day the Finances role was granted:
+      nestwell_goods  4 of its 16 selling SKUs were not in the snapshot
+      selvora_limited 4 of 4 -- including OO-96JX-Z7ND, 52 orders, 1,757.97
+    On selvora NOT ONE fee could reach a product row.
+
+    So order_lines is unioned in: a SKU that has SOLD carries the ASIN it sold
+    as, and that is already local. THE SNAPSHOT WINS where both know a SKU --
+    it is what Amazon says is listed TODAY, while an order line is a record of
+    what was true when it shipped, and a relisted SKU can have moved ASIN since.
+
+    Same union, same reason, as domain/cogs.template_rows (Rule 12).
     """
+    out = {}
     try:
         from domain import live_snapshots as _ls
         rec = _ls.get(config_path, account_id, marketplace) or {}
     except Exception:
-        return {}
-    out = {}
+        rec = {}
     for it in (rec.get("items") or []):
         sku, asin = str(it.get("sku") or "").strip(), str(it.get("asin") or "").strip()
         if sku and asin:
             out[sku] = asin
+
+    # WHAT HAS ACTUALLY SOLD. Never fatal: losing this half must not lose the
+    # snapshot half, which is what every account had before today.
+    try:
+        from data import db as _dbm
+        seen = {str(k).strip().upper() for k in out}
+        for r in _dbm.get_db(config_path).execute(
+                "SELECT sku, asin, COUNT(*) n FROM order_lines "
+                "WHERE workspace_id=? AND IFNULL(sku,'') != '' "
+                "AND IFNULL(asin,'') != '' "
+                "GROUP BY sku, asin ORDER BY n DESC", (str(account_id or ""),)):
+            sku = str(r["sku"] or "").strip()
+            asin = str(r["asin"] or "").strip()
+            k = sku.upper()
+            if not sku or not asin or k in seen:
+                continue
+            # Ordered by how often the pair was seen, so a SKU that has sold
+            # under two ASINs takes the one it sold as MOST, not the one the
+            # database happened to return first.
+            seen.add(k)
+            out[sku] = asin
+    except Exception:
+        pass
     return out
 
 

@@ -102,8 +102,12 @@ def _seed(config_path, apply):
         "WHERE COALESCE(sku,'') <> '' GROUP BY workspace_id, sku").fetchall()
     wrote = left = 0
     for r in rows:
-        key = "%s::%s" % (r["workspace_id"], r["sku"])
-        if key in before:
+        # "already costed" ASKED THROUGH THE MATCHER, not by exact key. A cost
+        # the owner set against one spelling of a SKU must count as a cost when
+        # Amazon reports the other -- otherwise this seeds over the top of it
+        # with a number parsed out of the SKU name. See cogs_store.norm().
+        have, _k = _store.find(before, r["workspace_id"], r["sku"])
+        if have is not None:
             left += 1
             continue
         cost = _cogs.cost_from_sku(r["sku"])
@@ -138,8 +142,8 @@ def main():
     plan, skipped_named, skipped_have = [], 0, 0
     for r in rows:
         ws, sku = r["workspace_id"], r["sku"]
-        key = "%s::%s" % (ws, sku)
-        if key in before:
+        have, _k = _store.find(before, ws, sku)
+        if have is not None:
             skipped_have += 1
             continue
         cost = _cogs.cost_from_sku(sku)

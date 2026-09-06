@@ -72,11 +72,18 @@ def resolve(overrides, account_id, sku):
 
     NO COST IS NOT A ZERO COST. A SKU nobody has costed returns None, and every
     caller is written to leave the profit blank rather than call it free.
+
+    THE KEY IS MATCHED, NOT BUILT, HERE. This formatted "<account>::<SKU>" itself
+    and looked it up exactly, which is a second copy of a key shape that
+    domain/cogs_store already owns -- and being exact, it missed the same SKU
+    spelled in a different case. cogs_store.find() is now the one matcher; see
+    its norm() for the two spellings Amazon uses and what the miss cost.
     """
-    key = "%s::%s" % (account_id, sku)
-    if overrides and key in overrides:
+    from domain import cogs_store as _store
+    got, _k = _store.find(overrides, account_id, sku)
+    if got is not None:
         try:
-            return float(overrides[key]), "manual"
+            return float(got), "manual"
         except (TypeError, ValueError):
             pass
     return None, ""
