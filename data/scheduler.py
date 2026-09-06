@@ -114,6 +114,44 @@ def status():
             "registered": sorted(_JOBS.keys())}
 
 
+def history(job_types=None, workspace_id=None, limit=10):
+    """The last N ATTEMPTS, not just the last one per type. -> list.
+
+    status() answers "where does each job stand"; this answers "what has been
+    happening", which is what a run log is. It lives here because sync_jobs is
+    this module's table and a second reader elsewhere would be a second opinion
+    about what a run is (Rule 12).
+
+    Failures are included deliberately. A run list showing only successes is how
+    a job that has been erroring for a fortnight goes unnoticed.
+    """
+    conn = _db.get_db()
+    sql = ("SELECT id, job_type, workspace_id, status, last_run, result, error "
+           "FROM sync_jobs WHERE 1=1")
+    args = []
+    if job_types:
+        sql += " AND job_type IN (%s)" % ",".join("?" * len(job_types))
+        args += list(job_types)
+    if workspace_id:
+        # A job run for every account carries no workspace id, and it still ran
+        # for this one -- so those are kept rather than filtered out.
+        sql += " AND (workspace_id=? OR workspace_id IS NULL)"
+        args.append(workspace_id)
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(int(limit))
+    out = []
+    for r in conn.execute(sql, args):
+        d = dict(r)
+        if d.get("result"):
+            try:
+                d["result"] = json.loads(d["result"])
+            except ValueError:
+                pass
+        d["age_seconds"] = _age(d.get("last_run"))
+        out.append(d)
+    return out
+
+
 def start(workspace_ids=None):
     """Start the timers. Safe to call when APScheduler is absent.
 

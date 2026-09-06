@@ -131,9 +131,11 @@ function ppcaRender(){
     + 'performance</p>';
 
   if(!t.has_data){
-    h += ppcUnavailable("No advertising figures for this window",
-      (av.campaigns && av.campaigns.why)
-        || "Nothing is stored for this account and marketplace in this window.");
+    // Which of the three reasons it is -- see ppcNoData. Saying "no data" to an
+    // account that has no advertising login is how this page came to look
+    // broken rather than empty.
+    h += ppcNoData(av, "Every panel below this point needs advertising rows, so "
+                     + "none of them is drawn. Nothing is missing from the page.");
     host.innerHTML = h + '</div>';
     return;
   }

@@ -100,6 +100,7 @@
      every token it defines is prefixed --ppc- so nothing else can pick them up
      by accident. Scoped under .ppc-page, so it cannot reach another screen. -->
 <link rel="stylesheet" href="/static/css/ppc.css?v={{ ASSET_V }}">
+<link rel="stylesheet" href="/static/css/drppc.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -432,6 +433,7 @@
         <a class="navitem" data-sec="ppcanalytics" href="#" onclick="return navGo(event,'ppcanalytics')" title="Spend, sales, ACOS, TACOS, break-even and every campaign — measured from the Advertising API, read-only"><i class="ti ti-chart-histogram"></i> PPC Analytics</a>
         <a class="navitem" data-sec="ppcterms" href="#" onclick="return navGo(event,'ppcterms')" title="What people actually typed, one row each, with what it cost and returned"><i class="ti ti-search"></i> Search Terms</a>
         <a class="navitem" data-sec="ppccampaigns" href="#" onclick="return navGo(event,'ppccampaigns')" title="Every campaign, with the search terms it bought folded underneath"><i class="ti ti-target-arrow"></i> Campaign Analytics</a>
+        <a class="navitem" data-sec="drppcconsole" href="#" onclick="return navGo(event,'drppcconsole')" title="Readiness, the mirrored Amazon structure, and the plan this business is measured against — read-only towards Amazon"><i class="ti ti-robot"></i> Dr PPC™ Console</a>
         <a class="navitem" data-sec="drppc" href="#" onclick="return navGo(event,'drppc')" title="Wasted spend, ACOS, search terms worth harvesting — recommends only, never changes a bid"><i class="ti ti-stethoscope"></i> Dr PPC</a>
         <a class="navitem" data-sec="ppc" href="#" onclick="return navGo(event,'ppc')"><i class="ti ti-target"></i> PPC</a>
       </div>
@@ -1015,6 +1017,7 @@
     <div id="sec_ppcanalytics" class="wspanel"><div id="ppca_body"></div></div>
     <div id="sec_ppcterms" class="wspanel"><div id="ppct_body"></div></div>
     <div id="sec_ppccampaigns" class="wspanel"><div id="ppcc_body"></div></div>
+    <div id="sec_drppcconsole" class="wspanel"><div id="drppcconsole_body"></div></div>
 
     <div id="sec_ppc" class="wspanel">
       <div class="wstoolbar bleed">
@@ -2467,6 +2470,7 @@
 <script src="/static/js/ppcanalytics.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ppcterms.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ppccampaigns.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/drppc_console.js?v={{ ASSET_V }}"></script>
 <!-- AFTER both. traffic.js draws with salesCombo and formats with _sNum rather
      than carrying its own copies, which would drift from these on the first fix
      made to either. (Order is not load-bearing -- these are function

@@ -113,6 +113,39 @@ def missing(creds):
     return [f for f in FIELDS if not (creds or {}).get(f)]
 
 
+def connection(cfg, account=None):
+    """Is Advertising connected for this account, and if not, what is missing.
+
+    ONE PLACE ANSWERS THIS (Rule 12). Three advertising screens, the Dr PPC
+    Console and the readiness checks all need it, and they had been asking it
+    with their own arrangement of creds_for + missing -- which is how a screen
+    ends up saying "no data" when the real answer is "no login".
+
+    THE DISTINCTION IS THE WHOLE POINT. "This account has no Advertising login"
+    and "this account has one and spent nothing" look identical on an empty
+    screen and need completely different things done about them. Measured on the
+    real config: five of six accounts have no login at all, and every one of them
+    was being told its window was empty.
+    """
+    creds = creds_for(cfg, account)
+    gaps = missing(creds)
+    label = str((account or {}).get("label") or (account or {}).get("id") or "")
+    if gaps:
+        return {
+            "ok": False, "profile_id": "", "missing": gaps,
+            "why": ("%s has no Amazon Advertising login connected. Advertising "
+                    "is a SEPARATE login from the Selling Partner one this app "
+                    "already has — spend, campaigns and search terms cannot be "
+                    "read without it, so every advertising panel is empty for "
+                    "this account. Still needed: %s. Set it in Settings › "
+                    "Accounts."
+                    % (label or "This account",
+                       ", ".join(g.replace("ads_", "") for g in gaps))),
+        }
+    return {"ok": True, "profile_id": str(creds.get("ads_profile_id") or ""),
+            "missing": [], "why": ""}
+
+
 def _post_form(url, data):
     body = urllib.parse.urlencode(data).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST", headers={

@@ -141,8 +141,8 @@ function ppccRender(){
     + '</div></div>';
 
   if(!(j.campaigns || []).length){
-    h += ppcUnavailable("No campaigns stored for this window",
-      (av.campaigns && av.campaigns.why) || "Nothing is stored for this window.");
+    h += ppcNoData(av, "The campaign table, the profitability map and the "
+                     + "cohorts all read the same rows, so none is drawn.");
     host.innerHTML = h + '</div>';
     return;
   }

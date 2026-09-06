@@ -331,6 +331,83 @@ CREATE INDEX IF NOT EXISTS idx_returns_order
    vocabulary -- "Delivered", "DELIVERED", "Signed for", "Parcel delivered" --
    and mapping them onto a common word loses information the seller sometimes
    needs. Both are kept: the mapped one to group by, the original to read. */
+/* THE Dr PPC CONSOLE'S OWN STORE.
+
+   Three things live here that Amazon has no opinion about: the plan the
+   operator writes, the rules that decide which lane a search term belongs to,
+   and the record of what was decided. All of it is this business's own
+   judgement, which is why none of it can be derived and all of it has to be
+   kept.
+
+   A PLAN IS A CHAIN OF IMMUTABLE REVISIONS, NOT A ROW THAT GETS EDITED.
+
+       "Every save creates an immutable revision. Only an activated revision is
+        approved strategy."
+
+   That is the whole design and it is worth honouring exactly. A plan decides
+   what the analyst is allowed to propose and what a scheduled run measures
+   against; if it could be edited in place then a proposal made last week could
+   not be explained, because the thing it was made against would be gone. So a
+   save writes a NEW revision and activation is a separate act -- a draft is not
+   strategy until somebody says it is.
+
+   `body` is the whole plan as JSON: identity, the markdown strategy document,
+   the goals and the budget allocations. One column rather than six tables
+   because the plan is read and written whole, and because its shape is still
+   settling -- a schema per field would have to be migrated every time a goal
+   grows an attribute. */
+CREATE TABLE IF NOT EXISTS drppc_plans (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT,
+    revision     INTEGER NOT NULL,      -- 1, 2, 3... per workspace+marketplace
+    status       TEXT NOT NULL,         -- 'draft' | 'active' | 'superseded'
+    title        TEXT,
+    period_start TEXT,
+    period_end   TEXT,
+    body         TEXT,                  -- the whole plan, as JSON
+    created_at   TEXT,
+    created_by   TEXT,
+    activated_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_drppc_plan_rev
+    ON drppc_plans(workspace_id, marketplace, revision);
+CREATE INDEX IF NOT EXISTS idx_drppc_plan_status
+    ON drppc_plans(workspace_id, marketplace, status);
+
+/* WHICH LANE A SEARCH TERM BELONGS TO, and on whose authority.
+
+   Branded and non-branded spend are judged completely differently -- paying to
+   appear on your own name is defensive, paying to appear on a category term is
+   prospecting -- and Amazon does not tell you which is which. Somebody has to
+   decide, and the decision has to be reviewable afterwards, which is what
+   `rationale` and `source` are for.
+
+   PRIORITY ORDERS THE MATCHES, and every match stays visible. A term can be
+   caught by more than one rule, and hiding the losers would make a
+   classification impossible to argue with. The screen shows all of them.
+
+   `evidence` is what the pattern is matched against -- a search term today, a
+   campaign id or an ad group later -- so the same table can hold the exact
+   campaign assignments the console also wants without a second one. */
+CREATE TABLE IF NOT EXISTS drppc_rules (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT,
+    lane         TEXT NOT NULL,         -- 'branded' | 'non_branded' | 'unclassified'
+    evidence     TEXT NOT NULL,         -- 'search_term' | 'campaign_id' | 'ad_group'
+    match_type   TEXT NOT NULL,         -- 'contains' | 'exact' | 'starts_with' | 'regex'
+    pattern      TEXT NOT NULL,
+    priority     INTEGER NOT NULL DEFAULT 100,
+    rationale    TEXT,
+    source       TEXT,                  -- 'reviewed' | 'imported'
+    active       INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT,
+    created_by   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_drppc_rules_ws
+    ON drppc_rules(workspace_id, marketplace, active, priority);
+
 /* THE COSTS AMAZON KNOWS NOTHING ABOUT, and the one Amazon charges but attaches
    to no order.
 
