@@ -91,6 +91,36 @@ check("  and the VAT with it", day["tax"], 12.0)
 check("the cost of both is counted", day["cogs"], 16.0)
 check("  and both units are costed", day["cogs_units"], 2)
 
+print("\n== an UNKNOWN fee rate is not a fee of nothing ==")
+# THE BUG THIS PINS. The rate arrived as None -- which order_profit.fee_rate
+# returns whenever it cannot measure one: a new account, one with no settled
+# orders, one whose settlement feed has not landed. `float(fee_rate or 0)` made
+# that 0.0, so every unsettled order was estimated to cost nothing in fees and
+# the day's profit was overstated by the entire referral fee. Silently, and
+# exactly when the app knew least.
+#
+# The old default was 0.15, which is no better: measured on this owner's own
+# accounts, nestwell and selvora pay about 18% because Amazon charges VAT on its
+# fees. There is no constant to fall back to.
+unk = _of.complete_by_order_date(CFG, WS, MKT, D(30), D(0),
+                                 fee_rate=None, vat_rate=0.2)[D(20)]
+check("the settled order keeps Amazon's own fee", unk["referral_fees"], 4.5)
+check("  and NOTHING is added for the one that could not be estimated",
+      unk["fees_estimated"], 0.0)
+check("  which is not counted as an estimate", unk["orders_estimated"], 0)
+# The gap is COUNTED, so a screen can say how much of the window has no fee in
+# it. Left uncounted, "estimated 0.00" reads as "we checked and it is nothing".
+check("  it is counted as unknown instead", unk["orders_fee_unknown"], 1)
+check("  with the revenue it applies to", unk["revenue_fee_unknown"], 30.0)
+# The money is still right -- only the fee is missing.
+check("the sales are unaffected", unk["principal"], 60.0)
+
+# And the default no longer invents 15%.
+d0 = _of.complete_by_order_date(CFG, WS, MKT, D(30), D(0), vat_rate=0.2)[D(20)]
+check("omitting the rate estimates nothing rather than assuming 15%",
+      d0["fees_estimated"], 0.0)
+check("  and says so", d0["orders_fee_unknown"], 1)
+
 print("\n== so the day can be read across ==")
 _lr.from_lines(CFG, WS, MKT, D(30), D(0))
 rows = _sd.series(CFG, WS, MKT, D(30), D(0), vat_rate=0.2, basis="order")

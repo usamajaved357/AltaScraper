@@ -478,10 +478,27 @@ function ppcOpp(v){
   if(v === null || v === undefined)
     return ppcDash("No spend in this window, so there is nothing to gain or "
                    + "lose by changing it.");
+  // THE WHOLE FORMULA, on hover.
+  //
+  //     "there is a coulmn for oppurtunity i am concerd about the data accuracy"
+  //
+  // A fair concern about any invented score, and the honest answer is to publish
+  // the arithmetic rather than assert the number is right. Every input is
+  // Amazon's own figure for the window; only the weighting is ours, and it is
+  // stated here so it can be argued with.
   return '<span class="ppc-opp ' + (Number(v) >= 40 ? "hi" : "lo")
-    + '" title="How much there is to gain by looking at this one: money at '
-    + 'stake, how far past break-even it is, and clicks that bought no order. '
-    + '40 and over is worth opening.">' + Number(v) + '</span>';
+    + '" title="OUR score, 0-100, not Amazon\'s — how much there is to gain by '
+    + 'looking at this one. Three parts, added:\n'
+    + '  up to 40  money at stake, on a square-root scale so one big campaign '
+    + 'cannot own the list\n'
+    + '  up to 35  how far past break-even the ACOS is (35 outright if it spent '
+    + 'and sold nothing)\n'
+    + '  up to 25  clicks that bought no order — 25 at ten or more clicks and '
+    + 'no sale, tapering to 0 at a 10% conversion rate\n'
+    + 'Inputs are Amazon\'s own spend, sales, clicks and orders for this window; '
+    + 'the weighting is ours. Blank when nothing was spent — no spend is no '
+    + 'opportunity and no problem. 40 and over is worth opening.">'
+    + Number(v) + '</span>';
 }
 
 /* Profit, coloured. Cyan positive, orange negative on the term screens; the

@@ -90,6 +90,48 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
                                         "connected: %s" % str(e)[:120])}
         return av
 
+    def _placement_daily(aid, mkt, start, end):
+        """Spend per placement per day, in the shape the chart draws.
+
+        {dates: [...], series: [{key, label, values}]}. Empty when nothing is
+        stored -- the placement report is a recent addition and an account that
+        has not synced since has no rows, which is a real answer.
+        """
+        try:
+            from domain import live_tracker as _lt
+            from data import db as _db
+
+            conn = _db.get_db(CONFIG_PATH)
+            got, places = {}, []
+            for r in conn.execute(
+                    "SELECT date, placement, ROUND(SUM(spend),2) spend "
+                    "FROM ads_placement_daily WHERE workspace_id=? AND "
+                    "marketplace=? AND date>=? AND date<=? "
+                    "GROUP BY date, placement", (aid, mkt, start, end)):
+                got.setdefault(r["placement"], {})[r["date"]] = r["spend"]
+                if r["placement"] not in places:
+                    places.append(r["placement"])
+            if not places:
+                return {"dates": [], "series": []}
+            import datetime as _d
+            dates, d0 = [], _d.date.fromisoformat(start)
+            d1 = _d.date.fromisoformat(end)
+            while d0 <= d1:
+                dates.append(d0.isoformat())
+                d0 += _d.timedelta(days=1)
+            # Biggest spender first, so the key reads in the order the eye needs.
+            places.sort(key=lambda p: -sum((got.get(p) or {}).values()))
+            return {"dates": dates, "series": [
+                {"key": p,
+                 "label": _lt.PLACEMENT_LABELS.get(p, p),
+                 # A day with no row for THIS placement is None, not 0: the ad
+                 # may simply not have shown there, which is not the same as
+                 # showing there for nothing.
+                 "values": [(got.get(p) or {}).get(d) for d in dates]}
+                for p in places]}
+        except Exception:
+            return {"dates": [], "series": []}
+
     def _window():
         from domain import ppc_analytics as _pa
         start = (request.args.get("start") or "").strip()
@@ -257,6 +299,14 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "daily": _pa.daily(CONFIG_PATH, aid, mkt, start, end),
             "daily_by_product": _pa.daily_by_ad_product(CONFIG_PATH, aid, mkt,
                                                         start, end),
+            # WHERE THE ADS APPEARED, per day. Sent because the spend-per-day
+            # chart splits by ad product, and an account running only Sponsored
+            # Products gets ONE band -- a chart with a single series is a line
+            # that needs no key. The placement split is a real second cut of the
+            # same money, from Amazon, with three live categories here and a
+            # figure for every day. Read through domain/live_tracker, which owns
+            # that table (Rule 12), rather than queried again here.
+            "placement_daily": _placement_daily(aid, mkt, start, end),
             "terms_by_campaign": by_campaign,
         })
 

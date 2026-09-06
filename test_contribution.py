@@ -99,6 +99,59 @@ check("  and no margin", r2["margin_pct"], None)
 check("  but its cost so far is still shown", r2["cogs"], 12.0)
 check("  and its revenue", r2["revenue"], 50.0)
 
+print("\n=== an UNMEASURED FEE RATE is not a rate of zero ===")
+# THE BUG THIS PINS. `float(rate or 0)` -- and rate is None whenever it could not
+# be measured, which is every new account and every one with nothing settled yet.
+# Revenue Amazon had not settled therefore carried NO fee, and its contribution
+# was overstated by the whole referral fee, on the screen whose entire job is to
+# say which products make money.
+#
+# It is the same mistake the ad-spend rule below already refuses to make. A fee
+# is no different from an ad spend: a figure missing one of its costs is not a
+# smaller profit, it is not a profit at all.
+#
+# The rate is measured inside by_product_orders, so the way to reach the None
+# path is to make the measurement fail -- which is exactly what happens on a real
+# account with nothing settled. order_profit.fee_rate is the ONE thing that
+# answers it (Rule 12), so replacing that answer is enough.
+# This fixture is a settlement one, so the order calendar has nothing to read
+# until it is given an order. One order, placed and NOT settled -- which is the
+# situation the bug lived in.
+_c = _db.get_db(CFG)
+_c.execute("DELETE FROM order_lines WHERE workspace_id=?", (WS,))
+_c.execute(
+    "INSERT INTO order_lines (workspace_id, marketplace, order_id, "
+    "purchase_date, asin, sku, title, units, revenue, currency, status, "
+    "cogs, cogs_source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    (WS, MKT, "ORD-NOFEE-1", "2026-08-05T10:00:00Z", A1, "SKU-A1", "Thing", 1,
+     100.0, "GBP", "Shipped", 40.0, "manual"))
+_c.commit()
+
+from domain import order_profit as _op_patch      # noqa: E402
+_real_fee_rate = _op_patch.fee_rate
+_op_patch.fee_rate = lambda *a, **k: (None, "", "no settled orders to measure")
+try:
+    _nf_rows, _nf_tot = C.by_product_orders(CFG, WS, MKT, "2026-08-01",
+                                            "2026-08-31")
+finally:
+    _op_patch.fee_rate = _real_fee_rate
+_nf = {r["asin"]: r for r in _nf_rows}
+truthy("there is unsettled revenue to price", _nf_tot["estimated_revenue"] > 0)
+check("  and it is reported as carrying no fee",
+      _nf_tot["unpriced_fee_revenue"] > 0, True)
+check("  counted in products, not just pounds",
+      _nf_tot["unpriced_fee_products"] > 0, True)
+check("a product whose fee could not be worked out states no contribution",
+      _nf[A1]["contribution"], None)
+check("  nor a margin", _nf[A1]["margin_pct"], None)
+# The measurable parts are still reported -- only the unknown is withheld.
+check("  while its revenue is still shown", _nf[A1]["revenue"], 100.0)
+check("  and any fee Amazon DID settle is kept", _nf[A1]["fees"] >= 0, True)
+# Put the fixture back. A later check asserts this workspace has NO orders
+# stored, and a test that leaves its scenery on the stage breaks the next one.
+_c.execute("DELETE FROM order_lines WHERE workspace_id=?", (WS,))
+_c.commit()
+
 print("\n=== ad spend is UNKNOWN, never zero ===")
 check("no ad row -> None", by[A1]["ad_spend"], None)
 check("  and the total says the same", totals["ad_spend"], None)

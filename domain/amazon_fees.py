@@ -272,17 +272,34 @@ def estimate(gross, rate=None, currency="GBP"):
     g = _f(gross, None) if gross is not None else None
     if g is None:
         return out
-    r = DEFAULT_REFERRAL_RATE if rate is None else _f(rate, DEFAULT_REFERRAL_RATE)
+    # WHOSE 15% IS IT? The caller passes this account's MEASURED rate when there
+    # is one, and None when there is not -- a new account, or one with nothing
+    # settled to measure from. Both used to produce the same sentence:
+    # "estimated at 15.0%", which reads as this account's own figure.
+    #
+    # It is not. Measured on this owner's accounts, nestwell and selvora pay
+    # about 18% because Amazon charges VAT on its fees, so the generic 15%
+    # understates the fee on every unsettled order and overstates the profit by
+    # the difference. The number is still the best available guess -- what
+    # changes is that the screen now says it is a guess about Amazon in general
+    # rather than a measurement of this account.
+    guessed = rate is None
+    r = DEFAULT_REFERRAL_RATE if guessed else _f(rate, DEFAULT_REFERRAL_RATE)
     cur = str(currency or "GBP").upper()
     ref = round(g * r, 2)
     floor = MIN_REFERRAL.get(cur)
     if floor is not None and 0 < g and ref < floor:
         ref = floor
     out.update({"referral": ref, "total": ref, "basis": ESTIMATED, "rate": r,
-                "currency": cur,
-                "detail": "estimated at %.1f%% of the %.2f the buyer paid; "
-                          "Amazon's exact figure arrives when the order settles"
-                          % (r * 100, g)})
+                "currency": cur, "rate_measured": not guessed,
+                "detail": (
+                    ("estimated at %.1f%% of the %.2f the buyer paid -- "
+                     "Amazon's USUAL rate, not this account's own, which could "
+                     "not be measured yet; the exact figure arrives when the "
+                     "order settles" % (r * 100, g)) if guessed else
+                    ("estimated at %.1f%% of the %.2f the buyer paid, this "
+                     "account's own measured rate; Amazon's exact figure "
+                     "arrives when the order settles" % (r * 100, g)))})
     return out
 
 

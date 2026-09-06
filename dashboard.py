@@ -4395,6 +4395,23 @@ def build_app(backend=None):
     _drppc_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state)
 
+    # The Dr PPC Console -- readiness, the mirrored structure, and the plan.
+    # Separate from the checker above on purpose: that one recommends against
+    # live spend, this one records what this business intends. Neither writes to
+    # Amazon (Rule 8).
+    # The Live Tracker. Daily, not hourly -- Amazon refuses timeUnit HOURLY for
+    # every advertising report type, and the page says so rather than drawing
+    # twenty-four invented points per day.
+    import routes.live_tracker_routes as _live_tracker_routes
+    _live_tracker_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                  _active_account=_active_account,
+                                  _state=_state)
+
+    import routes.drppc_console_routes as _drppc_console_routes
+    _drppc_console_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                   _active_account=_active_account,
+                                   _state=_state)
+
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and
     # per day all along without ever showing them.

@@ -348,6 +348,7 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
 
     rows = []
     est_rev_total, actual_fee_total = 0.0, 0.0
+    unknown_fee_rev, unknown_fee_rows = 0.0, 0
     for ln in lines:
         asin = ln["asin"]
         revenue = _f(ln["revenue"])
@@ -360,9 +361,25 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
         s = settled.get(asin) or {}
         fees_actual = _f(s.get("fees"))
         unsettled_rev = max(0.0, revenue - _f(s.get("revenue")))
-        fees = round(fees_actual + unsettled_rev * float(rate or 0), 2)
+        # AN UNMEASURED FEE RATE IS NOT A RATE OF ZERO.
+        #
+        # This read `float(rate or 0)`, and rate is None whenever it could not be
+        # measured -- a new account, or one with nothing settled yet. Revenue
+        # Amazon has not settled then carried NO fee at all, so its contribution
+        # was overstated by the whole referral fee, on the screen whose entire
+        # job is to say which products make money.
+        #
+        # It is the same mistake the advertising rule below already refuses to
+        # make: "subtracting an unknown ad spend as if it were nought makes every
+        # advertised product look better than it is". A fee is no different.
+        fee_unknown = (rate is None and unsettled_rev > 0)
+        fees = (round(fees_actual + unsettled_rev * float(rate), 2)
+                if rate is not None else round(fees_actual, 2))
         est_rev_total += unsettled_rev
         actual_fee_total += fees_actual
+        if fee_unknown:
+            unknown_fee_rev += unsettled_rev
+            unknown_fee_rows += 1
 
         rf = refunds.get(asin) or {}
         refund = _f(rf.get("refunds"))
@@ -383,6 +400,13 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
         # look better than it is, by exactly what is being spent on it.
         if contribution is not None and ad is not None:
             contribution = round(contribution - ad, 2)
+        # AND A ROW WHOSE FEE IS UNKNOWN CANNOT STATE A CONTRIBUTION EITHER.
+        # The same rule as the uncosted units above and the unknown ad spend
+        # beside it: a figure missing one of its costs is not a smaller profit,
+        # it is not a profit at all. Reporting it would flatter this product by
+        # exactly whatever Amazon charges on the part it has not settled.
+        if fee_unknown:
+            contribution = None
 
         row = {
             "asin": asin,
@@ -426,6 +450,12 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
     totals["fee_rate_detail"] = rate_detail
     totals["fees_actual"] = round(actual_fee_total, 2)
     totals["estimated_revenue"] = round(est_rev_total, 2)
+    # The revenue carrying NO fee at all, because none could be measured. A
+    # different thing from estimated_revenue, which has a fee with a stated
+    # method behind it, and worth its own line: those products show no
+    # contribution rather than a flattering one, and the screen should say why.
+    totals["unpriced_fee_revenue"] = round(unknown_fee_rev, 2)
+    totals["unpriced_fee_products"] = unknown_fee_rows
     totals["ads_connected"] = ads_connected
     return rows, totals
 

@@ -235,6 +235,27 @@ def _upsert_campaign(conn, workspace_id, marketplace, date, cid, m, fetched_at,
          ad_product))
 
 
+def _upsert_placement(conn, workspace_id, marketplace, date, cid, placement, m,
+                      fetched_at, ad_product="SPONSORED_PRODUCTS"):
+    """One campaign, one day, one placement. Its own table -- see store_rows."""
+    conn.execute(
+        "INSERT INTO ads_placement_daily (workspace_id, marketplace, date, "
+        "campaign_id, campaign_name, placement, impressions, clicks, spend, "
+        "ad_orders, ad_sales, ad_product, source, fetched_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(workspace_id, marketplace, date, campaign_id, placement, "
+        "ad_product) DO UPDATE SET "
+        "campaign_name=excluded.campaign_name, impressions=excluded.impressions, "
+        "clicks=excluded.clicks, spend=excluded.spend, "
+        "ad_orders=excluded.ad_orders, ad_sales=excluded.ad_sales, "
+        "source=excluded.source, fetched_at=excluded.fetched_at",
+        (workspace_id, marketplace, date, str(cid),
+         m.get("campaign_name") or "", str(placement),
+         _int(m.get("impressions")), _int(m.get("clicks")), m.get("spend"),
+         _int(m.get("orders")), m.get("sales"), ad_product, "ads_api",
+         fetched_at))
+
+
 def _int(v):
     return None if v is None else int(round(v))
 
@@ -292,6 +313,31 @@ def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at,
         out["ppc_search_terms"] = n
         out["report_id"] = _rid
         return out
+    # THE PLACEMENT REPORT GOES NOWHERE NEAR ads_daily.
+    #
+    # It is the SAME spend as the campaign report, cut a second way: one campaign
+    # on one day appears once per placement, and those rows add up to the
+    # campaign's day. Folding them into ads_daily or ads_campaign_daily would
+    # mean every existing screen counted the same money three or four times -- the
+    # two-grain mistake this app has already paid for once, where the account
+    # total sits at asin='*' beside the per-product rows and summing both returns
+    # exactly twice the truth. Its own table cannot be summed by accident.
+    if kind == "placement":
+        n = 0
+        folded = _fold(rows, ("date", "campaign_id", "placement"),
+                       keep=("campaign_name",))
+        for (date, cid, place), m in sorted(folded.items()):
+            if not place:
+                # A row Amazon sent with no placement cannot be attributed to
+                # one, and filing it under a made-up "unknown" placement would
+                # put spend in a bucket that does not exist on Amazon.
+                continue
+            _upsert_placement(conn, workspace_id, marketplace, date, cid, place,
+                              m, fetched_at, prod)
+            n += 1
+        out["ads_placement_daily"] = n
+        return out
+
     if kind.endswith("campaign"):
         n = 0
         for (date,), m in sorted(_fold(rows, ("date",)).items()):
@@ -453,6 +499,11 @@ def stray_marketplaces(config_path, workspace_id, keep):
     return out
 
 
+# Every table the advertising sync files by marketplace, and therefore every
+# table a wrongly-scoped profile could have written copies into.
+_MARKETPLACE_TABLES = ("ads_daily", "ads_campaign_daily", "ads_placement_daily")
+
+
 def drop_marketplace(config_path, workspace_id, marketplace, dry_run=True):
     """Delete one marketplace's advertising rows for one account.
 
@@ -465,15 +516,26 @@ def drop_marketplace(config_path, workspace_id, marketplace, dry_run=True):
     conn = _db.get_db(config_path)
     mkt = str(marketplace or "").strip().upper()
     counts = {}
-    for t in ("ads_daily", "ads_campaign_daily"):
-        counts[t] = conn.execute(
-            "SELECT COUNT(*) FROM %s WHERE workspace_id=? AND marketplace=?" % t,
-            (workspace_id, mkt)).fetchone()[0]
+    # ads_placement_daily is here because it is the same family: written by the
+    # same sync, from the same profile, and therefore capable of the same
+    # duplication. Left out, a later clean-up would tidy two tables and leave
+    # the third holding copies nobody remembers are there.
+    for t in _MARKETPLACE_TABLES:
+        try:
+            counts[t] = conn.execute(
+                "SELECT COUNT(*) FROM %s WHERE workspace_id=? AND marketplace=?"
+                % t, (workspace_id, mkt)).fetchone()[0]
+        except Exception:
+            counts[t] = 0
     if dry_run:
         return {"dry_run": True, "marketplace": mkt, "would_delete": counts}
-    for t in ("ads_daily", "ads_campaign_daily"):
-        conn.execute("DELETE FROM %s WHERE workspace_id=? AND marketplace=?" % t,
-                     (workspace_id, mkt))
+    for t in _MARKETPLACE_TABLES:
+        try:
+            conn.execute(
+                "DELETE FROM %s WHERE workspace_id=? AND marketplace=?" % t,
+                (workspace_id, mkt))
+        except Exception:
+            pass
     conn.commit()
     return {"dry_run": False, "marketplace": mkt, "deleted": counts}
 

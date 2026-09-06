@@ -36,6 +36,7 @@
   --ppc-purple:    #bc8cff;
   --ppc-magenta:   #e570ff;   /* the CTR sparkline */
   --ppc-gold:      #c9a84c;   /* the revenue/sales bars */
+  --ppc-chartbg:   #0a0e14;   /* darker than the panel -- the Live Tracker's */
 
   /* The ACoS heatmap's four bands, and the profitability map's seven. */
   --ppc-heat1:     #22863a;   /* < 26% */
@@ -547,4 +548,94 @@
   .ppc-page{ padding: 16px 14px 40px; }
   .ppc-kpis{ grid-template-columns: 1fr; }
   .ppc-trail{ grid-template-columns: repeat(2, 1fr); }
+}
+
+/* The profitability map's hover card. The mockup's shape: dark, bordered,
+ * dropped shadow, the figures right-aligned against their labels. */
+.ppc-maptip{
+  position: absolute; z-index: 5; pointer-events: none;
+  min-width: 210px; max-width: 260px;
+  background: var(--ppc-surface2); border: 1px solid var(--ppc-border);
+  border-radius: 6px; padding: 10px 12px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  font-size: 12px;
+}
+.ppc-maptip .t{
+  font-size: 13px; font-weight: 700; margin-bottom: 7px;
+  word-break: break-word; line-height: 1.3;
+}
+.ppc-maptip .l{
+  display: flex; justify-content: space-between; gap: 12px; padding: 2px 0;
+  color: var(--ppc-muted);
+}
+.ppc-maptip .l b{ color: var(--ppc-text); font-weight: 600; }
+.ppc-maptip .n{
+  margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--ppc-border);
+  font-size: 10px; color: var(--ppc-dim); line-height: 1.4;
+}
+
+/* ---- Live Tracker ---------------------------------------------------------
+ * The mockup's six cards with a gold top border and a faint corner glow, and
+ * its chart container darker than the page. Those parts of the design are good
+ * and survive the loss of the hourly grain the rest of it assumed. */
+.ppcl-kpis{
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+  margin-bottom: 20px;
+}
+.ppcl-kpi{
+  position: relative; overflow: hidden;
+  border-top: 2px solid var(--ppc-gold);
+  border-radius: 0 0 6px 6px;
+  background: linear-gradient(180deg, var(--ppc-surface2), var(--ppc-surface));
+  padding: 14px 16px; min-width: 0;
+}
+.ppcl-kpi:after{
+  content: ""; position: absolute; top: -30px; right: -30px;
+  width: 90px; height: 90px; pointer-events: none;
+  background: radial-gradient(circle, var(--ppc-gold-bg), transparent 70%);
+}
+.ppcl-kpi .k{
+  font-size: 11px; font-weight: 700; letter-spacing: .8px;
+  text-transform: uppercase; color: var(--ppc-muted);
+}
+.ppcl-kpi .v{ font-size: 26px; font-weight: 700; margin-top: 6px;
+              word-break: break-word; }
+.ppcl-kpi .n{ font-size: 11px; color: var(--ppc-dim); margin-top: 3px; }
+
+/* Darker than the panel it sits in, as the spec asks. */
+.ppcl-chart{ background: var(--ppc-chartbg); border-radius: 6px;
+             padding: 12px 8px; }
+
+.ppcl-sw{
+  width: 40px; height: 22px; border-radius: 11px; background: var(--ppc-border);
+  position: relative; flex: 0 0 40px; cursor: pointer; border: 0; padding: 0;
+  transition: background .15s;
+}
+.ppcl-sw:after{
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%; background: #fff;
+  transition: transform .15s;
+}
+.ppcl-sw.on{ background: var(--ppc-gold); }
+.ppcl-sw.on:after{ transform: translateX(18px); }
+
+.ppcl-prow{ cursor: pointer; }
+.ppcl-prod{ display: flex; align-items: center; gap: 10px; }
+.ppcl-prod img, .ppcl-noimg{
+  width: 40px; height: 40px; border-radius: 4px; flex: 0 0 40px;
+  object-fit: cover; border: 1px solid var(--ppc-border);
+  background: var(--ppc-surface2); display: inline-block;
+}
+.ppcl-prod .t{ font-size: 13px; font-weight: 600; }
+.ppcl-prod .a{ font-size: 12px; color: var(--ppc-cyan); font-weight: 600; }
+.ppcl-detail{
+  background: var(--ppc-chartbg); border-radius: 6px; padding: 12px 8px;
+  margin: 4px 0 10px;
+}
+
+@media (max-width: 1400px){
+  .ppcl-kpis{ grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 720px){
+  .ppcl-kpis{ grid-template-columns: repeat(2, 1fr); }
 }

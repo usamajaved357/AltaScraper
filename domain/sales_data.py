@@ -598,6 +598,26 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
                     "than this app's order history, so they cannot be "
                     "dated to when they were placed and are not in these "
                     "figures." % (miss["orders"], miss["fees"]))
+            # AND THE OTHER GAP: orders whose fee could not be estimated at all.
+            #
+            # This used to be invisible. With no measured fee rate the estimate
+            # was silently 0.00, so an unsettled order looked fee-free and the
+            # day's profit was overstated by the whole referral fee. It is now
+            # left out rather than guessed, which is right -- and has to be SAID,
+            # or the same profit figure is simply wrong in a quieter way.
+            if _rate is None:
+                n = sum(int(d.get("orders_fee_unknown") or 0)
+                        for d in (fin or {}).values())
+                rev = sum(float(d.get("revenue_fee_unknown") or 0)
+                          for d in (fin or {}).values())
+                if n:
+                    fin_note = (fin_note + " " if fin_note else "") + (
+                        "%d order(s) worth %.2f have NO fee in these figures: "
+                        "this account has no measured fee rate yet — %s — so "
+                        "the fee was left out rather than guessed. Profit for "
+                        "those orders is overstated by whatever Amazon charges."
+                        % (n, rev, _rdetail or _rbasis or "nothing to measure "
+                                                          "it from"))
         except Exception:
             basis = "money"          # never lose the figures over a re-dating
 
