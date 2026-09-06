@@ -444,6 +444,10 @@ MAPPING = {
     "units": ("unitsSoldClicks30d", "unitsSoldClicks14d", "unitsSoldClicks1d",
               "units", "unitsSold"),
     "asin": ("advertisedAsin", "asin", "promotedAsin"),
+    # Where the ad appeared. Amazon's own word for it, taken from the column it
+    # actually sends rather than from a documented name -- the same lesson as
+    # campaignStatus above, which cost a whole screen's worth of budgets.
+    "placement": ("placementClassification", "placement"),
 }
 
 
@@ -463,7 +467,7 @@ def _row(d):
         out[k] = _num(out.get(k))
     for k in ("campaign_id", "campaign_name", "state", "target_type",
               "search_term", "keyword", "match_type", "asin", "date",
-              "ad_group"):
+              "ad_group", "placement"):
         out[k] = str(out[k]) if out.get(k) is not None else ""
     return out
 
@@ -549,6 +553,25 @@ REPORT_TYPES = {
         "columns": ["campaignId", "campaignName", "advertisedAsin",
                     "impressions", "clicks", "cost", "purchases30d", "sales30d"],
     },
+    # WHERE THE AD ACTUALLY APPEARED -- top of search, a product page, or
+    # somewhere else on Amazon. Two ads costing the same are not the same buy if
+    # one is at the top of search and the other is on a competitor's page, and
+    # until now nothing here could tell them apart.
+    #
+    # THE CONFIGURATION IS THE ONE AMAZON ACCEPTED, not one inferred from the
+    # documentation (Rule 4). Asked on 6 Sep 2026 against nestwell_goods:
+    # groupBy ["campaign", "campaignPlacement"] with timeUnit DAILY was accepted
+    # and returned a report id. The same groupBy with timeUnit HOURLY was
+    # refused -- "configuration timeUnit is not supported for this report type"
+    # -- as was HOURLY on spCampaigns and spAdvertisedProduct alone. There is no
+    # hourly advertising data to be had, whatever a mockup asks for.
+    "placement": {
+        "reportTypeId": "spCampaigns",
+        "groupBy": ["campaign", "campaignPlacement"],
+        "columns": ["campaignId", "campaignName", "placementClassification",
+                    "impressions", "clicks", "cost", "purchases30d",
+                    "sales30d"],
+    },
     # ---- SPONSORED BRANDS -- UNVERIFIED, never run. See the note above. ------
     # Brands does not offer the 30-day attribution window Products does; 14 days
     # is its longest, so the column names differ and are NOT interchangeable.
@@ -586,7 +609,11 @@ KINDS_BY_PRODUCT = {
     # search_term is here so a sync feeds the PPC screens too. Until now that
     # report could only reach the app as a CSV somebody downloaded from Seller
     # Central by hand, which is why every PPC screen sat empty.
-    "SPONSORED_PRODUCTS": ("campaign", "advertised_product", "search_term"),
+    # `placement` is LAST on purpose. It is the only one no existing screen
+    # depends on, so if a sync runs out of time or quota the three that screens
+    # already read have been done first.
+    "SPONSORED_PRODUCTS": ("campaign", "advertised_product", "search_term",
+                           "placement"),
     "SPONSORED_BRANDS": ("sb_campaign",),
     "SPONSORED_DISPLAY": ("sd_campaign", "sd_advertised_product"),
 }

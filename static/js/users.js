@@ -159,7 +159,7 @@ const SECTION_FEATURE = {
   ppcanalytics:"ppc", ppcterms:"ppc", ppccampaigns:"ppc",
   // The Dr PPC Console. Its routes live under /drppc/, which auth/guard.py
   // already governs as "ppc", so the nav item and the endpoints hide together.
-  drppcconsole:"ppc",
+  drppcconsole:"ppc", ppclive:"ppc",
   monitor:"monitor", trackers:"trackers", alerts:"alerts",
   catalog:"catalog", categories:"categories", compliance:"compliance",
   notify:"notify", setup:"setup",

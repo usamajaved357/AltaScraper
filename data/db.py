@@ -158,6 +158,47 @@ CREATE TABLE IF NOT EXISTS ads_campaign_daily (
 CREATE INDEX IF NOT EXISTS idx_adscamp_ws
     ON ads_campaign_daily(workspace_id, marketplace, date);
 
+/* WHERE THE AD APPEARED, per campaign per day.
+   -----------------------------------------------------------------------
+   Top of search, a product page, or the rest of Amazon. Two campaigns spending
+   the same amount are not making the same buy if one sits at the top of search
+   and the other on a competitor's product page, and nothing here could tell
+   them apart.
+
+   ITS OWN TABLE, NOT A COLUMN ON ads_campaign_daily. Adding `placement` there
+   would multiply every existing row by four and silently double, triple or
+   quadruple every figure any current screen reads from it -- the two-grain
+   mistake that already cost this app once, where the account total sits at
+   asin='*' beside the per-product rows and summing both returns exactly twice
+   the truth. A separate table cannot be summed by accident.
+
+   NO HOURLY EQUIVALENT EXISTS. Amazon refuses timeUnit HOURLY for this report
+   type and for spCampaigns and spAdvertisedProduct -- asked on 6 Sep 2026 and
+   refused with "configuration timeUnit is not supported for this report type".
+   The daily grain is not a simplification; it is the finest grain there is. */
+CREATE TABLE IF NOT EXISTS ads_placement_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    date         TEXT NOT NULL,
+    campaign_id  TEXT NOT NULL,
+    campaign_name TEXT,
+    placement    TEXT NOT NULL,      -- Amazon's placementClassification, as sent
+    impressions  INTEGER,
+    clicks       INTEGER,
+    spend        REAL,
+    ad_orders    INTEGER,
+    ad_sales     REAL,
+    ad_product   TEXT NOT NULL DEFAULT 'SPONSORED_PRODUCTS',
+    source       TEXT,
+    fetched_at   TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_adsplace_key
+    ON ads_placement_daily(workspace_id, marketplace, date, campaign_id,
+                           placement, ad_product);
+CREATE INDEX IF NOT EXISTS idx_adsplace_ws
+    ON ads_placement_daily(workspace_id, marketplace, date);
+
 /* REPORTS AMAZON IS STILL BUILDING.
    -----------------------------------------------------------------------
    An advertising report is not fetched, it is COMMISSIONED: you ask, Amazon
