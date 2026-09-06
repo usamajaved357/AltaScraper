@@ -26,9 +26,13 @@ async function ppccLoad(){
   const host = document.getElementById("ppcc_body");
   if(!host || PPCC.loading) return;
   PPCC.loading = true;
-  host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
-    + 'color:var(--ppc-muted)"><span class="genspin"></span> '
-    + 'Reading the campaigns…</div></div>';
+  // The screen stays on and dims rather than going blank -- see ppcBusy.
+  ppcBusy("ppcc_body", true);
+  if(!PPCC.data){
+    host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
+      + 'color:var(--ppc-muted)"><span class="genspin"></span> '
+      + 'Reading the campaigns…</div></div>';
+  }
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
@@ -45,9 +49,23 @@ async function ppccLoad(){
     ppccRender();
   }catch(e){
     PPCC.loading = false;
-    host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
-      + 'color:var(--ppc-red)">Could not read the campaigns.</div></div>';
+    ppcBusy("ppcc_body", false);
+    if(!PPCC.data){
+      host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
+        + 'color:var(--ppc-red)">Could not read the campaigns.</div></div>';
+    }else if(typeof toast === "function"){
+      toast("Could not refresh the campaigns — showing the last ones.");
+    }
   }
+}
+
+/* Dragging across the spend chart narrows the window to those days, exactly as
+ * it does on PPC Analytics and on the Sales page. */
+function ppccZoomTo(from, to){
+  if(!from || !to) return;
+  PPCWIN.start = String(from).slice(0, 10);
+  PPCWIN.end = String(to).slice(0, 10);
+  ppccLoad();
 }
 
 function ppccSort(k){
@@ -137,6 +155,9 @@ function ppccRender(){
   h += ppccTable(j, cur);
 
   host.innerHTML = h + '</div>';
+  PPCC.loading = false;
+  ppcBusy("ppcc_body", false);
+  ppcArm("ppcc_body");
 }
 
 /* ---- 1. the breakdown panel --------------------------------------------- */
@@ -204,14 +225,34 @@ function ppccBreakdown(j, cur){
   }
   table += '</tbody></table></div>';
 
-  // The stacked area. Only products that actually have rows become bands --
-  // an empty "Sponsored Brands" band would claim Brands ran and returned
-  // nothing, which is not the same as never having been pulled.
-  const series = (dbp.series || []).map(function(s){
-    const k = String(s.key).toUpperCase();
-    return {colour: PCOL[k] || "var(--ppc-muted)", label: NICE[k] || s.key,
-            values: s.values};
-  });
+  // SPEND PER DAY, THROUGH THE APP'S OWN CHART so it hovers, zooms and lets
+  // the key be clicked like every other chart in the app. Only products that
+  // actually have rows become lines -- an empty "Sponsored Brands" band would
+  // claim Brands ran and returned nothing, which is not the same as never
+  // having been pulled.
+  //
+  // A LINE PER PRODUCT, NOT A STACK. The mockup stacks them, which reads well
+  // with two comparable products; with one it is a filled blob, and salesCombo
+  // draws lines. The colours and the legend are the mockup's either way, and a
+  // line is the shape you can hover a single day on.
+  const KEYMAP = {SPONSORED_PRODUCTS: "ad_spend", SPONSORED_BRANDS: "ad_sales",
+                  SPONSORED_DISPLAY: "roas"};
+  const lines = (dbp.series || [])
+    .filter(function(s){
+      return (s.values || []).some(function(v){
+        return v !== null && v !== undefined; });
+    })
+    .map(function(s){
+      const k = String(s.key).toUpperCase();
+      return {key: KEYMAP[k] || "ad_spend", label: NICE[k] || s.key,
+              values: s.values};
+    });
+  const chart = (lines.length && typeof salesCombo === "function")
+    ? salesCombo({id: "ppcc_spend", onZoom: "ppccZoomTo",
+                  columns: dbp.dates || [], bars: null, lines: lines,
+                  currency: cur, unit: "day",
+                  width: scChartWidth("ppcc_body", 820), height: 280})
+    : "";
 
   return '<div class="ppc-panel ppc-break">'
     + '<div style="font-size:15px;font-weight:700;margin-bottom:2px">'
@@ -231,11 +272,14 @@ function ppccBreakdown(j, cur){
     +   '<div style="font-size:26px;font-weight:700">'
     +   ppcMoney0(totalSpend, cur) + '</div>'
     + '</div>'
-    + '<div>' + (series.length
-        ? ppcStackedArea({columns: dbp.dates || [], series: series,
-                          currency: cur, height: 280})
-        : '<div style="font-size:12px;color:var(--ppc-muted)">No daily campaign '
-          + 'rows in this window.</div>') + '</div>'
+    + '<div>'
+    +   (chart
+          ? ('<div class="ppc-charthint">Spend per day by ad product · hover '
+             + 'for the day · drag across to zoom · click a name to hide it'
+             + '</div>' + chart)
+          : '<div style="font-size:12px;color:var(--ppc-muted)">No daily '
+            + 'campaign rows in this window.</div>')
+    + '</div>'
     + '</div>'
     + table
     + ppcLegend(prods.map(function(p){

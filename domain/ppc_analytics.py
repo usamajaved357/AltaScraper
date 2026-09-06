@@ -369,20 +369,55 @@ def totals_for(config_path, workspace_id, marketplace, start, end):
     return out
 
 
-def today_bar(config_path, workspace_id, marketplace):
-    """Today against yesterday, for the strip across the top of the page.
+def latest_ad_day(config_path, workspace_id, marketplace):
+    """The newest day Amazon has actually sent advertising figures for.
 
-    The mockup's TODAY bar. Amazon's advertising figures for today are partial
-    all day and arrive late, so a missing figure here is the normal state before
-    lunchtime rather than a fault -- it reports None and the strip shows a dash.
-    Drawing a confident 0.00 at nine in the morning would say the day's
-    advertising had sold nothing.
+    NOT today. Amazon's advertising reports lag: measured on nestwell_goods on
+    6 Sep 2026, the newest stored day was 4 Sep. Asking for "today" therefore
+    asks for a day that does not exist yet.
     """
-    today = _dt.date.today().isoformat()
-    yday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
-    now = totals_for(config_path, workspace_id, marketplace, today, today)
-    prev = totals_for(config_path, workspace_id, marketplace, yday, yday)
-    return {"date": today, "compare_date": yday,
+    conn = _db.get_db(config_path)
+    r = conn.execute(
+        "SELECT MAX(date) d FROM ads_daily WHERE workspace_id=? AND "
+        "marketplace=? AND asin=?",
+        (workspace_id, marketplace, ACCOUNT_TOTAL)).fetchone()
+    return (r["d"] if r and r["d"] else "") or ""
+
+
+def today_bar(config_path, workspace_id, marketplace):
+    """The most recent day Amazon has reported, against the day before it.
+
+    THE MOCKUP CALLS THIS "TODAY" AND IT CANNOT BE TODAY.
+    Amazon's advertising figures lag by a day or two and today's are partial
+    until the day ends. Asking for today therefore produced a row of six dashes
+    on an account with plenty of data -- measured: the newest stored day was
+    4 Sep while the calendar said the 6th.
+
+    A strip of dashes is accurate and useless. Worse, it reads as "the
+    advertising did nothing today", which is a different and false claim.
+
+    So the strip reports the LATEST DAY THERE IS and says which day that is,
+    against the day before it. `is_today` lets the screen label it honestly --
+    "Today" when it really is, the date when it is not. Nothing is invented: an
+    account with no advertising at all still comes back empty, with `date` blank.
+    """
+    latest = latest_ad_day(config_path, workspace_id, marketplace)
+    if not latest:
+        blank = totals_for(config_path, workspace_id, marketplace,
+                           "1970-01-01", "1970-01-01")
+        return {"date": "", "compare_date": "", "is_today": False,
+                "lag_days": None, "now": blank, "previous": blank, "change": {}}
+
+    d = _dt.date.fromisoformat(latest)
+    prev_day = (d - _dt.timedelta(days=1)).isoformat()
+    now = totals_for(config_path, workspace_id, marketplace, latest, latest)
+    prev = totals_for(config_path, workspace_id, marketplace, prev_day, prev_day)
+    today = _dt.date.today()
+    return {"date": latest, "compare_date": prev_day,
+            "is_today": (d == today),
+            # HOW FAR BEHIND AMAZON IS, so the screen can say so rather than
+            # letting somebody read two-day-old figures as this morning's.
+            "lag_days": (today - d).days,
             "now": now, "previous": prev, "change": change(now, prev)}
 
 
@@ -710,7 +745,11 @@ def asins(config_path, workspace_id, marketplace, start, end, rate_info=None):
 
     from domain import catalogue as _cat
     try:
-        idx = _cat.merged(config_path, [workspace_id])
+        # PAIRS, not bare workspace ids. merged() iterates `for wsid, mkt in
+        # pairs`, so a list of strings unpacks each id into characters and
+        # raises -- which was swallowed here, leaving every product without its
+        # picture or its name on a screen built around showing them.
+        idx = _cat.merged(config_path, [(workspace_id, marketplace)])
     except Exception:
         idx = {}
 

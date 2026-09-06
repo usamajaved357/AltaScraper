@@ -103,11 +103,29 @@ function lrEditBox(o){
    * the same distinction the table view has always drawn with its "no draft
    * here" badge. A control that cannot work is worse than no control: this one
    * took a number, held it, counted it in "1 SKU edited", and then lost it.
+   *
+   * BUT ONLY FOR THE FIELDS THAT ACTUALLY NEED A ROW.
+   *
+   *     "i am not able to change the available quantity of the items from live
+   *      on amazon section"
+   *
+   * Price, cost and handling are saved INTO this app's row, so without one
+   * there is nothing to write to and the guard is right. Stock is not: it goes
+   * to /stock/bulk_update, which patches fulfillment_availability on Amazon by
+   * SKU and never touches the row -- see LR_FIELDS.qty.live and _lrSaveQty.
+   *
+   * The guard did not make that distinction, so on the eighteen live-only SKUs
+   * the one control that WOULD have worked was the one turned off. Stock is
+   * exactly what somebody wants to change on a me-too listing, because the
+   * title and images belong to somebody else's ASIN and the stock does not.
    */
-  if(o.sku && typeof hasDraftRow === "function" && !hasDraftRow(o.sku)){
+  const _needsRow = !(LR_FIELDS[o.field] && LR_FIELDS[o.field].live);
+  if(_needsRow && o.sku && typeof hasDraftRow === "function"
+     && !hasDraftRow(o.sku)){
     return '<span class="lr-ro" title="This listing is on Amazon and this app '
       + 'holds no draft of it, so there is nothing here to edit. Press Sync to '
-      + 'pull it in, and then it can be changed like any other.">'
+      + 'pull it in, and then it can be changed like any other. (Stock is '
+      + 'different — it goes straight to Amazon, so it stays editable.)">'
       + (orig === "" ? '<span class="dash">—</span>' : esc(orig)) + '</span>';
   }
   return '<input class="lr-edit' + (o.cls ? " " + o.cls : "") + '"'

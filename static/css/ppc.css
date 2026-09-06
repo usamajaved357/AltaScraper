@@ -497,6 +497,32 @@
 /* The sub-table's headers are WHITE, not muted -- the mockup is explicit. */
 .ppc-subtable th{ font-size: 12px; color: var(--ppc-text); font-weight: 600; }
 
+/* ---- while a filter reloads --------------------------------------------
+ * The page stays on screen, dimmed, rather than being replaced by a spinner:
+ * what is showing is still true, it is simply for the previous window. */
+.ppc-page{ transition: opacity .12s ease; }
+.ppc-busy{
+  position: sticky; top: 0; z-index: 5;
+  background: var(--ppc-surface2); border: 1px solid var(--ppc-border);
+  border-radius: 6px; padding: 6px 11px; margin-bottom: 10px;
+  font-size: 11.5px; color: var(--ppc-muted);
+}
+
+/* The one-line instruction under an interactive chart. The Sales page carries
+   the same sentence, because the gestures are the same gestures. */
+.ppc-charthint{
+  font-size: 11.5px; color: var(--ppc-muted); margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+/* A day-trail card is a control, not a picture: it opens that day. */
+.ppc-trail-card{ cursor: pointer; transition: border-color .12s ease; }
+.ppc-trail-card:hover{ border-color: var(--ppc-cyan); }
+
+/* A heatmap cell answers on hover. */
+.ppc-heat .cell{ cursor: default; transition: outline-color .1s ease; }
+.ppc-heat .cell:hover{ outline: 1px solid var(--ppc-text); }
+
 /* ---- a figure that could not be worked out ----------------------------- */
 .ppc-dash{ opacity: .45; color: var(--ppc-muted); }
 .ppc-note{

@@ -478,10 +478,30 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                     row["order_id"])
         actions = perm.get("actions") or []
 
+        # CAN A REFUND EVEN BE ISSUED FROM HERE? Asked, not assumed.
+        #
+        # Amazon publishes no refund endpoint; a seller-initiated refund is a
+        # Feeds submission, and Feeds is a role of its own. Measured 6 Sep 2026:
+        # all three accounts are refused it outright, so a Refund button would
+        # fail every time it was pressed. The screen says that, and what to do,
+        # rather than drawing a control that cannot work.
+        #
+        # domain/refund_capability asks Amazon rather than hard-coding the
+        # answer, and caches it -- the role can be granted, and the day it is
+        # this starts saying so on its own.
+        try:
+            from domain import refund_capability as _rc
+            refund = _rc.check(_cfg, acc, mkt)
+        except Exception as e:
+            refund = {"state": "unknown", "can_refund": False,
+                      "headline": "Could not tell whether refunding is possible.",
+                      "detail": str(e)[:200], "what_to_do": "Try again shortly."}
+
         return jsonify({
             "ok": True, "workspace": wsid, "marketplace": mkt,
             "return": row, "same_order": siblings,
             "actions": actions,
+            "refund": refund,
             "sent": _messages_for(wsid, row.get("order_id")),
             "actions_error": ("" if perm.get("ok") else (perm.get("error") or "")),
             "actions_note": (

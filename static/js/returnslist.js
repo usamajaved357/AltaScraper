@@ -391,6 +391,26 @@ function returnsListRenderDetail(){
                          + _rlEsc(j.actions_error) + '</span>' : '')
     + '</div>';
 
+  // WHY THERE IS NO REFUND BUTTON HERE.
+  //
+  // Amazon publishes no refund endpoint -- a seller-initiated refund is a Feeds
+  // submission, and Feeds is a role of its own. Measured: every account in this
+  // app is refused it, so a Refund button would fail every single time.
+  //
+  // A control that always fails teaches somebody the app is broken and leaves
+  // the real answer -- do it in Seller Central, or grant the role -- nowhere on
+  // the screen. So the space says that instead.
+  if(j.refund && j.refund.headline){
+    h += '<div class="odp-note' + (j.refund.state === "denied" ? " warn" : "")
+      + '" style="margin-top:8px;padding:9px 11px;font-size:11.5px;'
+      + 'line-height:1.6"><b>' + _rlEsc(j.refund.headline) + '</b> '
+      + _rlEsc(j.refund.detail || "")
+      + (j.refund.what_to_do
+          ? '<div style="margin-top:5px">' + _rlEsc(j.refund.what_to_do)
+            + '</div>' : '')
+      + '</div>';
+  }
+
   // WHAT WAS ALREADY SENT ABOUT THIS ORDER. Amazon publishes no sent-message
   // history at all, so without this there is no way to answer "have we already
   // replied to them?" -- and the answer decides whether to write again.
