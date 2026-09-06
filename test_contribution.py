@@ -147,8 +147,14 @@ fr.register(app, CONFIG_PATH=CFG, _cfg=lambda: json.load(open(CFG)),
             _active_account=lambda: {"id": WS},
             _state={"active_account_id": WS, "active_marketplace": MKT})
 c = app.test_client()
-j = c.get("/finance/contribution?start=2026-08-01&end=2026-08-31").get_json()
+# THE BASIS IS NAMED, because the endpoint now offers two calendars and this
+# fixture is a SETTLEMENT one -- it has finance_daily rows and no order_lines.
+# It relied on the default before there was a name for it; asking explicitly is
+# what makes the assertions below mean what they say.
+j = c.get("/finance/contribution?start=2026-08-01&end=2026-08-31"
+          "&basis=settlement").get_json()
 check("it answers", j["ok"], True)
+check("  and says which calendar it answered on", j["basis"], "settlement")
 check("  with the rows", len(j["rows"]), 3)
 check("  the totals", j["totals"]["products"], 3)
 check("  reporting whether ads are connected", j["ads_connected"], True)
@@ -163,6 +169,24 @@ truthy("  and it says which way the number is wrong",
 # tells it to.
 check("  marked as serious, not as a footnote", j["notes"][0]["level"], "bad")
 check("  and a contribution the screen can show", j["totals"]["contribution"], 71.0)
+
+# THE OTHER CALENDAR IS A DIFFERENT QUESTION, and on this fixture it has no
+# answer at all: there are no order_lines, only settled money. Nought rows is
+# CORRECT here, and the point of naming the basis is that the screen can say so
+# instead of looking broken.
+o = c.get("/finance/contribution?start=2026-08-01&end=2026-08-31"
+          "&basis=orders").get_json()
+check("  the order calendar answers separately", o["basis"], "orders")
+check("  and finds nothing, because no orders are stored", len(o["rows"]), 0)
+# An unknown basis must not silently become one of them without saying so.
+d = c.get("/finance/contribution?start=2026-08-01&end=2026-08-31"
+          "&basis=nonsense").get_json()
+check("  an unknown basis falls back to a named one", d["basis"], "orders")
+# The account-level charge is the same charge whichever way the sales are
+# counted, and the overhead line must not move with the toggle.
+check("  the overhead is the same on both calendars",
+      (j.get("overhead") or {}).get("total"),
+      (o.get("overhead") or {}).get("total"))
 
 
 print("\n=== VAT: taken out first, and never invented ===")

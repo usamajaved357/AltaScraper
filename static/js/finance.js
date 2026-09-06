@@ -11,7 +11,9 @@
 // Both are stated on screen rather than left for the reader to notice.
 
 let FIN = {rows: [], totals: {}, sort: "revenue", desc: true,
-           preset: "30d", filter: "all"};
+           preset: "30d", filter: "all",
+           // WHICH CALENDAR. See financeSetBasis.
+           basis: "orders", overhead: null, previous: null, openOverhead: false};
 
 // The window, as periods people actually ask for. The date boxes stayed EMPTY
 // while the screen quietly showed the last thirty days, so the one thing a
@@ -39,10 +41,37 @@ const FIN_PRESETS = [
 
 const FIN_FILTERS = [
   {k: "all",    t: "All"},
+  // The products that are actually costing something to sell. Asked for
+  // directly, and the one cut this screen was missing: a product with no ad
+  // spend cannot be losing money to advertising, so filtering to the ones that
+  // do is how the question "is the advertising worth it" gets asked per product.
+  {k: "ppc",    t: "Active PPC"},
   {k: "profit", t: "Profitable"},
   {k: "loss",   t: "Loss-making"},
   {k: "blank",  t: "No contribution"},
 ];
+
+/* WHICH CALENDAR THE FIGURES ARE ON, and it is not a cosmetic switch.
+ *
+ *   orders      every order PLACED in the window, settled or not. Ties to what
+ *               was sold. Fifteen products for August on nestwell_goods.
+ *   settlement  money that has actually MOVED. Ties to the Amazon payout, and
+ *               lags -- the SAME month returns ONE product, which reads as
+ *               "nothing sold" unless the screen says why.
+ *
+ * Neither is the truer number. They answer different questions, and the screen
+ * names the one it is showing rather than letting a lagging feed look like a
+ * quiet month. */
+function financeSetBasis(b){
+  if(FIN.basis === b) return;
+  FIN.basis = (b === "settlement") ? "settlement" : "orders";
+  financeLoad();
+}
+
+function financeToggleOverhead(){
+  FIN.openOverhead = !FIN.openOverhead;
+  financeRender();
+}
 
 function _finIso(d){ return d.toISOString().slice(0, 10); }
 
@@ -149,6 +178,9 @@ async function financeLoad(){
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__"){
     qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
   }
+  // Which calendar. Sent every time, so the reply cannot be about a different
+  // basis from the one the toggle is showing.
+  qs.push("basis=" + encodeURIComponent(FIN.basis || "orders"));
   let j;
   try{ j = await (await fetch("/finance/contribution"+(qs.length?"?"+qs.join("&"):""))).json(); }
   catch(err){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load: '+_fesc(String(err))+'</div>'; return; }
@@ -158,6 +190,11 @@ async function financeLoad(){
   }
   FIN.rows = j.rows || [];
   FIN.totals = j.totals || {};
+  FIN.overhead = j.overhead || null;
+  FIN.previous = j.previous || null;
+  // The server decides the basis (it validates it); the screen follows, so the
+  // toggle can never claim one calendar while the figures are on the other.
+  FIN.basis = j.basis || FIN.basis;
   FIN.meta = j;
   financeRender();
 }
@@ -176,6 +213,12 @@ function _finMatching(f){
     if(f === "profit") return c !== null && c !== undefined && c > 0;
     if(f === "loss")   return c !== null && c !== undefined && c <= 0;
     if(f === "blank")  return c === null || c === undefined;
+    // SPENDING SOMETHING, not merely having an ad_spend field. null means the
+    // advertising is not connected for this product and 0 means it ran none --
+    // neither is "actively advertised", and lumping them in would fill the
+    // filter with products it cannot say anything about.
+    if(f === "ppc") return (r.ad_spend !== null && r.ad_spend !== undefined
+                            && r.ad_spend > 0);
     return true;
   });
 }
@@ -299,12 +342,115 @@ function _finTotals(rows){
   return t;
 }
 
+/* The order/settlement toggle, and the sentence that says what it changed.
+ *
+ * The two are not a display preference: on nestwell_goods for August, orders
+ * shows fifteen products and settlement shows one, for the same month. A screen
+ * that switches between them silently would look broken on one of the two. */
+function financeBasisToggle(){
+  const on = (FIN.basis === "settlement") ? "settlement" : "orders";
+  const btn = function(k, label){
+    return '<button class="db-chip' + (on === k ? " on" : "") + '" '
+      + 'onclick="financeSetBasis(' + jsArg(k) + ')">' + label + '</button>';
+  };
+  const said = (on === "settlement")
+    ? ("Money that has actually moved — this ties to your Amazon payouts. "
+       + "Amazon settles days after a sale, so a recent window shows only the "
+       + "part it has paid out, which is fewer products than actually sold.")
+    : ("Every order placed in this window, whether Amazon has settled it or "
+       + "not — this ties to what was sold. Fees are Amazon's own where it has "
+       + "settled them and this account's measured rate where it has not.");
+  const t = FIN.totals || {};
+  let cover = "";
+  if(on === "orders" && t.estimated_revenue !== undefined
+     && t.revenue) {
+    const est = Number(t.estimated_revenue || 0);
+    const pct = t.revenue ? Math.round(100 * est / t.revenue) : 0;
+    cover = " " + pct + "% of the revenue here has not settled yet, so its "
+          + "fees are charged at " + ((Number(t.fee_rate) || 0) * 100).toFixed(2)
+          + "%.";
+  }
+  return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;'
+    + 'margin:0 0 8px">'
+    + '<span class="cc" style="font-size:11px;text-transform:uppercase;'
+    +   'letter-spacing:.5px">Basis</span>'
+    + btn("orders", "Order-based") + btn("settlement", "Settlement")
+    + '</div>'
+    + '<div class="cc" style="font-size:11.5px;line-height:1.6;margin:0 0 10px">'
+    + _fesc(said) + _fesc(cover) + '</div>';
+}
+
+/* The gap between what the products contributed and what the account kept.
+ *
+ * Collapsed to one line, because most of the time the number is all anybody
+ * wants; expanded it names what is in it. The eight Amazon fee types the spec
+ * asks for are NOT in it, and it says so rather than inventing them -- the fee
+ * type Amazon sends is not stored, only the bucket it falls into. A real
+ * limitation with a real fix, and naming it is how it gets fixed. */
+function financeOverhead(cur){
+  const o = FIN.overhead;
+  if(!o || (!o.items || !o.items.length)) return "";
+  const money = function(v){
+    return (v === null || v === undefined)
+      ? '<span class="cc">not recorded</span>' : _fmoney(v, cur);
+  };
+  let h = '<div class="panelcard" style="padding:0;margin:0 0 12px;'
+    + 'overflow:hidden">'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;'
+    +   'cursor:pointer" onclick="financeToggleOverhead()">'
+    + '<span class="cc" style="font-size:12px">'
+    +   (FIN.openOverhead ? "▾" : "▸") + '</span>'
+    + '<div style="flex:1"><div style="font-weight:600">Account-level '
+    +   'overhead</div>'
+    +   '<div class="cc" style="font-size:11.5px">The gap between what the '
+    +   'products contributed and what the account kept</div></div>'
+    + '<div style="font-size:18px;font-weight:700">'
+    +   _fmoney(o.total, cur) + '</div></div>';
+
+  if(FIN.openOverhead){
+    h += '<div style="padding:0 14px 12px">';
+    (o.items || []).forEach(function(it){
+      h += '<div style="display:flex;justify-content:space-between;gap:12px;'
+        +   'padding:7px 0;border-top:1px solid var(--line2)">'
+        + '<div><div>' + _fesc(it.label) + '</div>'
+        +   (it.note ? '<div class="cc" style="font-size:11px">'
+                       + _fesc(it.note) + '</div>' : '')
+        + '</div><div style="white-space:nowrap">' + money(it.amount)
+        + '</div></div>';
+      (it.children || []).forEach(function(ch){
+        h += '<div style="display:flex;justify-content:space-between;gap:12px;'
+          +   'padding:4px 0 4px 24px;font-size:12.5px;color:var(--ink2)">'
+          + '<div>' + _fesc(ch.label) + '</div><div>'
+          + _fmoney(ch.amount, cur) + '</div></div>';
+      });
+    });
+    h += '<div style="display:flex;justify-content:space-between;gap:12px;'
+      +   'padding:8px 0 0;margin-top:6px;border-top:1px solid var(--line2);'
+      +   'font-weight:600"><div>Contribution (before overhead)</div><div>'
+      +   money(o.contribution) + '</div></div>'
+      + '<div style="display:flex;justify-content:space-between;gap:12px;'
+      +   'padding:4px 0"><div>Less: account overhead</div>'
+      +   '<div style="color:var(--red)">−' + _fmoney(o.total, cur)
+      +   '</div></div>'
+      + '<div style="display:flex;justify-content:space-between;gap:12px;'
+      +   'padding:8px 0 0;border-top:1px solid var(--line2);font-weight:700;'
+      +   'font-size:15px"><div>Net profit</div><div>'
+      +   money(o.net_profit) + '</div></div>'
+      + (o.why ? '<div class="cc" style="font-size:11px;margin-top:9px;'
+                 + 'line-height:1.6">' + _fesc(o.why) + '</div>' : '')
+      + '</div>';
+  }
+  return h + '</div>';
+}
+
 function financeRender(){
   const body = document.getElementById("finbody");
   _finChips();
   const visible = _finVisible();
   const t = _finTotals(visible), cur = (FIN.meta && FIN.meta.currency) || "";
   let h = "";
+
+  h += financeBasisToggle();
 
   // Which days this screen is counting, said out loud. It defaulted to the last
   // thirty while the date boxes sat empty, so the number on screen belonged to a
@@ -459,6 +605,11 @@ function financeRender(){
            ? "before advertising - ad spend is not connected"
            : "after " + _fmoney(t.ad_spend, "") + " of ad spend"},
   ]);
+
+  // The account-level overhead, between the cards and the table -- which is
+  // where it belongs: it is the step from what the cards say the products
+  // contributed to what the account actually kept.
+  h += financeOverhead(cur);
 
   h += '<div class="salespanel"><div class="panelhead"><div>'
     +  '<div class="paneltitle">Every product, and what it left behind</div>'
