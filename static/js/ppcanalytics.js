@@ -4,7 +4,7 @@
  *
  *     h1 + subtitle
  *     TODAY bar                  6 stats, evenly spread, change under each
- *     Day trail                  7 cards, mini cumulative curve, range buttons
+ *     Day trail                  7 cards, one bar each, range buttons
  *     Filters                    labels ABOVE controls, COMPARE TO pushed right
  *     KPI row 1                  SPEND / SALES / ACOS / ROAS, with sparklines
  *     KPI row 2                  IMPRESSIONS / CLICKS / CTR / PURCHASES
@@ -21,12 +21,25 @@
  * day x hour. There are no hourly figures: Amazon refuses timeUnit HOURLY on
  * this report type -- measured, in its own words, "configuration timeUnit is
  * not supported for this report type". Hourly Amazon ad data comes from
- * Marketing Stream, a separate push integration this app does not have.
+ * Marketing Stream, which needs an AWS SQS queue.
  *
- * So the trail keeps its seven cards and its curve, drawn at the finest grain
- * that exists, and its caption says which. The heatmap keeps its panel and its
- * legend and says what it needs. Neither is filled with invented hours -- that
- * is the one thing these screens have been told off for twice.
+ * THAT IS NOT BEING BUILT, BY INSTRUCTION -- there is no AWS account:
+ *
+ *     "Skip Phase 4 entirely (AMS/AWS). Owner doesn't have an AWS account.
+ *      Build the graceful degradation fallbacks instead"
+ *
+ * So these are not placeholders waiting on a queue; they are the screen. Each
+ * is the same question asked at the grain that exists, and each says so in its
+ * own caption rather than leaving the reader to assume hours:
+ *
+ *     TODAY bar    the latest COMPLETE day, labelled with its date and how far
+ *                  behind Amazon is -- never "today" unless it really is
+ *     Day trail    one bar per day, all scaled to the busiest day in view
+ *     Heatmap      ACoS by day of week, no hour axis
+ *
+ * Nothing is filled with invented hours -- that is the one thing these screens
+ * have been told off for twice. domain/ams.py holds the on-ramp for the day an
+ * AWS queue does appear; until then it reports absent and nothing calls it.
  *
  * NOTHING HERE WRITES. No bid, no budget, no campaign state (Rule 8).
  */
@@ -263,7 +276,20 @@ function ppcaToday(j, cur){
 function ppcaTrail(j, cur){
   const rows = j.trail || [];
   if(!rows.length) return "";
-  const cum = rows.map(function(r){ return r.cumulative; });
+  // ONE BAR PER CARD, ALL SEVEN ON THE SAME SCALE.
+  //
+  // These were cumulative curves: each card drew the WINDOW accumulating up to
+  // its day, so the line only ever climbed, the last card always towered over
+  // the first, and a quiet Saturday looked like the account's biggest day. The
+  // shape also implied hours, which is exactly what this data does not have.
+  //
+  // The maximum is taken across the whole trail rather than per card, because
+  // that is what makes the seven comparable by eye. Per card, every bar would
+  // be full height and the row would say nothing.
+  const spends = rows.map(function(r){ return r.spend; })
+    .filter(function(v){ return v !== null && v !== undefined && !isNaN(Number(v)); })
+    .map(Number);
+  const top = spends.length ? Math.max.apply(null, spends) : 0;
   const MON = ["JAN","FEB","MAR","APR","MAY","JUN",
                "JUL","AUG","SEP","OCT","NOV","DEC"];
   const DOW = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
@@ -271,13 +297,13 @@ function ppcaTrail(j, cur){
   let h = '<div style="display:flex;align-items:center;justify-content:'
     + 'space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">'
     + '<div><div style="font-size:18px;font-weight:700">Day trail</div>'
-    + '<div style="font-size:12px;color:var(--ppc-muted)">Cumulative ad spend '
-    + 'by day · Amazon publishes no hourly figures for this report, so each '
-    + 'curve is days rather than hours</div></div>'
+    + '<div style="font-size:12px;color:var(--ppc-muted)">Ad spend per day, '
+    + 'each bar against the busiest day in view · Amazon publishes no hourly '
+    + 'figures for this report, so a day is the finest grain there is</div></div>'
     + ppcSeg(30, "ppcaLoad") + '</div>'
     + '<div class="ppc-trail">';
 
-  rows.forEach(function(r, i){
+  rows.forEach(function(r){
     const day = new Date(r.date + "T00:00:00");
     const lbl = isNaN(day.getTime()) ? r.date
       : (DOW[day.getDay()] + " " + MON[day.getMonth()] + " " + day.getDate());
@@ -296,6 +322,9 @@ function ppcaTrail(j, cur){
                    ? "no row stored" : ppcMoney(r.spend, cur)),
       "Orders: " + (r.orders === null || r.orders === undefined
                     ? "—" : Math.round(r.orders)),
+      // The running total is still worth having -- it is just not what the bar
+      // draws any more, so it is named for what it is rather than implied by a
+      // climbing line.
       "Spent so far this window: " + ppcMoney(r.cumulative, cur),
       "", "Click to show this day only.",
     ].join("\n");
@@ -304,7 +333,7 @@ function ppcaTrail(j, cur){
       + '<div class="ppc-trail-head"><span class="d">' + _pEsc(lbl) + '</span>'
       +   (r.today ? '<span class="t">Today</span>' : '') + '</div>'
       + '<div class="ppc-trail-chart">'
-      +   ppcMiniLine(cum.slice(0, i + 1), "var(--ppc-cyan)") + '</div>'
+      +   ppcMiniBar(r.spend, top, "var(--ppc-cyan)") + '</div>'
       + '<div class="ppc-trail-spend">'
       +   ppcMoney(r.spend, cur, "No advertising row stored for this day. That "
           + "is not the same as having spent nothing.") + '</div>'

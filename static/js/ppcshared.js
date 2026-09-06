@@ -217,6 +217,50 @@ function ppcMiniLine(points, colour){
     + '" stroke-width="1.5"/></svg>';
 }
 
+/* ONE DAY'S TOTAL, AS A BAR. The day-trail card's chart when there are no
+ * hourly figures to curve.
+ *
+ * The mockup draws each card as spend ACCUMULATING THROUGH THE DAY, hour by
+ * hour, which needs Amazon Marketing Stream. Without it the cards drew the
+ * WINDOW accumulating instead -- a line that can only ever climb, so the last
+ * card always towered over the first and a quiet Saturday looked like the
+ * account's biggest day. It answered a question nobody asked, and it answered
+ * it in a shape that implied hours.
+ *
+ * So one bar, one day, all seven scaled against the same maximum -- which is
+ * what makes the cards comparable by eye, and is the honest shape for one
+ * number per day.
+ *
+ *   value  this day's own total, null when no row is stored
+ *   max    the largest value across the whole trail, passed in so every card
+ *          shares a scale. Worked out per card, each bar would be full height
+ *          and the row would say nothing at all.
+ *
+ * A DAY WITH NO ROW IS NOT A DAY THAT SPENT NOTHING, so it draws the empty
+ * track and no bar, rather than a zero-height bar sitting on the floor looking
+ * like a measured nought.
+ */
+function ppcMiniBar(value, max, colour){
+  const w = 120, h = 50;
+  const track = '<rect x="0" y="0" width="' + w + '" height="' + h + '" '
+    + 'fill="var(--ppc-border)" fill-opacity="0.25"/>';
+  const svg = function(inner){
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" '
+      + 'style="width:100%;height:100%" preserveAspectRatio="none">'
+      + track + inner + '</svg>';
+  };
+  if(value === null || value === undefined || isNaN(Number(value))) return svg("");
+  const top = Number(max) || 0;
+  // Every day at nought is a real answer -- a flat empty row, not seven full
+  // bars, which is what dividing by a zero maximum would draw.
+  const frac = top > 0 ? Math.max(0, Math.min(1, Number(value) / top)) : 0;
+  const bh = frac * h;
+  if(bh <= 0) return svg("");
+  return svg('<rect x="6" y="' + (h - bh).toFixed(1) + '" width="' + (w - 12)
+    + '" height="' + bh.toFixed(1) + '" fill="' + colour
+    + '" fill-opacity="0.85"/>');
+}
+
 /* ---- a KPI card -----------------------------------------------------------
  *
  * The mockup's exactly: label 11px uppercase with a ⓘ, value 28/700 with the

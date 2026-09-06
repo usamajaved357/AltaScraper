@@ -155,10 +155,17 @@ def availability(config_path, workspace_id, marketplace):
     NO_ADS = ("No advertising data is stored for this account and marketplace "
               "yet. It arrives from the Advertising API sync — check Settings › "
               "Advertising, then the Jobs screen.")
-    NO_HOURS = ("Amazon has not been asked for hourly advertising figures on "
-                "this account, and none are stored, so this cannot be drawn. "
-                "Every stored row is one whole day. Drawing a curve through "
-                "hours nobody measured would look exactly like a measurement.")
+    # WHETHER HOURS EXIST IS domain/ams.py's QUESTION, NOT THIS FILE'S.
+    #
+    # This used to answer a flat False with its own sentence. Two panels and a
+    # banner each need the same answer, and the day an AWS queue does appear
+    # exactly one thing should change -- so the test lives in one module (Rule
+    # 12), and it tests for STORED ROWS rather than for an environment variable.
+    # See ams.available(): a queue URL can be set hours before the first message
+    # lands, and a screen that switched on the variable would abandon a correct
+    # daily chart for an empty hourly one.
+    from domain import ams as _ams
+    _hourly = _ams.status(config_path)
 
     return {
         "campaigns": {"ok": bool(camp), "rows": camp, "why": "" if camp else NO_ADS},
@@ -176,8 +183,16 @@ def availability(config_path, workspace_id, marketplace):
             "why": "" if sales else
                    ("No daily sales are stored, so TACOS and anything comparing "
                     "advertising against total sales cannot be worked out.")},
-        # THE TWO PANELS THAT CANNOT BE HONEST TODAY.
-        "hourly": {"ok": False, "rows": 0, "why": NO_HOURS},
+        # HOURLY, ANSWERED BY THE ONE MODULE THAT KNOWS. `ok` follows stored
+        # rows, never the environment -- so the panels that fall back to daily
+        # figures keep doing so until hours actually arrive. `configured` and
+        # `missing_env` are carried through for the diagnostic, so someone who
+        # has set the AWS variables can see that they landed without the screen
+        # pretending the data did.
+        "hourly": {"ok": _hourly["available"], "rows": 0,
+                   "why": "" if _hourly["available"] else _hourly["why"],
+                   "configured": _hourly["configured"],
+                   "missing_env": _hourly["missing_env"]},
         "ad_products": {
             "ok": bool(products), "products": sorted(products),
             "why": "" if len(products) > 1 else
@@ -474,21 +489,29 @@ def today_bar(config_path, workspace_id, marketplace):
 
 
 def trail(config_path, workspace_id, marketplace, days=7):
-    """One card per day: the spend curve through it, the total, and the units.
+    """One card per day: that day's own total, and the units it sold.
 
     The mockup draws each card as spend accumulating BY HOUR. There are no
     hourly advertising figures -- Amazon refuses timeUnit HOURLY on this report
     type, measured, its own words: "configuration timeUnit is not supported for
-    this report type". So each card carries the day's own cumulative shape at
-    the finest grain that exists, and the page says the curve is a day rather
-    than pretending to twenty-four measured hours.
+    this report type". They would come from Marketing Stream, which needs an
+    AWS queue that is deliberately not being built (see domain/ams.py).
+
+    SO THE CARD DRAWS `spend`, THE DAY'S OWN TOTAL, AS ONE BAR. It drew
+    `cumulative` -- the window adding up -- which is still returned because the
+    hover reports it, but is no longer the shape: a running total can only
+    climb, so the last card always towered over the first and a quiet Saturday
+    looked like the account's biggest day. It also implied hours, which is the
+    one thing these panels must not do.
+
+    None is preserved and never turned into 0.0: a day with no stored row is not
+    a day that spent nothing, and the bar leaves an empty track for it rather
+    than a nought sitting on the floor.
     """
     end = _dt.date.today()
     start = end - _dt.timedelta(days=int(days) - 1)
     rows = daily(config_path, workspace_id, marketplace,
                  start.isoformat(), end.isoformat())
-    # THE CURVE IS THE WINDOW ACCUMULATING, not the day. Said in the caption
-    # rather than drawn as if it were hours.
     run, out = 0.0, []
     for r in rows:
         sp = r["spend"]
