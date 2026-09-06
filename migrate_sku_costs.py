@@ -41,9 +41,90 @@ CONFIG_PATH = os.path.join(HERE, "config.json")
 APPLY = "--apply" in sys.argv
 
 
+MIGRATION_NAME = "seed_product_costs_from_sku_v1"
+
+
+def already_ran(config_path):
+    """Has this database had the seed? Recorded, because re-running is not safe.
+
+    Idempotent in the sense that matters here is not "writes the same thing
+    twice". It is "does not undo a decision". Somebody who DELETES a cost they
+    have decided is wrong must not find it back after the next restart, and the
+    only way to know the difference between "never seeded" and "seeded, then
+    that one removed on purpose" is to have written down that it happened.
+    """
+    try:
+        conn = _db.get_db(config_path)
+        r = conn.execute("SELECT ran_at FROM app_migrations WHERE name=?",
+                         (MIGRATION_NAME,)).fetchone()
+        return (r["ran_at"] if r else None)
+    except Exception:
+        return None
+
+
+def _mark(config_path, detail):
+    try:
+        import datetime as _dt
+        conn = _db.get_db(config_path)
+        conn.execute(
+            "INSERT OR REPLACE INTO app_migrations (name, ran_at, detail) "
+            "VALUES (?,?,?)",
+            (MIGRATION_NAME,
+             _dt.datetime.now().isoformat(timespec="seconds"), str(detail)))
+        conn.commit()
+    except Exception:
+        pass
+
+
+def run_once(config_path):
+    """Seed the store if this database has never had it. -> short report.
+
+    Called at start-up so a deployed instance gets the same treatment as this
+    one without anybody needing a shell on it. Never raises: a costing job must
+    not stop the app from booting.
+    """
+    try:
+        if already_ran(config_path):
+            return {"ran": False, "why": "already done on this database"}
+        n, skipped = _seed(config_path, apply=True)
+        _mark(config_path, "wrote %d cost(s)" % n)
+        return {"ran": True, "wrote": n, "left_alone": skipped}
+    except Exception as e:
+        return {"ran": False, "why": str(e)[:160]}
+
+
+def _seed(config_path, apply):
+    """The work itself. -> (written, left_alone)."""
+    conn = _db.get_db(config_path)
+    before = _store.load(config_path) or {}
+    rows = conn.execute(
+        "SELECT workspace_id, sku, COUNT(*) n FROM order_lines "
+        "WHERE COALESCE(sku,'') <> '' GROUP BY workspace_id, sku").fetchall()
+    wrote = left = 0
+    for r in rows:
+        key = "%s::%s" % (r["workspace_id"], r["sku"])
+        if key in before:
+            left += 1
+            continue
+        cost = _cogs.cost_from_sku(r["sku"])
+        if cost is None:
+            left += 1
+            continue
+        if apply:
+            _store.set_cost(config_path, r["workspace_id"], r["sku"],
+                            round(float(cost), 4))
+        wrote += 1
+    return wrote, left
+
+
 def main():
     conn = _db.get_db(CONFIG_PATH)
     before = _store.load(CONFIG_PATH) or {}
+    was = already_ran(CONFIG_PATH)
+    if was:
+        print("This database was already seeded on %s." % was)
+        print("Running again would put back any cost you have since deleted, "
+              "so it will not write.\n")
     print("per-product cost store holds %d entr%s before this run"
           % (len(before), "y" if len(before) == 1 else "ies"))
 
@@ -90,11 +171,15 @@ def main():
     if not APPLY:
         print("\nREPORT ONLY. Nothing was written. Run again with --apply.")
         return
+    if was:
+        print("\nNOT WRITING: this database was already seeded. See above.")
+        return
 
     n = 0
     for ws, sku, cost, _cnt in plan:
         _store.set_cost(CONFIG_PATH, ws, sku, cost)
         n += 1
+    _mark(CONFIG_PATH, "wrote %d cost(s) by hand" % n)
     after = _store.load(CONFIG_PATH) or {}
     print("\nwrote %d cost(s). The store now holds %d." % (n, len(after)))
     print("Every one of them is now a cost you SET, editable on the Listings "
