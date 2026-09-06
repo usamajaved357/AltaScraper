@@ -626,8 +626,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             if any(c is not None for c in cells):
                 metrics.append({"key": key, "label": label, "kind": kind,
                                 "good": good, "cells": cells})
+        # IS ADVERTISING EVEN CONNECTED FOR THIS ACCOUNT?
+        #
+        # The metrics list already drops spend, ACOS and TACOS when there is
+        # nothing to report, which is right -- but it leaves the page unable to
+        # tell "no advertising login" from "a login that spent nothing", and the
+        # week and today cards were answering that question with a hard-coded
+        # "not connected" written when NO account had a login. One does now.
+        #
+        # api/amazon_ads.connection is the single place that answers it (Rule 12).
+        try:
+            from api import amazon_ads as _ads
+            _ads_conn = _ads.connection(_cfg, _acc or {})
+        except Exception as e:
+            _ads_conn = {"ok": None, "why": str(e)[:120], "missing": []}
+
         return jsonify({"ok": True, "start": start, "end": end, "preset": preset,
                         "granularity": gran, "asin": asin,
+                        "ads": _ads_conn,
                         "basis": basis, "basis_note": _basis_note(basis),
                         "basis_gap": _meta.get("basis_note") or "",
                         # Where Amazon's settled figures and its own order

@@ -1280,6 +1280,66 @@ async function salesLoadCompare(sum){
 //
 // Chosen ONCE and used for both series, so the solid line and the dashed line
 // are always the same quantity.
+/* The ad footer under the week card, from the figures the page already has.
+ *
+ * THREE DIFFERENT ANSWERS, AND ONLY ONE OF THEM IS "not connected".
+ *
+ *   spend in the window   -> print it, with TACOS beside it
+ *   connected, no spend   -> say the account ran no advertising in these dates,
+ *                            which is a measurement and not a gap
+ *   no advertising login  -> say THAT, and that it is a separate login
+ *
+ * The old footer said the third thing unconditionally. It was written when no
+ * account had a login and was never revisited when one did, so an account
+ * spending real money was told its spend did not exist.
+ */
+function _sAdFooter(j, whenLabel){
+  const cells = function(k){
+    const m = ((j && j.metrics) || []).filter(function(x){
+      return x.key === k; })[0];
+    return (m && m.cells) ? m.cells.filter(function(v){
+      return v !== null && v !== undefined; }) : [];
+  };
+  const spend = cells("spend");
+  const conn = (j && j.ads) || {};
+
+  if(!spend.length){
+    const why = (conn.ok === false)
+      ? ("not connected — advertising needs its own Amazon login, separate "
+         + "from the selling one")
+      : ("no advertising ran " + whenLabel);
+    return '<div class="adfooter">'
+      + '<span class="lbl">Ad spend ' + _sEsc(whenLabel) + '</span> '
+      + '<b>' + _sEsc(conn.ok === false ? "not connected" : "none") + '</b>'
+      + '<span style="color:rgb(156,163,175)"> — ' + _sEsc(why) + '.</span>'
+      + '</div>';
+  }
+
+  const total = spend.reduce(function(a, b){ return a + Number(b); }, 0);
+  // TACOS IS RECOMPUTED OVER THE WHOLE WEEK, not averaged across its days: a
+  // quiet Sunday with an odd ratio would otherwise weigh the same as a busy
+  // Monday, and the figure would stop matching what was actually spent.
+  const sales = cells("ordered_sales").reduce(function(a, b){
+    return a + Number(b); }, 0);
+  const tacos = sales ? (100 * total / sales) : null;
+  const cur = (j && j.currency) || "GBP";
+  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+  return '<div class="adfooter">'
+    + '<span class="lbl">Ad spend ' + _sEsc(whenLabel) + '</span> <b>'
+    + sym + total.toFixed(2) + '</b>'
+    + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>'
+    + (tacos === null
+       ? '<span title="No sales in this window, so there is nothing to divide '
+         + 'the spend by. That is not a TACOS of nought.">—</span>'
+       : tacos.toFixed(1) + '%') + '</b>'
+    + '</div>';
+}
+
+function _sEsc(s){
+  return String(s == null ? "" : s).replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function _sWeekMetric(now, before){
   const known = function(j, k){
     const m = ((j && j.metrics) || []).filter(function(x){ return x.key === k; })[0];
@@ -1349,6 +1409,9 @@ async function salesLoadWeek(){
     return;
   }
   if(!now || !now.ok){ host.innerHTML = ""; return; }
+  // Kept so the Live Sales footer, which is drawn from a different call, can say
+  // whether advertising is connected without asking again.
+  SALES._lastSeries = now;
 
   // THE CHART IS ALWAYS DRAWN, INCLUDING A WEEK WITH NO SALES IN IT.
   //
@@ -1534,16 +1597,13 @@ async function salesLoadWeek(){
   }
 
   // ORBIT'S WEEK CARD HAS AN AD FOOTER TOO -- measured: "Ad spend this week
-  // $10,633 · TACOS 9.8%", the label at 10px and the figure at 12px. Ours had
-  // one under Live Sales and nothing under this card, so the two halves of the
-  // top row did not even end the same way. Neither figure is available on this
-  // account, and the footer says which and why rather than leaving a gap that
-  // looks like a design that forgot something.
-  SALES._weekFoot = '<div class="adfooter">'
-    + '<span class="lbl">Ad spend this week</span> <b>not connected</b>'
-    + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>not connected</b>'
-    + '<span style="color:rgb(156,163,175)"> — both need the Advertising API.</span>'
-    + '</div>';
+  // $10,633 · TACOS 9.8%", the label at 10px and the figure at 12px.
+  //
+  // THIS USED TO READ "not connected" ALWAYS, as a hard-coded string. It was
+  // written when no account here had an Advertising login and it stayed that
+  // way after one did -- so an account with real spend and a real TACOS was
+  // told neither figure existed, on the card where they matter most.
+  SALES._weekFoot = _sAdFooter(now, "this week");
   host.innerHTML += SALES._weekFoot;
 
   // THE SAME DAYS, WHICH IS WHAT THE CHIP SAYS IT IS COMPARING.
@@ -2178,17 +2238,26 @@ async function salesLoadHourly(){
   });
 
   // The strip along the bottom of Orbit's card is AD SPEND TODAY and TACOS.
-  // Both come from the Advertising API, which is not connected -- ads_daily is
-  // empty. Said out loud, in the place the figures would sit, rather than
-  // leaving a gap that looks like a design that forgot something.
-  // Measured: 10px uppercase label with 0.4px tracking, the value beside it at
-  // 12px, 4px between, 8px above with a 4px lead-in. Orbit puts figures here;
-  // we say what is missing and why, in the same shape.
+  //
+  // THIS ONE STAYS BLANK EVEN ON A CONNECTED ACCOUNT, and for a better reason
+  // than the one it used to give. Amazon does not report advertising for the
+  // current day: measured on nestwell_goods on 6 Sep, the newest advertising day
+  // stored was 4 Sep. There is no such figure as today's ad spend, so printing
+  // one -- or a nought -- would be inventing it. What CAN be said is why, and
+  // where the real number lives.
+  //
+  // The old text blamed a missing connection. That was true when it was written
+  // and is now wrong for the one account that has spend, which would have read
+  // "not connected" beside a live campaign list.
+  const _liveConn = (SALES._lastSeries && SALES._lastSeries.ads) || {};
   const adsFoot = '<div class="adfooter">'
-    + '<span class="lbl">Ad spend today</span> <b>not connected</b>'
-    + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>not connected</b>'
-    + '<span style="color:rgb(156,163,175)"> — both need the Advertising API, '
-    + 'which this account is not connected to.</span></div>';
+    + '<span class="lbl">Ad spend today</span> <b>—</b>'
+    + '<span style="color:rgb(156,163,175)"> — '
+    + (_liveConn.ok === false
+       ? 'advertising needs its own Amazon login, separate from the selling one'
+       : 'Amazon reports advertising about two days behind, so there is no '
+         + 'figure for today yet. The latest complete day is on PPC Analytics')
+    + '.</span></div>';
 
   // A POINT SCALE here, not a band: these are readings across a continuous day,
   // and midnight IS the start of the axis. Measured on Orbit's Live Sales: 24
