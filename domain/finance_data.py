@@ -183,17 +183,24 @@ class _Acc:
             return None
         return a
 
-    def count(self, date, sku, units, cost_lookup=None):
+    def count(self, date, sku, units, cost_lookup=None, order_id=None):
         """Units shipped, and what they cost -- on the SAME day basis as the fees.
 
         Priced HERE, at the line, because this is the only point at which the SKU
         is still in hand. One step later there is only an ASIN, and the SKUs that
         could not be mapped to one would lose their cost entirely -- which would
         understate cost of goods and overstate profit, in that direction, always.
+
+        AND THE ORDER IS STILL IN HAND HERE TOO, which is the other half of the
+        same argument. A cost typed against ONE order is the top of the trust
+        order everywhere else in the app, and this priced by product alone -- so
+        the same order showed one profit on the Orders screen and a different one
+        in the Sales daily figures. The order id is passed to the cost function,
+        which decides; cogs.lookup ignores it, order_cogs.line_cost_fn uses it.
         """
         if not date or not units:
             return
-        cost, _src = (cost_lookup(sku) if cost_lookup else (None, ""))
+        cost, _src = (cost_lookup(sku, order_id) if cost_lookup else (None, ""))
         line = round(float(cost) * int(units), 4) if cost is not None else 0.0
         targets = ["*"]
         a = self.asin_for(sku)
@@ -252,7 +259,8 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
         d = _day(sh.get("PostedDate"))
         for item in (sh.get("ShipmentItemList") or []):
             sku = item.get("SellerSKU")
-            acc.count(d, sku, item.get("QuantityShipped") or 0, cost_lookup)
+            acc.count(d, sku, item.get("QuantityShipped") or 0, cost_lookup,
+                      order_id=sh.get("AmazonOrderId"))
             for ch in (item.get("ItemChargeList") or []):
                 _ct = str(ch.get("ChargeType") or "").lower()
                 # Principal, and the other things the BUYER paid us. A live UK

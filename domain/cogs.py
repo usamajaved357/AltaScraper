@@ -90,12 +90,20 @@ def resolve(overrides, account_id, sku):
 
 
 def lookup(overrides, account_id):
-    """A one-argument cost function for callers that only have a SKU.
+    """A cost function for callers that only have a SKU.
 
-    Returns f(sku) -> (cost_or_None, source), so the finance parser can price
-    each shipment line without knowing anything about where costs come from.
+    Returns f(sku, order_id=None) -> (cost_or_None, source), so a caller can
+    price a line without knowing anything about where costs come from.
+
+    THE ORDER ID IS ACCEPTED AND IGNORED, and that is the whole point of it
+    being in the signature: this resolver has no order in hand, so it answers
+    the same for every order of a product. Every cost function in the app now
+    takes the same two arguments -- see domain/order_cogs.line_cost_fn, which
+    takes the same pair and DOES use the order id -- so a caller can be handed
+    either without knowing which it got, and the finance parser can pass the
+    order id it has without caring whether anything will use it.
     """
-    def _f(sku):
+    def _f(sku, order_id=None):
         return resolve(overrides, account_id, sku)
     return _f
 

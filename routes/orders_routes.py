@@ -456,50 +456,28 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         So Orders asks the same resolver. Per order rather than per request,
         because steps 1 and 2 need the order's id and its date -- that is what
         made this awkward enough to skip the first time.
+
+        THE RESOLVER ITSELF NOW LIVES IN domain/order_cogs.line_cost_fn. It was
+        written out in full here and nowhere else, which is exactly how the
+        finance path came to disagree with this screen about the same order: it
+        could not call a closure. Moved, not rewritten -- same trust order, same
+        fallback (Rule 12).
         """
         from domain import cogs_store as _cs
         from domain import order_cogs as _oc
-        mode = _oc.mode_for(_cfg, account_id)
-        overrides = _cs.all_overrides(CONFIG_PATH)
-
-        # THE FROZEN COST FIRST, because it is literally the number Sales shows.
-        #
-        # A per-order correction is not held anywhere separate: set_for_order
-        # writes it straight into order_lines.cogs with source 'manual-order',
-        # and the Sales profit card reads that stored value. So the way to make
-        # the two screens agree is not to re-derive the same answer twice -- two
-        # derivations are two things to keep in step -- but to read the one that
-        # was stored.
-        frozen = {}
-        try:
-            if order_id:
-                from data import db as _dbm
-                conn = _dbm.get_db(CONFIG_PATH)
-                for row in conn.execute(
-                        "SELECT sku, cogs, cogs_source FROM order_lines "
-                        "WHERE workspace_id=? AND marketplace=? AND order_id=? "
-                        "  AND cogs IS NOT NULL",
-                        (account_id, marketplace, str(order_id))).fetchall():
-                    frozen[str(row["sku"] or "")] = (row["cogs"], row["cogs_source"])
-        except Exception:
-            frozen = {}
-
-        def _f(sku):
-            hit = frozen.get(str(sku or ""))
-            if hit and hit[0] is not None:
-                return round(float(hit[0]), 4), (hit[1] or "frozen")
-            try:
-                return _oc.resolve(CONFIG_PATH, account_id, marketplace,
-                                   sku, when, mode, overrides=overrides,
-                                   order_override=None)
-            except Exception:
-                # Never lose the whole row over a cost lookup. Falling back to
-                # the older resolver keeps the previous behaviour rather than
-                # reporting "no cost", which would read as a product nobody has
-                # costed -- a different and wrong finding.
-                from domain import cogs as _cogs
-                return _cogs.resolve(overrides, account_id, sku)
-        return _f
+        return _oc.line_cost_fn(
+            CONFIG_PATH, account_id, marketplace, when=when,
+            mode=_oc.mode_for(_cfg, account_id),
+            overrides=_cs.all_overrides(CONFIG_PATH),
+            # Scoped to the one order being drawn, as before: this is called per
+            # order while a list is rendered, and loading the account's every
+            # frozen cost to answer for one of them would be a table scan a row.
+            # An EMPTY list, not None -- None would mean "every order".
+            order_ids=([str(order_id)] if order_id else []),
+            # This screen asks by SKU alone, because it already built the
+            # function for one order. Told which, so the frozen costs it loaded
+            # are the ones it finds.
+            default_order_id=str(order_id or ""))
 
     def _fees_fn(account_id, marketplace):
         """(order_id, gross) -> what Amazon took. Real figure where it exists.

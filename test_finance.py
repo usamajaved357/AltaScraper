@@ -251,6 +251,74 @@ check("  while the sold-only SKU is still picked up",
       _m2.get("SOLD-ONLY-SKU"), "B0SOLDONLY")
 check("a SKU with neither is still unknown", _m2.get("NO-SUCH-SKU"), None)
 
+print("\n=== a cost typed against ONE order reaches the finance figures ===")
+# It did not. The finance path priced by product alone, so an order the owner
+# had corrected by hand kept its corrected profit on the Orders screen and lost
+# it in the Sales daily figures -- the same order reporting two numbers with
+# nothing to say which was right.
+#
+#     "yes make the finance path honour per-order costs too same logic should
+#      exist as for sales bar we prioritize per order costs"
+from domain import order_cogs as _oc
+from domain import cogs as _cogs2
+
+# 203-1 ships 2 of SKU-RED. The product cost says 10.00 a unit; this one order
+# was corrected to 4.00 a unit.
+_c.execute(
+    "INSERT INTO order_lines (workspace_id, marketplace, order_id, "
+    " purchase_date, asin, sku, title, units, revenue, currency, status, "
+    " cogs, cogs_source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    (WS, MKT, "203-1", "2026-08-01", "B0RED00001", "SKU-RED", "t", 2, 40.0,
+     "GBP", "Shipped", 4.00, "manual-order"))
+_c.commit()
+
+_PROD = {"%s::SKU-RED" % WS: 10.00}
+_rows_p, _ = fd.parse_events(EVENTS, SKUMAP, cost_lookup=_cogs2.lookup(_PROD, WS))
+_tot_p = [r for r in _rows_p if r["asin"] == "*" and r["date"] == "2026-08-01"][0]
+check("priced by product alone, 2 units cost 2 x 10.00", _tot_p["cogs"], 20.0)
+
+_rows_o, _ = fd.parse_events(
+    EVENTS, SKUMAP,
+    cost_lookup=_oc.line_cost_fn(CFG, WS, None, overrides=_PROD))
+_tot_o = [r for r in _rows_o if r["asin"] == "*" and r["date"] == "2026-08-01"][0]
+check("  the cost typed against THAT order wins: 2 x 4.00", _tot_o["cogs"], 8.0)
+check("  and the units are unchanged", _tot_o["units"], _tot_p["units"])
+
+# THE CORRECTION APPLIES TO THAT ORDER ALONE. SKU-GHOST ships on the same
+# event and was never corrected, so it must still take the product cost.
+_PROD2 = dict(_PROD); _PROD2["%s::SKU-GHOST" % WS] = 3.00
+_rows_g, _ = fd.parse_events(
+    EVENTS, SKUMAP,
+    cost_lookup=_oc.line_cost_fn(CFG, WS, None, overrides=_PROD2))
+_tot_g = [r for r in _rows_g if r["asin"] == "*" and r["date"] == "2026-08-01"][0]
+check("an uncorrected line on the same order keeps the product cost",
+      _tot_g["cogs"], 11.0)                       # 2 x 4.00 corrected + 1 x 3.00
+
+# AND IT IS FOUND WHATEVER CASE AMAZON REPORTS THE SKU IN, which is the same
+# trap as cogs_store.norm(): order_lines holds one spelling, the Finances feed
+# can send another, and keyed literally the correction would be missed.
+_UP = {"FinancialEvents": {"ShipmentEventList": [{
+    "AmazonOrderId": "203-1", "PostedDate": "2026-08-01T10:00:00Z",
+    "ShipmentItemList": [{"SellerSKU": "sku-red", "QuantityShipped": 2,
+                          "ItemChargeList": [], "ItemFeeList": []}]}]}}
+_rows_u, _ = fd.parse_events(
+    _UP, {"sku-red": "B0RED00001"},
+    cost_lookup=_oc.line_cost_fn(CFG, WS, None, overrides=_PROD))
+_tot_u = [r for r in _rows_u if r["asin"] == "*"][0]
+check("  a differently-cased SKU still finds its per-order cost",
+      _tot_u["cogs"], 8.0)
+
+# A DIFFERENT ORDER OF THE SAME PRODUCT IS NOT CORRECTED.
+_OTHER = {"FinancialEvents": {"ShipmentEventList": [{
+    "AmazonOrderId": "203-NEVER-CORRECTED", "PostedDate": "2026-08-01T10:00:00Z",
+    "ShipmentItemList": [{"SellerSKU": "SKU-RED", "QuantityShipped": 1,
+                          "ItemChargeList": [], "ItemFeeList": []}]}]}}
+_rows_n, _ = fd.parse_events(
+    _OTHER, SKUMAP, cost_lookup=_oc.line_cost_fn(CFG, WS, None, overrides=_PROD))
+_tot_n = [r for r in _rows_n if r["asin"] == "*"][0]
+check("another order of the same product takes the product cost",
+      _tot_n["cogs"], 10.0)
+
 os.environ.pop("ALTASCRAPER_DB", None)
 shutil.rmtree(TMP, ignore_errors=True)
 print("\nFAILURES: %d" % len(fails))

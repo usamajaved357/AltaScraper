@@ -173,11 +173,37 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
         return {"ok": False, "error": "Finances API: %s" % str(ex)[:200]}
 
     smap = _fd.sku_map(config_path, account_id or workspace_id, marketplace)
-    from domain import cogs as _cogs
+    _aid = account_id or workspace_id
+
+    # A COST TYPED AGAINST ONE ORDER WINS HERE TOO, as it does everywhere else.
+    #
+    # This used cogs.lookup -- the product cost and nothing above it -- so an
+    # order the owner had corrected by hand kept its corrected profit on the
+    # Orders screen and lost it in the Sales daily figures, the same order
+    # reporting two different numbers with nothing to say which was right.
+    #
+    #     "yes make the finance path honour per-order costs too same logic
+    #      should exist as for sales bar we prioritize per order costs"
+    #
+    # order_cogs.line_cost_fn is the resolver the Orders screen already uses,
+    # asked here in the same words (Rule 12). NOT filtered by marketplace: these
+    # rows are stored under the account's DEFAULT marketplace while an order
+    # line carries the one it sold in, and filtering would find no cost at all.
+    # Every frozen cost for the account is loaded ONCE rather than per line.
+    from domain import order_cogs as _oc
+    try:
+        _cost = _oc.line_cost_fn(config_path, _aid, None,
+                                 overrides=cogs_overrides)
+    except Exception:
+        # Never lose a finance pull over the cost side of it. The fees are the
+        # thing being fetched; falling back to product costs is the behaviour
+        # this had before, which is a smaller loss than no pull at all.
+        from domain import cogs as _cogs
+        _cost = _cogs.lookup(cogs_overrides, _aid)
+
     # Undated charges land on the last day of the window rather than being lost.
     rows, notes = _fd.parse_events(
-        events, smap, fallback_date=e,
-        cost_lookup=_cogs.lookup(cogs_overrides, account_id or workspace_id))
+        events, smap, fallback_date=e, cost_lookup=_cost)
     written = _fd.store(config_path, workspace_id, marketplace, rows)
 
     # THE SAME EVENTS, KEPT AGAINST THEIR ORDERS.
