@@ -168,6 +168,33 @@ def download(rc, document_id):
         raise ReportError("Could not download the report document: %s" % str(e)[:160])
 
 
+# AMAZON MARKS A REFUSAL "DONE".
+#
+# Ask for a report Amazon will not build -- too wide a date range, an
+# unsupported option -- and it does not fail the job. It completes it, and the
+# DOCUMENT is a single line of prose saying why: "Date range exceeded. Report can
+# be requested only upto 30 days". Sixty-four bytes, processingStatus DONE.
+#
+# find_recent matches on report TYPE and DONE, so that refusal then becomes the
+# cached answer for every caller asking for the same type for the next half
+# hour -- including callers asking for a window Amazon would happily have built.
+# Measured while probing the orders report: a 45-day request failed, and the
+# corrected 29-day request came straight back with the same 64-byte refusal
+# marked "reused".
+#
+# A real report is a table or a document: it has tabs, or angle brackets, or
+# braces, or many lines. A one-line piece of prose with none of those is not
+# data, whatever Amazon's status field says.
+def looks_like_refusal(text):
+    """Is this 'report' actually Amazon's excuse for not building one?"""
+    t = (text or "").strip()
+    if not t or len(t) > 400:
+        return False
+    if any(ch in t for ch in ("\t", "<", "{")):
+        return False
+    return len(t.splitlines()) <= 2
+
+
 def fetch(rc, report_type, marketplace_ids=None, options=None,
           start_time=None, end_time=None, allow_reuse=True, on_wait=None):
     """The whole sequence. Returns (text, source, built_at).
@@ -184,7 +211,23 @@ def fetch(rc, report_type, marketplace_ids=None, options=None,
         doc_id = create_and_wait(rc, report_type, marketplace_ids, options,
                                  start_time, end_time, on_wait=on_wait)
         built_at = _dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    return download(rc, doc_id), source, built_at
+    text = download(rc, doc_id)
+
+    if looks_like_refusal(text):
+        if source == "reused":
+            # Somebody else's failed request. Build our own rather than inherit
+            # it -- our window may be perfectly acceptable.
+            doc_id = create_and_wait(rc, report_type, marketplace_ids, options,
+                                     start_time, end_time, on_wait=on_wait)
+            built_at = _dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            source = "new"
+            text = download(rc, doc_id)
+        if looks_like_refusal(text):
+            # Our own request, refused. Raising is right: returning the prose as
+            # if it were the report leaves the caller parsing an apology.
+            raise ReportError("Amazon would not build this report: %s"
+                              % text.strip()[:200])
+    return text, source, built_at
 
 
 def fetch_json(rc, report_type, **kw):
