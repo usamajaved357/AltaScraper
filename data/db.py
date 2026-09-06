@@ -202,11 +202,19 @@ CREATE INDEX IF NOT EXISTS idx_adsjob_pending
    report once and could never show you what it said.
 
    That is the whole reason the PPC screens had nothing to draw. The
-   Advertising API is a separate OAuth from SP-API and is not connected on any
-   account (measured 18 Aug 2026: ads_daily 0 rows, ppc_campaigns 0 rows, no
+   Advertising API is a separate OAuth from SP-API, and on 18 Aug 2026 it was
+   connected on NO account (measured: ads_daily 0 rows, ppc_campaigns 0 rows, no
    credentials anywhere) -- but the Search Term Report is downloadable from
    Seller Central by hand, and every metric on Orbit's PPC screens except the
    intraday tracker is computable from it alone.
+
+   THAT CHANGED, AND PER ACCOUNT. Measured 6 Sep 2026: nestwell_goods has an
+   advertising login, 1,410 rows in ads_daily and 8,514 stored search terms,
+   pulled by the API rather than uploaded; the other five accounts have neither
+   credentials nor rows. So this table is still the right home for an uploaded
+   report, and it is no longer the ONLY way figures get in. Nothing here reads
+   differently -- `source` records which -- but a reader should not be told the
+   API is unconnected when for one account it is.
 
    ONE ROW PER (report, search term, match type, campaign, ad group). The same
    term appears many times across a report -- once per targeting that triggered

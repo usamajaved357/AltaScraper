@@ -423,6 +423,9 @@
         <!-- Kept as "PPC": it is the word used everywhere else in this app and
              in the briefs, and renaming it to "Campaigns" would be a change
              nobody asked for hidden inside one that was asked for. -->
+        <a class="navitem" data-sec="ppcanalytics" href="#" onclick="return navGo(event,'ppcanalytics')" title="Spend, sales, ACOS, TACOS, break-even and every campaign — measured from the Advertising API, read-only"><i class="ti ti-chart-histogram"></i> PPC Analytics</a>
+        <a class="navitem" data-sec="ppcterms" href="#" onclick="return navGo(event,'ppcterms')" title="What people actually typed, one row each, with what it cost and returned"><i class="ti ti-search"></i> Search Terms</a>
+        <a class="navitem" data-sec="ppccampaigns" href="#" onclick="return navGo(event,'ppccampaigns')" title="Every campaign, with the search terms it bought folded underneath"><i class="ti ti-target-arrow"></i> Campaign Analytics</a>
         <a class="navitem" data-sec="drppc" href="#" onclick="return navGo(event,'drppc')" title="Wasted spend, ACOS, search terms worth harvesting — recommends only, never changes a bid"><i class="ti ti-stethoscope"></i> Dr PPC</a>
         <a class="navitem" data-sec="ppc" href="#" onclick="return navGo(event,'ppc')"><i class="ti ti-target"></i> PPC</a>
       </div>
@@ -969,6 +972,53 @@
     </div>
 
     <!-- PPC section -->
+    <!-- PPC ANALYTICS.
+         The campaign-grain view: what was spent, what came back, whether it
+         beat this account's own break-even ACOS, and which campaigns are worth
+         opening. Its figures come from the Advertising API tables, not from an
+         uploaded Search Term Report — which is why it is a separate screen from
+         PPC below rather than another tab on it.
+
+         Two panels the spec asked for are deliberately NOT drawn: the day trail
+         of hourly spend and the day x hour ACoS heatmap. There are no hourly
+         figures stored for this account, and the page says so where each would
+         have been rather than drawing a curve through hours nobody measured. -->
+    <div id="sec_ppcanalytics" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-chart-histogram"></i> PPC Analytics</h2>
+        <div class="sub">Advertising spend, sales, efficiency and campaign performance. Every figure is measured from stored Amazon data — nothing here changes a bid, a budget or a campaign.</div></div>
+        <span class="spacer" style="flex:1"></span>
+        <button class="db-chip" onclick="ppcaLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <div id="ppca_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- SEARCH TERMS. What people actually typed, one row each. -->
+    <div id="sec_ppcterms" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-search"></i> Search Terms</h2>
+        <div class="sub">Search term performance across all campaigns and keywords. Read-only.</div></div>
+        <span class="spacer" style="flex:1"></span>
+        <button class="db-chip" onclick="ppctExport()"
+                title="Every search term, not just the ones on screen.">
+          <i class="ti ti-download"></i> Export</button>
+        <button class="db-chip" onclick="ppctLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <div id="ppct_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- CAMPAIGN ANALYTICS. Every campaign, with its own search terms folded
+         underneath it. -->
+    <div id="sec_ppccampaigns" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-target-arrow"></i> Campaign Analytics</h2>
+        <div class="sub">Campaign type breakdown, match type performance, and every campaign with the search terms it bought. Read-only.</div></div>
+        <span class="spacer" style="flex:1"></span>
+        <button class="db-chip" onclick="ppccLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <div id="ppcc_body" style="padding:4px 0"></div>
+    </div>
+
     <div id="sec_ppc" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2>PPC</h2>
@@ -2225,6 +2275,12 @@
      own template, its own parser on the server and its own per-row report. -->
 <script src="/static/js/ordercosts.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ordertracking.js?v={{ ASSET_V }}"></script>
+<!-- The three advertising screens. ppcshared.js first: the other three call its
+     formatters, and a page that loads before it would draw "undefined". -->
+<script src="/static/js/ppcshared.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppcanalytics.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppcterms.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppccampaigns.js?v={{ ASSET_V }}"></script>
 <!-- The compact expanded-order panel. orders.js checks for it at DRAW time and
      falls back to its own long version, so a load failure costs the layout
      rather than the order details. -->
