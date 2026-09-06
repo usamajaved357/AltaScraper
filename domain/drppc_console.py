@@ -42,6 +42,28 @@ def _now():
     return _dt.datetime.now().isoformat(timespec="seconds")
 
 
+def _term_report(config_path, workspace_id, marketplace):
+    """The newest search-term report id, or "" -- and why anything reading
+    ppc_search_terms has to know about it.
+
+    That table keeps one row per term PER REPORT, and the API sync names each
+    report after the window it covers, so a second sync leaves two overlapping
+    reports sitting side by side. Every query here counted or summed across all
+    of them: the readiness check reported 1,595 stored terms where 821 were
+    real, and a campaign's keyword spend was the sum of the same keyword in two
+    reports.
+
+    domain/ppc_view owns the question of which report is current; this asks it
+    rather than deciding again (Rule 12).
+    """
+    try:
+        from domain import ppc_view as _pv
+        m = _pv.report_meta(config_path, workspace_id, marketplace)
+        return (m or {}).get("report_id") or ""
+    except Exception:
+        return ""
+
+
 def _f(v, d=0.0):
     try:
         return float(v if v is not None else d)
@@ -350,8 +372,12 @@ def readiness(config_path, cfg, account, marketplace):
     plan = plan_current(config_path, wsid, marketplace)
     plan_active = bool(plan and plan.get("status") == ACTIVE)
 
+    # The CURRENT report's terms, not every report ever stored -- see
+    # _term_report. This read 1,595 where 821 were real.
+    _rid = _term_report(config_path, wsid, marketplace)
     terms_n = n("SELECT COUNT(*) FROM ppc_search_terms WHERE workspace_id=? "
-                "AND marketplace=?", (wsid, marketplace))
+                "AND marketplace=? AND report_id=?",
+                (wsid, marketplace, _rid)) if _rid else 0
     camps_n = n("SELECT COUNT(DISTINCT campaign_id) FROM ads_campaign_daily "
                 "WHERE workspace_id=? AND marketplace=?", (wsid, marketplace))
 
@@ -471,13 +497,17 @@ def current_state(config_path, workspace_id, marketplace, start=None, end=None):
     r = q("SELECT COUNT(DISTINCT asin) n FROM ads_daily " + where
           + " AND asin<>'*'", args)
     counts["product_ads"] = int((r["n"] if r else 0) or 0)
+    # Scoped to the current report. DISTINCT hides most of the damage here, but
+    # not all of it: an ad group that existed only in a superseded report would
+    # still be counted as one this account has.
+    rid = _term_report(config_path, workspace_id, marketplace)
     r = q("SELECT COUNT(DISTINCT ad_group) n FROM ppc_search_terms "
-          "WHERE workspace_id=? AND marketplace=? "
-          "AND COALESCE(ad_group,'') <> ''", [workspace_id, marketplace])
+          "WHERE workspace_id=? AND marketplace=? AND report_id=? "
+          "AND COALESCE(ad_group,'') <> ''", [workspace_id, marketplace, rid])
     counts["ad_groups"] = int((r["n"] if r else 0) or 0)
     r = q("SELECT COUNT(DISTINCT keyword) n FROM ppc_search_terms "
-          "WHERE workspace_id=? AND marketplace=? "
-          "AND COALESCE(keyword,'') <> ''", [workspace_id, marketplace])
+          "WHERE workspace_id=? AND marketplace=? AND report_id=? "
+          "AND COALESCE(keyword,'') <> ''", [workspace_id, marketplace, rid])
     counts["keywords"] = int((r["n"] if r else 0) or 0)
     for k in _NOT_MIRRORED:
         counts[k] = None
@@ -488,8 +518,8 @@ def current_state(config_path, workspace_id, marketplace, start=None, end=None):
         for row in conn.execute(
                 "SELECT campaign, COUNT(DISTINCT keyword) k, "
                 "COUNT(DISTINCT ad_group) g FROM ppc_search_terms "
-                "WHERE workspace_id=? AND marketplace=? GROUP BY campaign",
-                (workspace_id, marketplace)):
+                "WHERE workspace_id=? AND marketplace=? AND report_id=? "
+                "GROUP BY campaign", (workspace_id, marketplace, rid)):
             kw_by_campaign[row["campaign"]] = int(row["k"] or 0)
             ag_by_campaign[row["campaign"]] = int(row["g"] or 0)
     except Exception:
@@ -546,10 +576,14 @@ def campaign_detail(config_path, workspace_id, marketplace, campaign_name):
                 "SELECT ad_group, keyword, match_type, "
                 "  ROUND(SUM(spend),2) spend, SUM(clicks) clicks, "
                 "  ROUND(SUM(sales),2) sales, SUM(orders) orders "
+                # SUMS, so this one genuinely doubled: the same keyword appears
+                # in every stored report and they were added together.
                 "FROM ppc_search_terms WHERE workspace_id=? AND marketplace=? "
-                "AND campaign=? GROUP BY ad_group, keyword, match_type "
-                "ORDER BY spend DESC",
-                (workspace_id, marketplace, campaign_name)):
+                "AND report_id=? AND campaign=? "
+                "GROUP BY ad_group, keyword, match_type ORDER BY spend DESC",
+                (workspace_id, marketplace,
+                 _term_report(config_path, workspace_id, marketplace),
+                 campaign_name)):
             g = groups.setdefault(r["ad_group"] or "(no ad group)",
                                   {"name": r["ad_group"] or "(no ad group)",
                                    "keywords": []})

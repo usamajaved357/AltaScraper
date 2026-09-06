@@ -501,8 +501,17 @@ function ppcaProfitability(j, cur){
     +   ppcSubCard({label: "TACOS", value: ppcPct(t.tacos_pct),
                     change: ppcChangeText((j.change || {}).tacos_pct, "down"),
                     note: period,
+                    // The divisor is stated, because it is NOT simply the
+                    // window's sales: Amazon's advertising feed runs about two
+                    // days behind its sales feed, so the ratio is taken over
+                    // the days that have both. Dividing by days the spend
+                    // cannot cover reports a TACOS that is too low.
+                    note2: (t.tacos_note
+                            ? '<span style="color:var(--ppc-orange)">'
+                              + _pEsc(t.tacos_note) + '</span>' : ""),
                     help: "Spend divided by ALL sales, advertised and organic "
-                        + "together. Rising is bad — advertising is taking a "
+                        + "together, over the days that have advertising "
+                        + "figures. Rising is bad — advertising is taking a "
                         + "larger share of the whole business."})
     +   ppcSubCard({label: "WASTED SPEND",
                     value: ppcMoney0(w.spend, cur, w.why), why: w.why,

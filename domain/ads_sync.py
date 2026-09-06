@@ -468,18 +468,38 @@ def stray_marketplaces(config_path, workspace_id, keep):
     conn = _db.get_db(config_path)
     keep = str(keep or "").strip().upper()
     out = []
-    for mkt, in conn.execute(
-            "SELECT DISTINCT marketplace FROM ads_daily WHERE workspace_id=?",
-            (workspace_id,)):
-        m = str(mkt or "").upper()
-        if m == keep:
-            continue
+    # EVERY table the sync files by marketplace, not just the first one.
+    #
+    # This scanned ads_daily alone, so a marketplace that had copies ONLY in the
+    # search-term table was invisible to it -- which is exactly what happened:
+    # the daily tables were cleaned of their Italian copies and eleven
+    # marketplaces' worth of duplicated search terms stayed, unreported, because
+    # nothing looked there.
+    seen = set()
+    for t in _MARKETPLACE_TABLES:
+        try:
+            for mkt, in conn.execute(
+                    "SELECT DISTINCT marketplace FROM %s WHERE workspace_id=?"
+                    % t, (workspace_id,)):
+                m = str(mkt or "").upper()
+                if m and m != keep:
+                    seen.add(m)
+        except Exception:
+            pass
+    for m in sorted(seen):
         d = conn.execute(
             "SELECT COUNT(*) n, ROUND(SUM(spend),2) s FROM ads_daily "
             "WHERE workspace_id=? AND marketplace=?", (workspace_id, m)).fetchone()
         c = conn.execute(
             "SELECT COUNT(*) n, ROUND(SUM(spend),2) s FROM ads_campaign_daily "
             "WHERE workspace_id=? AND marketplace=?", (workspace_id, m)).fetchone()
+        try:
+            tm = conn.execute(
+                "SELECT COUNT(*) n, ROUND(SUM(spend),2) s FROM ppc_search_terms "
+                "WHERE workspace_id=? AND marketplace=?",
+                (workspace_id, m)).fetchone()
+        except Exception:
+            tm = None
         # IS IT ACTUALLY A COPY? Said as a measurement rather than assumed. A
         # marketplace this account really does advertise in separately would
         # NOT match the kept one row for row, and must not be swept up.
@@ -489,19 +509,32 @@ def stray_marketplaces(config_path, workspace_id, keep):
             "WHERE a.workspace_id=? AND b.workspace_id=? "
             "AND a.marketplace=? AND b.marketplace=?",
             (workspace_id, workspace_id, keep, m)).fetchone()[0]
+        term_rows = int((tm["n"] if tm else 0) or 0)
         out.append({
             "marketplace": m,
             "ads_daily_rows": d["n"], "ads_daily_spend": d["s"],
             "campaign_rows": c["n"], "campaign_spend": c["s"],
+            "search_term_rows": term_rows,
+            "search_term_spend": (tm["s"] if tm else None),
             "rows_identical_to_%s" % keep.lower(): same,
-            "looks_like_a_copy": bool(d["n"] and same >= d["n"]),
+            # A marketplace with nothing in the daily tables but rows in the
+            # search-term one is still a copy -- it is simply a copy the daily
+            # clean-up already took half of.
+            "looks_like_a_copy": bool((d["n"] and same >= d["n"])
+                                      or (not d["n"] and term_rows)),
         })
     return out
 
 
 # Every table the advertising sync files by marketplace, and therefore every
 # table a wrongly-scoped profile could have written copies into.
-_MARKETPLACE_TABLES = ("ads_daily", "ads_campaign_daily", "ads_placement_daily")
+#
+# ppc_search_terms belongs here and was missed the first time. The loop wrote
+# the SAME search-term report to eleven marketplaces -- IT, FR, IE, ES, PL, AE,
+# BE, NL, SE, DE and UK, 774 identical rows and 256.93 of identical spend in each
+# -- and a clean-up that tidied the two daily tables left all of it behind.
+_MARKETPLACE_TABLES = ("ads_daily", "ads_campaign_daily", "ads_placement_daily",
+                       "ppc_search_terms")
 
 
 def drop_marketplace(config_path, workspace_id, marketplace, dry_run=True):

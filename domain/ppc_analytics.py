@@ -132,8 +132,14 @@ def availability(config_path, workspace_id, marketplace):
             "marketplace=? AND asin=?", (workspace_id, marketplace, ACCOUNT_TOTAL))
     per = n("SELECT COUNT(*) FROM ads_daily WHERE workspace_id=? AND "
             "marketplace=? AND asin<>?", (workspace_id, marketplace, ACCOUNT_TOTAL))
-    terms = n("SELECT COUNT(*) FROM ppc_search_terms WHERE workspace_id=? AND "
-              "marketplace=?", (workspace_id, marketplace))
+    # THE NEWEST REPORT'S TERMS, NOT EVERY REPORT'S. This was a plain COUNT(*),
+    # which added every report the table holds -- and the API sync writes a new
+    # report id every time the window moves, so the count grew by a near-copy a
+    # day. Measured: it reported 1,595 stored terms where 821 were real.
+    # ppc_view.stored_totals is the one place that answers this (Rule 12).
+    from domain import ppc_view as _pv
+    terms = (_pv.stored_totals(config_path, workspace_id, marketplace)
+             or {}).get("terms") or 0
     sales = n("SELECT COUNT(*) FROM sales_daily WHERE workspace_id=? AND "
               "marketplace=? AND asin=?", (workspace_id, marketplace, ACCOUNT_TOTAL))
     products = set()
@@ -356,11 +362,57 @@ def totals_for(config_path, workspace_id, marketplace, start, end):
         (workspace_id, marketplace, start, end, ACCOUNT_TOTAL)).fetchone()
     total_sales = _f(r["s"]) if r else None
 
+    # TACOS MUST DIVIDE TWO FIGURES THAT COVER THE SAME DAYS.
+    #
+    # It did not. total_sales summed every day in the window; spend covered only
+    # the days Amazon has actually sent advertising for -- and the advertising
+    # feed runs about two days behind the sales feed, always. So the divisor
+    # included days the dividend could not, and TACOS came out LOW on every
+    # screen that shows it, every day, by however much sold in those two days.
+    #
+    # The window's own total sales is still reported as total_sales, because
+    # that IS what the window sold. The ratio uses the overlap, and says so.
+    ad_days = set()
+    try:
+        for (d,) in conn.execute(
+                "SELECT DISTINCT date FROM ads_daily WHERE workspace_id=? "
+                "AND marketplace=? AND date>=? AND date<=? AND asin=?",
+                (workspace_id, marketplace, start, end, ACCOUNT_TOTAL)):
+            ad_days.add(d)
+    except Exception:
+        ad_days = set()
+    comparable = None
+    if ad_days:
+        marks = ",".join("?" * len(ad_days))
+        try:
+            rr = conn.execute(
+                "SELECT SUM(ordered_sales) s FROM sales_daily WHERE "
+                "workspace_id=? AND marketplace=? AND asin=? AND date IN (%s)"
+                % marks,
+                [workspace_id, marketplace, ACCOUNT_TOTAL] + sorted(ad_days)
+            ).fetchone()
+            comparable = _f(rr["s"]) if rr else None
+        except Exception:
+            comparable = None
+
     spend, sales, clicks = t["spend"], t["sales"], t["clicks"]
     out = dict(t)
     out.update({
         "total_sales": (round(total_sales, 2) if total_sales is not None else None),
-        "tacos_pct": _rate(spend, total_sales),
+        # The sales of the days advertising actually covers -- the divisor.
+        "comparable_sales": (round(comparable, 2) if comparable is not None
+                             else None),
+        "ad_days": len(ad_days),
+        "tacos_pct": _rate(spend, comparable if comparable is not None
+                           else total_sales),
+        "tacos_note": (
+            ("TACOS divides ad spend by the sales of the %d day(s) that have "
+             "advertising figures, not by the whole window: Amazon's advertising "
+             "feed runs about two days behind its sales feed, and dividing by "
+             "days the spend cannot cover reports a TACOS that is too low."
+             % len(ad_days))
+            if (comparable is not None and total_sales is not None
+                and abs(comparable - total_sales) > 0.005) else ""),
         "cpc": _rate(spend, clicks, pct=False, nd=2),
         "ctr_pct": _rate(clicks, t["impressions"], nd=2),
         "cvr_pct": _rate(t["orders"], clicks, nd=2),
@@ -680,13 +732,28 @@ def wasted_spend(config_path, workspace_id, marketplace, start, end):
     judgement about price; this is money that bought traffic which bought
     nothing, which nobody disputes.
     """
+    # SCOPED TO THE NEWEST REPORT, like everything else that reads this table.
+    #
+    # It was not, and this is a headline card. ppc_search_terms holds one row per
+    # term PER REPORT, and the API sync names each report after its window --
+    # so a second sync leaves two near-identical reports and this summed both.
+    # Measured on nestwell_goods/UK: two reports sharing 572 of their terms, so
+    # the wasted-spend card was reporting close to twice the real figure, and
+    # would have grown by another report every day the sync ran.
+    from domain import ppc_view as _pv
+
     conn = _db.get_db(config_path)
+    meta = _pv.report_meta(config_path, workspace_id, marketplace)
+    if not meta:
+        return {"spend": None, "terms": 0,
+                "why": "No search term report is stored, so spend that bought "
+                       "clicks and no orders cannot be identified."}
     try:
         r = conn.execute(
             "SELECT ROUND(SUM(spend),2) s, COUNT(*) n FROM ppc_search_terms "
-            "WHERE workspace_id=? AND marketplace=? "
+            "WHERE workspace_id=? AND marketplace=? AND report_id=? "
             "AND COALESCE(clicks,0) > 0 AND COALESCE(orders,0) = 0",
-            (workspace_id, marketplace)).fetchone()
+            (workspace_id, marketplace, meta["report_id"])).fetchone()
     except Exception:
         return {"spend": None, "terms": 0,
                 "why": "No search term report is stored."}
