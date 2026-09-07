@@ -250,7 +250,24 @@ function avMarkAsked(sku){
 function avWaitingRows(){
   if(typeof ROWS === "undefined" || !ROWS || !ROWS.filter) return [];
   if(typeof lsIsWaitingOnAmazon !== "function") return [];
-  return ROWS.filter(r => r && r.sku && lsIsWaitingOnAmazon(r));
+  return ROWS.filter(r => r && r.sku && (
+    lsIsWaitingOnAmazon(r)
+    // ...AND THE ONES AMAZON HAS ALREADY CONFIRMED, whose record still says
+    // SUBMITTED.
+    //
+    //     "it moved from drafts to live on amazon section but i still see
+    //      accepted publishing, we still record submitted"
+    //
+    // lsIsWaitingOnAmazon is "SUBMITTED and NOT in the catalogue", so a listing
+    // stopped being chased at the exact moment Amazon confirmed it -- which is
+    // the moment there was finally something to write. The row moved to Live on
+    // Amazon (lsIsPublished reads the catalogue) and kept saying SUBMITTED for
+    // ever, because the only thing that writes LIVE into the store is this
+    // verify run and nothing was asking for it.
+    //
+    // The run itself is unchanged and still promotes only on Amazon's own
+    // BUYABLE. This just stops excluding the rows it exists to correct.
+    || (typeof lsRecordIsBehind === "function" && lsRecordIsBehind(r))));
 }
 
 let AV_STALE_RUNNING = false;

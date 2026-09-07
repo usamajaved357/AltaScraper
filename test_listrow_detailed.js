@@ -105,8 +105,13 @@ truthy("it says it is not live yet",       draftHtml.indexOf("not live yet") >= 
 truthy("  and names the competitor as the source, not as ours",
        draftHtml.indexOf("from B0C7GSCV5W") >= 0);
 // The decisive one: the SKU carries the competitor ASIN. Nothing may dig it out.
+// CODE ONLY. This scanned the whole file, comments included, so quoting a real
+// SKU in a comment -- which is how the measurements in this codebase are
+// recorded -- read as the file parsing one. The rule is about what the CODE
+// does with a SKU; a SKU named in a note is evidence, not a parse.
+const _SRC_CODE = require("./test_helpers.js").stripJsComments(SRC);
 check("the file never parses an ASIN out of a SKU",
-      /_\d+Days_|sku[^\n]{0,40}\.split\(['"]_/.test(SRC), false);
+      /_\d+Days_|sku[^\n]{0,40}\.split\(['"]_/.test(_SRC_CODE), false);
 truthy("it asks rowAsin() instead", /rowAsin\(r\)/.test(SRC));
 
 // ---------------------------------------------------------------------------

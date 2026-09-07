@@ -27,22 +27,46 @@ const api = new Function("jsArg", "CUR_SYMBOL", src + `
 `)(s => JSON.stringify(s), "£");
 
 console.log("=== where the cost comes from ===");
-check("a generated SKU carries it",
-      api.cogsOf({sku: "32.99_3Days_B012B7726O"}), {cost: 32.99, source: "sku"});
-// The one that produces a confident wrong number if got wrong.
-check("0.00 is UNKNOWN, not free",
+// A COST IS SOMETHING YOU SET, and the SKU's name is not one.
+//
+// This asserted that "32.99_3Days_B012B7726O" carries a cost of 32.99. The
+// SERVER stopped agreeing when the owner said "lets remove the cogs from sku
+// things entirely, lets keep it simple" -- domain/cogs.resolve returns only a
+// stored override -- and this function kept doing it, under a comment claiming
+// it was "exactly as the server does".
+//
+// Measured on nestwell_goods, 8 Sep 2026: the server resolves a cost for 1 row
+// of 86 and the browser printed one on 85. That is what he was looking at:
+//
+//     "the 3rd filter shows no cost set 23 listings, but the costs are set in
+//      this view see"
+//
+// The tile was right. The number beside it was the supplier's price at the
+// moment the draft was generated -- not what was paid, and on a hand-named SKU
+// a coincidence -- and every profit, margin and ROI on those rows was built on
+// it.
+check("a generated SKU does NOT carry a cost any more",
+      api.cogsOf({sku: "32.99_3Days_B012B7726O"}), {cost: null, source: ""});
+// 0.00 was the case that produced a confident wrong number under the old rule;
+// under this one there is no rule left to get wrong.
+check("nor does an 0.00 one",
       api.cogsOf({sku: "0.00_3Days_B012B7726O"}), {cost: null, source: ""});
 check("a hand-made SKU has no cost at all",
       api.cogsOf({sku: "46 pcs wrench"}), {cost: null, source: ""});
+// WHAT STILL COUNTS: a cost the server resolved and sent down on the row.
 check("a stored cost is used when there is one",
-      api.cogsOf({sku: "x_3Days_y", cogs: 4.5, cogs_source: "sku"}),
-      {cost: 4.5, source: "sku"});
+      api.cogsOf({sku: "x_3Days_y", cogs: 4.5, cogs_source: "manual"}),
+      {cost: 4.5, source: "manual"});
 
 console.log("\n=== the cell says WHICH of the three it is ===");
 truthy("no cost invites you to set one",
        /set<\/span>/.test(api.cogsCell({sku: "46 pcs wrench"})));
 truthy("a known cost is shown as money",
-       api.cogsCell({sku: "32.99_3Days_B0"}).indexOf("32.99") > 0);
+       api.cogsCell({sku: "32.99_3Days_B0", cogs: 32.99,
+                     cogs_source: "manual"}).indexOf("32.99") > 0);
+// ...and a SKU that merely LOOKS like it has one does not.
+truthy("a SKU that only looks costed invites you to set it",
+       /set<\/span>/.test(api.cogsCell({sku: "32.99_3Days_B0"})));
 // A figure you typed beating one parsed off a SKU is the whole point of an
 // override; it has to be visible that it did.
 truthy("a typed cost is marked as yours",

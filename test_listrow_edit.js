@@ -185,8 +185,18 @@ falsy("listrow_edit does not post to it itself",
       /fetch\(\s*["'][^"']*cogs/.test(ED));
 
 console.log("\n== stock is the one that reaches Amazon, and says so ==");
-truthy("only stock is marked live", /qty:      \{label: "stock",        live: true\}/.test(ED));
-truthy("  price is not", /price:    \{label: "price",        live: false\}/.test(ED));
+// `live` STILL MEANS "REACHES AMAZON" -- that is what the bar wording below
+// reads, and a cost must never make it say so. What changed on 8 Sep 2026 is
+// that a SECOND question came out of the same flag: whether the field is stored
+// on this app's ROW. Cost is neither: it goes nowhere near Amazon AND is not on
+// the row, so `live` alone could not describe it. See LR_FIELDS.
+truthy("only stock reaches Amazon", /qty:\s*\{[^}]*live:\s*true/.test(ED));
+truthy("  price does not", /price:\s*\{[^}]*live:\s*false/.test(ED));
+truthy("  and neither does a cost", /cost:\s*\{[^}]*live:\s*false/.test(ED));
+// The other question, asked separately.
+truthy("a cost needs no row of ours", /cost:\s*\{[^}]*needsRow:\s*false/.test(ED));
+truthy("  nor does stock", /qty:\s*\{[^}]*needsRow:\s*false/.test(ED));
+truthy("  but a price does", /price:\s*\{[^}]*needsRow:\s*true/.test(ED));
 truthy("a live change is confirmed first", /uiConfirm\(/.test(SAV));
 truthy("  naming how many listings", /live\.length/.test(SAV));
 truthy("the bar says where the changes go", /stock goes to Amazon; the rest is saved here/.test(ED));

@@ -119,8 +119,20 @@ print("\nstock stays editable on a listing this app holds no draft of")
 # The guard turned EVERY box read-only without a draft row. Price, cost and
 # handling are written into the row and genuinely cannot work; stock goes to
 # /stock/bulk_update and patches Amazon by SKU, so it always could.
+# THE FLAG SPLIT IN TWO on 8 Sep 2026. `live` was carrying both "reaches
+# Amazon" and "is stored on our row", which held until cost turned out to be
+# neither -- it goes nowhere near Amazon AND lives in the COGS store keyed by
+# (account, sku). Reading `live` here meant "does not reach Amazon" was taken to
+# mean "must be on our row", and the cost box was refused on every listing with
+# no draft:
+#
+#     "for many listings i dont have an option to put the cogs, i should be able
+#      to put the cogs"
+#
+# The invariant is the same one: the guard asks about the FIELD, not about the
+# row alone.
 truthy("the guard asks whether the field needs a row at all",
-       "const _needsRow = !(LR_FIELDS[o.field] && LR_FIELDS[o.field].live)" in LE)
+       "const _needsRow = !_f || _f.needsRow !== false" in LE)
 truthy("and only then refuses", "if(_needsRow && o.sku" in LE)
 truthy("stock is declared as going live to Amazon",
        re.search(r"qty:\s*\{label:[^}]*live:\s*true", LE) is not None)

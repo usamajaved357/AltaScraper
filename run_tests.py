@@ -37,11 +37,70 @@ def _find(prefix, ext):
                   if f.startswith(prefix) and f.endswith(ext))
 
 
+# EVERY TEST'S TEMPORARY FILES GO IN ONE PLACE, AND THAT PLACE IS DELETED.
+#
+# Most of these tests call tempfile.mkdtemp() at module level and never remove
+# it -- forty-odd directories per run, several holding a SQLite database. They
+# accumulate silently until the disk fills, and then nothing works and nothing
+# says why:
+#
+#   31 Aug 2026   4,802 stale dirs, 1.56 GB, C: at 0 GB free
+#                 sqlite3.OperationalError: unable to open database file
+#    8 Sep 2026   1,146 stale dirs, C: at 0.63 GB free
+#                 "Starting the CLR failed with HRESULT 8007000e"
+#
+# Fixing it in each test would be forty edits and the forty-first would forget.
+# Python's tempfile reads TMPDIR/TEMP/TMP, so pointing those at a directory of
+# our own catches every mkdtemp, NamedTemporaryFile and gettempdir in every
+# test -- whatever prefix it uses, including the ones with no prefix at all --
+# and one rmtree at the end takes the lot.
+#
+# It is scoped to the CHILD processes, not to this one: nothing outside the run
+# is touched, and a test that writes somewhere absolute is unaffected. The run
+# lock above already guarantees only one suite is running, so the directory
+# cannot belong to anybody else.
+_TMP_ROOT = None
+
+
+def _tmp_env():
+    """The environment the tests run in: their own scratch directory."""
+    global _TMP_ROOT
+    if _TMP_ROOT is None:
+        _TMP_ROOT = tempfile.mkdtemp(prefix="alta_run_")
+    env = dict(os.environ)
+    env["TMPDIR"] = _TMP_ROOT
+    env["TEMP"] = _TMP_ROOT
+    env["TMP"] = _TMP_ROOT
+    return env
+
+
+def _tmp_cleanup():
+    """Remove it. Never raises -- a file still held open must not fail the run."""
+    global _TMP_ROOT
+    if not _TMP_ROOT:
+        return 0
+    import shutil
+    freed = 0
+    try:
+        for dirpath, _dirs, files in os.walk(_TMP_ROOT):
+            for f in files:
+                try:
+                    freed += os.path.getsize(os.path.join(dirpath, f))
+                except OSError:
+                    pass
+        shutil.rmtree(_TMP_ROOT, ignore_errors=True)
+    except Exception:
+        pass
+    _TMP_ROOT = None
+    return freed
+
+
 def _run(cmd, cwd=ROOT, timeout=900):
     t0 = time.time()
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                           timeout=timeout, encoding="utf-8", errors="replace")
+                           timeout=timeout, encoding="utf-8", errors="replace",
+                           env=_tmp_env())
         return p.returncode, (p.stdout or "") + (p.stderr or ""), time.time() - t0
     except subprocess.TimeoutExpired:
         return 124, "TIMED OUT after %ss" % timeout, time.time() - t0
@@ -163,6 +222,14 @@ def main():
     if slow:
         print("slowest: " + ", ".join("%s %.0fs" % s for s in
                                       sorted(slow, key=lambda x: -x[1])[:3]))
+    # AND THE SCRATCH DIRECTORY GOES. Reported rather than silent, because the
+    # number is the thing that used to accumulate: at ~35 MB a run it took the
+    # disk to zero twice, and both times the failure was somewhere else
+    # entirely -- "unable to open database file", then "Starting the CLR
+    # failed". See _tmp_env above.
+    _freed = _tmp_cleanup()
+    if _freed > 1024 * 1024:
+        print("cleaned up %.0f MB of test scratch files" % (_freed / 1024.0 / 1024.0))
 
     for name, code, out in failed:
         print("\n" + "-" * 70)
@@ -186,4 +253,9 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     finally:
+        # BOTH, AND IN THIS ORDER. main() removes the scratch directory on the
+        # normal path and reports what it freed; this catches the runs that end
+        # any other way -- a Ctrl-C, an early return, an exception -- because
+        # those are exactly the runs that used to leave the most behind.
+        _tmp_cleanup()
         _release_lock()

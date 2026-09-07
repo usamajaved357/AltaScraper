@@ -429,7 +429,33 @@ function lrStatus(r){
   //
   // Same three words liveItemIs("live_notshowing") tests, so the tile that
   // counts them and the badge that names them cannot disagree (Rule 12).
-  const _amz = String(stored || "").toUpperCase();
+  // FROM THE CATALOGUE ITEM, NOT FROM OUR ROW -- which is what the tile counts.
+  //
+  //     "one is 3 in 1 floor scrub which shows only live but is displayed under
+  //      this filter"
+  //
+  // He is right and the two were reading different things. `stored` is THIS
+  // APP'S status word, and on a row we hold a draft of that word is LIVE --
+  // never SUPPRESSED, because the app does not write Amazon's vocabulary. So
+  // the badge could only ever appear on a CATALOGUE-ONLY row, while the "Not
+  // showing" tile reads the catalogue item's own status for every row. A
+  // listing with a draft was counted by the tile and said nothing on its row.
+  //
+  // Measured on nestwell_goods, 8 Sep 2026, asking Amazon per SKU: all four the
+  // tile counts are real. Three are BUYABLE and search-suppressed over the main
+  // image ("Please submit a compliant image to lift the suppression"), one is
+  // DISCOVERABLE with 0 stock. 9.18_3Days_B0C6XTNXL8 -- the floor scrub -- is
+  // one of the three.
+  //
+  // liveItemForRow is the same row-to-catalogue pairing the tile and the
+  // live/not-live badge already use, so all three now agree by construction
+  // (Rule 12). Falls back to our own word, which is right for a catalogue-only
+  // row: there, `status` IS Amazon's.
+  let _amz = String(stored || "").toUpperCase();
+  try{
+    const _it = (typeof liveItemForRow === "function") ? liveItemForRow(r) : null;
+    if(_it && _it.status) _amz = String(_it.status).toUpperCase();
+  }catch(e){}
   const _notShowing = ["SUPPRESSED", "INACTIVE", "INCOMPLETE"]
     .find(w => _amz.indexOf(w) >= 0);
   const WHY = {

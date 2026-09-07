@@ -34,11 +34,28 @@ function cogsOf(row){
   if(COGS_LOCAL[sku] !== undefined) return {cost: COGS_LOCAL[sku], source: "manual"};
   if(row && row.cogs !== undefined && row.cogs !== null && row.cogs !== "")
     return {cost: Number(row.cogs), source: row.cogs_source || "sku"};
-  // Fall back to reading it off the SKU exactly as the server does: everything
-  // before the first underscore, and only if it is a number ABOVE zero.
-  const first = sku.split("_")[0];
-  const v = Number(first);
-  if(first && isFinite(v) && v > 0) return {cost: v, source: "sku"};
+  /* THE SKU-NAME FALLBACK IS GONE, and it is why the tile and the rows
+   * disagreed in front of him:
+   *
+   *     "the 3rd filter shows no cost set 23 listings, but the costs are set in
+   *      this view see"
+   *
+   * They were not set. The tile counts what the SERVER resolves, and
+   * domain/cogs.resolve returns only a cost somebody SET -- it stopped reading
+   * the number before the first underscore when the owner said "lets remove the
+   * cogs from sku things entirely, lets keep it simple". This function kept
+   * doing it, with a comment claiming it was "exactly as the server does",
+   * which had quietly stopped being true.
+   *
+   * MEASURED on nestwell_goods: the server resolves a cost for 1 row of 86; this
+   * printed one on 85. So every profit, margin and ROI on those 84 rows was
+   * computed from a number nobody had ever confirmed -- the first field of a
+   * SKU, which is the SUPPLIER'S price at the moment the draft was generated,
+   * not what was paid, and pure coincidence on a hand-named SKU.
+   *
+   * A row with no cost now says "set" and can be clicked, which is the same
+   * thing the tile is counting. See cogsCell below.
+   */
   return {cost: null, source: ""};
 }
 
