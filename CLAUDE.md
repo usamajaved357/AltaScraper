@@ -41,6 +41,23 @@ product under the owner's own brand.
       submit. Amazon refusing for want of an identifier is the correct outcome.
   The tick is the "GTIN Exemption" column, shown under the barcode box on the
   drawer, off by default.
+  REAFFIRMED AND TIGHTENED by the owner on 7 Sep 2026, in writing:
+      "REMOVE THE GTIN EXEMPTION OPTION ENTIRELY I ALWAYS HAVE A BARCODE SO
+       DONOT AUTOMATICALLY EXEMPT AUTOMATICALLY, ONLY EXEMPT WHEN USER SELECTS
+       MULTIPLE DRAFTS AND CLICK ON APPLY FOR GTIN EXEMPTION OR DO IT INSIDE
+       THE PDP ONE BY ONE."
+  So there are EXACTLY TWO ways the exemption can ever be claimed, and both are
+  a deliberate click by the owner:
+    1. the tick box on one listing (the PDP / drawer identifier panel)
+    2. "Apply for GTIN exemption" on the selection toolbar, for several drafts
+  There is no third way, and an empty barcode box is not one. Anything that
+  claims it from a CONDITION rather than a click is a bug, however sensible the
+  condition looks. Both routes go through static/js/gtin.js, which is the one
+  place in the browser that writes the column (Rule 12).
+  An "empty the barcode box and it will use the exemption" instruction — in a
+  help string, an error explanation, or a comment — is now WRONG and must be
+  corrected wherever it is found: emptying the box sends Amazon no identifier
+  at all.
 - A BARCODE ALREADY ON ANOTHER LISTING MUST BE REPORTED, not sent and hoped for.
   Amazon matches the code to the ASIN that already owns it and refuses to create
   a second product — measured on his own data, where one EAN was on a live

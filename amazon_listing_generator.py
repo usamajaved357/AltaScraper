@@ -5583,14 +5583,26 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     if has("merchant_shipping_group") and msg:
         put("merchant_shipping_group", _shape_simple(props["merchant_shipping_group"], msg, mid))
 
-    # --- product identifier: real barcode, else claim GTIN exemption ----------
-    barcode, typ = normalize_gtin(g("UPC"))   # listing/barcode.py -- single source
-    if barcode and has("externally_assigned_product_identifier"):
-        A["externally_assigned_product_identifier"] = [
-            {"value": barcode, "type": typ, "marketplace_id": mid}]
-    elif has("supplier_declared_has_product_identifier_exemption"):
-        A["supplier_declared_has_product_identifier_exemption"] = [
-            {"value": True, "marketplace_id": mid}]
+    # --- product identifier --------------------------------------------------
+    # DELIBERATELY NOT SET HERE. There is ONE place that decides what identifier
+    # this listing carries, and it is the block near the end of this function
+    # ("PRODUCT IDENTIFIER: single AUTHORITATIVE pass"). This spot used to hold a
+    # second copy of that decision, and the two disagreed on what matters most:
+    #
+    #     elif has("supplier_declared_has_product_identifier_exemption"):
+    #         A["supplier_declared_has_product_identifier_exemption"] = [...]
+    #
+    # -- an AUTOMATIC exemption claim whenever the barcode box was empty. It was
+    # invisible only because the later block overwrote it. An early return added
+    # between the two would have silently restored the exact behaviour the owner
+    # banned in writing (CLAUDE.md Rule 1), and nothing would have failed.
+    #
+    #     "REMOVE THE GTIN EXEMPTION OPTION ENTIRELY I ALWAYS HAVE A BARCODE SO
+    #      DONOT AUTOMATICALLY EXEMPT ... ONLY EXEMPT WHEN USER SELECTS MULTIPLE
+    #      DRAFTS AND CLICK ON APPLY FOR GTIN EXEMPTION OR DO IT INSIDE THE PDP"
+    #
+    # Removing it rather than correcting it is the point (Rule 12): two copies of
+    # a rule this consequential is the defect, not the wording of either copy.
 
     # --- dimensions (composite if the type uses it) ---------------------------
     # Read each axis from the NESTED item_dimensions[axis] object (what the editor saves,
@@ -7174,9 +7186,14 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # nothing folded in earlier -- an AI auto-fix suggestion left in Attributes
     # JSON, or a stale value -- can leave a half-filled or conflicting identifier:
     #   * real barcode present -> send it, and DROP any GTIN-exemption claim.
-    #   * no real barcode      -> DROP any (possibly AI-guessed / value-less)
-    #                             externally_assigned_product_identifier and claim
-    #                             the GTIN exemption instead.
+    #   * no real barcode, exemption TICKED BY THE OWNER -> DROP any (possibly
+    #                             AI-guessed / value-less) identifier and claim
+    #                             the exemption, because he asked for it.
+    #   * no real barcode, not ticked -> send NEITHER. Amazon refuses for want of
+    #                             an identifier, which is the correct outcome.
+    # These three branches are the WHOLE decision. It is made once, here, and
+    # nowhere else in this function -- see the note where the old second copy of
+    # it used to sit, above the dimensions block.
     # This guarantees Amazon never receives an AI-guessed or value-less barcode,
     # and that the owner's real purchased EAN in the UPC box is what gets sent.
     # normalize_gtin (listing/barcode.py) is the ONE place that decides the value
@@ -7384,24 +7401,63 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             # number of Syncs could ever have changed it.
             #
             # Safe to include: nothing below promotes on our own opinion. A row
-            # only becomes LIVE when Amazon itself returns BUYABLE or
-            # DISCOVERABLE for it, and a row Amazon does not confirm is left
-            # exactly as it is with a note.
+            # only becomes LIVE when Amazon itself returns BUYABLE for it, and a
+            # row Amazon does not confirm is left exactly as it is with a note.
             if _st not in ("SUBMITTED", "API_ERROR", "API_READY", "APPROVED",
                            "NEEDS_REVIEW", "PENDING", ""):
                 continue
             _rstatus, _rerrs, _rwhy, _rasin = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
             _checked += 1
-            if _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
+            _st_up = [str(s).upper() for s in (_rstatus or [])]
+
+            # A COMPLAINT ABOUT A BARCODE THIS LISTING NO LONGER CARRIES.
+            #
+            #     "i changed the ean before submitting, i am confused here"
+            #
+            # Amazon keeps the errors from a failed submission attached to the
+            # SKU; a later successful one does not clear them. Repeating that
+            # text verbatim told the owner his replacement had not been sent
+            # when it had. listing/api_issues.py owns the comparison (Rule 12);
+            # it reads the code out of Amazon's STRUCTURED attributeNames, never
+            # out of the message prose (Rule 4).
+            _stale = _api_issues.stale_identifiers(_rerrs or [], row.get("UPC", ""))
+            _stale_note = ""
+            if _stale:
+                _stale_note = (" NOTE: %s is no longer on this listing, which now uses %s -- "
+                               "that complaint is left over from an earlier submission and does "
+                               "NOT describe what was last sent."
+                               % (", ".join(_stale), str(row.get("UPC", "") or "").strip()))
+
+            if "BUYABLE" in _st_up:
                 # CONFIRMED live -> promote to LIVE and capture the ASIN Amazon assigned.
                 queue(i, status_col, "LIVE")
                 queue(i, notes_col, f"RE-VERIFIED -- LIVE ({', '.join(_rstatus)})" + (f"; ASIN {_rasin}" if _rasin else ""))
                 _wentlive += 1
                 console.print(f"  [green]row {i} {sku}: now LIVE ({', '.join(_rstatus)})" + (f" ASIN {_rasin}" if _rasin else "") + "[/green]")
+            elif "DISCOVERABLE" in _st_up:
+                # THE PRODUCT PAGE EXISTS AND NOTHING IS FOR SALE ON IT.
+                #
+                # DISCOVERABLE used to count as LIVE here, and it is not the same
+                # thing: it says Amazon built the catalogue entry, while BUYABLE
+                # says the offer is attached and the item can be bought. Measured
+                # on 9.99_2Days_B0BP1HNW8G -- DISCOVERABLE as B0HJ2W3XZ1 with
+                # offers: [] and fulfillmentAvailability: [] -- so calling it LIVE
+                # would have put a green row on the screen for something nobody
+                # could buy. The status is left alone; only the note changes.
+                _extra = (f" Amazon also still shows {len(_rerrs)} issue(s): "
+                          f"{_issue_str(_rerrs, {})}.{_stale_note}") if _rerrs else ""
+                queue(i, notes_col,
+                      "RE-VERIFIED -- product page created"
+                      + (f" (ASIN {_rasin})" if _rasin else "")
+                      + ", but your offer is not attached yet, so it cannot be bought. "
+                        "Amazon usually attaches the offer within the hour; this app "
+                        "keeps checking." + _extra)
+                console.print(f"  [yellow]row {i} {sku}: page created, no offer attached yet"
+                              + (f" (ASIN {_rasin})" if _rasin else "") + "[/yellow]")
             elif _rerrs:
                 # Amazon still shows issues -- re-verify is a CONFIRMATION, not a verdict, so
                 # DON'T downgrade to ERROR. Leave the row's status as-is; just note it.
-                queue(i, notes_col, f"RE-VERIFIED -- not yet confirmed live; Amazon still shows {len(_rerrs)} issue(s): {_issue_str(_rerrs, {})}. Check Seller Central.")
+                queue(i, notes_col, f"RE-VERIFIED -- not yet confirmed live; Amazon still shows {len(_rerrs)} issue(s): {_issue_str(_rerrs, {})}.{_stale_note} Check Seller Central.")
                 console.print(f"  [yellow]row {i} {sku}: not yet confirmed live -- {len(_rerrs)} issue(s) (status left as-is)[/yellow]")
             elif _rstatus is None and _rerrs is None:
                 queue(i, notes_col, f"RE-VERIFY could not check -- {_rwhy}")

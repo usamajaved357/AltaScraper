@@ -160,7 +160,63 @@ truthy("  drawn open at the top, never folded away",
        and "dwFold" not in _shell)
 truthy("  with the tick box", "Apply for GTIN exemption" in JS)
 truthy("  saying what ticking it declares", "it is a declaration" in JS)
-truthy("  and the tick saves", "function setGtinExemption(" in JS)
+
+# THE WRITE MOVED OUT OF listings.js on 7 Sep 2026, when the owner asked for a
+# second way to claim the exemption:
+#
+#     "ONLY EXEMPT WHEN USER SELECTS MULTIPLE DRAFTS AND CLICK ON APPLY FOR
+#      GTIN EXEMPTION OR DO IT INSIDE THE PDP ONE BY ONE"
+#
+# Two ways of declaring the same thing to Amazon, written in two files, is the
+# duplication Rule 12 exists to stop. gtin.js owns the write; the bulk route is
+# a loop over the single route, not a second copy of it.
+G = open(os.path.join("static", "js", "gtin.js"), encoding="utf-8").read()
+truthy("  and the tick saves, from the file that owns the write",
+       "function setGtinExemption(" in G)
+falsy("    which listings.js no longer does itself",
+      "function setGtinExemption(" in JS)
+truthy("  the bulk route exists for several drafts at once",
+       "function bulkGtinExemption(" in G)
+truthy("    and goes through the SAME write, not a second one",
+       G.count("fetch(\"/edit\"") == 1 and "_gtinWrite(sku, claim)" in G)
+truthy("    drafts only -- a catalogue-only listing has no box to tick",
+       "splitByDraft" in G)
+truthy("    and it says what is being declared before it does it",
+       "HAVE NO BARCODE" in G)
+
+# THE BUTTON HAS TO BE REACHABLE, or the second route the owner asked for does
+# not exist as far as he is concerned.
+H = open(os.path.join("templates", "dashboard.html"), encoding="utf-8").read()
+truthy("  the toolbar button calls it", "bulkGtinExemption(true)" in H)
+truthy("  and the file is loaded", "/static/js/gtin.js" in H)
+
+print("\n=== nothing claims the exemption from a CONDITION ===")
+# The generator used to hold TWO identifier decisions. The first auto-claimed
+# the exemption whenever the barcode box was empty and was invisible only
+# because the second overwrote it -- an early return between them would have
+# silently restored the banned behaviour with no test failing.
+_gen = open("amazon_listing_generator.py", encoding="utf-8").read()
+# CODE ONLY. The deleted block is quoted in the comment that replaced it, so
+# that the next reader knows what was removed and why -- counting comment lines
+# here would make that explanation look like the bug it describes.
+_code = "\n".join(l for l in _gen.splitlines() if not l.lstrip().startswith("#"))
+check("the identifier is decided in exactly one place",
+      _code.count('A["supplier_declared_has_product_identifier_exemption"] = ['), 1)
+truthy("  and only behind the owner's tick",
+       "elif _exempt_asked:" in _gen)
+falsy("  never from an empty barcode box",
+      "real barcode, else claim GTIN exemption" in _gen)
+
+print("\n=== the app never tells him to empty the box instead ===")
+# "Clear the Barcode / GTIN box so the listing uses the GTIN exemption" was
+# advice the app gave three times. It stopped being true when the exemption
+# became opt-in: clearing the box now sends NO identifier and Amazon refuses.
+AE = open(os.path.join("static", "js", "amazon_errors.js"), encoding="utf-8").read()
+falsy("no error explanation says clearing the box claims the exemption",
+      "box so the listing uses the GTIN exemption" in AE
+      or "clear the Barcode / GTIN field to use the GTIN exemption" in AE)
+truthy("  they say what emptying it actually does",
+       "no identifier" in AE)
 
 print("\n=== the rule file and the code now agree ===")
 C = open("CLAUDE.md", encoding="utf-8").read()

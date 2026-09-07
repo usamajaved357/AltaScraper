@@ -126,6 +126,59 @@ def errors(rec):
     return [i for i in rec["issues"] if i["severity"] == "ERROR"]
 
 
+def stale_identifiers(issues, current_barcode):
+    """Barcodes Amazon is still complaining about that this listing no longer uses.
+
+    WHY THIS EXISTS.
+
+        "i changed the ean before submitting, i am confused here"
+
+    Amazon leaves the errors from a FAILED submission attached to the SKU. A
+    later, successful submission does not clear them. So getListingsItem keeps
+    answering with a complaint about a barcode that was replaced -- and the app
+    repeated it word for word as though it described the submission just made.
+    Measured on 9.99_2Days_B0BP1HNW8G: Amazon stored ean 4545156646383 and went
+    DISCOVERABLE as B0HJ2W3XZ1, while still returning issue 100980 about
+    04545844574868.
+
+    Amazon hands us the offending value in attributeNames, beside the field name
+    -- so the comparison needs nothing extra fetched and no Amazon call.
+
+    THE VALUE COMES FROM THE STRUCTURED FIELD, NEVER FROM THE MESSAGE TEXT
+    (CLAUDE.md Rule 4). Reading a code out of Amazon's prose is how the "The"/
+    "Your" phantom-field bug happened.
+
+    Both sides go through normalize_gtin, so the 14-digit form Amazon quotes back
+    (04545844574868) is recognised as the EAN-13 the box holds (4545844574868)
+    and is NOT reported as stale. Without that, replacing nothing would look like
+    replacing something.
+
+    -> [the codes named, as Amazon wrote them]. Empty when the listing has no
+    usable barcode of its own, because then there is nothing to compare against
+    and "stale" would be a guess.
+    """
+    from listing.barcode import normalize_gtin      # single source (Rule 12)
+
+    now, _t = normalize_gtin(current_barcode)
+    if not now:
+        return []
+    out = []
+    for raw in (issues or []):
+        one = _one(raw)
+        if not one:
+            continue
+        for f in one["fields"]:
+            digits = "".join(c for c in str(f) if c.isdigit())
+            # A field NAME is snake_case; a barcode is nothing but digits of a
+            # GTIN length. Anything else in attributeNames is a real field.
+            if digits != str(f).strip() or len(digits) not in (8, 12, 13, 14):
+                continue
+            was, _t2 = normalize_gtin(f)
+            if was and was != now and f not in out:
+                out.append(f)
+    return out
+
+
 def by_field(rec):
     """{field name: [issue, ...]} for every issue that names a field.
 

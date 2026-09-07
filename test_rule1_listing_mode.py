@@ -154,9 +154,13 @@ if "externally_assigned_product_identifier" in a:
     check("  and the exemption is dropped with it",
           "supplier_declared_has_product_identifier_exemption" in a, False)
 else:
-    # Rejected by normalize_gtin -> exemption, which is also correct behaviour.
-    check("a barcode that fails validation falls back to the exemption",
-          "supplier_declared_has_product_identifier_exemption" in a, True)
+    # A LEFTOVER FROM THE OLD RULE, and it was wrong from the day the exemption
+    # became opt-in -- it asserted that a barcode failing validation "falls back
+    # to the exemption". It never failed because this branch is not taken for a
+    # valid EAN, so nothing caught it. A rejected barcode with no tick sends
+    # NEITHER identifier now, exactly as an empty box does.
+    check("a barcode that fails validation claims nothing in its place",
+          "supplier_declared_has_product_identifier_exemption" in a, False)
 
 # An obviously invented one must not be sent. The rule that still holds is
 # "never send a fake barcode" -- what changed is that nothing is claimed in its

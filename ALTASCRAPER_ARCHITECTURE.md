@@ -247,7 +247,13 @@ Does NOT touch: PPC, inventory, image gen, Miles, brand mode.
 Business rules hardcoded here:
   - Always requirements: "LISTING" (create new product)
   - Never merchant_suggested_asin
-  - Never fake UPCs — use GTIN exemption
+  - Never fake UPCs. This line used to end "— use GTIN exemption", which told
+    the app to claim the exemption whenever there was no usable barcode. The
+    owner banned that in writing (26 Aug 2026, reaffirmed 7 Sep 2026: "DONOT
+    AUTOMATICALLY EXEMPT"). No barcode and no tick now sends NEITHER identifier
+    and Amazon refuses the listing, which is the correct outcome. The exemption
+    is claimed only by a deliberate click — the tick box on one listing, or
+    "Apply for GTIN exemption" on the selection toolbar. See CLAUDE.md Rule 1.
   - Brand fallback: if detected brand looks like a description, use
     account default brand from config.json
 
