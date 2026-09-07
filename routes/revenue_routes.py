@@ -99,13 +99,32 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _resolve_cogs):
         gross = round(float(price) + float(shipping), 2)
 
         # ---- what the stock cost -------------------------------------------
-        # The app's own resolver, not a second reading of the SKU here: it
-        # applies the typed override first and falls back to the SKU's price
-        # prefix, and that order is the whole point of the field.
+        # The app's own resolver: it returns a cost the owner SET, and nothing
+        # else. It deliberately stopped reading the SKU's price prefix --
+        # "lets remove the cogs from sku things entirely" -- see domain/cogs.py.
         try:
             cost, cost_source = _resolve_cogs(wsid, sku)
         except Exception:
             cost, cost_source = None, ""
+
+        # ...OR THE COST THE SCREEN IS SHOWING, for the same reason this route
+        # already takes the PRICE from the browser rather than looking it up:
+        # one fewer thing that can disagree with what is in front of the person.
+        #
+        # AND THEY DO DISAGREE. static/js/cogs.js still falls back to the SKU's
+        # price prefix -- its comment says "exactly as the server does", which
+        # stopped being true when the server dropped that fallback. Measured on
+        # nestwell_goods: the browser shows a cost on 85 of 86 rows and the
+        # server resolves one on 1. So without this, a recomputed profit would
+        # come back blank while the cost box beside it plainly reads 9.99.
+        #
+        # It is only ever used when the resolver has nothing, so a cost the
+        # owner actually set always wins -- passing a number here can never
+        # override one he typed.
+        if cost is None:
+            _shown = _f(request.args.get("cost"), None)
+            if _shown is not None and _shown > 0:
+                cost, cost_source = _shown, "shown"
 
         # ---- what Amazon takes ---------------------------------------------
         # is_fba comes from the stock reading, not from a guess: stock_daily

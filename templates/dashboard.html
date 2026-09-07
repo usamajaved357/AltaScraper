@@ -2228,6 +2228,11 @@
      action. After listings.js because it uses splitByDraft/selectedSkus from
      there; the tick box's onchange resolves at click time either way. -->
 <script src="/static/js/gtin.js?v={{ ASSET_V }}"></script>
+<!-- Keeps the profit on a row in step with its price by asking
+     /listing/revenue, which owns the fee arithmetic. Called from
+     updateLocalCol (autofix.js) and applyPushedLocally (listings.js); both
+     check for it first, so load order only affects when it starts working. -->
+<script src="/static/js/profit.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
 <!-- The full-screen product page. It arranges blocks the two files above
      build (_fullDataParts, dwTitleParts, _dwWarnings) and defines none of its

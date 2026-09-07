@@ -728,6 +728,26 @@ function applyPushedLocally(skus, rowPatch, itemPatch){
   if(itemPatch && typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS)
     LIVE_ITEMS.forEach(it => { if(it && want.has(n(it.sku))) Object.assign(it, itemPatch); });
   if(typeof render === "function") render();
+  /* A NEW PRICE MAKES THE STORED PROFIT WRONG.
+   *
+   * r.profit is not derived from r.price -- it is a separate figure the
+   * generator worked out once, with the real fee. So writing a price here and
+   * redrawing left the profit, margin and ROI beside it describing the OLD
+   * price, which is what "the profit remained the same value as it was before"
+   * was. Every bulk price change came through this function, so a percentage
+   * applied to forty listings restated forty profits that no longer held.
+   *
+   * Asked for rather than computed: /listing/revenue owns the arithmetic and
+   * the fee resolver behind it (Rule 12). See static/js/profit.js. Not awaited,
+   * and each one repaints as it lands, so the price is on screen immediately
+   * either way.
+   */
+  const _newPrice = rowPatch && (rowPatch.price !== undefined ? rowPatch.price
+                                 : (itemPatch && itemPatch.price));
+  if(_newPrice !== undefined && _newPrice !== null
+     && typeof profitRefresh === "function"){
+    (skus || []).forEach(s => { try{ profitRefresh(s, _newPrice); }catch(e){} });
+  }
 }
 
 /* WHICH OF THE TWO TILE SETS IS ON SCREEN, and what "no filter" means in it.

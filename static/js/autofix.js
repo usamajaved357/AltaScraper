@@ -1095,7 +1095,30 @@ function addField(sku, pt, sel){
 const COLMAP={"Title":"title","Description (HTML)":"description","Search Terms / KW":"search_terms",
   "Our Price (GBP)":"price","Brand":"brand","UPC":"barcode","Handling Days":"handling_days","Product Type":"product_type"};
 function updateLocalCol(r,key,value){
-  if(key in COLMAP){ r[COLMAP[key]]=value; return; }
+  if(key in COLMAP){
+    r[COLMAP[key]]=value;
+    /* THE PROFIT HAS TO FOLLOW THE PRICE.
+     *
+     *     "the listing was saying that the profit in this item is 1.76 and so i
+     *      changed the selling price by 3 pounds but the app was not able to
+     *      change the profit calculation at the glance at the same moment in
+     *      mili seconds, the profit remained the same value as it was before"
+     *
+     * This line set r.price and stopped. r.profit is a SEPARATE stored figure
+     * the generator worked out once, and margin and ROI are derived from it, so
+     * changing the price left all three describing a price that no longer
+     * existed -- and looking authoritative while doing it.
+     *
+     * Recomputed by asking /listing/revenue, which is the one place that knows
+     * what Amazon actually takes (the measured rate, not a flat 15%). Not
+     * awaited: the price is already saved and on screen, and the profit lands a
+     * moment later rather than holding up the save. See static/js/profit.js.
+     */
+    if(key === "Our Price (GBP)" && typeof profitRefresh === "function"){
+      profitRefresh(r.sku, value);
+    }
+    return;
+  }
   const m=key.match(/^Bullet (\d)$/); if(m){ r.bullets=r.bullets||[]; r.bullets[+m[1]-1]=value; }
 }
 /* WRITE ONE FIELD. The only place that posts to /edit.
