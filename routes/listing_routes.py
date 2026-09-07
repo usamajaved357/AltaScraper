@@ -1824,6 +1824,47 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             # read and write the workspace that was asked for.
             ws    = _store_for(b.get("account")) or _ws()
             found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+
+            # A LIVE LISTING WITH NO ROW IS TAKEN IN, NOT REFUSED.
+            #
+            #     "i am trying to make changes in the live listing ... it says
+            #      save failed, no skus in this workspace and i told you that i
+            #      have mee too listing this so i should be able to add data"
+            #
+            # Two different sets: what the app has MADE (this table) and what
+            # the account SELLS (the live snapshot). A me-too listing is only
+            # ever in the second, so every field on the drawer refused to save
+            # with an error that reads like a bug and is a true statement about
+            # an empty table.
+            #
+            # Measured on this SKU: the row exists under jack_uk while the same
+            # SKU is live on nestwell_goods too, and the orders are nestwell's.
+            # Falling back to the other account's row would edit another
+            # company's listing from this company's screen -- which is exactly
+            # what the scoping above exists to prevent, so the fix is to give
+            # THIS workspace a row of its own, seeded from Amazon's own snapshot
+            # for THIS account. See listing/adopt.py.
+            #
+            # Gated on the SKU actually being live here, so this cannot become
+            # "create a row for anything anybody types".
+            _adopted = False
+            if not found.ok and found.error == \
+                    "no listing with this SKU in this workspace":
+                try:
+                    from listing import adopt as _adopt
+                    _aid = str(b.get("account")
+                               or _state.get("active_account_id") or "")
+                    _mkt = str(b.get("marketplace")
+                               or _state.get("active_marketplace") or "").upper()
+                    _ok, _why = _adopt.adopt(CONFIG_PATH, ws, _aid, _mkt, sku)
+                    if _ok:
+                        _adopted = True
+                        found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+                except Exception:
+                    # Never turn a failed adoption into a 500 on an edit. The
+                    # original "no row" answer below is still the right one.
+                    _adopted = False
+
             if not found.ok:
                 # SAY WHICH WORKSPACE, AND FLAG THE CASE THE CALLER CAN EXPLAIN.
                 #
@@ -1889,7 +1930,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             else:
                 return jsonify({"ok": False, "error": "bad target"}), 400
             _bust_records_cache()
-            return jsonify({"ok": True})
+            # `adopted` tells the screen a row was CREATED to hold this edit, so
+            # it can say so. Saving a field and silently gaining a listing row is
+            # a surprise, even though it is the surprise the owner asked for.
+            return jsonify({"ok": True, "adopted": _adopted})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
