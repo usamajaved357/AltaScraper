@@ -1040,6 +1040,72 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    @app.route("/barcode/check")
+    def barcode_check():
+        """Is THIS barcode free? Answered for a code being typed, not a stored one.
+
+            "if that new barcode is also used somewhere else, flag it
+             immediately in 1 second. then i will put another barcode."
+
+        _attach_identifier answers the same question about the barcode a listing
+        ALREADY HAS, which is the wrong moment: by then the value is saved, and
+        the only way to learn it clashes was to Preview and read Amazon's
+        refusal. Measured on his own data -- EAN 4545844574868 sits on a LIVE
+        jack_uk listing, and the nestwell one carrying it was refused for
+        exactly that -- so the answer existed locally all along and was never
+        asked for until Amazon had already said no.
+
+        Read-only, cheap, and it NEVER BLOCKS. It reports; the owner decides.
+
+        The two checks are the same two _attach_identifier makes, through the
+        same two functions (Rule 12): is the code usable as a GTIN at all, and
+        is it already on another listing.
+        """
+        from domain import barcode_clash as _bc
+        from listing.barcode import gtin_or_reason
+
+        raw = str(request.args.get("code") or "").strip()
+        sku = str(request.args.get("sku") or "").strip()
+        # The same way /row resolves it, so this answers for the workspace the
+        # reader is actually in -- a clash is scoped to OTHER listings, and
+        # getting the exclusion wrong would report a listing's own barcode as a
+        # clash with itself.
+        who = (str(_asked_account() or "").strip()
+               or _state.get("active_account_id") or "")
+        if not raw:
+            return jsonify({"ok": True, "code": "", "usable": False,
+                            "clash": [], "note": "", "why": "",
+                            "state": "empty"})
+
+        code, _typ, why = gtin_or_reason(raw)
+        if not code:
+            # NOT A CLASH, A DIFFERENT PROBLEM, and saying which one matters:
+            # a mistyped digit and a barcode belonging to another listing need
+            # completely different actions.
+            return jsonify({"ok": True, "code": "", "usable": False,
+                            "clash": [], "note": "", "why": why,
+                            "state": "unusable"})
+        try:
+            clash = _bc.others_with(CONFIG_PATH, code,
+                                    exclude_workspace=who,
+                                    exclude_sku=sku)
+        except Exception:
+            # A failed lookup must not read as "this barcode is fine".
+            return jsonify({"ok": True, "code": code, "usable": True,
+                            "clash": [], "note": "", "why": "",
+                            "state": "unknown"})
+        live = [c for c in clash if c.get("live")]
+        return jsonify({
+            "ok": True, "code": code, "usable": True, "why": "",
+            "clash": clash,
+            "note": _bc.sentence(clash, code),
+            # A clash with a LIVE listing is the one that already cost him a
+            # listing: Amazon matches the code to that product's ASIN and
+            # refuses to create a second. A clash with a draft is worth saying
+            # and is not yet fatal.
+            "state": ("clash_live" if live else ("clash" if clash else "free")),
+        })
+
     @app.route("/rows")
     def rows():
         try:

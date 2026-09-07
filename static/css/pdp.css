@@ -636,6 +636,29 @@ body.pdp-on{ overflow:hidden; }
 .pdp-mlabel{ color:var(--pdp-dim); display:inline-block; width:60px; }
 .pdp-dim{ color:var(--pdp-dim); }
 
+/* THE BARCODE BOX, in the hero beside the SKU it belongs with.
+   Styled to sit in the meta block rather than to shout: it reads as the value
+   it replaced until it is focused, which is what stops a row of four facts
+   turning into a form. The verdict line under it is where the noise belongs. */
+.pdp-barcode{
+  font:inherit; font-size:11px; color:var(--pdp-ink2);
+  background:transparent; border:1px solid transparent; border-radius:4px;
+  padding:1px 5px; width:15ch; letter-spacing:.02em;
+}
+.pdp-barcode:hover{ border-color:var(--pdp-line, #333a45); }
+.pdp-barcode:focus{
+  outline:none; background:var(--pdp-surface, #1f242c);
+  border-color:var(--pdp-accent, #2dd4a8);
+}
+/* The verdict. Never a colour on its own -- the words carry it, because a
+   coloured dot with no sentence is the thing this whole feature exists to
+   replace. */
+.pdp-barcode-say{ display:block; font-size:10.5px; line-height:1.5;
+                  margin:2px 0 0 60px; max-width:52ch; }
+.pdp-barcode-say.checking{ color:var(--pdp-dim); }
+.pdp-barcode-say.good{ color:var(--pdp-ok, #2dd4a8); }
+.pdp-barcode-say.bad{ color:var(--pdp-bad, #f87171); }
+
 .pdp-badges{ display:flex; gap:5px; margin-top:10px; flex-wrap:wrap; }
 .pdp-hb{
   font-size:9px; padding:2px 6px; border-radius:3px; font-weight:600;
