@@ -68,6 +68,24 @@ document.addEventListener("DOMContentLoaded", function(){
       if(!mnavIsOpen()) return;
       const t = ev.target;
       if(!t || !t.closest) return;
+      // A GROUP HEADING GOES NOWHERE, SO IT MUST NOT CLOSE THE MENU.
+      //
+      //     "when i click on the dropdown menu from the side drawer for example
+      //      inventory it should displays the 2 sub tabs under it by expanding
+      //      inventory option, but it closes the drawer immediately"
+      //
+      // The masters are markup like <div class="navitem navmaster"
+      // onclick="navGroupToggle('inventory')">. They carry `navitem` so they
+      // look and sit like every other row -- and that is exactly why this
+      // handler caught them. Pressing one expanded the group and shut the
+      // drawer in the same click, so the children it had just revealed were
+      // never on screen long enough to be read. The group could only ever be
+      // reached by luck: open the menu, and hope it was already expanded.
+      //
+      // The rule this handler states was right and simply predates the groups:
+      // "Only things that GO somewhere." A master goes nowhere. It is checked
+      // FIRST, because .navmaster is also a .navitem and the order decides it.
+      if(t.closest(".navmaster")) return;
       // Only things that GO somewhere. The account switcher and the
       // marketplace picker open their own menus inside the sidebar, and
       // closing the drawer under them would shut the menu you just opened.
