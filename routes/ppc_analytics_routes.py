@@ -171,6 +171,8 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             return bad
         start, end, pstart, pend = _window()
 
+        from domain import ppc_view as _pv_mod
+
         avail = _avail(aid, mkt)
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
         now = _pa.totals_for(CONFIG_PATH, aid, mkt, start, end)
@@ -198,12 +200,18 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
 
         return jsonify({
             "today": _pa.today_bar(CONFIG_PATH, aid, mkt),
-            "trail": _pa.trail(CONFIG_PATH, aid, mkt, 7),
+            # THE TRAIL FOLLOWS THE WINDOW. It was `trail(..., 7)` with the end
+            # hardcoded to today inside, so the seven cards showed the same
+            # seven days whatever the date picker said -- "changing the time
+            # period dont change the data".
+            "trail": _pa.trail(CONFIG_PATH, aid, mkt, 7, start=start, end=end),
             "per_click": _pa.per_click_trend(days, rates.get("fee_rate"),
                                              rates.get("cogs_rate")),
             "efficiency": _pa.efficiency_trend(
                 days, rates.get("breakeven_acos_pct")),
-            "branded": _pa.branded_split(terms),
+            # With the brand words, so the panel can name what it matched on.
+            "branded": _pa.branded_split(
+                terms, _pv_mod.brand_terms(CONFIG_PATH, aid)),
             "ok": True, "account": aid, "marketplace": mkt,
             "window": {"start": start, "end": end,
                        "compare_start": pstart, "compare_end": pend},
@@ -223,6 +231,12 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             # The days still being attributed, so the charts can mark them and
             # the page can say why the judgements stop short of the last day.
             "maturity": mat,
+            # PROFIT AFTER ADVERTISING, the SAME figure the Sales page reports
+            # minus the ad spend. Sent from the server rather than worked out in
+            # the browser so the two screens cannot drift -- they had, and the
+            # two numbers landed on opposite sides of zero with nothing on
+            # either page to say they were answering different questions.
+            "net_profit": _pa.net_profit(CONFIG_PATH, aid, mkt, start, end, now),
             "cohorts": _pa.cohorts(CONFIG_PATH, aid, mkt, start, end, camps, rates),
             "wasted": _wasted,
             # The headline 0-100 score, with all three parts and their weights,
@@ -301,7 +315,15 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
                   "not, because one report is one fixed window."
                   % (meta.get("date_from"), meta.get("date_to"))))),
             "by_match_type": _pa.by_group(rows, "match_type"),
-            "branded": _pa.branded_split(rows),
+            # The brand words go WITH the split, so the panel can say what it
+            # matched on. A split with no statement of its rule cannot be
+            # checked, and a wrong brand list looks identical to a wrong sum.
+            "branded": _pa.branded_split(rows,
+                                         _pv.brand_terms(CONFIG_PATH, aid)),
+            # The saved words themselves, so the screen can show them as chips
+            # and let one be removed. They were never sent, so a word that saved
+            # was indistinguishable from one that did not.
+            "brand_terms": _pv.brand_terms(CONFIG_PATH, aid),
             "wasted": _pa.wasted_spend(CONFIG_PATH, aid, mkt, start, end),
         })
 

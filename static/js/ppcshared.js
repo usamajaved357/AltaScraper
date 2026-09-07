@@ -174,16 +174,45 @@ function ppcSparkline(data, colour){
   const w = 200, h = 28;
   const min = Math.min.apply(null, known), max = Math.max.apply(null, known);
   const range = (max - min) || 1;
-  let d = "", pen = false;
+
+  // THE LINE JOINS ACROSS A MISSING DAY RATHER THAN SHATTERING.
+  //
+  //     "the 8 graphs under day trail shows graph which are erased from in
+  //      between, graphs dont break usually they are dropped to zero when no
+  //      data but they dont vanish normally"
+  //
+  // It lifted the pen on every null, so a metric with holes came out as a
+  // handful of disconnected fragments. Measured on nestwell_goods over 30 days:
+  // spend, sales, clicks, impressions, orders and CTR have no holes at all --
+  // only the trailing two days Amazon has not reported yet. ACOS has NINE
+  // mid-series holes and ROAS two, and those two cards were the shattered ones.
+  //
+  // A hole in ACOS is a day that SPENT and sold nothing, so the ratio is
+  // undefined. It is not zero, and drawing it at zero -- the other obvious fix
+  // -- would say the opposite of the truth: 0% ACOS means sales that cost
+  // nothing to get, which is the best possible day rather than the worst.
+  //
+  // So the line connects its known points and claims nothing for the days
+  // between. No value is invented, and the shape survives. The KPI card's
+  // tooltip says how many days were skipped, because a straight run through a
+  // gap should be attributable rather than mistaken for measurement.
+  let d = "", pen = false, skipped = 0;
   vals.forEach(function(v, i){
-    if(v === null){ pen = false; return; }
+    if(v === null){ if(pen) skipped++; return; }
     const x = (i / Math.max(1, vals.length - 1)) * w;
     const y = h - ((v - min) / range) * h;
     d += (pen ? "L" : "M") + x.toFixed(1) + "," + y.toFixed(1) + " ";
     pen = true;
   });
+  const tip = skipped
+    ? (skipped + " day" + (skipped === 1 ? "" : "s")
+       + " in this range had no figure to plot — usually a day that spent and "
+       + "sold nothing, which has no ratio rather than a ratio of zero. The "
+       + "line joins across them and claims nothing for them.")
+    : "";
   return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" '
     + 'style="width:100%;height:' + h + 'px" preserveAspectRatio="none">'
+    + (tip ? '<title>' + _pEsc(tip) + '</title>' : '')
     + '<path d="' + d.trim() + '" fill="none" stroke="' + colour
     + '" stroke-width="2"/></svg>';
 }
@@ -217,49 +246,13 @@ function ppcMiniLine(points, colour){
     + '" stroke-width="1.5"/></svg>';
 }
 
-/* ONE DAY'S TOTAL, AS A BAR. The day-trail card's chart when there are no
- * hourly figures to curve.
+/* ppcMiniBar() WAS HERE AND IS GONE.
  *
- * The mockup draws each card as spend ACCUMULATING THROUGH THE DAY, hour by
- * hour, which needs Amazon Marketing Stream. Without it the cards drew the
- * WINDOW accumulating instead -- a line that can only ever climb, so the last
- * card always towered over the first and a quiet Saturday looked like the
- * account's biggest day. It answered a question nobody asked, and it answered
- * it in a shape that implied hours.
- *
- * So one bar, one day, all seven scaled against the same maximum -- which is
- * what makes the cards comparable by eye, and is the honest shape for one
- * number per day.
- *
- *   value  this day's own total, null when no row is stored
- *   max    the largest value across the whole trail, passed in so every card
- *          shares a scale. Worked out per card, each bar would be full height
- *          and the row would say nothing at all.
- *
- * A DAY WITH NO ROW IS NOT A DAY THAT SPENT NOTHING, so it draws the empty
- * track and no bar, rather than a zero-height bar sitting on the floor looking
- * like a measured nought.
- */
-function ppcMiniBar(value, max, colour){
-  const w = 120, h = 50;
-  const track = '<rect x="0" y="0" width="' + w + '" height="' + h + '" '
-    + 'fill="var(--ppc-border)" fill-opacity="0.25"/>';
-  const svg = function(inner){
-    return '<svg viewBox="0 0 ' + w + ' ' + h + '" '
-      + 'style="width:100%;height:100%" preserveAspectRatio="none">'
-      + track + inner + '</svg>';
-  };
-  if(value === null || value === undefined || isNaN(Number(value))) return svg("");
-  const top = Number(max) || 0;
-  // Every day at nought is a real answer -- a flat empty row, not seven full
-  // bars, which is what dividing by a zero maximum would draw.
-  const frac = top > 0 ? Math.max(0, Math.min(1, Number(value) / top)) : 0;
-  const bh = frac * h;
-  if(bh <= 0) return svg("");
-  return svg('<rect x="6" y="' + (h - bh).toFixed(1) + '" width="' + (w - 12)
-    + '" height="' + bh.toFixed(1) + '" fill="' + colour
-    + '" fill-opacity="0.85"/>');
-}
+ * It drew one bar per day-trail card instead of the cumulative curve. The
+ * owner has seen both and asked for the curve back -- "please revert the day
+ * trails graph style" -- so the bar has no caller, and an unused renderer is
+ * one more thing for the next person to wonder about. ppcMiniLine above is
+ * what the trail uses. */
 
 /* ---- a KPI card -----------------------------------------------------------
  *
@@ -489,14 +482,143 @@ function ppcSetDays(d, fn){
   if(fn && typeof window[fn] === "function") window[fn]();
 }
 
+/* THE DATE RANGE IS PICKABLE, not just printed.
+ *
+ *     "i dont have an option to select dates range in ppc analytics page, a
+ *      caledar should appear to set the filter"
+ *
+ * It showed the window as read-only text -- "2026-08-08 to 2026-09-05" -- next
+ * to 7/14/30/90 buttons, so the only reachable windows were those four. PPCWIN
+ * has carried `start` and `end` all along and ppcQS already sends them; the
+ * control to set them was simply never drawn.
+ *
+ * Two native date inputs, which is what puts a real calendar on the screen
+ * without shipping a picker library. They are the browser's own, so they follow
+ * the machine's locale and keyboard conventions rather than inventing them.
+ *
+ * SETTING EITHER ONE APPLIES IMMEDIATELY, and the day buttons de-select
+ * themselves because the window is no longer one of theirs -- ppcSeg already
+ * tests `!PPCWIN.start` for that. Clearing both hands the window back to them.
+ */
+function ppcDateRange(j, onchange){
+  const w = (j && j.window) || {};
+  // The picked dates when there are any, otherwise the window the server
+  // actually answered for -- so the boxes always show the range on screen
+  // rather than sitting empty until touched.
+  const s = PPCWIN.start || w.start || "";
+  const e = PPCWIN.end || w.end || "";
+  const box = function(which, val){
+    return '<input type="date" class="ppc-fctl ppc-date" value="'
+      + _pEsc(val) + '" max="' + _pEsc(ppcToday()) + '"'
+      + ' onchange="ppcSetDate(' + jsArg(which) + ', this.value, '
+      + jsArg(onchange) + ')">';
+  };
+  return '<div><div class="ppc-flabel">Date range</div>'
+    + '<div style="display:flex;align-items:center;gap:6px">'
+    +   box("start", s)
+    +   '<span style="font-size:12px;color:var(--ppc-dim)">to</span>'
+    +   box("end", e)
+    +   (PPCWIN.start
+        ? '<button class="ppc-btn" style="background:transparent;'
+          + 'color:var(--ppc-muted);padding:5px 9px" title="Back to the day '
+          + 'buttons" onclick="ppcClearDates(' + jsArg(onchange) + ')">✕</button>'
+        : '')
+    + '</div></div>';
+}
+
+function ppcToday(){
+  const d = new Date();
+  const p = function(n){ return (n < 10 ? "0" : "") + n; };
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+
+/* DRAG-TO-ZOOM, RESOLVED PROPERLY. -> true when the window moved.
+ *
+ *     "i clicked and dragged on the revenue, ad spend & profitibality, to
+ *      select a specific time period, it showed me server error: Invalid
+ *      isoformat string: '23', the sales graph changes its date range and shows
+ *      a zoom in version but this is not, all the graphs should have this
+ *      feature"
+ *
+ * salescharts._scDragEnd hands its handler two COLUMN INDICES and the chart id
+ * -- fn(a, b, cid) -- not two dates. The Sales page has always known that and
+ * translates them through the columns it drew. The PPC handlers did
+ * `String(from).slice(0,10)` on them, so dragging sent start=23 to the server
+ * and Python said "Invalid isoformat string: '23'".
+ *
+ * It was not obvious from either handler, because the SAME function is also
+ * called with real dates from the day-trail cards -- ppcaZoomTo(r.date, r.date).
+ * One function, two argument types, and only one of them ever tested by hand.
+ *
+ * So this takes both: a number is an index into whatever that chart was drawn
+ * with, a string is already a date. The columns come from SC_LAST, which
+ * salesCombo already keeps PER CHART ID -- which is what makes this correct on
+ * a page with several charts over different ranges, rather than assuming every
+ * chart shares the page's window.
+ */
+function ppcZoomResolve(v, cid){
+  if(v === null || v === undefined) return "";
+  // Already a date.
+  if(typeof v === "string" && v.length >= 8 && v.indexOf("-") > 0)
+    return v.slice(0, 10);
+  const n = Number(v);
+  if(isNaN(n)) return "";
+  let cols = [];
+  try{
+    const last = (typeof SC_LAST !== "undefined") ? SC_LAST[cid] : null;
+    cols = (last && last.columns) || [];
+  }catch(e){ cols = []; }
+  const c = cols[Math.max(0, Math.min(cols.length - 1, Math.round(n)))];
+  return (c === null || c === undefined) ? "" : String(c).slice(0, 10);
+}
+
+function ppcZoomTo(from, to, cid, reload){
+  const a = ppcZoomResolve(from, cid);
+  const b = ppcZoomResolve(to, cid);
+  // REFUSE RATHER THAN SEND RUBBISH. A chart whose columns are not dates -- or
+  // one drawn before SC_LAST had it -- resolves to nothing, and asking the
+  // server for a window of "" is how a screen ends up showing an error where a
+  // gesture should simply have done nothing.
+  if(!a || !b) return false;
+  PPCWIN.start = (a <= b) ? a : b;
+  PPCWIN.end = (a <= b) ? b : a;
+  if(reload && typeof window[reload] === "function") window[reload]();
+  return true;
+}
+
+function ppcSetDate(which, value, fn){
+  const v = String(value || "").slice(0, 10);
+  if(!v) return;
+  // The OTHER end, taken from whatever is on screen now, so setting one date
+  // does not leave the window half-defined and unqueryable.
+  const other = (which === "start")
+    ? (PPCWIN.end || ppcToday())
+    : (PPCWIN.start || "");
+  let s = (which === "start") ? v : other;
+  let e = (which === "end") ? v : other;
+  if(!s) s = e;
+  // A BACKWARDS RANGE IS SWAPPED, NOT REFUSED. Picking the end first and then
+  // an earlier start is a normal way to use two date boxes, and answering it
+  // with an error would be the app being pedantic about the order of two
+  // clicks.
+  if(s && e && s > e){ const t = s; s = e; e = t; }
+  PPCWIN.start = s;
+  PPCWIN.end = e;
+  if(fn && typeof window[fn] === "function") window[fn]();
+}
+
+function ppcClearDates(fn){
+  PPCWIN.start = "";
+  PPCWIN.end = "";
+  if(fn && typeof window[fn] === "function") window[fn]();
+}
+
 /* The mockup's filter row: labels ABOVE their controls, COMPARE TO pushed
  * right with the compared range beside it. */
 function ppcFilterRow(j, onchange){
   const w = (j && j.window) || {};
   return '<div class="ppc-filters">'
-    + '<div><div class="ppc-flabel">Date range</div>'
-    +   '<div class="ppc-fctl ppc-fctl-wide">'
-    +   _pEsc((w.start || "") + " to " + (w.end || "")) + '</div></div>'
+    + ppcDateRange(j, onchange)
     + '<div><div class="ppc-flabel">Range</div>' + ppcSeg(30, onchange) + '</div>'
     + '<div style="margin-left:auto">'
     +   '<div class="ppc-flabel">Compare to</div>'

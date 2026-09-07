@@ -63,12 +63,11 @@ async function ppccLoad(){
 }
 
 /* Dragging across the spend chart narrows the window to those days, exactly as
- * it does on PPC Analytics and on the Sales page. */
-function ppccZoomTo(from, to){
-  if(!from || !to) return;
-  PPCWIN.start = String(from).slice(0, 10);
-  PPCWIN.end = String(to).slice(0, 10);
-  ppccLoad();
+ * it does on PPC Analytics and on the Sales page. Through the shared resolver,
+ * because salescharts hands back column INDICES rather than dates -- see
+ * ppcZoomTo, and the "Invalid isoformat string: '23'" it fixes. */
+function ppccZoomTo(from, to, cid){
+  ppcZoomTo(from, to, cid, "ppccLoad");
 }
 
 function ppccSort(k){
@@ -139,8 +138,11 @@ function ppccRender(){
     + '<div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">'
     +   '<div><div class="ppc-flabel">Range</div>'
     +     ppcSeg(30, "ppccLoad") + '</div>'
-    +   '<div class="ppc-fctl" style="border-radius:8px">'
-    +     _pEsc((w.start || "") + " to " + (w.end || "")) + '</div>'
+    // A PICKER, NOT A LABEL. This printed the window as read-only text beside
+    // the day buttons, so the only reachable windows were 7, 14, 30 and 90 --
+    // the same complaint as PPC Analytics, and all three pages share PPCWIN, so
+    // a date set on any one of them holds when you move between them.
+    +   ppcDateRange(j, "ppccLoad")
     + '</div></div>';
 
   if(!(j.campaigns || []).length){
@@ -427,9 +429,10 @@ function ppccBreakdown(j, cur){
     + '</div>'
     + '<div>'
     +   (chart
-          ? ('<div class="ppc-charthint">' + _pEsc(chartNote) + ' · hover '
-             + 'for the day · drag across to zoom · click a name to hide it'
-             + '</div>' + chart)
+          // The caption stays -- it says WHICH cut of the spend is on screen,
+          // which is not an instruction and cannot be guessed from the chart.
+          // The gesture advertisement is gone, app-wide, by request.
+          ? ('<div class="ppc-charthint">' + _pEsc(chartNote) + '</div>' + chart)
           : '<div style="font-size:12px;color:var(--ppc-muted)">No daily '
             + 'campaign rows in this window.</div>')
     + '</div>'

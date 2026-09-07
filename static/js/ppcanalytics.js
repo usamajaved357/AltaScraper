@@ -4,7 +4,7 @@
  *
  *     h1 + subtitle
  *     TODAY bar                  6 stats, evenly spread, change under each
- *     Day trail                  7 cards, one bar each, range buttons
+ *     Day trail                  7 cards, mini cumulative curve, range buttons
  *     Filters                    labels ABOVE controls, COMPARE TO pushed right
  *     KPI row 1                  SPEND / SALES / ACOS / ROAS, with sparklines
  *     KPI row 2                  IMPRESSIONS / CLICKS / CTR / PURCHASES
@@ -34,7 +34,9 @@
  *
  *     TODAY bar    the latest COMPLETE day, labelled with its date and how far
  *                  behind Amazon is -- never "today" unless it really is
- *     Day trail    one bar per day, all scaled to the busiest day in view
+ *     Day trail    seven cards, each a curve of spend building across the
+ *                  window. Briefly drawn as one bar per card and reverted at
+ *                  the owner's request -- see ppcaTrail.
  *     Heatmap      ACoS by day of week, no hour axis
  *
  * Nothing is filled with invented hours -- that is the one thing these screens
@@ -193,6 +195,27 @@ function _ppcaRound1(v){ return Math.round(Number(v) * 10) / 10; }
  * colour, its label and whether it is filled, so a chart here and a chart there
  * cannot end up drawing "Ad spend" in two different reds.
  */
+/* A CHART IS DRAWN AT THE WIDTH OF THE BOX IT LANDS IN, not the page's.
+ *
+ *     "see how orbit renders graphs and how you, you have fucked the view"
+ *
+ * Every chart on this page measured `ppca_body` -- the whole page, about 1120px
+ * -- including the ones that sit two-up in half-width panels. salesCombo then
+ * writes viewBox="0 0 1120 210" with no preserveAspectRatio, so the browser
+ * defaults to "xMidYMid meet": it scales the whole drawing down to fit the
+ * ~500px panel, which is 45%, and CENTRES it vertically in the 210px box the
+ * style height reserves.
+ *
+ * That is the entire fault, and it explains every part of what it looked like:
+ *   a ~95px sliver of chart floating in the middle of a tall empty card;
+ *   axis labels shrunk to 45% and unreadable;
+ *   dates crushed together, because 30 labels were laid out for 1120px of room
+ *   and then squeezed into 500.
+ *
+ * `frac` is the share of the page width the chart's panel actually occupies, so
+ * the drawing is made the size it will be displayed at. At 1:1 there is no
+ * scaling: the plot fills its card and the type comes out at its real size.
+ */
 function ppcaChart(o){
   if(typeof salesCombo !== "function") return "";
   const cols = o.columns || [];
@@ -202,22 +225,30 @@ function ppcaChart(o){
   // from claiming a row of zeros.
   const bars = (o.bars && (o.bars.values || []).some(function(v){
     return v !== null && v !== undefined; })) ? o.bars : null;
+  const page = scChartWidth(o.host || "ppca_body", 1120);
+  const frac = o.frac || 1;
+  // The panel's own padding and the grid gap, which are inside the share but
+  // outside the chart. Measured off ppc.css: 20px of panel padding each side,
+  // 16px of grid gap.
+  const chrome = (frac < 1) ? 56 : 40;
+  const W = Math.max(240, Math.round(page * frac) - chrome);
   return salesCombo({
     id: o.id, onZoom: "ppcaZoomTo", columns: cols, unit: "day",
     bars: bars, lines: o.lines || [], currency: o.currency,
-    width: scChartWidth(o.host || "ppca_body", 1120),
+    width: W,
     height: o.height || 300,
   });
 }
 
 /* Dragging across any chart on this page narrows the window to those days.
- * salesCombo hands back the two column labels it was drawn with, which are
- * dates, so they are the range. */
-function ppcaZoomTo(from, to){
-  if(!from || !to) return;
-  PPCWIN.start = String(from).slice(0, 10);
-  PPCWIN.end = String(to).slice(0, 10);
-  ppcaLoad();
+ *
+ * IT IS CALLED WITH TWO DIFFERENT KINDS OF ARGUMENT, which is what broke it:
+ * salescharts hands a drag back as two COLUMN INDICES, while the day-trail
+ * cards call it with two real dates. This treated both as dates, so a drag sent
+ * start=23 and the server answered "Invalid isoformat string: '23'".
+ * ppcZoomTo resolves either against the columns that chart was drawn with. */
+function ppcaZoomTo(from, to, cid){
+  ppcZoomTo(from, to, cid, "ppcaLoad");
 }
 
 /* ---- 1. the TODAY strip -------------------------------------------------- */
@@ -276,20 +307,21 @@ function ppcaToday(j, cur){
 function ppcaTrail(j, cur){
   const rows = j.trail || [];
   if(!rows.length) return "";
-  // ONE BAR PER CARD, ALL SEVEN ON THE SAME SCALE.
+  // THE CURVE IS BACK, BY REQUEST.
   //
-  // These were cumulative curves: each card drew the WINDOW accumulating up to
-  // its day, so the line only ever climbed, the last card always towered over
-  // the first, and a quiet Saturday looked like the account's biggest day. The
-  // shape also implied hours, which is exactly what this data does not have.
+  //     "see day trail graphs that were real graphs earlier but in the recent
+  //      edits you made the thick candles, please revert the day trails graph
+  //      style"
   //
-  // The maximum is taken across the whole trail rather than per card, because
-  // that is what makes the seven comparable by eye. Per card, every bar would
-  // be full height and the row would say nothing.
-  const spends = rows.map(function(r){ return r.spend; })
-    .filter(function(v){ return v !== null && v !== undefined && !isNaN(Number(v)); })
-    .map(Number);
-  const top = spends.length ? Math.max.apply(null, spends) : 0;
+  // These were briefly one bar per card, scaled across the trail. The reasoning
+  // was that a running total can only climb, so the last card always stands
+  // tallest -- but a bar per card reads as a chunk rather than a graph, and the
+  // owner has now seen both and prefers the curve. It is his screen.
+  //
+  // The tooltip still names the running total for what it is, so the shape is
+  // not mistaken for the day's own spend, and the caption still says these are
+  // days rather than the hours the mockup drew.
+  const cum = rows.map(function(r){ return r.cumulative; });
   const MON = ["JAN","FEB","MAR","APR","MAY","JUN",
                "JUL","AUG","SEP","OCT","NOV","DEC"];
   const DOW = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
@@ -297,13 +329,13 @@ function ppcaTrail(j, cur){
   let h = '<div style="display:flex;align-items:center;justify-content:'
     + 'space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">'
     + '<div><div style="font-size:18px;font-weight:700">Day trail</div>'
-    + '<div style="font-size:12px;color:var(--ppc-muted)">Ad spend per day, '
-    + 'each bar against the busiest day in view · Amazon publishes no hourly '
-    + 'figures for this report, so a day is the finest grain there is</div></div>'
+    + '<div style="font-size:12px;color:var(--ppc-muted)">Ad spend building up '
+    + 'across the window · Amazon publishes no hourly figures for this report, '
+    + 'so each curve is days rather than hours</div></div>'
     + ppcSeg(30, "ppcaLoad") + '</div>'
     + '<div class="ppc-trail">';
 
-  rows.forEach(function(r){
+  rows.forEach(function(r, i){
     const day = new Date(r.date + "T00:00:00");
     const lbl = isNaN(day.getTime()) ? r.date
       : (DOW[day.getDay()] + " " + MON[day.getMonth()] + " " + day.getDate());
@@ -333,7 +365,7 @@ function ppcaTrail(j, cur){
       + '<div class="ppc-trail-head"><span class="d">' + _pEsc(lbl) + '</span>'
       +   (r.today ? '<span class="t">Today</span>' : '') + '</div>'
       + '<div class="ppc-trail-chart">'
-      +   ppcMiniBar(r.spend, top, "var(--ppc-cyan)") + '</div>'
+      +   ppcMiniLine(cum.slice(0, i + 1), "var(--ppc-cyan)") + '</div>'
       + '<div class="ppc-trail-spend">'
       +   ppcMoney(r.spend, cur, "No advertising row stored for this day. That "
           + "is not the same as having spent nothing.") + '</div>'
@@ -428,7 +460,33 @@ function ppcaBranded(j, cur){
       +   fmt(y) + '</td></tr>';
   };
 
-  return head
+  // WHAT IT MATCHED ON, PRINTED. "it is not showing me which keyword is it
+  // assuming as branded" -- a split into two lanes with no statement of the
+  // rule cannot be checked, and a wrong brand list looks exactly like a wrong
+  // sum. The words, the share they caught, and the biggest terms they caught,
+  // so the list can be judged at a glance.
+  let rule = "";
+  if(b.rule){
+    const chips = (b.brand_words || []).map(function(w){
+      return '<code style="background:var(--ppc-surface);border:1px solid '
+        + 'var(--ppc-border);border-radius:4px;padding:1px 5px;margin-right:4px">'
+        + _pEsc(w) + '</code>';
+    }).join("");
+    const eg = (b.matched_examples || []).slice(0, 5).map(function(x){
+      return _pEsc(x.term);
+    }).join(" · ");
+    rule = '<div class="ppc-note' + (b.warning ? " warn" : "") + '" '
+      + 'style="margin:0 0 14px">'
+      + '<b>Brand words:</b> ' + (chips || '<i>none</i>')
+      + '<div style="margin-top:5px">' + _pEsc(b.rule) + '</div>'
+      + (eg ? '<div style="margin-top:5px;color:var(--ppc-muted)">Caught, '
+              + 'biggest spend first: ' + eg + '</div>' : "")
+      + (b.warning ? '<div style="margin-top:5px;color:var(--ppc-orange)">'
+                     + _pEsc(b.warning) + '</div>' : "")
+      + '</div>';
+  }
+
+  return head + rule
     + '<div style="display:grid;grid-template-columns:250px 1fr;gap:24px;'
     + 'align-items:start">'
     + '<div style="display:flex;justify-content:center;padding-top:10px">'
@@ -525,6 +583,14 @@ function ppcaProfitability(j, cur){
     net = Math.round((t.sales - t.spend - t.sales * r.fee_rate
                       - t.sales * r.cogs_rate) * 100) / 100;
   }
+  // PROFIT AFTER ADVERTISING, from the server. See the NET PROFIT card below.
+  const np = j.net_profit || {};
+  const npv = (np.net_profit === undefined) ? null : np.net_profit;
+
+  // PROFIT PER CLICK STAYS AD-ONLY, DELIBERATELY. A click buys an advertised
+  // sale, not the organic ones, so dividing the whole account's contribution by
+  // the clicks would credit advertising with revenue it did not bring. `net`
+  // above is the ad-only figure and remains the right numerator for this one.
   const perClick = (net !== null && t.clicks)
     ? Math.round((net / t.clicks) * 1000) / 1000 : null;
   const eff = (be && acos) ? _ppcaRound1(100 * be / acos) : null;
@@ -590,14 +656,37 @@ function ppcaProfitability(j, cur){
                     help: "Estimated profit for the window, divided by the "
                         + "clicks that were paid for."})
     +   _ppcaEfficiencyCard(j, eff, effBadge)
+    // NET PROFIT IS THE SALES PAGE'S OWN PROFIT, LESS AD SPEND.
+    //
+    //     "when i go to sales report i see i made 102 pounds in profit in the
+    //      last 30 days and when i go to ppc analytics it shows profit in minus"
+    //
+    // It used to be attributed sales less spend less rates -- PPC-only, ignoring
+    // organic revenue completely. The Sales page counts all revenue and takes
+    // nothing off for ads. Two different questions, both labelled "profit", one
+    // click apart, and easily on opposite sides of zero.
+    //
+    // The spec settles it (section 5): net profit is the TOTAL account
+    // contribution, ad and organic, minus ad spend. Worked out server-side by
+    // asking the Sales page's own function, so the two cannot drift again.
     +   ppcSubCard({label: "NET PROFIT",
-                    value: (net === null ? null : ppcMoney0(net, cur)),
-                    colour: (net === null ? "" : (net >= 0 ? "var(--ppc-green)"
+                    value: (npv === null ? null : ppcMoney0(npv, cur)),
+                    colour: (npv === null ? "" : (npv >= 0 ? "var(--ppc-green)"
                                                            : "var(--ppc-red)")),
-                    why: "Needs both measured rates.",
+                    // The server names the reason -- usually uncosted units --
+                    // because a dash on a profit card reads as a broken screen
+                    // rather than as a deliberate refusal.
+                    why: (np.why || "Needs the account's measured rates."),
                     note: period,
-                    help: "Attributed sales, less the spend, less this "
-                        + "account's measured Amazon fee and stock cost."})
+                    help: "Everything the account sold in this window, "
+                        + "advertised AND organic, less Amazon's fees, less "
+                        + "what the stock cost, less the advertising spend. "
+                        + "This is the Sales page's profit with the ad spend "
+                        + "taken off, so the two screens agree."
+                        + (np.sales_profit !== null && np.sales_profit !== undefined
+                           ? " Sales page profit " + ppcMoney0(np.sales_profit, cur)
+                             + " − ad spend " + ppcMoney0(np.ad_spend, cur) + "."
+                           : "")})
     + '</div></div>';
 }
 
@@ -674,8 +763,9 @@ function ppcaRevenueChart(j, cur){
     +   '<span class="ppc-i" title="Total sales as bars, with what the '
     +   'advertising cost and returned over them. A gap is a day with nothing '
     +   'stored, not a day of no spend.">ⓘ</span></div>'
-    + '<div class="ppc-charthint">Hover for the day\'s figures · drag across to '
-    + 'zoom into those days · click a name below to hide that line</div>'
+    // NO INSTRUCTION LINE. Removed by request across the app -- the gestures
+    // are unchanged, only the sentence advertising them is gone. The reference
+    // screen has none of these either.
     + ppcaChart({id: "ppca_rev", columns: d.map(function(x){ return x.date; }),
                  bars: {key: "total_sales", label: "Total revenue",
                         values: d.map(function(x){ return x.total_sales; })},
@@ -702,14 +792,18 @@ function ppcaTrends(j, cur){
   };
 
   const left = (pc && pc.some(function(v){ return v !== null; }))
-    ? ppcaChart({id: "ppca_pc", columns: cols, currency: cur, height: 210,
+    // HALF THE PAGE: these two sit side by side in .ppc-grid2. Drawn at the
+    // page's full width they were scaled to 45% and floated in a half-empty
+    // card -- see the note on ppcaChart.
+    ? ppcaChart({id: "ppca_pc", columns: cols, currency: cur, height: 250,
+                 frac: 0.5,
                  lines: [{key: "cpc", label: "Profit per click", values: pc}]})
     : missing((j.rates || {}).why || "Profit per click needs a measured fee "
         + "rate and a measured stock cost. Without both there is no honest way "
         + "to say what a click earned.");
 
   const right = (eff && eff.some(function(v){ return v !== null; }))
-    ? ppcaChart({id: "ppca_eff", columns: cols, height: 210,
+    ? ppcaChart({id: "ppca_eff", columns: cols, height: 250, frac: 0.5,
                  lines: [{key: "roas", label: "Efficiency score", values: eff}]})
     : missing("The efficiency score is the day's ACOS against this account's "
         + "break-even ACOS, and neither can be measured for this window.");
@@ -841,9 +935,9 @@ function ppcaHeatAndTacos(j, cur){
   const hasT = tacos.some(function(v){ return v !== null; });
   const tp = '<div class="ppc-panel ppc-panel-sm" style="margin-bottom:0">'
     + '<div class="ppc-panel-title-sm">TACoS over time</div>'
-    + '<div class="ppc-charthint">Hover for the day · drag across to zoom</div>'
     + (hasT
-        ? ppcaChart({id: "ppca_tacos", height: 230,
+        // TWO FIFTHS: the heatmap and this share a 3fr / 2fr row.
+        ? ppcaChart({id: "ppca_tacos", height: 250, frac: 0.4,
                      columns: d.map(function(x){ return x.date; }),
                      lines: [{key: "tacos", values: tacos}]})
         : '<div style="font-size:12px;color:var(--ppc-muted)">No total sales '
@@ -891,9 +985,9 @@ function ppcaBudget(j, cur){
     +   (avgSales === null ? "—" : ppcMoney(avgSales, cur) + "/day avg")
     +   '</div></div></div>'
     + '<div style="height:1px;background:var(--ppc-border);margin:16px 0"></div>'
-    + '<div class="ppc-charthint">Hover for the day\'s figures · drag across to '
-    + 'zoom · click a name below to hide that line. The averages above are the '
-    + 'lines to pace against.</div>'
+    // The one thing this line said that was not an instruction -- what the
+    // reference lines mean -- moves onto the chart's own ⓘ, where it belongs.
+    + ''
     + ppcaChart({id: "ppca_budget", height: 260, currency: cur,
                  columns: d.map(function(x){ return x.date; }),
                  bars: {key: "total_sales", label: "Sales",

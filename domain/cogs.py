@@ -248,8 +248,12 @@ def template_rows(config_path, account_id, marketplace, overrides=None,
                     # WHERE THE COST COMES FROM, and where the ROW comes from.
                     # Both matter: "not known -- SOLD 52 times" is the line that
                     # tells someone which gap is costing them.
+                    # `sku` is no longer a source resolve() can return; the
+                    # entry stays for a value stored before that change and
+                    # says so, so a cost sheet does not describe a behaviour
+                    # the app has stopped having.
                     "%s%s" % ({"manual": "you set it",
-                               "sku": "read from the SKU name"}
+                               "sku": "an old cost, read from the SKU name"}
                               .get(src, "not known"),
                               " -- %s" % origin if origin else "")])
     # ROWS WITH NO COST FIRST -- they are the job. Within those, the ones that

@@ -1,18 +1,32 @@
-"""routes/cogs_mode_routes.py -- which way this account works out stock cost.
+"""routes/cogs_mode_routes.py -- where a stock cost comes from, and setting one.
 
-Two modes, asked for as a toggle on the Sales page:
+THE TWO MODES ARE RETIRED. There is one rule now, and both halves of it are
+places somebody typed a number:
 
-    tracked   the repricer records each source's price every couple of hours,
-              and an order is costed at THE PRICE IN FORCE WHEN IT ARRIVED
-    sku       the cost written into the SKU by the generator, overridden by a
-              cost typed against the product, applying to every order
+    a cost set against THIS ORDER    wins, and applies to that order alone
+    a cost set against the PRODUCT   applies to every order of it
+    nothing                          and nothing is NOT zero
 
-    GET  /cogs/mode                which mode, and what it means
-    POST /cogs/mode                switch it
+`tracked` (the supplier price the repricer happened to have recorded) and the
+fallback to the number in the SKU's name were both costs nobody had set, and
+are gone by instruction: "lets remove the cogs from sku things entirely."
+
+domain/order_cogs.resolve still ACCEPTS a mode so no caller breaks, and ignores
+it -- measured, not assumed: asked with tracked, sku and a nonsense string it
+answers identically.
+
+    GET  /cogs/mode                the rule, and that the modes are retired
+    POST /cogs/mode                still answers; changes nothing that matters
     POST /cogs/order               correct ONE order's cost by hand
     GET  /cogs/orders/template.csv the same correction, for MANY orders
     POST /cogs/orders/upload       read the filled-in file back
-    POST /cogs/refreeze            re-cost a window after switching mode
+    POST /cogs/refreeze            work a window's costs out again
+
+The Sales page no longer draws a toggle for this -- it states the rule instead.
+Reported as: "i still see cost from supplier and cost in the sku thing on the
+top of the graph on the sales page." The server had already been made honest
+here; the screen had not, so it went on offering a choice that did nothing, and
+on jack_uk it showed "Supplier price at the time of the order" as SELECTED.
 
 Its own file because it is its own feature (CLAUDE.md Rule 7), and because the
 Sales routes should not grow a settings screen.

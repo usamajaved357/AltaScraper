@@ -107,8 +107,14 @@ truthy("  a sparse swatch is the bridge and a point",
        and "<circle" in CODE.split("const sparse")[1][:600])
 truthy("  and the label says how sparse",
        "' of ' + sh.days + ' days'" in CODE)
+# The anchor is the START of that assignment, not its whole first term. It used
+# to be "const label = (spec.label", which went red the moment the caller's own
+# label was allowed to win -- correctly finding a change, at a line whose POINT
+# (that the label is plain text) had not changed at all.
 falsy("the label is plain text, not markup",
-      "<span" in CODE.split("const label = (spec.label")[1][:300])
+      "<span" in CODE.split("const label = (")[1][:300])
+truthy("  and the caller's own label wins over the generic one",
+       "l.label || spec.label" in CODE)
 truthy("  and why is recorded", "item() escapes the label" in S)
 
 print("\n== the drawing rules themselves ==")

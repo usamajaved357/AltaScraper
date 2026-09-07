@@ -107,13 +107,28 @@ print("\n=== the explanation answers what was actually asked ===")
 _reg = HOW.split("cogs: { title")[1].split("pricing_rule: {")[0]
 truthy("the PRIORITY is stated as an order, not a list",
        "in this order" in _reg and "stops at the first" in _reg)
-truthy("  a cost you set wins", "Always wins" in _reg)
-truthy("  the SKU name is second", "SKU's own name" in _reg)
-truthy("  and not-known is a third answer, not a zero",
-       "Not known" in _reg)
-# The one that produces a confident wrong number if it is misunderstood.
-truthy("0.00 is explained as UNKNOWN rather than free",
-       "means UNKNOWN, not free" in _reg)
+truthy("  a cost set against ONE ORDER wins", "Wins outright" in _reg)
+truthy("  a cost set against the product is second",
+       "against the product" in _reg)
+truthy("  and not-known is the last answer, not a zero",
+       "Not known" in _reg and "not zero" in _reg)
+# THE EXPLANATION USED TO TEACH A RULE THE APP NO LONGER FOLLOWS.
+#
+# It listed "The cost in the SKU's own name" as the second source and explained
+# that 0.00 in a SKU means unknown rather than free. Both described a fallback
+# that was removed by instruction -- "lets remove the cogs from sku things
+# entirely" -- so the page was teaching somebody to expect costs to appear on
+# their own, on a screen whose whole job is explaining where costs come from.
+truthy("the SKU name is no longer offered as a source",
+       "The cost in the SKU's own name" not in _reg)
+truthy("  and the page says so plainly",
+       "Nothing is read out of a SKU name any more" in _reg)
+truthy("  naming the instruction that retired it",
+       "remove the cogs from sku things entirely" in _reg)
+# Costs frozen before the change still carry the word, so the explainer has to
+# account for them rather than leave them looking like something still running.
+truthy("an old SKU-read cost is explained as history",
+       "still shows its age" in _reg or "an old cost" in _reg)
 truthy("BOTH calculations are given, with the difference named",
        "an estimate, before you sell" in _reg
        and "measured, after you sell" in _reg)

@@ -2872,7 +2872,7 @@ function listBlock(rows, fn){
                ${rows.length && rows.every(x => SELECTED.has(String(x.sku))) ? "checked" : ""}
                onchange="selectAllVisible(this.checked)"></th>
       <th style="width:52px">Image</th><th>ASIN</th><th>Title</th>
-      <th>Price</th><th title="What the stock cost you. Read from the SKU where the SKU carries it; click to type your own.">COGS</th>
+      <th>Price</th><th title="What the stock cost you — a figure you set, by typing it here or uploading a cost sheet. Nothing is read out of the SKU name any more; a plain number with no mark is an old cost from before that changed. Click to set or replace one.">COGS</th>
       <th>Handling</th><th>Status</th><th>Compliance</th>
       <th style="width:150px">Actions</th></tr></thead><tbody>`;
   const body = rows.map(rowFn).join("");

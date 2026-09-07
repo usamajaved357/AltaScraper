@@ -12,8 +12,10 @@
 // is precisely the item someone would then order more of.
 //
 // So the cell shows one of three things and they are visibly different:
-//   a number in plain text      read from the SKU
-//   a number with a mark        typed by you, and it beats the SKU
+//   a number with a mark        a cost you set
+//   a number in plain text      an OLD cost, read from the SKU name before
+//                               costs became something you set. Nothing writes
+//                               these any more; they remain until replaced.
 //   "set" in muted text         nothing known -- click to say
 //
 // One resolver decides, server-side (domain/cogs.py). This is the way IN to it,
@@ -50,14 +52,20 @@ function cogsCell(row){
   }else{
     inner = '<span>' + _cgEsc(sym) + Number(c.cost).toFixed(2) + '</span>'
           + (c.source === "manual"
-              ? '<span title="You typed this, so it beats what the SKU says" '
+              ? '<span title="A cost you set" '
                 + 'style="color:var(--accent);font-size:9px;vertical-align:super">•</span>'
               : '');
   }
+  // `sku` IS NO LONGER A SOURCE resolve() can return -- it answers 'manual' or
+  // nothing at all. The branch is kept for a stored value from before that
+  // change and says so; without it such a row would claim no cost was known
+  // when one is plainly printed in the cell.
   return '<td class="cogscell" style="white-space:nowrap;cursor:text" '
        + 'title="' + (c.source === "manual" ? "Your own figure — click to change"
-                      : c.source === "sku" ? "Read from the SKU — click to override"
-                      : "No cost known for this SKU — click to set one")
+                      : c.source === "sku"
+                        ? "An old cost read from the SKU name, from before "
+                          + "costs became something you set — click to replace it"
+                        : "No cost known for this SKU — click to set one")
        + '" onclick="event.stopPropagation();cogsEdit(this,' + jsArg(sku) + ')">'
        + inner + '</td>';
 }
@@ -296,8 +304,12 @@ async function cogsExplain(){
       + '</div><table style="border-collapse:collapse">'
       + row(b.manual || 0, "costs <b>you set</b>",
             "typed here or uploaded on the cost sheet — these win over everything")
-      + row(b.from_sku || 0, "read from the <b>SKU name</b>",
-            "the number before the first underscore, written when the SKU was built")
+      // Structurally zero now -- a costed SKU is a set one by definition. Shown
+      // rather than dropped, because somebody who remembers this working wants
+      // to see that it is off, not find the row silently missing.
+      + row(b.from_sku || 0, "read from the <b>SKU name</b> <span class=\"cc\">(retired)</span>",
+            "No longer a source. Costs are no longer read out of a SKU's name, "
+            + "so this is always nought — a cost that is known is one you set.")
       + row(b.unknown || 0, "<b>not known</b>",
             "no cost anywhere — left out of profit rather than counted as zero")
       + '</table>'
@@ -354,22 +366,28 @@ async function cogsClearAll(){
   if(!n){
     // Nothing to delete is not a failure, and a confirmation offering to delete
     // nothing is a dialog that teaches you to dismiss dialogs.
-    toast("There are no saved costs on this account to delete. Costs read from a "
-          + "SKU's own name are not stored here and are not affected.");
+    toast("There are no saved costs on this account to delete.");
     return;
   }
 
-  // WHAT GOES AND WHAT STAYS, both said. The distinction decides whether this
-  // looks like a disaster afterwards: a listing whose SKU is 8.00_3Days_B0G1K5B7QS
-  // still shows 8.00 after this, because that cost is read out of the name and
-  // was never stored here. Only typed and uploaded figures go.
+  // THIS DIALOG USED TO SAY THIS WAS SURVIVABLE, AND IT IS NOT ANY MORE.
+  //
+  // It promised that a listing whose SKU is 8.00_3Days_B0G1K5B7QS "keeps
+  // showing that price -- that figure is read from the name, not stored". That
+  // was true when costs fell back to the SKU name. Nothing does that now, so
+  // clearing leaves those products with NO cost and blanks every figure built
+  // on them.
+  //
+  // A reassurance is the most dangerous kind of stale text to leave on a
+  // destructive button: it is the sentence someone reads while deciding to
+  // press it. The dialog now says what actually happens.
   if(!await uiConfirm("Delete all " + n + " saved cost" + (n === 1 ? "" : "s")
               + " on this account?\n\n"
               + "This removes every cost you typed on this screen or brought in "
               + "from a cost sheet. It cannot be undone.\n\n"
-              + "Listings whose SKU carries a price (like 8.00_3Days_B0G1K5B7QS) "
-              + "keep showing that price -- that figure is read from the name, "
-              + "not stored.\n\n"
+              + "Those products will then have NO cost — nothing is read out of "
+              + "a SKU's name any more — so their profit, margin and ROI figures "
+              + "go blank until you set the costs again.\n\n"
               + "Every profit, margin and ROI figure in the app changes.")){
     return;
   }

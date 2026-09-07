@@ -158,24 +158,29 @@ truthy("the panel's ok follows STORED ROWS", '_hourly["available"]' in PA)
 truthy("  and carries the setup state for the diagnostic",
        '"configured": _hourly["configured"]' in PA)
 
-print("\n=== the day trail is daily totals, not an hourly curve ===")
+print("\n=== the day trail draws days, and says so ===")
+# IT DRAWS A CURVE, NOT BARS, AND THAT IS THE OWNER'S CHOICE.
+#
+#     "see day trail graphs that were real graphs earlier but in the recent
+#      edits you made the thick candles, please revert the day trails graph
+#      style"
+#
+# It was briefly one bar per card. The argument for bars was that a running
+# total can only climb, so the last card always stands tallest -- but he has
+# seen both and prefers the curve. What this file cares about is the thing that
+# would be dishonest either way: that the panel does not imply HOURS it does not
+# have.
 PJ = open(os.path.join(HERE, "static", "js", "ppcanalytics.js"),
           encoding="utf-8").read()
-truthy("each card draws one bar", "ppcMiniBar(r.spend, top," in PJ)
-falsy("  and no longer a cumulative line", "ppcMiniLine(cum.slice(" in PJ)
-truthy("  scaled across the whole trail, so the cards compare",
-       "Math.max.apply(null, spends)" in PJ)
-truthy("  and the caption says a day is the finest grain there is",
-       "finest grain there is" in PJ)
-SJ = open(os.path.join(HERE, "static", "js", "ppcshared.js"),
-          encoding="utf-8").read()
-truthy("the bar renderer exists", "function ppcMiniBar(" in SJ)
-_mb = SJ.split("function ppcMiniBar(")[1].split("\nfunction ")[0]
-# A DAY WITH NO ROW IS NOT A DAY THAT SPENT NOTHING.
-truthy("a missing value draws the empty track, not a zero bar",
-       "value === null" in _mb and "return svg(\"\")" in _mb)
-truthy("  and a zero maximum does not fill every bar", "top > 0 ?" in _mb)
-falsy("  no raw hex in the renderer (one palette)", "#" in _mb)
+truthy("each card draws the cumulative curve", "ppcMiniLine(cum.slice(" in PJ)
+truthy("  and the caption says these are days, not hours",
+       "days rather than hours" in PJ)
+truthy("  naming why there are no hours to draw",
+       "no hourly figures" in PJ)
+# The running total is a different figure from the day's own spend, and the
+# hover has to name it or the shape is read as one day's spend.
+truthy("  the hover names the running total for what it is",
+       "Spent so far this window" in PJ)
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails:

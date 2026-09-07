@@ -1307,12 +1307,20 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
       // AND WHERE THE NUMBER CAME FROM, in the owner's words rather than the
       // stored code. "you set this" is the entire answer to "are my uploaded
       // costs actually being used", and it costs one line on screen.
+      // `tracked` and `sku` ARE HISTORY, AND ARE LABELLED AS HISTORY. Neither
+      // is a source any more -- nothing is read out of a SKU name or a supplier
+      // price. But order lines costed BEFORE that change still carry the word
+      // (measured: 50 lines across two accounts all say `sku`), so the label
+      // cannot simply be deleted or those rows would show a blank provenance.
+      // It says when it was worked out instead, so nobody reads it as a thing
+      // the app is still doing.
       const WHENCE = {
         "manual-order": "you set this",
         "frozen": "you set this",
         "manual": "you set this for this product",
-        "tracked": "supplier price when it arrived",
-        "sku": "read from the SKU",
+        "tracked": "an old cost, from the supplier price at the time",
+        "sku": "an old cost, read from the SKU name before costs became "
+               + "something you set",
       };
       const whence = WHENCE[String(l.cogs_source || "")] || "";
       h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'

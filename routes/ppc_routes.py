@@ -887,10 +887,52 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
         if request.method == "POST":
             b = request.get_json(force=True, silent=True) or {}
             now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            add = [str(t).strip().lower() for t in (b.get("add") or [])
-                   if str(t).strip()]
-            drop = [str(t).strip().lower() for t in (b.get("remove") or [])
-                    if str(t).strip()]
+
+            # A STRING IS ONE TERM, NOT A LIST OF LETTERS.
+            #
+            #     "branded vs non branded data is also wrong, it is not showing
+            #      me which keyword is it assuming as branded, i think i
+            #      provided it the branded keyword as alta"
+            #
+            # The browser posts {"add": "alta"} -- a bare string -- and this did
+            # `for t in b.get("add")`, which iterates a string CHARACTER BY
+            # CHARACTER. Adding "alta" stored four brand words: a, l, t, a.
+            #
+            # Brand matching is a case-insensitive SUBSTRING test, so a
+            # one-letter brand word matches almost every search term there is.
+            # Measured: against ['a','l','t'] the terms "ceiling fan",
+            # "extension lead", "potato baking rack", "clothes airer" and "mixer
+            # tap hose" all come back branded. The whole split collapses to
+            # 100% branded, and the save reports success while doing it.
+            #
+            # Normalised HERE, at the boundary, because this is the one place
+            # both shapes arrive; a caller that sends a list keeps working
+            # unchanged. Single characters are refused outright as well: no real
+            # brand is one letter, and one that slipped through any other way
+            # would silently brand the entire account.
+            def _words(v):
+                if v is None:
+                    return []
+                if isinstance(v, str):
+                    v = [v]
+                out, seen = [], set()
+                for t in v:
+                    for part in str(t).replace(",", " ").split():
+                        w = part.strip().lower()
+                        if len(w) < 2 or w in seen:
+                            continue
+                        seen.add(w)
+                        out.append(w)
+                return out
+
+            add = _words(b.get("add"))
+            drop = _words(b.get("remove"))
+            if b.get("add") and not add:
+                return jsonify({"ok": False, "terms": _pv.brand_terms(
+                    CONFIG_PATH, aid), "error": (
+                    "A brand word has to be at least two letters. A single "
+                    "letter matches almost every search term, which would mark "
+                    "the whole account as branded.")}), 400
             for t in add:
                 conn.execute("INSERT OR IGNORE INTO ppc_brand_terms "
                              "(workspace_id, term, added_at) VALUES (?,?,?)",

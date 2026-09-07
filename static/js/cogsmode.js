@@ -1,28 +1,38 @@
-/* static/js/cogsmode.js -- how this account works out what its stock cost.
+/* static/js/cogsmode.js -- where the stock cost on the Sales page comes from.
  *
- * WHY THIS EXISTS
- * The two costing modes were built as working endpoints and never given a
- * control, so there was no way to choose between them and no way to find where
- * costs are entered at all: "i dont see an option to enter cogs, we had 2
- * toggles but i dont see it". A setting nobody can reach is a setting that does
- * not exist.
- *
- * It sits directly under the Profit card because that is the card it explains.
+ * IT SITS DIRECTLY UNDER THE PROFIT CARD because that is the card it explains.
  * A profit with uncosted units in it is knowingly higher than the truth, and the
  * way to fix it should be one click from the wrong number rather than on a
  * screen nobody thinks to open.
  *
- * THE TWO MODES, in the owner's own words:
+ * THE TWO MODE BUTTONS ARE GONE, AND THIS IS WHY.
  *
- *   Supplier price   the repricer checks each source every couple of hours and
- *                    an order is costed at THE PRICE IN FORCE WHEN IT ARRIVED --
- *                    "the price ... 12am to 2am was 7 gbp ... i received an
- *                    order in between 12 to 2", so that order costs 7 whatever
- *                    the price did afterwards.
+ *     "i still see cost from supplier and cost in the sku thing on the top of
+ *      the graph on the sales page"
  *
- *   SKU price        the cost written into the SKU by the generator, overridden
- *                    by a cost typed against the product, applying to every
- *                    order past and future.
+ * This bar offered a choice between "Supplier price at the time of the order"
+ * and "Price in the SKU". Neither is a source any more:
+ *
+ *     "lets remove the cogs from sku things entirely, lets keep it simple, if
+ *      the cogs of the sku are set by the user by bulk upload or one by one per
+ *      sku, consider them for profit calculation, if those cogs are filled and
+ *      also a person has put in the cogs per order in the all orders page,
+ *      consider those cogs for profit calculation for all the orders"
+ *
+ * domain/order_cogs.resolve() accepts `mode` and IGNORES it -- proven by
+ * measurement, not by reading: asked with tracked, sku and a nonsense string it
+ * returns the same (7.5, 'manual') every time.
+ *
+ * SO THE CONTROL WAS WORSE THAN DEAD, IT WAS WRONG. jack_uk is stored as
+ * `cogs_mode: tracked`, so its Sales page showed "Supplier price at the time of
+ * the order" ticked -- a statement about how that account's profit is worked
+ * out that had stopped being true. A toggle that does nothing is clutter; a
+ * toggle that misdescribes the arithmetic is a reason to trust a wrong number.
+ *
+ * What replaces it is not a control but a SENTENCE: the two places a cost can
+ * come from, in the order they are tried. Both buttons that DO something --
+ * type a cost, upload a sheet -- are kept, because they were always the useful
+ * half of this bar.
  */
 
 let COGSMODE = {mode: "", explain: {}, busy: false};
@@ -47,15 +57,6 @@ function cogsModeDraw(){
   const missing = op ? (op.missing_units || 0) : 0;
   const units = op ? (op.units || 0) : 0;
 
-  const btn = function(mode, label){
-    const on = (COGSMODE.mode === mode);
-    return '<button class="db-chip' + (on ? " on" : "") + '"'
-         + ' style="' + (on ? "border-color:var(--accent);color:var(--accent)" : "") + '"'
-         + ' title="' + _sEsc(COGSMODE.explain[mode] || "") + '"'
-         + ' onclick="cogsModeSet(' + jsArg(mode) + ')">'
-         + (on ? '<i class="ti ti-check"></i> ' : '') + _sEsc(label) + '</button>';
-  };
-
   // The warning first and in the warning colour, because it is the reason
   // anybody is reading this bar at all.
   let warn = "";
@@ -77,8 +78,10 @@ function cogsModeDraw(){
     + warn
     + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px">'
     + '<b>Stock cost</b>'
-    + btn("tracked", "Supplier price at the time of the order")
-    + btn("sku", "Price in the SKU")
+    // A STATEMENT, NOT A CHOICE. There is nothing to pick between any more --
+    // see the note at the top of this file.
+    + '<span class="cc" style="font-size:12px">a cost you set against the order,'
+    + ' else a cost you set against the product</span>'
     + '<span class="spacer" style="flex:1"></span>'
     // Both ways in, because one suits ten products and the other suits three
     // hundred, and the owner has said they want to do both at different times.
@@ -87,9 +90,11 @@ function cogsModeDraw(){
     + (typeof cogsUploadOpen === "function"
         ? '<button class="db-chip" onclick="cogsUploadOpen()">'
           + '<i class="ti ti-upload"></i> Upload a cost sheet</button>' : '')
-    + '</div>'
-    + '<div class="cc" style="font-size:11px;margin-top:5px">'
-    + _sEsc(COGSMODE.explain[COGSMODE.mode] || "")
+    // Re-costing is still worth offering: typing a cost does NOT move orders
+    // that were already costed, deliberately, so that last month's profit does
+    // not shift under you. This is how you ask for it when you do want it.
+    + '<button class="db-chip" onclick="cogsRefreeze()">'
+    + '<i class="ti ti-refresh"></i> Work costs out again</button>'
     + '</div>'
     // WHERE COSTS ACTUALLY LIVE, said once, here.
     //
@@ -106,35 +111,17 @@ function cogsModeDraw(){
     + ' the cost sheet is the same column, filled in a spreadsheet. The Repricer,'
     + ' the Orders profit column and this page all read from it and never store'
     + ' a cost of their own.'
+    + '<br>Nothing is read out of a SKU name or a supplier price any more. A'
+    + ' product with no cost set against it has <b>no</b> cost — not a cost of'
+    + ' zero — so its profit is left blank rather than counted as pure margin.'
     + '</div>'
     + '</div>';
 }
 
-async function cogsModeSet(mode){
-  if(COGSMODE.busy || mode === COGSMODE.mode) return;
-  COGSMODE.busy = true;
-  try{
-    const j = await _sFetch("/cogs/mode", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({mode: mode, account: _sAcct(),
-                            marketplace: (typeof WS_MARKET !== "undefined" ? WS_MARKET : "")})});
-    if(j === null) return;
-    if(!j || !j.ok){ toast((j && j.error) || "Could not change that"); return; }
-    COGSMODE.mode = j.mode;
-    cogsModeDraw();
-    // COSTS ALREADY WORKED OUT ARE LEFT ALONE by design -- that is what stops
-    // last month's profit moving. Changing the mode is therefore not enough on
-    // its own, so the re-costing is offered rather than done silently.
-    if(await uiConfirm("Costing changed to \"" + mode + "\".\n\n"
-             + "Orders already costed keep what they were given, so last "
-             + "month's profit does not move on its own.\n\n"
-             + "Work the costs out again for the period on screen?")){
-      await cogsRefreeze();
-    }
-  }finally{
-    COGSMODE.busy = false;
-  }
-}
+/* cogsModeSet() IS GONE. It POSTed a costing mode that nothing reads any more --
+ * see the note at the top of this file. The /cogs/mode endpoint still answers,
+ * because removing a route is a separate decision from removing a control, but
+ * nothing in the app now asks it to CHANGE anything. */
 
 async function cogsRefreeze(){
   const s = (typeof SALES !== "undefined" && SALES.data) ? SALES.data : null;

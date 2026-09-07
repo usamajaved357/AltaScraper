@@ -94,11 +94,15 @@ def template_rows(config_path, workspace_id, marketplace, start=None, end=None,
 
 def _where_from(src):
     """Plain English for a cogs_source, because the codes mean nothing on a sheet."""
+    # `tracked` and `sku` are HISTORY. Neither is a source any more -- nothing
+    # reads a SKU name or a supplier price for a cost. Rows frozen before that
+    # change still carry the word, so the label stays and says when it was
+    # worked out, rather than describing something the app still does.
     return {
         "manual-order": "you set it for this order",
         "manual": "you set it for this product",
-        "tracked": "supplier price when it arrived",
-        "sku": "read from the SKU",
+        "tracked": "an old cost, from the supplier price at the time",
+        "sku": "an old cost, read from the SKU name",
     }.get(str(src or ""), "not costed")
 
 

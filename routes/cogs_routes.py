@@ -164,10 +164,17 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
                 "unknown": cov.get("unknown", 0),
                 "total": cov.get("total", 0),
                 "manual": manual,
-                # Everything with a cost that is not a manual override was read
-                # out of the SKU's own name. Never negative: an override can sit
-                # on a SKU the snapshot has not got, so manual can exceed known.
+                # ALWAYS 0 NOW, AND KEPT SO THE EXPLAINER CAN SAY SO.
+                #
+                # This was "everything with a cost that is not a manual override
+                # was read out of the SKU's own name". coverage() resolves
+                # through domain/cogs.resolve, which returns 'manual' or nothing
+                # -- so a costed SKU is a set one by definition and this is
+                # structurally zero. Left in rather than removed because the
+                # explainer counts three categories and a missing key would read
+                # as a bug; it is labelled as retired where it is drawn.
                 "from_sku": max(0, cov.get("known", 0) - manual),
+                "from_sku_retired": True,
             }
         except Exception:
             pass                    # the count is the answer; the extra is a bonus
@@ -177,12 +184,21 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
     def cogs_clear():
         """Delete every manually-set cost for the account that is open.
 
-        WHAT THIS DOES NOT TOUCH, because the difference decides whether this is
-        recoverable: a cost carried in a SKU's own name (8.00_3Days_B0G1K5B7QS)
-        is not stored here and is not affected -- those rows simply go back to
-        reading their cost off the SKU. What goes is every figure TYPED on the
-        listings screen or brought in from a cost sheet, and there is no undo:
-        cogs_overrides.json is rewritten without them.
+        THIS USED TO BE DESCRIBED AS RECOVERABLE, AND IT IS NOT.
+
+        The note here and the note sent back to the browser both said a cost
+        carried in a SKU's own name (8.00_3Days_B0G1K5B7QS) was unaffected, so
+        those rows "simply go back to reading their cost off the SKU". Nothing
+        reads a SKU name for a cost any more -- domain/cogs.resolve answers
+        'manual' or nothing at all. So clearing now leaves those products with
+        NO cost, and every profit, margin and ROI figure that depended on them
+        goes blank.
+
+        That mattered more than a stale sentence usually does: it was a
+        reassurance about a destructive action with no undo, on the screen where
+        somebody decides whether to press it. cogs_overrides.json is rewritten
+        without them and there is no way back except typing them again or
+        re-uploading the sheet.
 
         Scoped to one account by the store (see cogs_store.clear_account). The
         keys of every workspace share one file, so this must never become a
@@ -213,8 +229,10 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
                                          expected))}), 409
         gone = _cs.clear_account(CONFIG_PATH, aid)
         return jsonify({"ok": True, "deleted": gone,
-                        "note": ("%d saved cost%s deleted. Listings whose SKU "
-                                 "carries a price still show that price."
+                        "note": ("%d saved cost%s deleted. Those products now "
+                                 "have no cost at all, so their profit, margin "
+                                 "and ROI figures are blank until a cost is set "
+                                 "again — nothing is read out of a SKU name."
                                  % (gone, "" if gone == 1 else "s"))})
 
     @app.route("/cogs/upload", methods=["POST"])

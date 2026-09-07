@@ -1168,11 +1168,16 @@ async function lrSaveRule(sku, key, el){
  *     "The Cost value is displayed as plain text. It should be an editable
  *      input like the price field."
  *
- * cogsOf() decides what the cost IS and where it came from -- a figure typed by
- * the owner, or one read off the SKU's price prefix, or nothing known. That
- * resolution is not repeated here (Rule 12); this only draws the box and
- * labels the source, because "9.18 because you typed it" and "9.18 because the
- * SKU says so" behave differently when the box is cleared.
+ * cogsOf() decides what the cost IS and where it came from -- a figure the owner
+ * set, or an OLD one read off the SKU's price prefix before that stopped
+ * happening, or nothing known. That resolution is not repeated here (Rule 12);
+ * this only draws the box and labels the source.
+ *
+ * THE OLD TIP PROMISED SOMETHING THAT NO LONGER HAPPENS: "Empty it to go back
+ * to the SKU". There is nothing to go back to -- domain/cogs.resolve reads no
+ * SKU name any more, so clearing the box leaves the product with NO cost, and
+ * every profit figure on the row goes blank. Someone clearing a figure on the
+ * strength of that sentence would have been told the opposite of the truth.
  *
  * THE BOX IS EMPTY WHEN NOTHING IS KNOWN, with the placeholder saying so.
  * Pre-filling it with 0.00 would be the exact mistake cogs.js was built to
@@ -1182,9 +1187,11 @@ function lrCostRow(r){
   const c = (typeof cogsOf === "function") ? cogsOf(r) : {cost: null, source: ""};
   const known = c.cost !== null && c.cost !== undefined;
   const tip = c.source === "manual"
-    ? "Your own figure — it beats what the SKU says. Empty it to go back to the SKU."
+    ? "A cost you set. Emptying it leaves this product with no cost at all, "
+      + "and its profit figures go blank."
     : (c.source === "sku"
-        ? "Read from the SKU's price prefix. Type here to override it."
+        ? "An old cost read from the SKU's price prefix, from before costs "
+          + "became something you set. Type here to replace it."
         : "No cost known for this SKU. Every profit figure on this row depends on it.");
   return '<div class="d-row"><span class="d-label">Cost</span>'
     + '<span class="d-val">'

@@ -157,6 +157,19 @@
 }
 .ppc-fctl-wide{ min-width: 160px; }
 
+/* The two date boxes in the filter row. A native <input type="date"> so the
+   browser's own calendar opens -- no picker library, and it follows the
+   machine's locale rather than a format this app invented.
+   color-scheme is what makes the browser draw the calendar icon and the popup
+   in dark colours to match the panel; without it Chrome renders a white icon
+   well on light and an invisible one on dark. */
+.ppc-date{
+  padding: 7px 10px; font-family: inherit; line-height: 1.2;
+  color-scheme: dark light;
+}
+.ppc-date::-webkit-calendar-picker-indicator{ cursor: pointer; opacity: .75; }
+.ppc-date::-webkit-calendar-picker-indicator:hover{ opacity: 1; }
+
 /* ---- KPI cards --------------------------------------------------------- */
 .ppc-kpis{ display: grid; grid-template-columns: repeat(4, 1fr);
   gap: 12px; margin-bottom: 12px; }
@@ -276,6 +289,30 @@
 }
 .ppc-input:focus{ border-color: var(--ppc-blue); }
 .ppc-pill-input{ border-radius: 16px; padding: 6px 14px; }
+
+/* A SAVED BRAND WORD. One chip each, with an × to take it off again.
+   They were not shown at all: a word was accepted, "added" was toasted, and
+   nothing appeared anywhere -- so a typo was invisible and permanent, and the
+   split it drives had no visible rule.
+   Tinted rather than outlined, because these are DATA the owner entered, not
+   controls: they should read as a list of his words with an affordance on them,
+   not as a row of buttons. */
+.ppc-brandchip{
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 6px 3px 10px; border-radius: 14px;
+  background: rgba(45,212,168,.10);
+  border: 1px solid rgba(45,212,168,.35);
+  color: var(--ppc-text); font-size: 12px; line-height: 1.6;
+}
+.ppc-brandchip button{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ppc-muted);
+  font-size: 14px; line-height: 1; cursor: pointer;
+}
+.ppc-brandchip button:hover{
+  background: rgba(255,255,255,.10); color: var(--ppc-red);
+}
 .ppc-btn{
   padding: 6px 14px; background: var(--ppc-surface2);
   border: 1px solid var(--ppc-border); border-radius: 4px;
