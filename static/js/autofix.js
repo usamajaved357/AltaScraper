@@ -1628,7 +1628,60 @@ function _fullDataParts(r){
   const _plainNotes=[];                  // Amazon prose that isn't a real field -> shown as text
   const flagged=parseFlagged(r.notes, isRealAttr, _plainNotes);   // {field: hint} from Amazon's last preview (required / min-max / invalid)
   const flaggedKeys=Object.keys(flagged);
-  const reqUnion=new Set([...(reqList||[]), ...flaggedKeys]);
+
+  // THE FIELD NAMES AMAZON GAVE US IN THE STRUCTURED REPLY, which until now
+  // decided nothing about which boxes exist.
+  //
+  //     "amazon rejected size but there is no such field"
+  //
+  // Amazon refused a MOP listing with "'Size' is required but missing", code
+  // 90220, naming `size` in attributeNames. The banner showed it, the chip
+  // showed it, the row tinted red -- and there was no box to type it into, so
+  // the only thing the reader could do was read the complaint.
+  //
+  // WHY: this list was `reqList UNION parseFlagged(r.notes)`. reqList is the
+  // schema's TOP-LEVEL required array, which for MOP is six fields and does not
+  // include `size` (measured: 113 properties, 6 required). parseFlagged reads
+  // Amazon's PROSE out of the Notes column. So a field named only in the
+  // structured `issues` array reached the screen as a warning and never as an
+  // input.
+  //
+  // Amazon's own required list is not the whole story and cannot be: `size` is
+  // conditionally required for this product type and Amazon says so only when
+  // it refuses. The structured reply is the authority on what it actually
+  // wants, and this app already keeps it -- listing/api_issues.py parses it
+  // into {code, severity, message, fields} precisely so it can be used.
+  //
+  // VALIDATED AGAINST THE SCHEMA BEFORE IT BECOMES A BOX, which is CLAUDE.md
+  // Rule 4's parsing rule and the whole reason isRealAttr exists: "use the
+  // structured field/schema, and validate any derived name against the schema
+  // before rendering it as an input field". `size` is a real MOP property, so
+  // it passes and gets a box; a name Amazon invents that is not in the schema
+  // still cannot draw one.
+  //
+  // ERRORS ONLY. A WARNING is Amazon accepting the listing and remarking on it;
+  // turning those into required-looking boxes would put stars on fields nothing
+  // is blocking.
+  const _apiFlagged={};
+  try{
+    const _rec=r.api_issues||null;
+    ((_rec&&_rec.issues)||[]).forEach(function(i){
+      if(String((i&&i.severity)||"").toUpperCase()!=="ERROR") return;
+      ((i&&i.fields)||[]).forEach(function(f){
+        const k=String(f||"").trim();
+        if(!k || !isRealAttr(k)) return;
+        // Amazon's own words for this field, so the box says why it is there.
+        if(!_apiFlagged[k]) _apiFlagged[k]=String((i&&i.message)||"").trim()
+                                          || "Amazon asked for this";
+      });
+    });
+  }catch(e){}
+  Object.keys(_apiFlagged).forEach(function(k){
+    if(!flagged[k]) flagged[k]=_apiFlagged[k];
+  });
+
+  const reqUnion=new Set([...(reqList||[]), ...flaggedKeys,
+                          ...Object.keys(_apiFlagged)]);
   // A field Amazon EXPLICITLY flagged must ALWAYS show a box, even if it's in
   // EXCLUDE_REQ (our "script fills it" assumption) -- Amazon is overriding us.
   // Only EXCLUDE_REQ filters the schema-required list, never the flagged list.
