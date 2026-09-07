@@ -49,11 +49,33 @@ let LR_EDITS = {};
 /* Every editable field, its label for the bar, and the thing that already knew
  * how to save it. ADDING A FIELD IS ONE ENTRY HERE plus the box that renders
  * it -- there is no second list anywhere. */
+/* TWO DIFFERENT QUESTIONS, AND THEY USED TO SHARE ONE FLAG.
+ *
+ *   live     does saving this reach AMAZON? -- decides the wording on the bar
+ *   needsRow is it stored ON THIS APP'S ROW? -- decides whether the box is
+ *            drawn at all for a listing this app holds no draft of
+ *
+ * They were the same flag, `live`, on the reasoning that anything not going to
+ * Amazon must live on the row. Cost breaks that: it goes nowhere near Amazon
+ * AND is not on the row. It is in the COGS store, keyed by (account, sku) --
+ * data/input_row.py says so in as many words, and /cogs/set takes an account
+ * and a SKU and nothing else.
+ *
+ * So the guard turned off the one control that would have worked, on exactly
+ * the listings that need it:
+ *
+ *     "for many listings i dont have an option to put the cogs, i should be
+ *      able to put the cogs"
+ *
+ * Measured on nestwell_goods: 33 of 40 live listings have no row in this app.
+ * With cogsOf's SKU-name fallback also gone, those rows now say "set" and this
+ * is what makes "set" clickable on them.
+ */
 const LR_FIELDS = {
-  price:    {label: "price",        live: false},
-  cost:     {label: "cost",         live: false},
-  handling: {label: "handling time", live: false},
-  qty:      {label: "stock",        live: true},
+  price:    {label: "price",        live: false, needsRow: true},
+  cost:     {label: "cost",         live: false, needsRow: false},
+  handling: {label: "handling time", live: false, needsRow: true},
+  qty:      {label: "stock",        live: true,  needsRow: false},
 };
 
 function lrEditCount(){ return Object.keys(LR_EDITS).length; }
@@ -109,17 +131,31 @@ function lrEditBox(o){
    *     "i am not able to change the available quantity of the items from live
    *      on amazon section"
    *
-   * Price, cost and handling are saved INTO this app's row, so without one
-   * there is nothing to write to and the guard is right. Stock is not: it goes
-   * to /stock/bulk_update, which patches fulfillment_availability on Amazon by
-   * SKU and never touches the row -- see LR_FIELDS.qty.live and _lrSaveQty.
+   * Price and handling are saved INTO this app's row, so without one there is
+   * nothing to write to and the guard is right. Stock is not: it goes to
+   * /stock/bulk_update, which patches fulfillment_availability on Amazon by SKU
+   * and never touches the row -- see LR_FIELDS.qty and _lrSaveQty.
    *
    * The guard did not make that distinction, so on the eighteen live-only SKUs
    * the one control that WOULD have worked was the one turned off. Stock is
    * exactly what somebody wants to change on a me-too listing, because the
    * title and images belong to somebody else's ASIN and the stock does not.
+   *
+   * COST JOINED STOCK ON 8 SEP 2026, for the same reason and after the same
+   * report:
+   *
+   *     "for many listings i dont have an option to put the cogs, i should be
+   *      able to put the cogs"
+   *
+   * It is not on the row either -- it is in the COGS store, keyed by (account,
+   * sku) -- so it was being refused for a reason that was never true of it.
+   * That is what `needsRow` now says, separately from `live`.
    */
-  const _needsRow = !(LR_FIELDS[o.field] && LR_FIELDS[o.field].live);
+  // `needsRow`, not `live`. They were one flag and they are two questions --
+  // see LR_FIELDS. Reading `live` here meant "does not reach Amazon" was taken
+  // to mean "must be on our row", which is false for a cost.
+  const _f = LR_FIELDS[o.field];
+  const _needsRow = !_f || _f.needsRow !== false;
   if(_needsRow && o.sku && typeof hasDraftRow === "function"
      && !hasDraftRow(o.sku)){
     return '<span class="lr-ro" title="This listing is on Amazon and this app '

@@ -190,6 +190,31 @@ function lsIsWaitingOnAmazon(r){
   return lsSaysSubmitted(r) && !lsInLiveCatalogue(r);
 }
 
+/* OUR RECORD IS BEHIND AMAZON: we still say SUBMITTED and Amazon is showing it.
+ *
+ *     "i submitted a listing it moved from drafts to live on amazon section but
+ *      i still see accepted publishing, we still record submitted although i
+ *      see the listing is apointed an asin by amazon"
+ *
+ * This is the gap between the two states above, and nothing was in it. A
+ * SUBMITTED row that Amazon has NOT confirmed is lsIsWaitingOnAmazon, and the
+ * verify sweep chases it. The moment Amazon's catalogue includes it, that
+ * becomes false -- so the row stops being chased at exactly the point there is
+ * finally something to write. It appears under "Live on Amazon" because
+ * lsIsPublished reads the catalogue, while the stored word stays SUBMITTED for
+ * ever and the row keeps saying "Accepted — publishing".
+ *
+ * Only OUR OWN words can be behind. Amazon's own vocabulary on a
+ * catalogue-only row is not a stale record -- see the note in
+ * listrow_detailed.js about "we still record ACTIVE", which was this same
+ * confusion pointing the other way.
+ */
+const LS_PRE_LIVE = new Set([LS_SUBMITTED, "PENDING", "API_READY", "APPROVED"]);
+
+function lsRecordIsBehind(r){
+  return LS_PRE_LIVE.has(lsStatusOf(r)) && lsInLiveCatalogue(r);
+}
+
 /* lsWarnTip WAS HERE -- the hover text on the warning-count mark, and the
  * source of the sentence the owner asked about:
  *
