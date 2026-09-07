@@ -101,7 +101,7 @@ def _delivery_text(check):
 
 
 def options_for(config_path, workspace_id, marketplace, sku, sell_price=None,
-                rule=None, now=None, fx=1.0, fee_amount=None):
+                rule=None, now=None, fx=1.0, fee_amount=None, stage=None):
     """Every tracked source for one SKU, cheapest to buy from first.
 
     Each option carries what it costs, what it would earn at `sell_price`, how it
@@ -122,7 +122,19 @@ def options_for(config_path, workspace_id, marketplace, sku, sell_price=None,
     Those allowances are now 0.00 unless the owner sets them; see
     listing/pricing.py.
     """
-    pairs = _repo.pairs_for(config_path, workspace_id, marketplace, sku)
+    # WHICH SUPPLIERS THIS SCREEN IS ENTITLED TO SEE.
+    #
+    #     "these suppliers should be added to the all orders page sources and in
+    #      repricer when the listing goes live, not on draft"
+    #
+    # The order panel and the repricer pass LIVE, so a draft's suppliers -- real
+    # links, already checked, but attached to something nobody can buy yet -- do
+    # not appear beside listings that are selling. The drafts page passes DRAFT
+    # and gets the identical shape, which is what makes it draw in the same
+    # format from the same renderer (Rule 12). None is everything, which is what
+    # every caller written before this got.
+    pairs = _repo.pairs_for(config_path, workspace_id, marketplace, sku,
+                            stage=stage)
     if not pairs:
         return []
     rule = _sourcing.rule_with_defaults(rule)

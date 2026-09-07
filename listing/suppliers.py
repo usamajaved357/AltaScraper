@@ -251,6 +251,21 @@ def enrol(config_path, workspace_id, marketplace, sku, urls, log=None):
     and both get it (Rule 12). The sheet's order becomes the source PRIORITY, so
     the repricer prefers the same supplier the listing was written from.
 
+    ...BUT NOT UNTIL THE LISTING IS ACTUALLY SELLING.
+
+        "these suppliers should be added to the all orders page sources and in
+         repricer when the listing goes live, not on draft, on draft the sources
+         should stay on the drafts page but should display the handling time,
+         the carrier info and delivery time and source price and source name etc
+         same as repricer shows it, in the same format"
+
+    So they go in at stage DRAFT. The rows exist -- which is what lets the
+    drafts page show the price, the carrier, the delivery window and the
+    dispatch days in the repricer's own format, from the repricer's own function
+    -- and the order panel and the repricer both ask for LIVE, so they do not
+    see them. source_repo.promote_to_live flips them when Amazon confirms the
+    listing BUYABLE, carrying every check already taken with them.
+
     ensure_source rather than add_source: generating the same row twice must not
     leave two copies of one supplier, which would then be checked twice and
     shown twice.
@@ -271,7 +286,8 @@ def enrol(config_path, workspace_id, marketplace, sku, urls, log=None):
             _repo.ensure_source(config_path, workspace_id, marketplace, sku, url,
                                 kind="ebay",
                                 label="Supplier %d" % pos,
-                                priority=int(pos))
+                                priority=int(pos),
+                                stage=_repo.DRAFT)
             n += 1
         except Exception as e:
             if log:

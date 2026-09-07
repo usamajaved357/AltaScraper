@@ -1386,6 +1386,28 @@ _ADDED_COLUMNS = [
     ("ppc_search_terms", "date", "TEXT"),
     # Opt-in, per listing, for the GTIN exemption. See column_map.py.
     ("listings", "gtin_exemption", "TEXT"),
+    # WHETHER A SUPPLIER IS TRACKED YET, or is only attached to a draft.
+    #
+    #     "these suppliers should be added to the all orders page sources and in
+    #      repricer when the listing goes live, not on draft, on draft the
+    #      sources should stay on the drafts page"
+    #
+    # SUPPLIER 2 AND 3. "Source URL" is supplier 1 and already exists; these are
+    # the ones the owner asked to be able to give:
+    #
+    #     "i said ask me for upto 3 suppliers in the template, i will add more
+    #      suppliers if i have them"
+    #
+    # Without them the multi-supplier merge had exactly one link to work with on
+    # the database backend, however many were pasted in. See column_map.py.
+    ("listings", "supplier_2", "TEXT"),
+    ("listings", "supplier_3", "TEXT"),
+    # 'draft' while the listing is not buyable on Amazon; 'live' once it is.
+    # Both states are the SAME row -- the links, their priority and every price
+    # check already taken carry over on the flip, so nothing is re-fetched and
+    # the drafts page keeps the full detail all along. NULL reads as 'live', so
+    # every source enrolled before this column existed keeps behaving as it did.
+    ("sourcing_sources", "stage", "TEXT"),
     # Amazon's own reply to the last Preview/Submit. In SCHEMA too; here so a
     # database that already exists gains it without being rebuilt.
     ("listings", "api_issues_json", "TEXT"),

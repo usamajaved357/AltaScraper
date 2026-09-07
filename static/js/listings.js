@@ -2573,7 +2573,35 @@ function _dwVerdictFoldParts(r){
     mirror:
         dwFold("Actual on Amazon", '<span class="dw2-tag info">read-only mirror</span>', liveMirrorPanel(r))
       + dwFold("A+ content", '<span class="dw2-tag info">live on Amazon</span>', _dwAplus(r))
+      // WHERE THIS LISTING IS BOUGHT FROM.
+      //
+      //     "on draft the sources should stay on the drafts page but should
+      //      display the handling time, the carrier info and delivery time and
+      //      source price and source name etc same as repricer shows it"
+      //
+      // Drawn by _ordSourcesHtml, the renderer the order panel and the repricer
+      // both use, so it is the same format because it is the same code. Folded
+      // rather than always-on: it is reference, not a verdict, and the panels
+      // above are the ones that stop a listing being created.
+      + ((typeof draftSourcesHtml === "function")
+          ? dwFold("Suppliers", _dsFoldTag(r), draftSourcesHtml(r)) : "")
   };
+}
+
+/* What the closed Suppliers fold says, so it can be left closed.
+ *
+ * The count is what decides whether opening it is worth it -- one supplier is
+ * the ordinary case and three is the reason the multi-supplier feature exists.
+ * "not tracked yet" is the other half: these are attached to a DRAFT, and the
+ * repricer does not price them until Amazon confirms the listing buyable. */
+function _dsFoldTag(r){
+  const D = (typeof dsGet === "function") ? dsGet(r && r.sku) : null;
+  if(!D || D.state === "loading") return '<span class="dw2-tag info">reading…</span>';
+  if(D.state === "error") return '<span class="dw2-tag warn">could not read</span>';
+  const n = (D.options || []).length;
+  if(!n) return '<span class="dw2-tag">none recorded</span>';
+  return '<span class="dw2-tag info">' + n + (n === 1 ? " supplier" : " suppliers")
+       + (D.tracked ? "" : " · not tracked yet") + '</span>';
 }
 
 // A closed fold has to say enough that you can decide not to open it.

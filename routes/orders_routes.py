@@ -794,9 +794,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             except Exception:
                 rule = None
             try:
+                # LIVE SUPPLIERS ONLY. A draft's suppliers are real links,
+                # already checked, but they belong to a listing nobody can buy
+                # yet -- and this panel is about an order that has arrived.
+                #
+                #     "these suppliers should be added to the all orders page
+                #      sources and in repricer when the listing goes live, not
+                #      on draft"
                 opts = _osrc.options_for(CONFIG_PATH, account_id, marketplace, sku,
                                          sell_price=unit, rule=rule, now=now,
-                                         fee_amount=fee_per_unit.get(sku))
+                                         fee_amount=fee_per_unit.get(sku),
+                                         stage=_repo.LIVE)
                 out[sku] = {"options": opts, "summary": _osrc.summary(opts),
                             "unit_price": unit}
             except Exception as exc:

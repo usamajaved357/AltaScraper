@@ -88,6 +88,32 @@ HEADER_TO_COL = {
     # this dict in column order and positional writes follow it, so a new key
     # goes on the end and never shifts an existing column.
     "API Issues JSON":        "api_issues_json",
+    # MORE THAN ONE SUPPLIER FOR THE SAME PRODUCT.
+    #
+    #     "they all sell same item so some suppliers may have less listing
+    #      optimized and the 2nd will have some attributes the first missed, the
+    #      third ine will have some more attributes the first two missed"
+    #
+    # "Source URL" above is supplier 1 and does not change. These are 2 and 3.
+    #
+    # THEY DID NOT EXIST, which is the whole reason the feature could not be
+    # used on this backend:
+    #
+    #     "when i download the blank template it do not ask me for more than 1
+    #      supplier, i said ask me for upto 3 suppliers in the template"
+    #
+    # listing/suppliers.py finds supplier columns BY PATTERN rather than by a
+    # fixed list, so on a Google Sheet a person could simply add a column and it
+    # worked. On the database the columns are this dict, and there were none to
+    # find -- so every row had exactly one supplier however many links were
+    # pasted in. A fourth and fifth still need no code change on a sheet; on the
+    # database they need a line here, which is the honest cost of a fixed schema.
+    #
+    # Appended last, like the two above: ORDERED_HEADERS is derived from this
+    # dict in column order and positional writes follow it, so a new key goes on
+    # the end and never shifts an existing column.
+    "Supplier 2":             "supplier_2",
+    "Supplier 3":             "supplier_3",
 }
 
 COL_TO_HEADER = {v: k for k, v in HEADER_TO_COL.items()}

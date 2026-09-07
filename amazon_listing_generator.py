@@ -7434,6 +7434,32 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                 queue(i, notes_col, f"RE-VERIFIED -- LIVE ({', '.join(_rstatus)})" + (f"; ASIN {_rasin}" if _rasin else ""))
                 _wentlive += 1
                 console.print(f"  [green]row {i} {sku}: now LIVE ({', '.join(_rstatus)})" + (f" ASIN {_rasin}" if _rasin else "") + "[/green]")
+                # AND ITS SUPPLIERS START BEING TRACKED.
+                #
+                #     "enroll those suppliers automatically in all orders section
+                #      ... and also in the repricer ... when the listing goes
+                #      live, not on draft"
+                #
+                # BUYABLE and not merely DISCOVERABLE, which is why this sits in
+                # this branch: a product page with no offer attached is not a
+                # listing the repricer can price. Measured on
+                # 9.99_2Days_B0BP1HNW8G -- DISCOVERABLE for over an hour with
+                # offers: [].
+                #
+                # The links, their priority and every price check already taken
+                # carry over unchanged; only the stage moves. Never fatal: a row
+                # that has just been confirmed live must not be lost to a
+                # bookkeeping failure.
+                try:
+                    from domain import source_repo as _srepo
+                    _n = _srepo.promote_to_live(
+                        str(config.get("_config_path") or "config.json"),
+                        str(config.get("_account_id") or ""), mkt, sku)
+                    if _n:
+                        console.print(f"    [dim]{_n} supplier(s) now tracked for {sku}[/dim]")
+                except Exception as _se:
+                    console.print(f"    [yellow]could not start tracking suppliers "
+                                  f"for {sku}: {str(_se)[:90]}[/yellow]")
             elif "DISCOVERABLE" in _st_up:
                 # THE PRODUCT PAGE EXISTS AND NOTHING IS FOR SALE ON IT.
                 #

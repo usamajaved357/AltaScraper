@@ -75,6 +75,10 @@
      drawer.css: everything in it sits inside .dw2-cell and borrows its
      spacing, and it reuses that file's literal palette on purpose. -->
 <link rel="stylesheet" href="/static/css/drawer_attributes.css?v={{ ASSET_V }}">
+<!-- The Suppliers fold on a draft. Almost nothing: the list inside wears the
+     order panel's own classes, because it is drawn by the order panel's own
+     renderer. Shares drawer_attributes.css's literal palette. -->
+<link rel="stylesheet" href="/static/css/draftsources.css?v={{ ASSET_V }}">
 <!-- The full-screen product page. AFTER drawer.css: it re-arranges that
      file's own .dw2-* blocks and restyles .dw2-sec as the mockup's cards, so
      the later file has to be the one that wins. -->
@@ -2233,6 +2237,10 @@
      updateLocalCol (autofix.js) and applyPushedLocally (listings.js); both
      check for it first, so load order only affects when it starts working. -->
 <script src="/static/js/profit.js?v={{ ASSET_V }}"></script>
+<!-- A draft's suppliers, drawn by orders.js's _ordSourcesHtml -- the same
+     renderer the order panel and the repricer use, so the drafts page shows
+     them in the same format from the same data. -->
+<script src="/static/js/draftsources.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
 <!-- The full-screen product page. It arranges blocks the two files above
      build (_fullDataParts, dwTitleParts, _dwWarnings) and defines none of its

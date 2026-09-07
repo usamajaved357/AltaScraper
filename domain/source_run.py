@@ -83,7 +83,12 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     """The decision for one SKU, with the current state that produced it."""
     now = now or _dt.datetime.now()
     current = current_for(config_path, workspace_id, marketplace, sku)
-    pairs = _repo.pairs_for(config_path, workspace_id, marketplace, sku)
+    # LIVE SUPPLIERS ONLY. This decides a PRICE to set on Amazon, so a draft's
+    # suppliers -- attached to a listing that is not buyable yet -- must not
+    # influence it. They stay on the drafts page until the listing goes live;
+    # see domain/source_repo.promote_to_live.
+    pairs = _repo.pairs_for(config_path, workspace_id, marketplace, sku,
+                            stage=_repo.LIVE)
     rule = _repo.rule_for(config_path, workspace_id, marketplace, sku)
 
     # The listing's own currency, from its marketplace. Set here rather than

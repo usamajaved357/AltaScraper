@@ -1,0 +1,44 @@
+/* static/css/draftsources.css -- the Suppliers fold on a draft.
+ *
+ * DELIBERATELY ALMOST NOTHING. The list inside is drawn by _ordSourcesHtml and
+ * arrives wearing the order panel's own classes, which are already styled --
+ * that is the point of reusing the renderer rather than copying its layout.
+ * What is left is the heading around it and the three states the list itself
+ * has nothing to say about: still reading, could not read, and none recorded.
+ *
+ * The literal hex matches drawer_attributes.css, which sets the palette for the
+ * blocks either side of this one. See the note at the top of that file. */
+
+.ds-wrap{ padding:2px 0 4px; }
+
+.ds-head{
+  display:flex; align-items:center; gap:8px;
+  font-size:11px; color:#c8c7cc; margin:0 0 6px;
+}
+.ds-head b{ font-size:11.5px; color:#eeedf0; font-weight:600; }
+
+.ds-refresh{
+  margin-left:auto; background:none; border:1px solid #3a3a45; border-radius:4px;
+  color:#c8c7cc; font-family:inherit; font-size:10px; padding:2px 7px;
+  cursor:pointer; line-height:1.5;
+}
+.ds-refresh:hover{ background:#2a2a35; color:#eeedf0; }
+
+/* NOT TRACKED YET. Said in the panel because a supplier list on a draft reads
+   as "this is being watched", and it is not: the repricer and the order panel
+   both ask for stage=live and will not see these until Amazon confirms the
+   listing buyable. */
+.ds-note{
+  display:flex; gap:6px; align-items:flex-start;
+  font-size:10.5px; line-height:1.5; color:#85B7EB;
+  background:#16202c; border:1px solid #24384f; border-radius:5px;
+  padding:6px 8px; margin:0 0 8px;
+}
+.ds-note i{ margin-top:1px; }
+
+.ds-wait, .ds-none, .ds-err{
+  font-size:11px; line-height:1.55; padding:8px 10px; border-radius:5px;
+}
+.ds-wait{ color:#9a99a3; background:#1e1e26; }
+.ds-none{ color:#9a99a3; background:#1e1e26; }
+.ds-err { color:#EF9F27; background:#2a2118; border:1px solid #4a3a20; }
