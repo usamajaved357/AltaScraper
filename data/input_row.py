@@ -94,8 +94,40 @@ for _canon, _names in ALIASES.items():
 
 
 def column_for(header):
-    """The queue column this header means, or "" if it means nothing to us."""
-    return _LOOKUP.get(norm_header(header), "")
+    """The queue column this header means, or "" if it means nothing to us.
+
+    NUMBERED SUPPLIERS ARE A FAMILY, NOT A LIST.
+
+        "i said ask me for upto 3 suppliers in the template, i will add more
+         suppliers if i have them"
+
+    So supplier_2 and supplier_3 are not entries in ALIASES -- supplier_9 would
+    then need one too, and adding a column would need a code change, which is
+    exactly what "i will add more suppliers if i have them" says it should not.
+    They are matched by the SAME pattern listing/suppliers.py uses to find them
+    on a sheet, so a header that works in one place works in the other by
+    construction rather than by two lists agreeing (CLAUDE.md Rule 12).
+
+    Position 1 is `ebay_url`: "Source URL", "supplier_1" and "ebay_link" are all
+    names for the first supplier, and the queue has always called it ebay_url.
+    """
+    got = _LOOKUP.get(norm_header(header), "")
+    if got:
+        return got
+    try:
+        from listing.suppliers import _PAT as _SUPPLIER_PAT
+    except Exception:
+        return ""
+    m = _SUPPLIER_PAT.match(norm_header(header))
+    if not m:
+        return ""
+    try:
+        pos = int(m.group(1))
+    except (TypeError, ValueError):
+        return ""
+    if pos <= 1:
+        return "ebay_url"
+    return "supplier_%d" % pos
 
 
 def map_headers(headers):
@@ -279,6 +311,28 @@ def to_listing_row(product, taken_skus):
     if days:
         row["Handling Time"] = days
         row["Handling Days"] = days
+
+    # THE OTHER SUPPLIERS, carried through to the row so the generator can read
+    # them. "Source URL" above is supplier 1; these are 2 upward.
+    #
+    # Written only when there is a link, so a row with one supplier is written
+    # exactly as it always was. A number the store has no column for is dropped
+    # by the store rather than raising -- three columns exist today, and a
+    # fourth on a Google Sheet works with no change here because
+    # listing/suppliers.py finds columns by pattern.
+    for _k, _v in (p or {}).items():
+        _ks = str(_k or "")
+        if not _ks.startswith("supplier_"):
+            continue
+        _url = str(_v or "").strip()
+        if not _url:
+            continue
+        try:
+            _n = int(_ks.split("_", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        if _n >= 2:
+            row["Supplier %d" % _n] = _url
 
     extras = {
         "sku": sku,

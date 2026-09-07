@@ -82,14 +82,39 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
     _HANDLING_COLS = ("Handling Days", "Handling Time", "Handling", "Lead Time", "Handling days")
     _SKU_COLS = ("SKU", "Sku", "sku")
 
-    def _sheet_write_handling(skus_set, days):
+    def _sheet_write_handling(skus_set, days, account_id=""):
         """Write `days` into the handling column for every matching SKU across ALL tabs of
-        the active sheet (some accounts spread listings over many tabs; Miles tabs have no
-        handling column at all, so those are simply skipped). Returns (updated_skus, tabs_touched,
-        had_column, why)."""
+        the sheet BELONGING TO THE ACCOUNT THE PAGE NAMED (some accounts spread listings
+        over many tabs; Miles tabs have no handling column at all, so those are simply
+        skipped). Returns (updated_skus, tabs_touched, had_column, why).
+
+        WHICH ACCOUNT'S SHEET, AND WHY IT USED TO BE THE WRONG ONE.
+
+            "i clicked on the handling time changed it to 2 so that the app and
+             amazon hold the same number, i did this multiple time in the past
+             with days of break in between but still app shows 3, it is not
+             changing to 2"
+
+        This read _ws() -- the workspace the SERVER has open, one variable for
+        the whole process -- while the Amazon push beside it correctly resolved
+        the account from the request (see _scope(), which was fixed for exactly
+        this reason and did not reach here). So the two halves of one action
+        could go to two different companies: Amazon got the new handling time
+        for the right listing, and the local record was written into whichever
+        account the server last had active. The listing on screen kept its old
+        number, and pressing the button again did the same thing again.
+
+        data/backend.store_for is the one answer to "which store belongs to this
+        account" (Rule 12); it is the helper listing_routes has always used for
+        its own writes. It returns None off the database backend, and then this
+        falls back to _ws() -- the previous behaviour, which is correct there
+        because a sheets workspace is the active sheet.
+        """
         updated, tabs_touched, had_col, why = set(), [], False, []
         try:
-            book = _ws().spreadsheet
+            from data import backend as _backend
+            ws = _backend.store_for(account_id, _cfg(), CONFIG_PATH) or _ws()
+            book = ws.spreadsheet
             worksheets = book.worksheets()
         except Exception as e:
             # A SWALLOWED ERROR REPORTED ITSELF AS AN ANSWER.
@@ -219,7 +244,15 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
         # --- 1) record it here ---
         if do_sheet:
             skus_set = set(skus)
-            updated, tabs_touched, had_col, why = _sheet_write_handling(skus_set, days)
+            # THE ACCOUNT THE PAGE NAMED, not the server's global. _scope() has
+            # always resolved it for the Amazon push below; the local write used
+            # _ws() and could land on another account entirely. A SKU is
+            # price_days_ASIN, so two accounts sourcing the same product at the
+            # same price collide by construction -- see _scope()'s own note.
+            _sacc, _swsid, _smkt = _scope()
+            _said = str((_sacc or {}).get("id") or "")
+            updated, tabs_touched, had_col, why = _sheet_write_handling(
+                skus_set, days, _said)
             if updated:
                 _bust_records_cache()
             out["sheet_updated"] = sorted(updated)

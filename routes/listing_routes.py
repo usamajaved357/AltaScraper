@@ -300,29 +300,17 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
     def _store_for(aid):
         """The listings store for ONE named workspace, on the database backend.
 
-        "no one account data should be shared with another"
+        The body moved to data/backend.store_for on 7 Sep 2026, unchanged, when
+        the bulk handling-time endpoint turned out to need the same thing and
+        was using _ws() -- the server-wide active workspace -- instead. Two
+        answers to "which store belongs to this account" is the duplication
+        Rule 12 exists to stop, and the one that was wrong wrote to whichever
+        account the server happened to have open.
 
-        On the database a workspace IS the unit of storage -- data/store.StoreBook
-        says it plainly, "on the database a tab is a workspace" -- so a store can
-        simply be opened for the account that was asked about. Verified before
-        this was used: ListingStore("jack_uk") holds 87 SKUs,
-        ListingStore("nestwell_goods") 86, and none is shared between them.
-
-        Returns None when there is no account to open or the backend is not the
-        database, so callers keep their existing behaviour rather than losing
-        their rows to a helper that could not help.
+        This name stays because a dozen callers in this file use it.
         """
-        aid = str(aid or "").strip()
-        if not aid:
-            return None
-        try:
-            from data import choice as _ch
-            if _ch.resolve(_cfg(), None) != "db":
-                return None
-            from data.store import ListingStore, SheetLikeStore
-            return SheetLikeStore(ListingStore(aid, config_path=CONFIG_PATH))
-        except Exception:
-            return None
+        from data import backend as _backend
+        return _backend.store_for(aid, _cfg(), CONFIG_PATH)
 
     def _asked_account():
         """The account the caller named, or None. Body first, then query string.
@@ -2003,6 +1991,71 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    def _delete_on_amazon(sku, account_id, marketplace=None):
+        """Remove this SKU from Amazon, but ONLY if Amazon actually has it.
+
+        -> {"attempted", "ok", "was_live", "asin", "error"}
+
+            "when a listing is live delete button delets from amazon, when in
+             draft delete means delete from app, because it is not live on
+             amazon"
+
+        A DRAFT COSTS NOTHING AND IS NOT TOUCHED. Amazon is asked first, and a
+        SKU it has never heard of comes back GONE -- no delete call is made,
+        `was_live` is False, and the caller just removes the row.
+
+        WHY ASK RATHER THAN READ OUR STATUS. A stored status is a memory: a row
+        can say SUBMITTED for a listing Amazon published an hour ago (measured
+        on 9.99_2Days_B0BP1HNW8G), or LIVE for one already removed in Seller
+        Central. Every other action here can be repeated if it acted on a stale
+        verdict. This one cannot, so it spends one read to be sure.
+
+        NEVER RAISES, and never guesses: a check that itself failed reports
+        was_live False with the reason, and the caller then refuses to remove
+        the row rather than quietly orphaning a live listing.
+        """
+        out = {"attempted": False, "ok": False, "was_live": False,
+               "asin": "", "error": ""}
+        aid = str(account_id or "").strip()
+        if not (sku and aid):
+            return out
+        try:
+            import accounts as _acc_mod
+            from api import amazon_listings as _al
+            acc = _acc_mod.get_account(_cfg(), aid, CONFIG_PATH) or {}
+            seller = str(acc.get("seller_id") or "").strip()
+            mkt = str(marketplace or acc.get("default_marketplace") or "UK").upper()
+            mkt_id = _acc_mod.marketplace_id(mkt)
+            if not (seller and mkt_id):
+                out["error"] = "no seller id or marketplace for this account"
+                return out
+            creds = _acc_mod.account_creds(acc)
+            look = _al.get_item(creds, mkt, seller, sku, mkt_id,
+                                included=("summaries",))
+            if look.get("status") == _al.GONE:
+                return out                       # a draft: nothing on Amazon
+            if look.get("status") != _al.OK:
+                # COULD NOT TELL. Not "not live" -- unknown. Reported, and the
+                # caller keeps the row, because deleting our only record of a
+                # listing that might be live is the one unrecoverable outcome.
+                out["error"] = ("could not check Amazon (%s)"
+                                % (look.get("error") or "no answer")[:120])
+                out["was_live"] = True
+                return out
+            sums = look.get("summaries") or []
+            out["asin"] = str((sums[0] or {}).get("asin", "")) if sums else ""
+            out["was_live"] = True
+            out["attempted"] = True
+            res = _al.delete(creds, mkt, seller, sku, mkt_id)
+            if res.get("status") in (_al.OK, _al.GONE):
+                out["ok"] = True
+            else:
+                out["error"] = str(res.get("error") or "Amazon refused")[:200]
+        except Exception as e:
+            out["error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
+            out["was_live"] = True               # unknown -> keep the row
+        return out
+
     @app.route("/delete", methods=["POST"])
     def delete_row():
         b   = request.get_json(force=True) or {}
@@ -2032,8 +2085,61 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     target = int(row)
                 except Exception:
                     target = None
+            # ---- LIVE ON AMAZON -> IT GOES FROM AMAZON TOO ------------------
+            #
+            #     "when a listing is live delete button delets from amazon, when
+            #      in draft delete means delete from app, because it is not live
+            #      on amazon"
+            #
+            # Exactly right, and it is why this used to look broken:
+            #
+            #     "i deleted some listings from the app but they were not
+            #      deleted now after 45 minutes i am deleting them from seller
+            #      central"
+            #
+            # This route only ever removed the app's own row. The confirmation
+            # said "from this app", which is true and easy to read past, and the
+            # listing stayed on Amazon selling.
+            #
+            # AMAZON DECIDES WHETHER IT IS LIVE, NOT OUR STORED STATUS. A row can
+            # say SUBMITTED for a listing Amazon published an hour ago, or LIVE
+            # for one already deleted in Seller Central; either way a stored
+            # verdict is a memory, and this is the one action where acting on a
+            # stale one is unrecoverable. So Amazon is asked, and a SKU it does
+            # not have is simply a draft -- no call is made and the row is
+            # removed, which is what was asked for.
+            #
+            # A SKU WITH NO ROW HERE IS STILL DELETABLE. 33 of the 40 live
+            # listings on nestwell_goods have no row in this app (measured
+            # 7 Sep 2026), so requiring one would refuse to delete most of the
+            # catalogue. `target` may be None for those and the Amazon half
+            # still runs.
+            _amz = {"attempted": False, "ok": False, "error": "", "was_live": False}
+            if sku:
+                _amz = _delete_on_amazon(sku, b.get("account"), b.get("marketplace"))
             if not target or target < 2:
+                # Nothing here to delete. That is only a failure if Amazon had
+                # nothing either -- otherwise the listing has just been removed
+                # from Amazon, which is the whole job.
+                if _amz.get("ok"):
+                    return jsonify({"ok": True, "deleted": 0,
+                                    "amazon": _amz,
+                                    "note": "Removed from Amazon. There was no "
+                                            "draft of it here to remove."})
+                if _amz.get("attempted") and _amz.get("error"):
+                    return jsonify({"ok": False, "amazon": _amz,
+                                    "error": "Amazon refused to delete it: %s"
+                                             % _amz["error"]}), 502
                 return jsonify({"ok": False, "error": "row not found"}), 404
+            # AMAZON FIRST, AND THE ROW ONLY IF IT WORKED. Removing our record
+            # of a listing Amazon still holds would leave it selling with
+            # nothing here to find it by -- the state that is hardest to get out
+            # of, because the next Sync pulls it back as a stranger.
+            if _amz.get("was_live") and not _amz.get("ok"):
+                return jsonify({"ok": False, "amazon": _amz,
+                                "error": "Amazon refused to delete it, so the "
+                                         "draft was kept: %s" % (_amz.get("error")
+                                                                 or "unknown")}), 502
             gone = _repo.delete_row(ws, target)
             # BUST THE READ CACHE. THIS IS WHY DELETED DRAFTS CAME BACK.
             #
@@ -2059,11 +2165,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             if not gone:
                 return jsonify({
                     "ok": False,
+                    "amazon": _amz,
                     "error": "Nothing was deleted — no row in this workspace "
                              "matched that SKU. It may belong to another "
                              "account, or have been removed already.",
                 }), 404
-            return jsonify({"ok": True, "deleted": gone})
+            return jsonify({"ok": True, "deleted": gone, "amazon": _amz})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 

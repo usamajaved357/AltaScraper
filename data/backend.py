@@ -63,6 +63,55 @@ def make(state, config_path=None):
     return _ws, _records
 
 
+def store_for(aid, cfg, config_path=None):
+    """The listings store for ONE NAMED workspace. -> a store, or None.
+
+        "no one account data should be shared with another"
+
+    THE DIFFERENCE BETWEEN THIS AND _ws() IS THE WHOLE POINT. _ws() answers
+    "the workspace the SERVER currently has open", which is one variable for the
+    whole process, written when an account is chosen. This answers "the
+    workspace the PAGE named". The owner routinely has several browser tabs
+    open, so whichever tab last switched account owns that global -- and a write
+    routed through _ws() lands on that account's rows regardless of which
+    account the person was looking at when they typed.
+
+    Measured consequence, 7 Sep 2026: the bulk handling-time endpoint pushed the
+    new number to the right account on Amazon (it resolved the account from the
+    request) and recorded it through _ws(). So the two halves of one action
+    could go to two different companies, and the listing on screen kept showing
+    the old number no matter how many times it was changed --
+
+        "i did this multiple time in the past with days of break in between but
+         still app shows 3, it is not changing to 2"
+
+    On the database a workspace IS the unit of storage -- data/store.StoreBook
+    says it plainly, "on the database a tab is a workspace" -- so a store can
+    simply be opened for the account that was asked about. Verified before this
+    was used: ListingStore("jack_uk") holds 87 SKUs,
+    ListingStore("nestwell_goods") 86, and none is shared between them.
+
+    Returns None when there is no account to open or the backend is not the
+    database, so callers keep their existing behaviour rather than losing their
+    rows to a helper that could not help.
+
+    IT LIVES HERE because two route modules need it and a second copy of "which
+    store belongs to which account" is exactly the duplication Rule 12 is about.
+    `cfg` is passed rather than read, so this module still holds no opinion
+    about where configuration comes from.
+    """
+    aid = str(aid or "").strip()
+    if not aid:
+        return None
+    try:
+        from data import choice as _ch
+        if _ch.resolve(cfg, None) != "db":
+            return None
+        return SheetLikeStore(ListingStore(aid, config_path=config_path))
+    except Exception:
+        return None
+
+
 def workspace_of(state):
     """Which workspace the app currently has open.
 

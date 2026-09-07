@@ -437,6 +437,30 @@ def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
     postcode = destination_postcode(cfg, marketplace)
 
     rows = _repo.enrolled(config_path, workspace_id, marketplace)
+    # ...AND THE DRAFTS, whose suppliers are recorded but not yet tracked.
+    #
+    #     "on draft the sources should stay on the drafts page but should
+    #      display the handling time, the carrier info and delivery time and
+    #      source price and source name"
+    #
+    # None of that exists until somebody has checked them, and a draft is
+    # deliberately NOT in `enrolled` -- so without this its supplier panel would
+    # show three names and no prices, for ever.
+    #
+    # CHECKING A PRICE IS NOT REPRICING. This is the read sweep. source_run
+    # still asks for stage=live when it decides what to charge, so a draft's
+    # suppliers cannot move a price on Amazon.
+    try:
+        _seen = {(str(r["workspace_id"]), str(r["marketplace"]), str(r["sku"]))
+                 for r in rows}
+        for _d in _repo.skus_with_sources(config_path, workspace_id, marketplace,
+                                          stage=_repo.DRAFT):
+            _k = (str(_d["workspace_id"]), str(_d["marketplace"]), str(_d["sku"]))
+            if _k not in _seen:
+                _seen.add(_k)
+                rows = list(rows) + [_d]
+    except Exception:
+        pass                    # a sweep that cannot see drafts is still a sweep
     counts = {"skus": 0, "sources": 0, FETCHED: 0, GONE: 0, FAILED: 0}
     missing_creds = False
 

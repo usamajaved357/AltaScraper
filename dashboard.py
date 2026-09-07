@@ -4645,6 +4645,13 @@ def build_app(backend=None):
     _revenue_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state,
                              _resolve_cogs=_resolve_cogs)
+    # A DRAFT's suppliers, for the drafts page. The same options_for the order
+    # panel and the repricer use, asked for stage=draft -- so the drafts page
+    # shows the price, carrier, delivery window and dispatch days in the same
+    # format, from the same data (Rule 12). See routes/draft_sources_routes.py.
+    import routes.draft_sources_routes as _draft_sources_routes
+    _draft_sources_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                   _active_account=_active_account, _state=_state)
     import routes.dash_auth_routes as _dash_auth_routes
     _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
     import routes.users_routes as _users_routes

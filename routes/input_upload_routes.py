@@ -255,22 +255,46 @@ def register(app, *, CONFIG_PATH, _state):
         delete themselves, and neither is harmless if left: each has a link or a
         name, so each would queue.
         """
-        headers = ["ebay_url", "amazon_url", "item_name", "source_cost",
-                   "selling_price", "upc", "handling_time"]
+        # THREE SUPPLIER COLUMNS, NOT ONE.
+        #
+        #     "when i download the blank template it do not ask me for more than
+        #      1 supplier, i said ask me for upto 3 suppliers in the template, i
+        #      will add more suppliers if i have them"
+        #
+        # ebay_url is supplier 1 and keeps its name -- it is the column every
+        # existing file already uses, and renaming it would break every sheet he
+        # has. supplier_2 and supplier_3 are the ones that were missing.
+        #
+        # A FOURTH IS A COLUMN AND NO CODE CHANGE, which is what "i will add
+        # more suppliers if i have them" asks for: listing/suppliers.py finds
+        # supplier columns by PATTERN, so "supplier_4" in an uploaded file is
+        # read as supplier 4 without anything here knowing about it. Three is
+        # what the blank file OFFERS, not a limit.
+        #
+        # They are optional. A row with only ebay_url behaves exactly as before.
+        headers = ["ebay_url", "supplier_2", "supplier_3", "amazon_url",
+                   "item_name", "source_cost", "selling_price", "upc",
+                   "handling_time"]
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(headers)
         w.writerow([
             "https://www.ebay.co.uk/itm/1234567890",
+            "https://www.ebay.co.uk/itm/2234567890",
+            "https://www.ebay.co.uk/itm/3234567890",
             "https://www.amazon.co.uk/dp/B0EXAMPLE1",
             "Stainless Steel Garlic Press",
             "4.20", "12.99", "5012345678900", "3",
         ])
         w.writerow([
-            "", "",
+            "", "", "", "",
             "DELETE BOTH EXAMPLE ROWS. Only ebay_url OR amazon_url is "
             "required, not both. Leave selling_price empty and the app prices "
-            "it from the cost and Amazon's fees.",
+            "it from the cost and Amazon's fees. supplier_2 and supplier_3 are "
+            "OPTIONAL other sellers of the SAME product — they fill in only "
+            "what supplier 1 left blank, in that order, and are never used to "
+            "overwrite it. Add supplier_4, supplier_5 as more columns if you "
+            "have them.",
             "", "", "", "",
         ])
         w.writerow([""] * len(headers))

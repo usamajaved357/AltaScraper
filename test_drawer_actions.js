@@ -67,8 +67,14 @@ function fnBody(src, name) {
 const D = fnBody(L, "drawerContent");
 const SH = fnBody(L, "_dwShell");
 truthy("the drawer shell was found", SH.length > 2000);
+// ASKED OF THE RAW SOURCE, because it is a COMMENT. `L` is the same file with
+// every comment removed, so this could only ever pass while stripJsComments was
+// failing to strip that particular block -- which it was, until an unrelated
+// edit to listings.js changed the text around it and the stripper started
+// getting it right. An assertion that passes because of a bug in its own helper
+// is worse than no assertion: it read green while checking nothing.
 truthy("  and the redesign says where each control went",
-       L.indexOf("WHERE THE OLD DRAWER HEADER WENT") >= 0);
+       RAW.indexOf("WHERE THE OLD DRAWER HEADER WENT") >= 0);
 
 console.log("=== every action is still reachable from the drawer ===");
 const DRAWER = SH + D;

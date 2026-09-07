@@ -295,6 +295,98 @@ async function lvFillEmpty(sku){
   if(typeof _rebuildDrawerData === "function") _rebuildDrawerData(sku);
 }
 
+/* THE OTHER DIRECTION: send what this app holds TO Amazon.
+ *
+ *     "also see other buttons which seems like calling amazon but donot call
+ *      amazon for a change"
+ *
+ * Measured across the whole app: of 264 routes the browser posts to, ELEVEN
+ * change anything on Amazon. Everything else is local, and the one that misled
+ * hardest was the ordinary field edit -- typing a Country of Origin or a
+ * Dangerous Goods value on a LIVE listing saved it here and left Amazon
+ * untouched. Price and handling had push buttons; nothing else did, so the same
+ * gesture reached Amazon for two fields and stopped at the app for the rest.
+ *
+ * lvVerdict already knows which fields differ -- the bar has been counting them
+ * as "N differ" all along -- so the information was on screen and there was
+ * nothing to do with it. This is that count, made actionable.
+ *
+ * IT PUSHES ONLY WHAT DIFFERS, and names every field before it sends. A patch
+ * is not reversible by sending it again; it is reversible only by knowing what
+ * the old value was, so the confirmation lists both.
+ *
+ * /optimize/push is the existing gated patch path (Rule 12): it takes a map of
+ * approved fields, builds the JSON Patch, and reports Amazon's own verdict
+ * rather than assuming success. Nothing new talks to Amazon here.
+ */
+function lvDiffFields(sku){
+  const L = lvGet(sku);
+  const r = (typeof ROWS !== "undefined" && ROWS.find)
+    ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+  if(!L || L.state !== "ok" || !r) return [];
+  const a = r.attributes || {};
+  // Only what THIS app has a value for. A field that is empty here and set on
+  // Amazon is "only on Amazon" and belongs to the Fill button above -- pushing
+  // an empty over Amazon's value would delete content nobody asked to remove.
+  return Object.keys(a).filter(k => {
+    if((L.multi||{})[String(k).split(".")[0]]) return false;   // never the multis
+    if(String(a[k] == null ? "" : a[k]).trim() === "") return false;
+    return lvVerdict(sku, k, a[k]) === "differs";
+  });
+}
+
+async function lvPushChanges(sku){
+  sku = String(sku);
+  const L = lvGet(sku);
+  const r = (typeof ROWS !== "undefined" && ROWS.find)
+    ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+  if(!L || !r) return;
+  const todo = lvDiffFields(sku);
+  if(!todo.length){ toast("Nothing to send — Amazon already has these values."); return; }
+
+  const a = r.attributes || {};
+  const lines = todo.slice(0, 12).map(k =>
+    "  • " + k + ":  " + String((L.values||{})[k] == null ? "—" : (L.values||{})[k])
+    + "  →  " + String(a[k]));
+  const more = todo.length > 12 ? ("\n  …and " + (todo.length - 12) + " more") : "";
+  if(!await uiConfirm(
+      "Send " + todo.length + " change(s) to Amazon for " + sku + "?\n\n"
+      + "Amazon's value → yours:\n" + lines.join("\n") + more
+      + "\n\nThis changes the LIVE listing. Amazon publishes in its own time, "
+      + "usually within 5–30 minutes.")) return;
+
+  const changes = {};
+  todo.forEach(k => { changes[k] = a[k]; });
+  try{
+    const body = (typeof acctBody === "function")
+      ? acctBody({sku: sku, changes: changes, confirmed: true,
+                  product_type: L.product_type || r.product_type || "",
+                  marketplace: (typeof rowMkt === "function") ? rowMkt(r) : ""})
+      : {sku: sku, changes: changes, confirmed: true};
+    // /optimize/push reads the account from `id`, not `account`.
+    if(body.account && !body.id) body.id = body.account;
+    const j = await (await fetch("/optimize/push", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)})).json();
+    if(j && j.ok){
+      toast("Amazon accepted " + todo.length + " change(s)");
+      // WHAT AMAZON HOLDS HAS CHANGED, so the comparison this bar is built on
+      // is now stale. Re-read rather than assuming it took: ACCEPTED means
+      // Amazon received the patch, not that it has published it.
+      lvRefresh(sku);
+    }else if(j && j.unknown){
+      await uiAlert("Amazon replied, but not with a verdict this app could read.\n\n"
+        + "Nothing here claims it worked. Press Sync in a few minutes — that "
+        + "reads the listing back from Amazon and is the only thing that settles it.");
+    }else{
+      const iss = ((j && j.issues) || []).slice(0, 5)
+        .map(i => "  – " + (i.message || i.code || "")).join("\n");
+      await uiAlert("Amazon refused the change:\n\n"
+        + ((j && j.error) || "no reason given") + (iss ? ("\n\n" + iss) : ""));
+    }
+  }catch(e){ toast("Could not send: " + e); }
+}
+
 /* The strip above the attribute grid: where these values came from, how they
  * compare, and the two things you can do about it. */
 function lvBanner(r){
@@ -322,9 +414,17 @@ function lvBanner(r){
     const v = lvVerdict(sku, k, a[k]);
     if(v === "same") same++; else if(v === "differs") diff++; else if(v === "live_only") only++;
   });
+  // NOT SIMPLY "differ" ANY MORE. A difference on a LIVE listing means a value
+  // saved here that Amazon has never been told about -- which is the thing that
+  // was invisible: "buttons which seems like calling amazon but donot call
+  // amazon for a change". Naming it that way is the whole point; a neutral
+  // "differ" reads like a curiosity rather than unsent work.
+  const _unsent = lvDiffFields(sku).length;
   const bits = [];
   if(same) bits.push('<span class="lv-cnt ok">' + same + ' match</span>');
-  if(diff) bits.push('<span class="lv-cnt diff">' + diff + ' differ</span>');
+  if(diff) bits.push('<span class="lv-cnt diff" title="Saved in this app and not '
+      + 'the same on Amazon. Editing a field here does not send it — use the '
+      + 'button beside this to push them.">' + diff + ' differ</span>');
   if(only) bits.push('<span class="lv-cnt live">' + only + ' only on Amazon</span>');
   if(!bits.length) bits.push('<span class="lv-cnt">Amazon returned no attributes for this SKU</span>');
 
@@ -335,6 +435,13 @@ function lvBanner(r){
     + bits.join("")
     + (only ? '<button class="lv-fill" onclick="lvFillEmpty(\'' + esc(sku) + '\')">'
               + 'Fill ' + only + ' empty field(s) from Amazon</button>' : "")
+    // THE REVERSE, which never existed. "Fill from Amazon" has always been here;
+    // there was no way to send the other way, so an edit to a live listing sat
+    // in this app indefinitely with nothing saying so.
+    + (_unsent ? '<button class="lv-push" onclick="lvPushChanges(\'' + esc(sku) + '\')"'
+              + ' title="Patch these fields on the live Amazon listing. Only the '
+              + 'ones that differ are sent, and you see each one before it goes.">'
+              + 'Send ' + _unsent + ' change(s) to Amazon</button>' : "")
     + '<button class="lv-refresh" onclick="lvRefresh(\'' + esc(sku) + '\')">refresh</button>'
     + '</div>'
     + lvShapeBar(L)

@@ -100,16 +100,110 @@ def enrolled(config_path, workspace_id=None, marketplace=None):
 
 # ---- sources ---------------------------------------------------------------
 
+# WHERE A SUPPLIER IS IN ITS LIFE.
+#
+#     "these suppliers should be added to the all orders page sources and in
+#      repricer when the listing goes live, not on draft, on draft the sources
+#      should stay on the drafts page but should display the handling time, the
+#      carrier info and delivery time and source price and source name etc same
+#      as repricer shows it, in the same format"
+#
+# DRAFT and LIVE are the same row. The alternative -- not recording a draft's
+# suppliers at all -- would mean the drafts page had nothing to show but a link,
+# and every visit would cost an eBay call per supplier to say what the last one
+# already said. Keeping the row means the price, the carrier, the delivery
+# window and the dispatch days are all there the moment the page opens, in the
+# same shape the repricer draws, from the same function (Rule 12).
+#
+# NULL IS LIVE. Every source enrolled before this existed was tracked, and a
+# migration that silently un-tracked them would stop the repricer pricing
+# listings it has been pricing for weeks.
+DRAFT = "draft"
+LIVE = "live"
+
+
+def _stage_of(row):
+    """The stage of a source row, with the old NULL reading as live."""
+    try:
+        v = str(row["stage"] or "").strip().lower()
+    except (KeyError, IndexError, TypeError):
+        v = ""
+    return v or LIVE
+
+
 def add_source(config_path, workspace_id, marketplace, sku, url,
-               kind="ebay", label="", priority=100, shipping_override=None):
+               kind="ebay", label="", priority=100, shipping_override=None,
+               stage=None):
     conn = _db.get_db(config_path)
     cur = conn.execute(
         "INSERT INTO sourcing_sources (workspace_id, marketplace, sku, url, kind, "
-        "label, priority, enabled, shipping_override, added_at) VALUES (?,?,?,?,?,?,?,1,?,?)",
+        "label, priority, enabled, shipping_override, added_at, stage) "
+        "VALUES (?,?,?,?,?,?,?,1,?,?,?)",
         (workspace_id, marketplace, sku, url, kind, label or url, priority,
-         shipping_override, _now()))
+         shipping_override, _now(), (stage or LIVE)))
     conn.commit()
     return cur.lastrowid
+
+
+def skus_with_sources(config_path, workspace_id=None, marketplace=None,
+                      stage=None):
+    """[{workspace_id, marketplace, sku}] for every SKU that HAS sources.
+
+    Enrollment and having-a-supplier are two different facts, and the sweep
+    needs the second. A draft's suppliers are recorded so the drafts page can
+    show their price, carrier and delivery window -- and none of that exists
+    until somebody has actually checked them. The sweep is bounded by
+    `enrolled`, which a draft is deliberately not in, so without this a draft's
+    suppliers would sit unchecked for ever and the panel would show three names
+    and no prices.
+
+    CHECKING A PRICE IS NOT REPRICING. This adds the draft's suppliers to the
+    READ sweep only; source_run still asks for LIVE when it decides what to
+    charge, so nothing about a draft can move a price on Amazon.
+    """
+    conn = _db.get_db(config_path)
+    q = ("SELECT DISTINCT workspace_id, marketplace, sku FROM sourcing_sources "
+         "WHERE 1=1")
+    args = []
+    if workspace_id:
+        q += " AND workspace_id=?"
+        args.append(workspace_id)
+    if marketplace:
+        q += " AND marketplace=?"
+        args.append(marketplace)
+    if stage:
+        # NULL means live, so asking for live must include the rows written
+        # before the column existed.
+        if stage == LIVE:
+            q += " AND IFNULL(stage,?)=?"
+            args.extend([LIVE, LIVE])
+        else:
+            q += " AND IFNULL(stage,?)=?"
+            args.extend([LIVE, stage])
+    q += " ORDER BY workspace_id, marketplace, sku"
+    return [dict(r) for r in conn.execute(q, args)]
+
+
+def promote_to_live(config_path, workspace_id, marketplace, sku):
+    """This listing is buyable on Amazon -- start tracking its suppliers. -> how many.
+
+    Called when a listing is CONFIRMED BUYABLE, not when a submit is accepted.
+    Those are different: measured on 9.99_2Days_B0BP1HNW8G, Amazon had the
+    product page up as DISCOVERABLE with no offer attached for over an hour. The
+    repricer pricing a listing nobody can buy would be repricing nothing.
+
+    Idempotent -- a second confirmation changes nothing, and a source the owner
+    has since disabled by hand stays disabled, because `enabled` is a separate
+    question from `stage` and this only answers one of them.
+    """
+    conn = _db.get_db(config_path)
+    cur = conn.execute(
+        "UPDATE sourcing_sources SET stage=? "
+        "WHERE workspace_id=? AND marketplace=? AND sku=? "
+        "  AND IFNULL(stage,'')=?",
+        (LIVE, workspace_id, marketplace, sku, DRAFT))
+    conn.commit()
+    return cur.rowcount or 0
 
 
 def ensure_source(config_path, workspace_id, marketplace, sku, url, **kw):
@@ -233,11 +327,17 @@ def clear_sources(config_path, workspace_id, marketplace):
     return {"sources": len(ids), "checks": int(checks)}
 
 
-def sources_for(config_path, workspace_id, marketplace, sku):
+def sources_for(config_path, workspace_id, marketplace, sku, stage=None):
     conn = _db.get_db(config_path)
-    return [dict(r) for r in conn.execute(
+    rows = [dict(r, stage=_stage_of(r)) for r in conn.execute(
         "SELECT * FROM sourcing_sources WHERE workspace_id=? AND marketplace=? AND sku=? "
         "ORDER BY priority, id", (workspace_id, marketplace, sku))]
+    # WHICH STAGE THE CALLER WANTS. Default None is "all of them", so every
+    # existing caller is unchanged; the two that must not see a draft's
+    # suppliers ask for LIVE, and the drafts page asks for DRAFT.
+    if stage:
+        rows = [r for r in rows if r.get("stage") == stage]
+    return rows
 
 
 # ---- checks ----------------------------------------------------------------
@@ -333,9 +433,14 @@ def history(config_path, source_id, limit=50):
     return out
 
 
-def pairs_for(config_path, workspace_id, marketplace, sku):
-    """[(source, latest_check_or_None)] -- exactly what sourcing.decide() takes."""
-    srcs = sources_for(config_path, workspace_id, marketplace, sku)
+def pairs_for(config_path, workspace_id, marketplace, sku, stage=None):
+    """[(source, latest_check_or_None)] -- exactly what sourcing.decide() takes.
+
+    `stage` passes straight through to sources_for: LIVE for the repricer and
+    the order panel, DRAFT for the drafts page, None for everything that wants
+    all of them. Default None keeps every existing caller as it was.
+    """
+    srcs = sources_for(config_path, workspace_id, marketplace, sku, stage=stage)
     latest = latest_checks(config_path, [s["id"] for s in srcs])
     return [(s, latest.get(s["id"])) for s in srcs]
 

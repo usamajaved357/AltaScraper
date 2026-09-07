@@ -199,7 +199,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         rows = []
         for d in run["decisions"]:
             pairs = _repo.pairs_for(CONFIG_PATH, d["workspace_id"],
-                                    d["marketplace"], d["sku"])
+                                    d["marketplace"], d["sku"],
+                                    stage=_repo.LIVE)
             # The SKU's own rule travels with the row because min_price's ABSENCE
             # is what stops it being armed, and that belongs next to the Arm
             # button rather than in the error you get after pressing it.
@@ -266,10 +267,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                 # being changed, which is then the same number anyway.
                 _sell = ((d.get("decision") or {}).get("price")
                          or (d.get("current") or {}).get("price"))
+                # LIVE SUPPLIERS ONLY -- the repricer prices listings that are
+                # selling, and a draft's suppliers belong to one that is not.
+                # See domain/source_repo.DRAFT.
                 _opts = _osrc.options_for(
                     CONFIG_PATH, d["workspace_id"], d["marketplace"], d["sku"],
                     sell_price=_sell,
-                    rule=_rule, now=_dt.datetime.now())
+                    rule=_rule, now=_dt.datetime.now(), stage=_repo.LIVE)
             except Exception:
                 _opts = []
             rows.append({**d, "sources": srcs, "options": _opts,

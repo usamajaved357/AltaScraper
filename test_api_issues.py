@@ -92,7 +92,21 @@ def test_the_header_is_mapped_and_last():
     so a new key must go on the END or it shifts every column after it."""
     from data.column_map import HEADER_TO_COL
     assert HEADER_TO_COL["API Issues JSON"] == "api_issues_json"
-    assert list(HEADER_TO_COL)[-1] == "API Issues JSON"
+    # THE RULE IS "ON THE END", NOT "THIS EXACT KEY IS LAST". This asserted the
+    # latter, so the next key appended -- correctly, obeying the rule -- broke
+    # it. Supplier 2 and Supplier 3 were added after it on 7 Sep 2026:
+    #
+    #     "i said ask me for upto 3 suppliers in the template"
+    #
+    # What actually matters is that nothing was INSERTED before it, because that
+    # is what shifts every column after and silently rewrites stored rows.
+    keys = list(HEADER_TO_COL)
+    i = keys.index("API Issues JSON")
+    # The columns that existed before it are still before it, in order.
+    assert keys[i - 1] == "GTIN Exemption"
+    assert set(keys[i + 1:]) <= {"Supplier 2", "Supplier 3"}, (
+        "a new column must be appended AFTER the ones already here, never "
+        "inserted among them: %r" % (keys[i + 1:],))
 
 
 def test_the_live_database_has_the_column():

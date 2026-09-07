@@ -800,8 +800,39 @@ function render(){
     else closeDrawer();
   }
 }
+/* WHAT DELETE ACTUALLY DOES, SAID BEFORE IT DOES IT.
+ *
+ *     "i deleted some listings from the app but they were not deleted now after
+ *      45 minutes i am deleting them from seller central"
+ *
+ * It used to say "Delete this row from this app", which was true and read past.
+ * The listing stayed on Amazon, selling, and the only sign was that it kept
+ * coming back on the next Sync.
+ *
+ *     "when a listing is live delete button delets from amazon, when in draft
+ *      delete means delete from app, because it is not live on amazon"
+ *
+ * So the wording now depends on the same thing the behaviour does. The SERVER
+ * still asks Amazon before deleting anything -- a stored status is a memory and
+ * this is the one action that cannot be undone -- so this text is the warning,
+ * not the decision.
+ */
+function _delWarning(sku){
+  const live = (typeof isAmazonLive === "function")
+    ? isAmazonLive((typeof ROWS !== "undefined" && ROWS.find)
+        ? ROWS.find(x => String(x.sku) === String(sku)) : null)
+    : false;
+  return live
+    ? ("\n\nThis listing is LIVE ON AMAZON, so it will be DELETED FROM AMAZON "
+       + "as well as from here. Buyers will no longer see it, and Amazon keeps "
+       + "no undo — the offer and its history go with it.")
+    : ("\n\nThis is a draft and was never sent to Amazon, so only the copy here "
+       + "is removed. Nothing on Amazon changes.");
+}
+
 async function delRow(sku, row, btn){
-  if(!await uiConfirm("Delete this row "+storeFrom()+"? This cannot be undone.")) return;
+  if(!await uiConfirm("Delete " + sku + "?" + _delWarning(sku)
+                      + "\n\nThis cannot be undone.")) return;
   btn.disabled=true;
   try{
     // multi-tab: /delete removes BY ROW on the active tab — sync to this card's tab first
@@ -809,7 +840,16 @@ async function delRow(sku, row, btn){
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
     const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(acctBody({sku:sku,row:row}))});
     const j=await res.json();
-    if(j.ok){ toast("Row deleted"); loadRows(); }
+    if(j.ok){
+      // SAY WHICH HALVES HAPPENED. "Row deleted" was the same message whether
+      // the listing had been removed from Amazon or merely from here, which is
+      // the difference that mattered.
+      const a = j.amazon || {};
+      toast(a.ok ? "Deleted from Amazon and removed here"
+                 : (a.error ? ("Removed here — Amazon: " + a.error)
+                            : "Draft removed (it was not on Amazon)"));
+      loadRows();
+    }
     else{ toast("Delete failed: "+(j.error||"")); btn.disabled=false; }
   }catch(e){ toast("Delete failed"); btn.disabled=false; }
 }
@@ -855,16 +895,38 @@ async function bulkDelete(){
   // sent and reported as a failure.
   const _sel=selectedSkus();
   if(!_sel.length){ toast("Nothing selected"); return; }
-  const _s=splitByDraft(_sel), skus=_s.drafts;
-  if(!skus.length){
-    await uiAlert(`None of the ${_sel.length} selected listing(s) has a draft here to `
-         +`delete.\n\nThey are live on Amazon. This button never removes a live `
-         +`listing — to end one, close it in Seller Central.`);
-    return;
+  // A LIVE LISTING IS NO LONGER SKIPPED. This used to split the selection and
+  // delete only the drafts, telling the owner "This button never removes a live
+  // listing — to end one, close it in Seller Central". That is what he was
+  // doing, by hand, forty-five minutes at a time:
+  //
+  //     "i deleted some listings from the app but they were not deleted now
+  //      after 45 minutes i am deleting them from seller central"
+  //
+  // So the whole selection goes, and the SERVER decides per SKU: it asks Amazon
+  // whether that SKU is live, deletes it there when it is, and removes the row
+  // here either way. A draft costs no Amazon call.
+  const _s=splitByDraft(_sel), skus=_sel;
+  const _liveN = (_s.amazonOnly || []).length
+    + (_s.drafts || []).filter(s => {
+        const r = (typeof ROWS !== "undefined" && ROWS.find)
+          ? ROWS.find(x => String(x.sku) === String(s)) : null;
+        return (typeof isAmazonLive === "function") ? isAmazonLive(r) : false;
+      }).length;
+  let _msg = "Delete " + skus.length + " selected listing(s)?";
+  if(_liveN){
+    _msg += "\n\n" + _liveN + " of them " + (_liveN === 1 ? "is" : "are")
+          + " LIVE ON AMAZON and will be DELETED FROM AMAZON as well as from "
+          + "here. Buyers will no longer see them, and Amazon keeps no undo.";
+    const _draftN = skus.length - _liveN;
+    if(_draftN) _msg += "\nThe other " + _draftN + " are drafts and only exist here.";
+  }else{
+    _msg += "\n\nThese are drafts and were never sent to Amazon, so nothing on "
+          + "Amazon changes.";
   }
-  if(!await uiConfirm("Delete "+skus.length+" selected listing(s) "+storeFrom()+"? This cannot be undone."
-              +_draftOnlyNote(_s.amazonOnly, "delete"))) return;
-  let ok=0, fail=0;
+  if(!await uiConfirm(_msg + "\n\nThis cannot be undone.")) return;
+  let ok=0, fail=0, amzOk=0;
+  const why=[];
   toast("Deleting "+skus.length+"…");
   // delete from the BOTTOM up so row numbers don't shift mid-loop
   const items=skus.map(s=>{const r=ROWS.find(x=>String(x.sku)===String(s)); return {sku:s, row:(r&&r.row)||null};})
@@ -877,10 +939,18 @@ async function bulkDelete(){
       const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
                   body:JSON.stringify(acctBody({sku:it.sku, row:it.row}))});
       const j=await res.json();
-      if(j.ok) ok++; else fail++;
+      if(j.ok){ ok++; if(j.amazon && j.amazon.ok) amzOk++; }
+      else { fail++; if(j.error) why.push(it.sku + ": " + String(j.error).slice(0,90)); }
     }catch(e){ fail++; }
   }
-  toast("Deleted "+ok+(fail?(" / "+fail+" failed"):""));
+  // TWO NUMBERS, BECAUSE THEY ARE TWO DIFFERENT THINGS: how many rows went from
+  // here, and how many listings went from Amazon. One figure covering both is
+  // what made "deleted" mean nothing.
+  let _out = "Deleted " + ok + " listing(s)"
+           + (amzOk ? (" — " + amzOk + " removed from Amazon") : "")
+           + (fail ? (" / " + fail + " failed") : "");
+  toast(_out);
+  if(why.length) await uiAlert(_out + "\n\n" + why.slice(0, 8).map(x => "  – " + x).join("\n"));
   clearSelection(); loadRows();
 }
 async function clearMainImage(sku){

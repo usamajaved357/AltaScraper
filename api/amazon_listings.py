@@ -332,6 +332,62 @@ def put(creds, marketplace, seller_id, sku, marketplace_id, product_type,
     return out
 
 
+def delete(creds, marketplace, seller_id, sku, marketplace_id,
+           issue_locale="en_GB", timeout=60):
+    """Remove OUR listing from Amazon. Never raises.
+
+    -> {"status", "submission_id", "amazon_status", "issues", "error"}
+
+        "when a listing is live delete button delets from amazon, when in draft
+         delete means delete from app, because it is not live on amazon"
+
+    THE MOST DESTRUCTIVE CALL IN THIS FILE, and the only one that cannot be
+    undone by sending something else. Amazon keeps no undelete; the listing, its
+    offer and its history go, and recreating the SKU later starts a new one.
+    So the caller must have asked first, and must have established that the
+    listing is actually live -- deleting is not a way to tidy a draft.
+
+    IT CAN ONLY EVER REACH OUR OWN LISTING. deleteListingsItem is addressed by
+    (sellerId, sku), and the seller id is this account's. There is no shape of
+    this call that touches another seller's offer or another seller's ASIN, so
+    CLAUDE.md Rule 1 is satisfied by construction rather than by a check.
+
+    A SKU AMAZON DOES NOT HAVE IS NOT AN ERROR -- it is the state the caller
+    wanted. Amazon answers 404 for one it has never heard of, and that comes
+    back as GONE so the caller can carry on and remove the local row rather than
+    reporting a failure for work that did not need doing.
+    """
+    out = {"status": FAILED, "submission_id": "", "amazon_status": "",
+           "issues": [], "error": ""}
+    if not (seller_id and sku and marketplace_id):
+        out["error"] = "need a seller id, a sku and a marketplace"
+        return out
+    try:
+        li = _client(creds, marketplace, timeout)
+        res = li.delete_listings_item(
+            seller_id, sku,
+            marketplaceIds=[marketplace_id],
+            issueLocale=issue_locale)
+        data = res.payload if hasattr(res, "payload") else res
+    except Exception as e:
+        code = getattr(e, "code", None) or getattr(e, "status_code", None)
+        if code == 404 or "not found" in str(e).lower():
+            out["status"] = GONE
+            out["error"] = "Amazon has no listing with this SKU"
+            return out
+        out["error"] = str(e)[:300]
+        return out
+
+    data = data or {}
+    out["submission_id"] = str(data.get("submissionId") or "")
+    out["amazon_status"] = str(data.get("status") or "")
+    out["issues"] = list(data.get("issues") or [])
+    out["status"] = OK if out["amazon_status"].upper() == "ACCEPTED" else FAILED
+    if out["status"] != OK and not out["error"]:
+        out["error"] = "Amazon answered %s" % (out["amazon_status"] or "nothing")
+    return out
+
+
 def patch(creds, marketplace, seller_id, sku, marketplace_id, product_type,
           patches, issue_locale="en_GB", timeout=60):
     """Send a patch. Never raises. Returns Amazon's verdict, not our hope of it.
