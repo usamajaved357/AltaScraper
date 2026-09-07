@@ -119,15 +119,27 @@ def window(days=30, end=None):
 
 
 def time_unit_for(kind):
-    """DAILY for anything stored per day, SUMMARY for the search terms.
+    """DAILY for everything. There is no longer a report stored per window.
 
-    ads_daily and ads_campaign_daily are keyed on the date, so those reports
-    have to come back a day at a time. ppc_search_terms is not: it keeps ONE
-    report over a window, with date_from and date_to on every row, and asking
-    for it daily would multiply every term by thirty for a screen that adds them
-    straight back up.
+    THE SEARCH TERM REPORT USED TO BE ASKED FOR AS A SUMMARY, and the note here
+    said asking daily "would multiply every term by thirty for a screen that
+    adds them straight back up". That was true of the screen it was written for.
+    It is not true of the one the spec asks for:
+
+        "The Search Terms page DOES respect the date picker ... store
+         ppc_search_terms with a date column (one row per date per
+         search-term-campaign-adgroup combo), not just a batch window."
+
+    A summary cannot be split back into days, so the multiplication IS the
+    point: it is the only way the day survives. Measured against the live API,
+    7 Sep 2026 -- spSearchTerm at DAILY is accepted and returns a `date` column,
+    393 rows over 7 days on nestwell_goods, which is about the same volume the
+    summary produced for the same window.
+
+    The rows still add straight back up for any screen that wants a window
+    total; they can now also be asked what happened on the Tuesday.
     """
-    return "SUMMARY" if kind == "search_term" else "DAILY"
+    return "DAILY"
 
 
 def _rows_for(creds, marketplace, kind, start, end, wait, on_wait=None):
@@ -235,6 +247,42 @@ def _upsert_campaign(conn, workspace_id, marketplace, date, cid, m, fetched_at,
          ad_product))
 
 
+def _upsert_targeting(conn, workspace_id, marketplace, date, cid, ad_group,
+                      keyword, match_type, m, fetched_at,
+                      ad_product="SPONSORED_PRODUCTS"):
+    """One campaign, one day, one targeting. Its own table -- see store_rows.
+
+    The key carries keyword AND match_type because one campaign genuinely runs
+    the same word on more than one match type on the same day, and those are
+    different buys at different bids. Collapsing them would lose the split the
+    whole table exists to provide.
+
+    Match type is kept AS AMAZON SENDS IT, including the mouthful
+    TARGETING_EXPRESSION_PREDEFINED that auto campaigns come back with. The spec
+    says to expect it -- "this is the literal enum string Amazon returns" -- and
+    translating it to something friendlier here would put a word Amazon never
+    said into the database. The screen can make it readable; the store keeps
+    what arrived.
+    """
+    conn.execute(
+        "INSERT INTO ads_targeting_daily (workspace_id, marketplace, date, "
+        "campaign_id, campaign_name, ad_group, keyword, match_type, "
+        "impressions, clicks, spend, ad_orders, ad_sales, ad_product, source, "
+        "fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(workspace_id, marketplace, date, campaign_id, ad_group, "
+        "keyword, match_type, ad_product) DO UPDATE SET "
+        "campaign_name=excluded.campaign_name, impressions=excluded.impressions, "
+        "clicks=excluded.clicks, spend=excluded.spend, "
+        "ad_orders=excluded.ad_orders, ad_sales=excluded.ad_sales, "
+        "source=excluded.source, fetched_at=excluded.fetched_at",
+        (workspace_id, marketplace, date, str(cid),
+         m.get("campaign_name") or "", str(ad_group or ""), str(keyword or ""),
+         str(match_type or ""),
+         _int(m.get("impressions")), _int(m.get("clicks")), m.get("spend"),
+         _int(m.get("orders")), m.get("sales"), ad_product, "ads_api",
+         fetched_at))
+
+
 def _upsert_placement(conn, workspace_id, marketplace, date, cid, placement, m,
                       fetched_at, ad_product="SPONSORED_PRODUCTS"):
     """One campaign, one day, one placement. Its own table -- see store_rows."""
@@ -301,6 +349,10 @@ def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at,
                 "match_type": r.get("match_type"),
                 "campaign": r.get("campaign_name"),
                 "ad_group": r.get("ad_group"),
+                # THE DAY, carried through. Without this the report is asked at
+                # daily grain and then flattened on the way in, which is the
+                # worst of both: thirty times the rows and none of the dates.
+                "date": r.get("date"),
                 "impressions": r.get("impressions"), "clicks": r.get("clicks"),
                 "spend": r.get("spend"), "sales": r.get("sales"),
                 "orders": r.get("orders"), "units": r.get("units"),
@@ -336,6 +388,39 @@ def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at,
                               m, fetched_at, prod)
             n += 1
         out["ads_placement_daily"] = n
+        return out
+
+    # THE TARGETING REPORT IS A FIFTH GRAIN, and gets a fifth table.
+    #
+    # Same money as the campaign report, cut by what was targeted: one campaign
+    # on one day appears once per keyword and match type, and those rows add up
+    # to the campaign's day. Folding it anywhere existing would make every
+    # current screen count the same spend several times over -- the two-grain
+    # mistake this app has already paid for once. Its own table cannot be summed
+    # by accident.
+    if kind == "targeting":
+        n = 0
+        # THE KEY IS (day, campaign, targeting, match type) AND NOT THE AD GROUP.
+        #
+        # _fold drops any row whose every key part is not filled -- deliberately,
+        # so a blank never becomes a bucket. The ad group is blank on this
+        # report: it is asked for as adGroupId, and _ROW_MAP fills `ad_group`
+        # from adGroupName. Keyed on it, EVERY row was dropped -- 23,634 rows
+        # from Amazon and nothing stored, silently, because dropping is what
+        # that guard is for.
+        #
+        # It is carried as a DESCRIBING field instead of a keying one, which is
+        # also the honest grain: what the charts need is spend per match type
+        # per day, and two ad groups running the same keyword on the same match
+        # type in the same campaign are the same buy for that purpose.
+        folded = _fold(rows, ("date", "campaign_id", "keyword", "match_type"),
+                       keep=("campaign_name", "ad_group"))
+        for (date, cid, kw, mt), m in sorted(folded.items()):
+            _upsert_targeting(conn, workspace_id, marketplace, date, cid,
+                              m.get("ad_group") or "", kw, mt, m, fetched_at,
+                              prod)
+            n += 1
+        out["ads_targeting_daily"] = n
         return out
 
     if kind.endswith("campaign"):

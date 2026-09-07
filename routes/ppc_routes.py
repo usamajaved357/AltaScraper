@@ -775,12 +775,37 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                      "is how the figures get in.")),
             })
 
-        rows = _pv.load_rows(CONFIG_PATH, aid, mkt, meta["report_id"])
+        # THE DATE PICKER NOW REACHES THE SEARCH TERMS, when the rows carry days.
+        #
+        #     "The Search Terms page DOES respect the date picker ... The
+        #      backend re-queries the stored daily search term records for the
+        #      selected window. It is NOT a fixed batch sliced client-side."
+        #
+        # It could not before. The report was stored as one batch per window
+        # with no per-day figures, so any window asked for returned the same
+        # rows -- which is what Critical Rule 2 describes. Pulled at DAILY grain
+        # it carries the day, and a window can be asked for.
+        #
+        # BOTH KINDS CAN BE STORED AT ONCE -- an old uploaded file and a new
+        # daily sync -- so which case this account is in is measured rather than
+        # assumed, and sent to the screen so it can say why a total does or does
+        # not move. Undated rows are counted in every window rather than
+        # disappearing the moment a picker is touched.
+        _dw = _pv.dated_window(CONFIG_PATH, aid, mkt, meta["report_id"])
+        _qs, _qe = "", ""
+        if _dw.get("can_follow_picker"):
+            _qs = str(request.args.get("start") or "")[:10]
+            _qe = str(request.args.get("end") or "")[:10]
+        rows = _pv.load_rows(CONFIG_PATH, aid, mkt, meta["report_id"],
+                             start=_qs or None, end=_qe or None)
         brands = _pv.brand_terms(CONFIG_PATH, aid)
         total_sales = None
-        if meta.get("date_from") and meta.get("date_to"):
-            total_sales = _pv.total_sales_for(CONFIG_PATH, aid, mkt,
-                                              meta["date_from"], meta["date_to"])
+        # TACOS divides by the sales of the SAME days the spend covers. When the
+        # picker is driving, that is the picked window; otherwise it is the
+        # window the report itself covers.
+        _ts, _te = (_qs or meta.get("date_from")), (_qe or meta.get("date_to"))
+        if _ts and _te:
+            total_sales = _pv.total_sales_for(CONFIG_PATH, aid, mkt, _ts, _te)
         totals = _pv.totals(rows, total_sales=total_sales)
 
         # AGAINST THE PREVIOUS REPORT. Orbit puts a period-over-period change
@@ -809,6 +834,12 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
             "campaigns": _pv.by_campaign(rows),
             "branded": _pv.branded_split(rows, brands),
             "brand_terms": brands,
+            # Whether the figures on this page follow the date picker, and why.
+            # A page whose total does not move when the dates do will be
+            # noticed; this is the difference between it looking broken and it
+            # explaining itself.
+            "dated": _dw,
+            "window": ({"start": _qs, "end": _qe} if _qs and _qe else None),
             "note": "",
         })
 

@@ -522,8 +522,28 @@ def report_meta(config_path, workspace_id, marketplace):
             "date_to": r["b"], "rows": r["n"], "uploaded_at": r["up"]}
 
 
-def load_rows(config_path, workspace_id, marketplace, report_id=None):
-    """The stored search-term rows for the newest report, or a named one."""
+def load_rows(config_path, workspace_id, marketplace, report_id=None,
+              start=None, end=None):
+    """The stored search-term rows for the newest report, or a named one.
+
+    WITH A DATE WINDOW, WHEN THE ROWS CARRY DATES AND ONE IS ASKED FOR.
+
+        "The Search Terms page DOES respect the date picker ... The backend
+         re-queries the stored daily search term records for the selected
+         window. It is NOT a fixed batch sliced client-side."
+
+    Rows pulled at DAILY grain carry the day their spend happened on, so a
+    window can be asked for. Rows stored before that -- and every row from an
+    uploaded Seller Central file -- have no date, because a batch covering
+    thirty days cannot be split back into thirty.
+
+    THOSE UNDATED ROWS ARE KEPT, NOT FILTERED OUT. Dropping them would make an
+    account that has only ever uploaded a file show an empty page the moment a
+    date picker moved, which is a worse answer than "this report covers its own
+    window". dated_window() below says which case a screen is in, so it can
+    tell the reader rather than leaving them to wonder why the total will not
+    move.
+    """
     from data import db as _db
     try:
         conn = _db.get_db(config_path)
@@ -534,13 +554,76 @@ def load_rows(config_path, workspace_id, marketplace, report_id=None):
         if not m:
             return []
         report_id = m["report_id"]
+    q = ("SELECT * FROM ppc_search_terms WHERE workspace_id=? AND "
+         "marketplace=? AND report_id=?")
+    args = [workspace_id, marketplace, report_id]
+    if start and end:
+        # A row with no date is not excluded by a date filter -- it is a row
+        # whose day is unknown, and IS NULL keeps it rather than silently
+        # deciding it falls outside.
+        q += " AND (date IS NULL OR (date >= ? AND date <= ?))"
+        args.extend([str(start)[:10], str(end)[:10]])
     try:
-        return [dict(r) for r in conn.execute(
-            "SELECT * FROM ppc_search_terms WHERE workspace_id=? AND "
-            "marketplace=? AND report_id=?",
-            (workspace_id, marketplace, report_id))]
+        return [dict(r) for r in conn.execute(q, args)]
     except Exception:
         return []
+
+
+def dated_window(config_path, workspace_id, marketplace, report_id=None):
+    """Can this account's search terms follow a date picker? And over what.
+
+    Returns a dict the screen can print. The distinction it draws is the whole
+    reason section 17 and Critical Rule 2 do not contradict each other:
+
+        dated rows      pulled at DAILY grain. The picker works, over `first`
+                        to `last`.
+        undated rows    one batch over a window. The picker cannot work, and
+                        the screen must show the window the data covers rather
+                        than the one that was asked for.
+
+    An account can hold both at once -- an old uploaded file and a new daily
+    sync -- so both counts are returned rather than one flag.
+    """
+    from data import db as _db
+    out = {"dated": 0, "undated": 0, "first": "", "last": "",
+           "can_follow_picker": False, "why": ""}
+    try:
+        conn = _db.get_db(config_path)
+        if not report_id:
+            m = report_meta(config_path, workspace_id, marketplace)
+            if not m:
+                out["why"] = "No Search Term Report is stored for this account."
+                return out
+            report_id = m["report_id"]
+        r = conn.execute(
+            "SELECT SUM(CASE WHEN date IS NULL THEN 0 ELSE 1 END) dated, "
+            "       SUM(CASE WHEN date IS NULL THEN 1 ELSE 0 END) undated, "
+            "       MIN(date) a, MAX(date) b FROM ppc_search_terms "
+            "WHERE workspace_id=? AND marketplace=? AND report_id=?",
+            (workspace_id, marketplace, report_id)).fetchone()
+    except Exception:
+        out["why"] = "The stored report could not be read."
+        return out
+    if not r:
+        return out
+    out["dated"] = int(r["dated"] or 0)
+    out["undated"] = int(r["undated"] or 0)
+    out["first"], out["last"] = (r["a"] or ""), (r["b"] or "")
+    out["can_follow_picker"] = bool(out["dated"])
+    if out["dated"] and not out["undated"]:
+        out["why"] = ("Search terms are stored per day (%s to %s), so this page "
+                      "follows the date picker." % (out["first"], out["last"]))
+    elif out["dated"] and out["undated"]:
+        out["why"] = ("%d rows are stored per day (%s to %s) and %d came from a "
+                      "report covering a whole window, which cannot be split "
+                      "into days. The undated rows are counted in every window."
+                      % (out["dated"], out["first"], out["last"], out["undated"]))
+    else:
+        out["why"] = ("These search terms came from a report covering one whole "
+                      "window, which Amazon does not break down by day, so the "
+                      "figures do not change with the date picker. A sync from "
+                      "the Advertising API stores them per day.")
+    return out
 
 
 def stored_totals(config_path, workspace_id, marketplace):
@@ -677,12 +760,23 @@ def store_rows(config_path, workspace_id, marketplace, rows, report_id=None,
                    or r.get("search_term") or "").strip()
         if not term:
             continue
+        # THE DAY, WHEN THE ROW HAS ONE. NULL when it does not, never a guess.
+        #
+        # An API pull asked at DAILY grain carries the date its spend happened
+        # on, which is what lets the Search Terms page follow the date picker.
+        # An uploaded Seller Central file, and every row stored before that
+        # change, carries only the window -- and a batch covering thirty days
+        # cannot be split back into thirty. Writing date_from for those would
+        # claim a month of spend landed on its first morning, which is a made-up
+        # fact that reads exactly like a measured one.
+        _day = str(r.get("date") or "").strip()[:10] or None
         conn.execute(
             "INSERT INTO ppc_search_terms (workspace_id, marketplace, "
-            " report_id, date_from, date_to, search_term, keyword, match_type, "
-            " campaign, ad_group, impressions, clicks, spend, sales, orders, "
-            " units, uploaded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (workspace_id, marketplace, rid, date_from, date_to, term,
+            " report_id, date, date_from, date_to, search_term, keyword, "
+            " match_type, campaign, ad_group, impressions, clicks, spend, "
+            " sales, orders, units, uploaded_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (workspace_id, marketplace, rid, _day, date_from, date_to, term,
              str(r.get("triggering_keyword") or r.get("keyword") or ""),
              str(r.get("match_type") or ""), str(r.get("campaign") or ""),
              str(r.get("ad_group") or ""),

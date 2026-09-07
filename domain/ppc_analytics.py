@@ -107,6 +107,116 @@ def window(days=30, end=None):
 
 
 # ---------------------------------------------------------------------------
+# Which days are finished being counted
+# ---------------------------------------------------------------------------
+
+# THE LAST TWO DAYS ARE NOT WRONG, THEY ARE UNFINISHED.
+#
+#     "Trailing 2-day exclusion: The last 2 complete days are
+#      attribution-immature. Exclude them from any optimization/analysis
+#      calculations. Display them on charts but mark as immature."
+#
+# A click today can be credited with a sale up to seven days later (fourteen on
+# Sponsored Brands), and the day of the CLICK owns that sale. So a recent day
+# has all of its spend and only some of its sales, and every ratio built on it
+# is wrong in one direction:
+#
+#     ACOS       too HIGH   spend is complete, sales are not
+#     ROAS       too LOW
+#     CVR        too LOW    clicks booked, orders not yet attributed
+#     profit     too LOW
+#     wasted     too HIGH   a term that has converted looks like one that never will
+#
+# Always the same direction: recent advertising looks worse than it was. Judged
+# on it, the obvious action is to cut bids on campaigns that were fine.
+#
+# TWO NUMBERS, AND THEY ARE NOT THE SAME THING:
+#
+#     IMMATURE_DAYS   how long attribution keeps moving. A judgement about
+#                     Amazon's attribution windows.
+#     the ads feed's own lag, which is a separate fact measured per account by
+#     latest_ad_day() -- how far behind Amazon's REPORTING is.
+#
+# Both are handled: mature_end() steps back from the last day that has DATA,
+# not from today, so an account whose feed is already three days behind is not
+# penalised twice.
+IMMATURE_DAYS = 2
+
+
+def mature_end(config_path, workspace_id, marketplace, end=None):
+    """The last day whose attribution can be trusted, or "" when none can.
+
+    Measured from the newest day that actually has advertising data rather than
+    from the calendar: an account whose feed is four days behind has no
+    immature days in view at all, and clipping two more off it would throw away
+    days that finished counting long ago.
+
+    Returns "" when every day in the window is still maturing -- which is a real
+    answer, not an error, and callers say so rather than showing a figure built
+    on nothing.
+    """
+    latest = latest_ad_day(config_path, workspace_id, marketplace)
+    if not latest:
+        return ""
+    cap = _dt.date.fromisoformat(latest) - _dt.timedelta(days=IMMATURE_DAYS)
+    if end:
+        try:
+            asked = _dt.date.fromisoformat(str(end)[:10])
+            if asked < cap:
+                cap = asked
+        except ValueError:
+            pass
+    return cap.isoformat()
+
+
+def immature_days(config_path, workspace_id, marketplace, start, end):
+    """Which days in a window are still being attributed. For MARKING, not hiding.
+
+    The spec is explicit that these are shown: "Display them on charts but mark
+    as immature." A chart that silently stops two days early looks like an
+    account that stopped advertising, which is a worse lie than the one being
+    fixed.
+    """
+    cut = mature_end(config_path, workspace_id, marketplace)
+    if not cut:
+        return []
+    try:
+        s = _dt.date.fromisoformat(str(start)[:10])
+        e = _dt.date.fromisoformat(str(end)[:10])
+        c = _dt.date.fromisoformat(cut)
+    except ValueError:
+        return []
+    out, d = [], max(s, c + _dt.timedelta(days=1))
+    while d <= e:
+        out.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    return out
+
+
+def maturity(config_path, workspace_id, marketplace, start, end):
+    """Everything a screen needs to say which days are still moving.
+
+    One dict so the browser asks once and every panel agrees, rather than each
+    working out its own idea of "recent" (Rule 12).
+    """
+    days = immature_days(config_path, workspace_id, marketplace, start, end)
+    cut = mature_end(config_path, workspace_id, marketplace)
+    return {
+        "immature_days": days,
+        "mature_end": cut,
+        "immature_count": len(days),
+        "window_days": IMMATURE_DAYS,
+        "why": (
+            "Amazon credits a sale to the day of the CLICK, and a click can be "
+            "credited up to 7 days later (14 on Sponsored Brands). The last %d "
+            "day%s therefore have all their spend and only some of their sales, "
+            "so their ACOS reads high and their profit low. They are drawn, and "
+            "marked, but left out of the figures used to judge performance."
+            % (IMMATURE_DAYS, "" if IMMATURE_DAYS == 1 else "s")),
+    }
+
+
+# ---------------------------------------------------------------------------
 # What can and cannot be drawn
 # ---------------------------------------------------------------------------
 
@@ -611,15 +721,79 @@ def change(now, before):
             out[k] = None
             continue
         if k in _POINT_METRICS:
-            # A ratio of zero before is still a real starting point -- 0% ACOS
-            # rising to 30% is +30 points -- so this does NOT bail out on a zero
-            # base the way the percentage branch has to.
+            # A RATIO OFF A FLOOR-LEVEL BASE IS ARITHMETIC, NOT NEWS.
+            #
+            #     "When prior period had near-zero spend, TACOS change can show
+            #      +922% or similar. This is mathematically correct but
+            #      meaningless. Consider: if prior TACOS < 2%, suppress the %
+            #      change and show 'N/A -- prior period baseline too low'"
+            #
+            # Applied in POINTS as well as per cent, and to every ratio rather
+            # than to TACOS alone, because the fault is the base and not the
+            # metric: a prior ACOS of 0.4% rising to 30% is a true +29.6 points
+            # and still describes an account that barely advertised last month
+            # against one that did. The screen prints the reason from
+            # change_floor() instead of a number nobody can act on.
+            if b is not None and 0 < abs(float(b)) < _RATIO_FLOOR_PCT:
+                out[k] = None
+                continue
             out[k] = round(float(v) - float(b), 1)
             continue
         if not b:
             out[k] = None
             continue
+        # A PERCENTAGE OFF A TINY BASE IS ARITHMETIC, NOT NEWS -- the same fault
+        # as the ratio floor above, and the spec gives the numbers:
+        #     Spend  < 10.00   "$5 -> $11,768 shows '--' not +235,260%"
+        #     Sales  < 25.00
+        #     Orders / Units < 3
+        floor = _COUNT_FLOORS.get(k)
+        if floor is not None and abs(float(b)) < floor:
+            out[k] = None
+            continue
         out[k] = round(100.0 * (float(v) - float(b)) / abs(float(b)), 1)
+    return out
+
+
+# Below these, the previous period is too small to compare a percentage
+# against. Section 20, "Comparison Period Suppression Thresholds".
+_COUNT_FLOORS = {
+    "spend": 10.0,
+    "sales": 25.0, "ad_sales": 25.0, "total_sales": 25.0,
+    "orders": 3.0, "ad_orders": 3.0, "units": 3.0, "purchases": 3.0,
+}
+
+
+# Below this, a ratio's previous value is too small to compare against. The
+# spec names 2% for TACOS; the same floor is used for every ratio because the
+# problem is the size of the base, not which metric sits on it.
+_RATIO_FLOOR_PCT = 2.0
+
+
+def change_floor(now, before):
+    """Which metrics had their change SUPPRESSED, and the sentence to show.
+
+    Separate from change() so a blank arrow can explain itself. A dash with no
+    reason reads as missing data, which is a different and wrong finding: the
+    data is there, it is the comparison that would be meaningless.
+    """
+    out = {}
+    for k, v in (now or {}).items():
+        b = (before or {}).get(k)
+        if not isinstance(v, (int, float)) or not isinstance(b, (int, float)):
+            continue
+        name = k.replace("_pct", "").replace("_", " ")
+        if k in _POINT_METRICS:
+            if 0 < abs(float(b)) < _RATIO_FLOOR_PCT:
+                out[k] = ("No comparison: the previous period's %s was %.2f%%, "
+                          "too low a base to measure a move against."
+                          % (name, float(b)))
+            continue
+        floor = _COUNT_FLOORS.get(k)
+        if floor is not None and 0 < abs(float(b)) < floor:
+            out[k] = ("No comparison: the previous period's %s was only %s, too "
+                      "small a base for a percentage to mean anything."
+                      % (name, ("%.2f" % float(b)).rstrip("0").rstrip(".")))
     return out
 
 
@@ -634,7 +808,8 @@ def change_units(now=None):
 # ---------------------------------------------------------------------------
 
 
-def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None):
+def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None,
+              judge_end=None):
     """Every campaign in the window, with an ESTIMATED profit and a cohort.
 
     THE PROFIT IS ESTIMATED AND SAYS SO. Amazon attributes sales to a campaign;
@@ -654,20 +829,102 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
     be = r.get("breakeven_acos_pct")
 
     conn = _db.get_db(config_path)
+    SQL = ("SELECT campaign_id, MAX(campaign_name) name, MAX(status) status, "
+           "MAX(budget) budget, MAX(ad_product) ad_product, "
+           "SUM(impressions) impressions, SUM(clicks) clicks, "
+           "SUM(spend) spend, SUM(ad_orders) orders, SUM(ad_sales) sales "
+           "FROM ads_campaign_daily WHERE workspace_id=? AND marketplace=? "
+           "AND date>=? AND date<=? GROUP BY campaign_id")
+
+    # WHAT IS SHOWN AND WHAT IS JUDGED ARE DIFFERENT WINDOWS, deliberately.
+    #
+    #     "Trailing 2-day exclusion: The last 2 complete days are
+    #      attribution-immature. Exclude them from any optimization/analysis
+    #      calculations. Display them on charts but mark as immature."
+    #
+    # The money columns cover the FULL window, because that is what the account
+    # actually spent and a table that quietly showed less would not reconcile
+    # with the KPI row above it. The COHORT and the OPPORTUNITY SCORE -- the two
+    # fields that say "do something about this campaign" -- are worked out on
+    # the days that have finished being attributed.
+    #
+    # Without this, a campaign that converted perfectly well two days ago has
+    # its spend counted and its sales not, so it reads as unprofitable with a
+    # high opportunity score, and the obvious action is to cut a campaign that
+    # was fine. The error is one-directional, so it is not noise: recent
+    # advertising ALWAYS looks worse than it was.
+    # THE TABLE-WIDE FIGURES THE OPPORTUNITY SCORE NEEDS, worked out ONCE.
+    #
+    # "Money at stake" is 40 x sqrt(spend / max_spend), so it is a property of
+    # the whole set rather than of one row. Two consequences, both deliberate:
+    #
+    #   the max comes from the UN-PAGINATED, UNFILTERED set. Section 18:
+    #   "Absolute, not re-scaled on filter." A score that moved when somebody
+    #   picked a filter would not be a property of the campaign at all, and two
+    #   people looking at the same campaign would read different numbers.
+    #
+    #   it is taken from the JUDGED window when there is one, so the score and
+    #   the cohort rest on the same days.
+    judged = {}
+    jend = str(judge_end or "")[:10]
+    if jend and jend < str(end)[:10]:
+        if jend >= str(start)[:10]:
+            for row in conn.execute(SQL, (workspace_id, marketplace, start, jend)):
+                judged[row["campaign_id"]] = dict(row)
+        else:
+            # The whole window is still maturing. Judging on nothing is worse
+            # than judging on immature data, so nothing is judged and the
+            # screen is told why.
+            judged = None
+
+    raw = [dict(r) for r in conn.execute(SQL, (workspace_id, marketplace,
+                                               start, end))]
+
+    # The scoring set, and the biggest spend in it. Taken from whichever window
+    # the scores will be made on, so the denominator and the numerators are the
+    # same days.
+    if judged:
+        _scoring = list(judged.values())
+    elif judged is None:
+        _scoring = []
+    else:
+        _scoring = raw
+    _spends = [_f(r.get("spend")) or 0.0 for r in _scoring]
+    top_spend = max(_spends) if _spends else None
+    cap_cpo = max_cost_per_order(
+        r, totals_for(config_path, workspace_id, marketplace, start,
+                      jend if judged else end))
+
     out = []
-    for row in conn.execute(
-            "SELECT campaign_id, MAX(campaign_name) name, MAX(status) status, "
-            "MAX(budget) budget, MAX(ad_product) ad_product, "
-            "SUM(impressions) impressions, SUM(clicks) clicks, "
-            "SUM(spend) spend, SUM(ad_orders) orders, SUM(ad_sales) sales "
-            "FROM ads_campaign_daily WHERE workspace_id=? AND marketplace=? "
-            "AND date>=? AND date<=? GROUP BY campaign_id",
-            (workspace_id, marketplace, start, end)):
-        d = dict(row)
+    for d in raw:
         spend, sales = _f(d["spend"]), _f(d["sales"])
         profit = None
         if can_profit and spend is not None and sales is not None:
             profit = round(sales - spend - sales * float(fee) - sales * float(cogs), 2)
+
+        # The figures the judgement is made on: the mature ones when there are
+        # any, otherwise the same ones being displayed.
+        if judged is None:
+            j = None
+        elif judged:
+            j = judged.get(d["campaign_id"]) or {"spend": 0, "sales": 0,
+                                                 "clicks": 0, "orders": 0}
+        else:
+            j = d
+        if j is None:
+            j_cohort, j_opp, j_profit = None, None, None
+        else:
+            j_spend, j_sales = _f(j["spend"]), _f(j["sales"])
+            j_profit = None
+            if can_profit and j_spend is not None and j_sales is not None:
+                j_profit = round(j_sales - j_spend - j_sales * float(fee)
+                                 - j_sales * float(cogs), 2)
+            j_cohort = _cohort(j_spend, j_sales, j_profit, be, can_profit)
+            j_opp = _opportunity(j_spend, j_sales, _f(j["clicks"]),
+                                 _f(j["orders"]), be,
+                                 max_spend=top_spend,
+                                 max_cost_per_order=cap_cpo)
+
         d.update({
             "spend": (round(spend, 2) if spend is not None else None),
             "sales": (round(sales, 2) if sales is not None else None),
@@ -675,13 +932,18 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
             "roas": _rate(sales, spend, pct=False, nd=2),
             "ctr_pct": _rate(_f(d["clicks"]), _f(d["impressions"]), nd=2),
             "cpc": _rate(spend, _f(d["clicks"]), pct=False, nd=2),
+            # CPA IS UNDEFINED WITHOUT AN ORDER, not zero: "-- when orders = 0
+            # (undefined, not $0)". _rate already returns None on a nil divisor.
             "cpa": _rate(spend, _f(d["orders"]), pct=False, nd=2),
             "cvr_pct": _rate(_f(d["orders"]), _f(d["clicks"]), nd=2),
             "profit": profit,
             "profit_estimated": can_profit,
-            "cohort": _cohort(spend, sales, profit, be, can_profit),
-            "opportunity": _opportunity(spend, sales, _f(d["clicks"]),
-                                        _f(d["orders"]), be),
+            "cohort": j_cohort,
+            "opportunity": j_opp,
+            # So the row can say which days its verdict rests on, and so the
+            # two numbers being different is legible rather than looking wrong.
+            "judged_to": (jend if judged else ""),
+            "judged_profit": j_profit,
         })
         out.append(d)
     out.sort(key=lambda x: (x["spend"] is None, -(x["spend"] or 0)))
@@ -701,51 +963,147 @@ def _cohort(spend, sales, profit, breakeven_acos, can_profit):
         return NO_SALES if spend else NO_ACTIVITY
     if not can_profit or profit is None:
         return None
-    if profit > 0:
-        # MARGINAL is "profitable, but only just" -- inside a tenth of
-        # break-even, where a small CPC rise takes it under.
-        acos = _rate(spend, sales)
-        if breakeven_acos and acos is not None and acos > breakeven_acos * 0.9:
-            return MARGINAL
-        return PROFITABLE
-    return UNPROFITABLE
+    # MARGINAL IS MEASURED AGAINST SPEND, NOT AGAINST BREAK-EVEN ACOS.
+    #
+    # The spec says so twice, in the same words both times:
+    #     section 5   "Marginal | profitable by < 10% of spend"
+    #     section 18  "Profitable | profit > 0 AND profit > 10% of spend"
+    #                 "Marginal   | 0 <= profit <= 10% of spend"
+    #
+    # This used a rule of our own -- profitable, but with ACOS within a tenth of
+    # break-even. The two disagree in an important place. Break-even ACOS is an
+    # ACCOUNT-WIDE rate, so a campaign selling a product with a fatter margin
+    # than the account average was called Marginal for sitting near a threshold
+    # that does not apply to it, while its actual profit was healthy. Profit
+    # over spend asks the question directly and needs no account rate at all.
+    #
+    # `breakeven_acos` is still taken so no caller changes, and is no longer
+    # used to sort the bucket.
+    if profit <= 0:
+        return UNPROFITABLE
+    s = _f(spend) or 0.0
+    if s and profit <= s * 0.10:
+        return MARGINAL
+    return PROFITABLE
 
 
-def _opportunity(spend, sales, clicks, orders, breakeven_acos):
+# The volume of wasted clicks that counts as a full finding. The spec's number
+# and the spec's reason: "Threshold of 30 = empirical sample size for 3.3% CVR
+# significance" -- below it, no orders is not yet evidence of anything.
+UNCONVERTED_CLICK_THRESHOLD = 30
+
+
+def _opportunity(spend, sales, clicks, orders, breakeven_acos,
+                 max_spend=None, max_cost_per_order=None):
     """0-100: how much is there to gain by touching this one?
 
-    OUR OWN DEFINITION, STATED, because Orbit does not publish its own and
-    copying an unexplained number is how a screen ends up with a score nobody
-    can act on. Three things raise it, all of them things you would actually do
-    something about:
+    THE SPEC'S EXACT ARITHMETIC (section 20), not an approximation of it:
 
-        money at stake     a campaign spending 2 pounds is not worth an hour
-        distance from      the further past break-even, the more there is to fix
-          break-even
-        clicks with no     spend that has bought traffic and no orders is the
-          orders           clearest waste there is
+        Opportunity = min(100, round(S_spend + S_breakeven + S_unconverted))
+
+        S_spend       40 x sqrt(spend / max_spend)
+        S_breakeven   sales > 0:  35 x min(1, (acos - be) / be)
+                      sales = 0:  35 x min(1, spend / max_cost_per_order)
+        S_unconverted 25 x min(1, (clicks - orders) / 30)
+
+    THREE PLACES THE EARLIER VERSION WAS WRONG, and the spec names the harm in
+    the first one itself:
+
+      A CAMPAIGN THAT SPENT 50p AND SOLD NOTHING SCORED THE FULL 35. Zero sales
+      means an undefined ACOS, and undefined was read as "the worst case there
+      is". So one test click on a new campaign outranked a campaign quietly
+      losing money all month. The spec: "This prevents a single test click from
+      scoring 35 points." It is now scaled by how much was spent against what an
+      order is allowed to cost.
+
+      MONEY AT STAKE WAS ABSOLUTE, not relative to the table. `sqrt(spend)/20`
+      hard-codes what "a lot" means -- it saturates near 400 pounds, so on this
+      account, where the biggest campaign spends 34, every campaign scored under
+      12 on a component worth 40 and the whole column was compressed into its
+      bottom third. Against `max_spend` the biggest spender always scores 40 and
+      the rest are placed against it, which is what makes the column sortable.
+
+      UNCONVERTED CLICKS WERE A RATE, not a volume. The old form scored by CVR
+      against a 10% target, so 5 clicks and no orders scored the same 25 as
+      1,000 clicks and no orders. The spec is explicit that this one is
+      "Based on VOLUME of wasted clicks, not percentage": 990 unconverted clicks
+      is a finding, 5 is a Tuesday.
+
+    max_spend and max_cost_per_order are passed in because they are properties
+    of the WHOLE table, not of one row. campaigns() works them out once. When
+    max_spend is absent the money component cannot be placed and is scored 0
+    rather than guessed -- a component that cannot be measured must not quietly
+    become an average one.
 
     None when there is nothing to score -- no spend means no opportunity and no
     problem, and a 0 would sort alongside campaigns that are merely fine.
     """
     s = _f(spend)
-    if not s:
+    if not s or s <= 0:
         return None
     score = 0.0
-    # Money at stake, flattening out: 50 pounds and 500 pounds are both "worth
-    # looking at", and a linear scale would let one big campaign own the list.
-    score += min(40.0, 40.0 * (s ** 0.5) / 20.0)
-    acos = _rate(s, _f(sales))
+
+    # 1. MONEY AT STAKE, against the biggest spender in the same table.
+    top = _f(max_spend)
+    if top and top > 0:
+        score += 40.0 * min(1.0, (max(0.0, s) / top) ** 0.5)
+
+    # 2. DISTANCE PAST BREAK-EVEN.
+    sa = _f(sales)
+    acos = _rate(s, sa)
     if acos is None:
-        score += 35.0           # spent, sold nothing: the clearest case there is
-    elif breakeven_acos and acos > breakeven_acos:
-        score += min(35.0, 35.0 * (acos - breakeven_acos) / max(breakeven_acos, 1))
+        # Spent and sold nothing. Scaled by spend against what one order is
+        # allowed to cost, so a 50p experiment is not the same finding as 25
+        # pounds of silence. Without that ceiling the size cannot be judged, and
+        # the component is left at 0 rather than defaulted to the full 35.
+        cap = _f(max_cost_per_order)
+        if cap and cap > 0:
+            score += 35.0 * min(1.0, s / cap)
+    elif breakeven_acos and float(breakeven_acos) > 0:
+        rel = (acos - float(breakeven_acos)) / float(breakeven_acos)
+        score += 35.0 * min(1.0, max(0.0, rel))
+
+    # 3. UNCONVERTED CLICKS, by volume.
     c, o = _f(clicks) or 0, _f(orders) or 0
-    if c >= 10 and not o:
-        score += 25.0
-    elif c and o:
-        score += max(0.0, 25.0 * (1.0 - min(1.0, (o / c) / 0.10)))
+    unconverted = max(0.0, float(c) - float(o))
+    if unconverted:
+        score += 25.0 * min(1.0, unconverted / float(UNCONVERTED_CLICK_THRESHOLD))
+
     return int(round(min(100.0, score)))
+
+
+def max_cost_per_order(rate_info, totals=None):
+    """The most one order may cost before it stops paying. None when unknowable.
+
+    The ceiling the zero-sales branch of the opportunity score is measured
+    against -- the spec calls it max_cost_per_order and defines it as the
+    break-even CPA.
+
+        break-even CPA = what an order is worth x the share of it advertising
+                         may take = average order value x break-even ACOS
+
+    None rather than a default when either half is missing. A guessed ceiling
+    would silently rank every zero-sales campaign against a number nobody chose.
+    """
+    be = (rate_info or {}).get("breakeven_acos_pct")
+    if not be or float(be) <= 0:
+        return None
+    t = totals or {}
+    # totals_for() names these `sales` and `orders` -- they are already
+    # ad-attributed, which is the whole of what ads_daily holds. The ad_*
+    # spellings are accepted too so a caller holding a differently-shaped
+    # totals dict is not silently answered None.
+    sales = _f(t.get("sales"))
+    if sales is None:
+        sales = _f(t.get("ad_sales"))
+    orders = _f(t.get("orders"))
+    if orders is None:
+        orders = _f(t.get("ad_orders"))
+    if not sales or not orders or orders <= 0:
+        return None
+    aov = float(sales) / float(orders)
+    v = aov * (float(be) / 100.0)
+    return round(v, 2) if v > 0 else None
 
 
 def cohorts(config_path, workspace_id, marketplace, start, end, rows=None,
@@ -779,6 +1137,12 @@ def cohorts(config_path, workspace_id, marketplace, start, end, rows=None,
         # nothing to say why.
         out["unclassified"] = unknown
     return out
+
+
+# Clicks a term must have taken, with no order, before it is worth negating.
+# Section 20's "Qualified" wasted-spend definition. Below this, no orders is
+# not yet evidence that the term will never convert.
+QUALIFIED_CLICKS = 10
 
 
 def _report_window_spend(config_path, workspace_id, marketplace, start, end):
@@ -967,13 +1331,21 @@ def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None,
         # useless as a list. The floor is a SECOND figure beside the total, never
         # instead of it: quietly reporting only the actionable part would
         # understate the waste, which is the opposite of the point.
+        # THE GATE IS TEN CLICKS, and the spec gives both the number and the
+        # reason: "clicks >= 10 AND orders = 0 ... The qualification gate
+        # prevents generating optimization actions for 1,400+ single-click terms
+        # that would clog campaign negative keyword limits with noise."
+        #
+        # It was three clicks OR a pound spent, which is a different and weaker
+        # question -- a term with two clicks and 1.10 spent passed it, and two
+        # clicks is not yet evidence that a term will never convert. Ten is a
+        # sample; three is a coincidence.
         big = conn.execute(
             "SELECT ROUND(SUM(spend),2) s, COUNT(*) n FROM ppc_search_terms "
             "WHERE workspace_id=? AND marketplace=? AND report_id=? "
-            "AND COALESCE(orders,0) = 0 "
-            "AND (COALESCE(clicks,0) >= ? OR COALESCE(spend,0) >= ?)",
+            "AND COALESCE(orders,0) = 0 AND COALESCE(clicks,0) >= ?",
             (workspace_id, marketplace, meta["report_id"],
-             int(min_clicks or 3), float(min_spend or 1.0))).fetchone()
+             int(min_clicks or QUALIFIED_CLICKS))).fetchone()
     except Exception:
         return {"spend": None, "terms": 0,
                 "why": "No search term report is stored."}
@@ -984,11 +1356,23 @@ def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None,
     return {"spend": _f(r["s"]), "terms": int(r["n"]),
             "definition": "spend on search terms that took a click and "
                           "produced no order",
-            # The actionable subset, beside the total and never instead of it.
-            "actionable_spend": (_f(big["s"]) if big else None),
+            # TWO DEFINITIONS, BOTH SHOWN, and the spec is explicit that it
+            # wants both: the full universe is "Financial audit / reporting"
+            # and the qualified subset is "Actionable optimization". Reporting
+            # only the actionable part would understate the waste; reporting
+            # only the total gives a list of 1,400 single-click terms nobody
+            # can act on.
+            # NOTHING QUALIFYING IS A MEASURED ZERO, NOT AN UNKNOWN. SUM over no
+            # rows is NULL, and passing that through would draw a dash -- which
+            # on this app means "could not be worked out". Here it was worked
+            # out, and the answer is that no term has taken ten clicks without
+            # converting, which is a good result and should read as one.
+            "actionable_spend": ((_f(big["s"]) or 0.0)
+                                 if (big and (big["n"] or 0)) else
+                                 (0.0 if big is not None else None)),
             "actionable_terms": int((big["n"] if big else 0) or 0),
-            "actionable_rule": ("at least %d clicks, or at least %.2f spent"
-                                % (int(min_clicks or 3), float(min_spend or 1.0))),
+            "actionable_rule": ("at least %d clicks and no orders"
+                                % int(min_clicks or QUALIFIED_CLICKS)),
             # THE SPEND OVER THE REPORT'S OWN WINDOW, so anything expressing
             # wasted spend as a SHARE divides two figures covering the same
             # days. Dividing it by the date picker's spend gave 144% on a
@@ -1108,12 +1492,25 @@ def asins(config_path, workspace_id, marketplace, start, end, rate_info=None):
 # ---------------------------------------------------------------------------
 
 
-def terms(config_path, workspace_id, marketplace, rate_info=None, limit=1000):
+def terms(config_path, workspace_id, marketplace, rate_info=None, limit=1000,
+          start=None, end=None):
     """Every stored search term, with a branded flag and an opportunity score.
 
     The reading and the branded test both belong to domain/ppc_view, which the
     existing PPC screen already uses -- asked, not reimplemented, so one term
     cannot be branded on one screen and not on another (Rule 12).
+
+    A WINDOW IS HONOURED WHEN THE ROWS CARRY DAYS.
+
+        "The Search Terms page DOES respect the date picker ... The backend
+         re-queries the stored daily search term records for the selected
+         window. It is NOT a fixed batch sliced client-side."
+
+    Passed straight to load_rows, which keeps undated rows in every window --
+    an account whose report came from an uploaded file has no days to filter on,
+    and emptying its table the moment a picker moved would be a worse answer
+    than showing the window the report actually covers. ppc_view.dated_window()
+    says which case a screen is in.
     """
     from domain import ppc_view as _pv
 
@@ -1123,7 +1520,8 @@ def terms(config_path, workspace_id, marketplace, rate_info=None, limit=1000):
     be = r.get("breakeven_acos_pct")
 
     brands = _pv.brand_terms(config_path, workspace_id)
-    rows = _pv.load_rows(config_path, workspace_id, marketplace)
+    rows = _pv.load_rows(config_path, workspace_id, marketplace,
+                         start=start, end=end)
     out = []
     for row in rows[:limit]:
         d = dict(row)

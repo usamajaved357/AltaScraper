@@ -88,7 +88,15 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "days": days, "cumulative": cum,
             # THE PAGE'S CENTRAL LIMITATION, sent so the screen states it rather
             # than quietly offering day buttons where a mockup promised hours.
-            "hourly": {"available": False, "why": _lt.HOURLY_WHY},
+            #
+            # ASKED, NOT ASSERTED. This was a hardcoded False. It now comes from
+            # domain/live_tracker.hourly_state, which asks domain/ams -- the one
+            # module that decides whether hourly data exists anywhere in the app
+            # (Rule 12). The spec defers this whole page pending AWS: "Requires
+            # AMS. Currently deferred because Talal doesn't have an AWS
+            # account." If a queue is ever added and rows land, this flips on
+            # its own, here and on PPC Analytics, without either screen changing.
+            "hourly": _lt.hourly_state(CONFIG_PATH),
         })
 
     @app.route("/ppc/live/asin")
