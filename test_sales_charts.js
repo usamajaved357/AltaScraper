@@ -129,8 +129,15 @@ console.log("\n=== drag across to zoom, the Keepa gesture ===");
 truthy("a press starts a range", html.includes("onmousedown=\"_scDragStart("));
 truthy("  releasing ends it", html.includes("onmouseup=\"_scDragEnd("));
 truthy("  and the range shades while being chosen", html.includes("_sel"));
-truthy("the chart tells you the gesture exists",
-       html.includes("drag across to zoom"));
+// THE GESTURE IS NO LONGER ADVERTISED IN PROSE, by request: "delete this line
+// Hover for the day's figures · drag across to zoom · click a name below to
+// hide that line". The three assertions above -- mousedown, mouseup and the
+// shaded selection -- are what prove the gesture still WORKS, and they are the
+// ones worth keeping. This asserts the sentence is gone and that the readout
+// element it shared a row with is not.
+truthy("the instruction line is gone",
+       !html.includes("click a name below to hide that line"));
+truthy("  while the hover readout element remains", html.includes("_read"));
 truthy("sales.js turns two columns back into two dates",
        /function salesZoomTo/.test(sales));
 truthy("  keeping the columns it drew so it can", /_chartDates/.test(sales));

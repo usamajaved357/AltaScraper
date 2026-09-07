@@ -1969,18 +1969,30 @@ function salesDrawOrgPpc(ser){
   const oPct = t ? Math.round((o / t) * 100) : 0;
   const pPct = t ? (100 - oPct) : 0;
 
-  // The share bar Orbit puts above the chart.
+  // THE SWATCHES TAKE THE CHART'S OWN COLOURS, rather than naming their own.
+  //
+  // They used var(--ok-bg) and var(--ai-bg) -- theme variables that have never
+  // had anything to do with what the chart draws. So the key above the chart
+  // and the two areas inside it were only ever the same colour by luck, and
+  // changing either one silently broke the pairing. Read from SC_SERIES and
+  // they cannot disagree (Rule 12): one definition, used by the line, the fill
+  // and the swatch.
+  const _sc = (typeof SC_SERIES !== "undefined") ? SC_SERIES : {};
+  const cOrg = (_sc.organic && _sc.organic.color) || "var(--ok-bg)";
+  const cPpc = (_sc.ppc && _sc.ppc.color) || "var(--ai-bg)";
+  const sw = function(colour){
+    return '<span style="display:inline-block;width:9px;height:9px;'
+         + 'border-radius:2px;background:' + colour + ';margin-right:6px"></span>';
+  };
   const bar = '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;'
     + 'background:var(--panel2);margin:0 0 6px">'
-    + '<div style="width:' + oPct + '%;background:var(--ok-bg)"></div>'
-    + '<div style="width:' + pPct + '%;background:var(--ai-bg)"></div></div>'
+    + '<div style="width:' + oPct + '%;background:' + cOrg + '"></div>'
+    + '<div style="width:' + pPct + '%;background:' + cPpc + '"></div></div>'
     + '<div style="display:flex;gap:16px;font-size:12px;margin:0 0 10px"'
     + (sample ? ' class="ri-sample"' : '') + '>'
-    + '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
-    + 'background:var(--ok-bg);margin-right:6px"></span>Organic <b>' + oPct + '%</b>'
+    + '<span>' + sw(cOrg) + 'Organic <b>' + oPct + '%</b>'
     + ' <span class="cc">' + _sShort(o, "money", ser && ser.currency) + '</span></span>'
-    + '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
-    + 'background:var(--ai-bg);margin-right:6px"></span>PPC <b>' + pPct + '%</b>'
+    + '<span>' + sw(cPpc) + 'PPC <b>' + pPct + '%</b>'
     + ' <span class="cc">' + _sShort(p, "money", ser && ser.currency) + '</span></span>'
     + '</div>';
 

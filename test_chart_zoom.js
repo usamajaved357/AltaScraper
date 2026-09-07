@@ -119,8 +119,21 @@ truthy("the line chart's hint is conditional",
        /o\.onZoom \? ' · drag across to zoom into those '/.test(CHARTS));
 truthy("  and names the bucket rather than always saying days",
        /drag across to zoom into those ' \+ _scEsc\(units\)/.test(CHARTS));
-truthy("the combo chart's hint is conditional",
-       /o\.onZoom \? ' · drag across to zoom' : ''/.test(CHARTS));
+// THE COMBO CHART HAS NO HINT LINE ANY MORE, by request: "delete this line
+// Hover for the day's figures · drag across to zoom · click a name below to
+// hide that line". The GESTURES are unchanged and still asserted above and
+// below -- only the sentence advertising them is gone.
+//
+// What must survive is the ROW: it carries the hover readout, and removing its
+// container would take the readout with it. It also reserves the same strip
+// above every combo chart, which is what keeps two charts side by side starting
+// at the same height.
+truthy("the combo chart no longer advertises the gesture in prose",
+       !/click a name below to hide that line/.test(CHARTS));
+truthy("  but the readout row survives, so hovering still reports",
+       /_read" style="margin-left:auto"/.test(CHARTS));
+truthy("  and it still reserves a fixed strip so two charts stay level",
+       /min-height:13px/.test(CHARTS));
 
 console.log("\n== the dragged range is actually SENT to the server ==");
 truthy("traffic sends preset=custom with dates",

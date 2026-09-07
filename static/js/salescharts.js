@@ -1017,13 +1017,29 @@ const SC_SERIES = {
   profit:     {label: "Profit",           color: "#38bdf8", width: 2,   dash: "",    fill: 0},
   prior_year: {label: "Prior Year Sales", color: "#6366f1", width: 1.5, dash: "5 3", fill: 0.15},
   prior:      {label: "Prior period",     color: "#6b7280", width: 2,   dash: "5 5", fill: 0},
-  // Orbit's own organic/paid colours and gradients, from gradientOrganic and
-  // gradientPpc -- both of which fade to 0.05 rather than to nothing, so the
-  // two areas stay distinguishable where they overlap low down.
-  organic:    {label: "Organic",          color: "#10b981", width: 2,   dash: "",
-               fill: 0.30, fillEnd: 0.05},
-  ppc:        {label: "PPC",              color: "#8b5cf6", width: 2,   dash: "",
-               fill: 0.30, fillEnd: 0.05},
+  // ORGANIC vs PPC: SEPARATED BY LIGHTNESS AS WELL AS HUE.
+  //
+  //     "organic vs ppc sales has two colored lines on the top of graph but the
+  //      colors are not prominent to tell the difference"
+  //
+  // These were Orbit's own emerald #10b981 and violet #8b5cf6. The hues do
+  // differ, but the violet is DARK, and on this app's charcoal panel a dark
+  // line at 30% fill sits close enough to the ground that the two areas read as
+  // one shape where they overlap low down -- which is most of the chart on a
+  // quiet week.
+  //
+  // Amber against emerald separates on all three axes at once: hue (opposite
+  // sides of the wheel), lightness (both bright against a dark panel, both dark
+  // enough against a light one), and warmth. It also survives the common
+  // red-green colour blindness, which violet-vs-green does not reliably.
+  //
+  // Wider lines and a stronger fill for the same reason: the fill is what tells
+  // you which area is which at a glance, and 0.30 fading to 0.05 was too faint
+  // to carry that on its own.
+  organic:    {label: "Organic",          color: "#10b981", width: 2.5, dash: "",
+               fill: 0.38, fillEnd: 0.06},
+  ppc:        {label: "PPC",              color: "#f59e0b", width: 2.5, dash: "",
+               fill: 0.38, fillEnd: 0.06},
 
   // ---- Traffic & Conversions -------------------------------------------
   // MEASURED off Orbit's own lines on that page:
@@ -1061,9 +1077,18 @@ const SC_SERIES = {
   ad_sales:   {label: "Ad sales",         color: "#38bdf8", width: 2, dash: "", fill: 0.30},
   total_sales:{label: "Total sales",      color: "#fbbf24", width: 2, dash: "", fill: 0.20},
   acos:       {label: "ACOS",             color: "#f97316", width: 2, dash: "", fill: 0},
-  tacos:      {label: "TACOS",            color: "#f97316", width: 2, dash: "", fill: 0},
-  roas:       {label: "ROAS",             color: "#8b5cf6", width: 2, dash: "", fill: 0},
-  cpc:        {label: "CPC",              color: "#22c55e", width: 2, dash: "", fill: 0},
+  // FILLED, LIKE THE REFERENCE. These three are each the only line on their
+  // panel, and an unfilled 2px stroke on a large dark card reads as a thin
+  // scribble -- the shape is what the panel is for, and a soft area under it is
+  // what makes the shape legible at a glance. The fill is faint enough that the
+  // line is still the subject.
+  //
+  // ROAS moved from violet to teal for the same reason the organic/PPC pair
+  // moved: a dark violet on a charcoal panel is close enough to the ground that
+  // the fill disappears and the line reads as grey.
+  tacos:      {label: "TACOS",            color: "#f97316", width: 2, dash: "", fill: 0.22, fillEnd: 0.02},
+  roas:       {label: "ROAS",             color: "#2dd4a8", width: 2, dash: "", fill: 0.22, fillEnd: 0.02},
+  cpc:        {label: "CPC",              color: "#22c55e", width: 2, dash: "", fill: 0.22, fillEnd: 0.02},
   ctr:        {label: "CTR",              color: "#3b82f6", width: 2, dash: "", fill: 0},
   clicks:     {label: "Clicks",           color: "#22c55e", width: 2, dash: "", fill: 0.20},
   impressions:{label: "Impressions",      color: "#3b82f6", width: 2, dash: "", fill: 0.20},
@@ -1386,7 +1411,13 @@ function salesCombo(o){
     lines.forEach(function(l){
       const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694"};
       const v = _scNum((l.values || [])[i]);
-      rows.push({name: (spec.label || l.key), color: spec.color,
+      // THE CALLER'S OWN LABEL WINS. SC_SERIES names a series generically --
+      // `cpc` is "CPC", `roas` is "ROAS" -- which is right on the Sales page
+      // where several share a chart. On a panel titled "Profit per Click Trend"
+      // a key reading "CPC" is a second, worse name for the thing the heading
+      // already named, and on "Spend Efficiency Score Trend" the key said
+      // "ROAS", which is a different metric entirely.
+      rows.push({name: (l.label || spec.label || l.key), color: spec.color,
                  value: (v === null ? "—" : _scFmt(v, o.kind || "money")),
                  y: (v === null ? null : yM(v).toFixed(1))});
     });
@@ -1463,7 +1494,8 @@ function salesCombo(o){
         + (spec.dash ? ' stroke-dasharray="' + spec.dash + '"' : "") + '/></svg>';
     // PLAIN TEXT. item() escapes the label -- markup here would be shown as
     // markup, which is how a "helpful" span becomes &lt;span&gt; on screen.
-    const label = (spec.label || l.key)
+    // The caller's own label first -- see the note in the hover rows above.
+    const label = (l.label || spec.label || l.key)
       + (sparse && sh.days ? ' · ' + sh.points + ' of ' + sh.days + ' days' : '');
     key += item(mark, label, l.key, !scSeriesHidden(cid, l.key));
   });
@@ -1478,15 +1510,18 @@ function salesCombo(o){
     : '';
 
   return '<div id="' + cid + '_wrap" style="margin:4px 0 0">'
-       // Says the gesture exists. Nobody discovers drag-to-zoom by accident --
-       // and it is only claimed on a chart that named a zoom handler.
-       + '<div class="cc" style="font-size:10px;margin:0 0 4px;opacity:.65">'
-       // The bucket's name, not always "day" -- the Sales Report is drawn over
-       // days, weeks or months depending on the granularity picked, and this
-       // line said "day" for all three. See the same note in salesChart.
-       + 'Hover for the ' + _scEsc(o.unit || "day") + '’s figures'
-       + (o.onZoom ? ' · drag across to zoom' : '')
-       + ' · click a name below to hide that line'
+       // THE INSTRUCTION LINE IS GONE, BY REQUEST: "delete this line Hover for
+       // the day's figures · drag across to zoom · click a name below to hide
+       // that line".
+       //
+       // The ROW STAYS, because it holds the hover readout -- the figure that
+       // appears as you move across the chart lives in the span below, and
+       // removing its container would take the readout with it. It also keeps
+       // the chart's vertical rhythm: every combo chart reserves the same strip
+       // above the plot, so two charts side by side still start at the same
+       // height. Emptying the text but keeping the row is what makes both true.
+       + '<div class="cc" style="font-size:10px;margin:0 0 4px;opacity:.65;'
+       + 'min-height:13px;display:flex">'
        + '<span id="' + cid + '_read" style="margin-left:auto"></span></div>'
        + '<div style="position:relative">'
        // Fixed height, width taken from the container -- the same rule as the

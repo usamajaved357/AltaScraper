@@ -262,6 +262,11 @@ function _revBasis(b){
 function _revCostWhy(d){
   if(d.cost == null) return "No cost known for this SKU.";
   if(d.cost_source === "manual") return "You typed this, so it beats the SKU.";
-  if(d.cost_source === "sku") return "Read from the SKU’s price prefix.";
+  // An OLD cost. Nothing reads a SKU name for a cost any more; a stored value
+  // from before that change keeps its label rather than losing its provenance.
+  if(d.cost_source === "sku"){
+    return "An old cost read from the SKU’s price prefix, from before costs "
+         + "became something you set.";
+  }
   return "";
 }

@@ -463,6 +463,76 @@ def sku_map(config_path, account_id, marketplace):
     return out
 
 
+def undated_lumps(config_path, workspace_id, marketplace, start, end):
+    """Fees sitting on a day that had no trade. -> {amount, days, why}.
+
+    WHY A SHORT WINDOW CAN SHOW A CONFIDENT LOSS ON A GOOD ACCOUNT.
+
+        "nestwell goods uk last 30 days, profit showed minus there"
+
+    Amazon sends the monthly Subscription fee as a ServiceFeeEvent with NO
+    PostedDate. parse_events keeps it rather than dropping it -- losing it would
+    understate fees by thirty pounds a month -- and places it on the last day of
+    the window being pulled, reporting the amount in `unattributed` so the caller
+    can say so. That note is returned by the SYNC and never stored, so by the
+    time a screen draws the day, nothing knows the charge was undated.
+
+    Measured on nestwell_goods/UK: 2026-09-07 carries 30.00 of other_fees with
+    zero units, zero principal and zero referral. Over thirty days that is noise
+    against 859 of sales. Over the last two days it is the entire figure, and
+    the profit card reads -30.00 for an account that traded perfectly well.
+
+    HOW AN UNDATED CHARGE IS RECOGNISED AFTER THE FACT: a day with fees on it
+    and no trade at all. Nothing was sold, so a selling fee cannot have been
+    incurred that day -- the charge belongs to the period, not to the date it
+    was filed under. That test needs no new column and cannot mistake a real
+    trading day for one of these.
+
+    The window total is RIGHT either way. This exists so a screen can say which
+    part of a short window's loss is a monthly charge that happened to land in
+    it, rather than leaving the reader to conclude the advertising lost money.
+    """
+    out = {"amount": 0.0, "days": [], "why": ""}
+    try:
+        conn = _db.get_db(config_path)
+        rows = conn.execute(
+            "SELECT date, "
+            "  ROUND(COALESCE(other_fees,0) + COALESCE(referral_fees,0) "
+            "        + COALESCE(fba_fees,0), 2) fees "
+            "FROM finance_daily "
+            "WHERE workspace_id=? AND marketplace=? AND asin='*' "
+            "  AND date>=? AND date<=? "
+            "  AND COALESCE(units,0) = 0 "
+            "  AND COALESCE(principal,0) = 0 "
+            "  AND (COALESCE(other_fees,0) + COALESCE(referral_fees,0) "
+            "       + COALESCE(fba_fees,0)) > 0 "
+            "ORDER BY date",
+            (workspace_id, marketplace, str(start), str(end))).fetchall()
+    except Exception:
+        return out
+    for r in rows:
+        # This module has no _f helper -- an earlier draft assumed one, and the
+        # NameError was swallowed by the caller's try/except, so the figure came
+        # back silently absent rather than wrong. Converted inline.
+        try:
+            fee = float(r["fees"] or 0.0)
+        except (TypeError, ValueError):
+            fee = 0.0
+        out["days"].append({"date": r["date"], "fees": round(fee, 2)})
+        out["amount"] = round(out["amount"] + fee, 2)
+    if out["amount"]:
+        out["why"] = (
+            "%.2f of the fees in this window sit on %s, %s that sold nothing at "
+            "all. Amazon sends its monthly subscription with no date of its own, "
+            "so it is filed on whichever day the figures were last pulled. The "
+            "window's total is right; over a short window it makes the profit "
+            "look worse than the trading was."
+            % (out["amount"],
+               ", ".join(d["date"] for d in out["days"]),
+               "a day" if len(out["days"]) == 1 else "days"))
+    return out
+
+
 def series(config_path, workspace_id, marketplace, start, end, asin=None):
     """Finance rows for a range, keyed by date, for joining onto sales."""
     conn = _db.get_db(config_path)

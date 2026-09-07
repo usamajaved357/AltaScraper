@@ -2474,6 +2474,12 @@
 <script src="/static/js/ppccampaigns.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ppclive.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/drppc_console.js?v={{ ASSET_V }}"></script>
+<!-- The ⓘ marks. LAST of the screen scripts, and it watches the DOM rather than
+     being called by each of them: every screen here rebuilds its panels with
+     innerHTML, which throws the marks away, so the statements have to be
+     re-attached after each render. Doing it by observation means a screen added
+     later gets it without remembering to ask. -->
+<script src="/static/js/tips.js?v={{ ASSET_V }}"></script>
 <!-- AFTER both. traffic.js draws with salesCombo and formats with _sNum rather
      than carrying its own copies, which would drift from these on the first fix
      made to either. (Order is not load-bearing -- these are function

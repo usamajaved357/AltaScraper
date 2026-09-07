@@ -2463,16 +2463,35 @@
   /* Today so far -- a live figure, from a different measurement than the grid.
      Set apart deliberately: a quiet strip above the cards, not a fifth card,
      because it will not tie out to them and should not look like it should. */
-  .todaystrip{display:flex;flex-wrap:wrap;align-items:baseline;gap:18px;
+  /* THE STRIP IS A FIXED HEIGHT, and that is what keeps two cards level.
+     "the Live Sales graph and week to date graph differ in size or maybe the
+      size is same but second graph is positioned a little lower"
+     The charts ARE the same size -- measured before, 579x200 with a 559x160
+     plot area on both. What differed is where each one STARTS. Both cards put
+     this strip above their chart, the strip was flex-wrap:wrap, and the note at
+     its right end is a different length on each: "live from orders · vs the
+     same time yesterday · 3 pending" against "5 days so far · vs the same days
+     last week". Whichever wrapped to a second line pushed only ITS chart down,
+     so two identical charts sat at different heights.
+     One row, one height, and the note truncates rather than wrapping the box
+     taller. Fixing the container is what makes this stay fixed -- matching the
+     two notes' lengths by hand would come apart the next time either changes. */
+  .todaystrip{display:flex;flex-wrap:nowrap;align-items:center;gap:18px;
               padding:10px 14px;margin:0 0 14px;border-radius:8px;
+              min-height:46px;box-sizing:border-box;
               background:rgba(255,255,255,.02);
               border:1px solid var(--line)}
   .todaylead{font-size:11px;letter-spacing:.06em;text-transform:uppercase;
              color:var(--muted);font-weight:600}
+  .todaybit{white-space:nowrap}
   .todaybit b{font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
   .todaybit .good{color:var(--green,#2dd4a8);font-size:12px}
   .todaybit .bad{color:var(--red,#f87171);font-size:12px}
-  .todaynote{margin-left:auto;font-size:10px}
+  /* min-width:0 is what lets the ellipsis happen at all -- a flex item will
+     not shrink below its content without it, and the note would push the row
+     wider instead of truncating. */
+  .todaynote{margin-left:auto;font-size:10px;min-width:0;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* =========================================================================
    MOBILE  --  everything below 860px
@@ -2500,6 +2519,15 @@
      WHOLE page scroll horizontally, which moves the nav off-screen and feels
      broken in a way that is very hard to attribute to a table. */
   html, body{ max-width:100%; overflow-x:hidden; }
+
+  /* THE STRIP WRAPS AGAIN DOWN HERE. On desktop it is held to one row so the
+     Live Sales and Week to Date charts start at the same height side by side.
+     On a phone the two cards are STACKED, so there is nothing to line up
+     against -- and three figures forced onto one narrow row would either
+     squash or truncate. Letting it wrap costs nothing here and keeps the
+     numbers readable. */
+  .todaystrip{ flex-wrap:wrap; align-items:baseline; min-height:0; gap:12px; }
+  .todaynote{ white-space:normal; overflow:visible; }
 
   /* ---- top bar: one line, no wrapping into a tall block ---- */
   .appbar{ padding:0 10px; gap:4px; }
@@ -3129,6 +3157,89 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   margin-left:4px;
   cursor:help;
   vertical-align:middle;
+}
+
+/* =========================================================================
+   THE ⓘ MARKS ACTUALLY SAY SOMETHING NOW
+   =========================================================================
+   "see there are I circular marks everywhere in the app including the ppc
+    analytics page, they should show some statements"
+
+   Every one of them already CARRIED its statement -- in a title="" attribute,
+   which is the browser's native tooltip. That is why they looked empty:
+
+     * it waits about a second before appearing, so a normal hover shows
+       nothing at all and the mark reads as decoration;
+     * it renders in the OS's own style, which on a dark panel is a small pale
+       box that does not belong to the page;
+     * it collapses newlines and truncates long text on some platforms, and
+       these statements are two or three sentences of arithmetic.
+
+   So the text moves to data-tip (altaTips() in static/js/tips.js does the
+   move, once, after each render) and this draws it. No call site changes --
+   there are dozens of these marks across the app and rewriting each one is how
+   half of them would end up different.
+
+   POSITIONED ABOVE AND CENTRED, and allowed to be wide: the statements are
+   sentences, and a 200px column of six words is harder to read than the native
+   tooltip it replaces. `left:50%` + `translateX(-50%)` centres it on the mark;
+   the two edge classes below stop it hanging off the side of the screen. */
+[data-tip]{ position:relative; }
+[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute; bottom:calc(100% + 8px); left:50%;
+  transform:translateX(-50%) translateY(3px);
+  min-width:180px; max-width:340px; width:max-content;
+  padding:8px 10px; border-radius:6px;
+  background:var(--panel2,#1f242c); color:var(--text,#e6e9ef);
+  border:1px solid var(--line,#333a45);
+  box-shadow:0 6px 20px rgba(0,0,0,.35);
+  font-size:11.5px; font-weight:400; line-height:1.5; text-align:left;
+  white-space:pre-line;          /* the statements contain real newlines */
+  letter-spacing:normal; text-transform:none;
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .12s ease, transform .12s ease;
+  z-index:9999;
+}
+/* The little arrow. Drawn as a rotated square so it inherits the same border
+   and background as the bubble and cannot drift out of step with it. */
+[data-tip]::before{
+  content:""; position:absolute; bottom:calc(100% + 3px); left:50%;
+  width:9px; height:9px; transform:translateX(-50%) rotate(45deg) translateY(3px);
+  background:var(--panel2,#1f242c);
+  border-right:1px solid var(--line,#333a45);
+  border-bottom:1px solid var(--line,#333a45);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .12s ease, transform .12s ease;
+  z-index:9999;
+}
+[data-tip]:hover::after, [data-tip]:focus::after,
+[data-tip]:hover::before, [data-tip]:focus::before{
+  opacity:1; visibility:visible; transform:translateX(-50%) translateY(0);
+}
+[data-tip]:hover::before, [data-tip]:focus::before{
+  transform:translateX(-50%) rotate(45deg) translateY(0);
+}
+/* A mark near the left or right edge would push the bubble off-screen, and a
+   tooltip you have to scroll to is worse than none. altaTips() adds these. */
+[data-tip].tip-l::after{ left:0; transform:translateX(0) translateY(3px); }
+[data-tip].tip-l:hover::after, [data-tip].tip-l:focus::after{
+  transform:translateX(0) translateY(0); }
+[data-tip].tip-r::after{ left:auto; right:0; transform:translateX(0) translateY(3px); }
+[data-tip].tip-r:hover::after, [data-tip].tip-r:focus::after{
+  transform:translateX(0) translateY(0); }
+
+/* A mark that carries a statement is worth noticing. These were at 0.5 opacity
+   and easy to read as punctuation. */
+.infodot[data-tip], .ppc-i[data-tip], .ppc-q[data-tip]{ opacity:.85; }
+.infodot[data-tip]:hover, .ppc-i[data-tip]:hover, .ppc-q[data-tip]:hover{
+  opacity:1; color:var(--accent,#2dd4a8); border-color:var(--accent,#2dd4a8); }
+
+/* On a touch screen there is no hover. Tapping focuses it instead, which the
+   :focus rules above already handle -- this makes the mark focusable-looking
+   and stops the bubble being clipped by a scrolling table. */
+@media (hover:none){
+  [data-tip]::after{ max-width:min(340px, 78vw); }
 }
 
 

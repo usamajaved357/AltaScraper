@@ -153,8 +153,11 @@ function ppctRender(){
     +     ((j.terms || []).length) + ' stored</div></div>'
     +   '<div><div class="ppc-flabel">Range</div>'
     +     ppcSeg(30, "ppctLoad") + '</div>'
-    +   '<div class="ppc-fctl" style="border-radius:8px">'
-    +     _pEsc((w.start || "") + " to " + (w.end || "")) + '</div>'
+    // A PICKER, NOT A LABEL -- see the same note on Campaign Analytics. It
+    // matters most here: this page now re-queries the stored daily search
+    // terms for whatever window is asked for, so a date the day buttons cannot
+    // express was a window the data could answer and the screen could not ask.
+    +   ppcDateRange(j, "ppctLoad")
     + '</div></div>';
 
   if(!(j.terms || []).length){
@@ -243,13 +246,47 @@ function ppctRender(){
 
   // The brand word box. Adding one is what turns the split on, so it sits on
   // the screen that shows the split rather than buried in settings.
-  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+  //
+  // THE SAVED WORDS ARE SHOWN, WHICH THEY WERE NOT.
+  //
+  //     "i have saved a branded term on orbit 'promixx' it appears like this
+  //      when a user save a branded term, i want to adapt this style"
+  //
+  // The box took a word, said "added", and then showed nothing anywhere. So
+  // there was no way to tell a word that saved from one that did not, no way to
+  // see a typo, and no way to remove one -- and the split it drives is entirely
+  // decided by this list. That is what made a wrong split impossible to
+  // diagnose: the rule was invisible.
+  //
+  // Each saved word is a chip with an × on it. Chips because the list is short
+  // and unordered and every item is the same kind of thing; the × because
+  // adding was possible and removing was not, and a list you can only grow is
+  // one nobody dares type into.
+  const bw = (j.brand_terms || []);
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:'
+    + (bw.length ? '8px' : '14px') + '">'
     + '<span style="color:var(--ppc-dim)">🏷</span>'
     + '<input class="ppc-input" id="ppct_brand" style="flex:1;max-width:400px" '
     +   'placeholder="Add a brand word to enable the branded split…" '
     +   'onkeydown="if(event.key===\'Enter\')ppctAddBrand()">'
     + '<button class="ppc-btn" onclick="ppctAddBrand()">Add</button>'
     + '</div>';
+  if(bw.length){
+    h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;'
+      + 'margin:0 0 14px 26px">'
+      + '<span style="font-size:11px;color:var(--ppc-muted);margin-right:2px">'
+      + 'Counted as branded:</span>'
+      + bw.map(function(w){
+          return '<span class="ppc-brandchip">' + _pEsc(w)
+            + '<button title="Remove this brand word" '
+            + 'onclick="ppctDropBrand(' + jsArg(w) + ')">×</button></span>';
+        }).join("")
+      + '<span class="ppc-i" title="A search term counts as branded when it '
+      + 'CONTAINS one of these words, anywhere in it and ignoring case. Short '
+      + 'words match far more than you expect — two letters would mark almost '
+      + 'every term as branded.">ⓘ</span>'
+      + '</div>';
+  }
 
   // SPEND range, ACOS slider, zero-conversions checkbox
   h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;'
@@ -444,17 +481,64 @@ async function ppctAddBrand(){
   const v = ((el && el.value) || "").trim();
   if(!v) return;
   try{
+    // A LIST, NOT A BARE STRING. The server iterated whatever arrived, so a
+    // string was read one letter at a time and "alta" was stored as four brand
+    // words -- a, l, t, a -- each of which matches almost every search term.
+    // The server now normalises either shape; this sends the right one.
     const j = await (await fetch("/ppc/brand_terms?" + ppcQS(), {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({add: v})})).json();
+      body: JSON.stringify({add: [v]})})).json();
     if(!j || !j.ok){
       if(typeof toast === "function")
         toast("Could not add that: " + ((j && j.error) || "unknown"));
       return;
     }
     if(typeof toast === "function") toast('Brand word "' + v + '" added.');
+    // Cleared, so adding a second word does not mean deleting the first by
+    // hand. The reload redraws the chips with the new one among them.
+    if(el) el.value = "";
     ppctLoad();
   }catch(e){
     if(typeof toast === "function") toast("Could not add that brand word.");
+  }
+}
+
+/* Take a brand word off the list.
+ *
+ * Adding was possible and removing was not, so a typo -- or a word that turned
+ * out to match half the account -- was permanent as far as the screen was
+ * concerned. A list you cannot correct is one nobody types into.
+ *
+ * CONFIRMED FIRST, because removing the last word does not merely shrink the
+ * branded lane: it turns the whole split off. ppc_view.is_branded answers NULL
+ * rather than False with no words set, and every panel that depends on it goes
+ * back to saying it cannot tell branded from non-branded. That is a bigger
+ * consequence than "remove one chip" suggests. */
+async function ppctDropBrand(word){
+  const w = String(word || "").trim();
+  if(!w) return;
+  const left = ((PPCT.data && PPCT.data.brand_terms) || [])
+    .filter(function(x){ return x !== w; });
+  const msg = left.length
+    ? 'Remove the brand word "' + w + '"?'
+    : 'Remove the brand word "' + w + '"?\n\nIt is the last one, so the '
+      + 'branded / non-branded split will switch off until another is added — '
+      + 'the app has no other way to know which searches are for your brand.';
+  if(typeof uiConfirm === "function"){
+    if(!await uiConfirm(msg)) return;
+  }
+  try{
+    const j = await (await fetch("/ppc/brand_terms?" + ppcQS(), {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({remove: [w]})})).json();
+    if(!j || !j.ok){
+      if(typeof toast === "function")
+        toast("Could not remove that: " + ((j && j.error) || "unknown"));
+      return;
+    }
+    if(typeof toast === "function") toast('Brand word "' + w + '" removed.');
+    ppctLoad();
+  }catch(e){
+    if(typeof toast === "function") toast("Could not remove that brand word.");
   }
 }

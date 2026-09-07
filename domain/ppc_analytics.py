@@ -598,8 +598,22 @@ def today_bar(config_path, workspace_id, marketplace):
             "now": now, "previous": prev, "change": change(now, prev)}
 
 
-def trail(config_path, workspace_id, marketplace, days=7):
-    """One card per day: that day's own total, and the units it sold.
+def trail(config_path, workspace_id, marketplace, days=7, start=None, end=None):
+    """One card per day, ending at the window's last day.
+
+    IT USED TO IGNORE THE WINDOW ENTIRELY.
+
+        "changing the time period dont change the data"
+
+    The end was hardcoded to `date.today()` and the span to seven days, so the
+    seven cards showed the same seven days whatever the date picker said -- and
+    on this account the last two of them are days Amazon has not reported yet,
+    so two of the seven were always blank. Picking 14 days, or a range in
+    August, moved every other panel on the page and left this one alone.
+
+    Now it ends where the window ends and shows the last `days` of it, or the
+    whole window when that is shorter. Asking for a fortnight in August gives
+    the last seven days of August.
 
     The mockup draws each card as spend accumulating BY HOUR. There are no
     hourly advertising figures -- Amazon refuses timeUnit HOURLY on this report
@@ -607,21 +621,30 @@ def trail(config_path, workspace_id, marketplace, days=7):
     this report type". They would come from Marketing Stream, which needs an
     AWS queue that is deliberately not being built (see domain/ams.py).
 
-    SO THE CARD DRAWS `spend`, THE DAY'S OWN TOTAL, AS ONE BAR. It drew
-    `cumulative` -- the window adding up -- which is still returned because the
-    hover reports it, but is no longer the shape: a running total can only
-    climb, so the last card always towered over the first and a quiet Saturday
-    looked like the account's biggest day. It also implied hours, which is the
-    one thing these panels must not do.
-
     None is preserved and never turned into 0.0: a day with no stored row is not
-    a day that spent nothing, and the bar leaves an empty track for it rather
-    than a nought sitting on the floor.
+    a day that spent nothing.
     """
-    end = _dt.date.today()
-    start = end - _dt.timedelta(days=int(days) - 1)
-    rows = daily(config_path, workspace_id, marketplace,
-                 start.isoformat(), end.isoformat())
+    try:
+        e = _dt.date.fromisoformat(str(end)[:10]) if end else _dt.date.today()
+    except ValueError:
+        e = _dt.date.today()
+    s = e - _dt.timedelta(days=int(days) - 1)
+    if start:
+        try:
+            ws = _dt.date.fromisoformat(str(start)[:10])
+            # A window SHORTER than the card count shows only its own days --
+            # seven cards over a three-day range would be four empty ones and a
+            # reader wondering what happened on days outside the range they
+            # asked for.
+            if ws > s:
+                s = ws
+        except ValueError:
+            pass
+    start_s, end_s = s.isoformat(), e.isoformat()
+    rows = daily(config_path, workspace_id, marketplace, start_s, end_s)
+    # "Today" means the real calendar today, NOT the last card. When the window
+    # ends in August the last card is not today and must not be badged as it.
+    today_s = _dt.date.today().isoformat()
     run, out = 0.0, []
     for r in rows:
         sp = r["spend"]
@@ -632,7 +655,7 @@ def trail(config_path, workspace_id, marketplace, days=7):
             "spend": sp,
             "orders": r["orders"],
             "cumulative": round(run, 2),
-            "today": (r["date"] == end.isoformat()),
+            "today": (r["date"] == today_s),
         })
     return out
 
@@ -1104,6 +1127,124 @@ def max_cost_per_order(rate_info, totals=None):
     aov = float(sales) / float(orders)
     v = aov * (float(be) / 100.0)
     return round(v, 2) if v > 0 else None
+
+
+def net_profit(config_path, workspace_id, marketplace, start, end, totals=None):
+    """The account's profit after advertising. THE SAME NUMBER THE SALES PAGE SHOWS.
+
+        "when i go to sales report i see i made 102 pounds in profit in the last
+         30 days and when i go to ppc analytics it shows profit in minus"
+
+    TWO SCREENS WERE CALLING TWO DIFFERENT THINGS "PROFIT", and neither said so.
+
+        Sales Report   ALL revenue (advertised and organic) - fees - stock cost.
+                       Does not subtract ad spend at all.
+        PPC Analytics  AD-ATTRIBUTED sales - ad spend - fees - stock cost.
+                       Ignores organic revenue entirely.
+
+    On an account where most revenue is organic those are wildly different
+    numbers, and they can easily land on opposite sides of zero. Both were
+    defensible; having both, unlabelled, on two screens a click apart was not.
+
+    THE SPEC SETTLES IT (section 5): "Net Profit = total_sales - total_fees -
+    total_cogs - ad_spend", and it says in bold what that means -- "Total
+    account contribution margin (ad + organic), NOT PPC-only".
+
+    So this is the Sales page's own profit MINUS ad spend, and it is worked out
+    by ASKING that page's function rather than by repeating its arithmetic
+    (Rule 12). Repeating it is how the two drifted in the first place: the fee
+    rate, the VAT treatment, the refund handling and the "withhold profit unless
+    every unit is costed" rule all live in sales_data, and a second
+    implementation would have to track every one of them.
+
+    IT WITHHOLDS FOR THE SAME REASON THE SALES PAGE DOES. An uncosted unit
+    brings revenue and no cost, so a total including it is too high -- and this
+    app's rule everywhere is that a bucket with any uncosted unit reports
+    nothing rather than something flattering. When Sales withholds, this
+    withholds, and says which units are missing a cost. That is also the honest
+    answer to the report above: the two screens differ because one of them is
+    refusing to answer, not because they disagree about the money.
+    """
+    from domain import sales_data as _sd
+
+    out = {"net_profit": None, "sales_profit": None, "ad_spend": None,
+           "why": "", "definition": (
+               "Everything the account sold in this window, advertised and "
+               "organic, less Amazon's fees, less what the stock cost, less "
+               "what was spent on advertising.")}
+    t = totals if totals is not None else totals_for(
+        config_path, workspace_id, marketplace, start, end)
+    spend = _f((t or {}).get("spend"))
+    out["ad_spend"] = spend
+
+    try:
+        st = _sd.totals(config_path, workspace_id, marketplace, start, end)
+    except Exception:
+        out["why"] = ("The account's own sales and fees could not be read, so "
+                      "profit after advertising cannot be worked out.")
+        return out
+
+    sp = st.get("profit")
+    out["sales_profit"] = sp
+    if sp is None:
+        # NAME THE REASON, because "—" on a profit card reads as a broken screen
+        # rather than as a deliberate refusal.
+        #
+        # The count comes from rates(), which already measures it -- sales_data
+        # totals has no costed-unit key, and an earlier form of this asked for a
+        # `cogs_units` that does not exist there, so every account fell through
+        # to the vague branch. Asked of the function that knows (Rule 12).
+        gap = ""
+        try:
+            gap = str((rates(config_path, workspace_id, marketplace,
+                             start, end) or {}).get("cogs_basis") or "")
+        except Exception:
+            gap = ""
+        out["why"] = (
+            ("Some of the units sold in this window have no cost recorded (%s), "
+             "so profit is left blank rather than counted as if those units "
+             "were free. The Sales page leaves it blank for the same reason and "
+             "over the same days — that is why the two screens differ." % gap)
+            if gap else
+            ("The Sales page cannot work out a profit for these days, so "
+             "neither can this. They read the same figures."))
+        return out
+
+    if spend is None:
+        out["why"] = ("No advertising spend is stored for these days, so this "
+                      "is the account's profit with nothing taken off for ads.")
+        out["net_profit"] = round(float(sp), 2)
+    else:
+        out["net_profit"] = round(float(sp) - float(spend), 2)
+
+    # A MONTHLY CHARGE LANDING IN A SHORT WINDOW IS NOT A BAD WEEK.
+    #
+    # Amazon sends its subscription fee with no date, so it is filed on whatever
+    # day the figures were last pulled. Measured on nestwell_goods/UK: 30.00 on
+    # 2026-09-07, a day with no sales at all. Across thirty days that is noise
+    # against 859 of sales; across the last two days it IS the figure, and the
+    # card reads -30.00 for an account that traded perfectly well.
+    #
+    # The total is right either way. This says which part of a loss is a
+    # calendar artefact, so nobody reads a monthly bill as a failed week.
+    try:
+        from domain import finance_data as _fd
+        lump = _fd.undated_lumps(config_path, workspace_id, marketplace,
+                                 start, end)
+    except Exception:
+        lump = None
+    if lump and lump.get("amount"):
+        out["undated_fees"] = lump["amount"]
+        out["undated_days"] = lump.get("days") or []
+        out["note"] = lump.get("why") or ""
+        # WITHOUT IT, so the trading can be seen on its own. Offered beside the
+        # real figure and never instead of it -- the money did leave the account.
+        try:
+            out["net_profit_excl_undated"] = round(
+                float(out["net_profit"]) + float(lump["amount"]), 2)
+        except (TypeError, ValueError):
+            pass
+    return out
 
 
 def cohorts(config_path, workspace_id, marketplace, start, end, rows=None,
@@ -1603,8 +1744,19 @@ def by_group(rows, key):
     return out
 
 
-def branded_split(rows):
+def branded_split(rows, brands=None):
     """Branded against everything else. Paying to appear on your own name.
+
+    `brands` is the word list the rows were judged against. Passed in only so
+    the split can SAY what it matched on:
+
+        "it is not showing me which keyword is it assuming as branded, i think
+         i provided it the branded keyword as alta"
+
+    A split into two lanes with no statement of the rule is unauditable -- there
+    is no way to tell a wrong brand list from a wrong calculation, and the two
+    need completely different fixes. So the words, and a sample of the terms
+    each one caught, come back with the figures.
 
     The most useful cut on the screen: defensive spend mixed in with the rest
     makes a healthy-looking ACOS out of money that never won a new customer.
@@ -1640,4 +1792,38 @@ def branded_split(rows):
         out[f["key"]] = f
     if unknown:
         out["unclassified_terms"] = len(unknown)
+
+    # WHAT IT MATCHED ON, AND WHAT THAT CAUGHT.
+    #
+    # The words themselves, plus the biggest-spending terms each one pulled in,
+    # so a wrong brand list looks wrong at a glance instead of arriving as a
+    # lane that is simply the wrong size. A one-letter word matching the entire
+    # account -- which is exactly what happened when "alta" was stored as four
+    # separate letters -- shows up here immediately as every term being branded.
+    words = [str(w).strip().lower() for w in (brands or []) if str(w).strip()]
+    out["brand_words"] = words
+    out["matched_examples"] = [
+        {"term": r.get("search_term"), "spend": r.get("spend")}
+        for r in sorted(b, key=lambda r: -(_f(r.get("spend")) or 0))[:8]]
+    if words:
+        share = _rate(len(b), len(b) + len(n))
+        out["rule"] = (
+            "A search term counts as branded when it CONTAINS one of your brand "
+            "words, anywhere in it and ignoring case: %s. That caught %d of %d "
+            "terms (%s%%)."
+            % (", ".join('"%s"' % w for w in words), len(b), len(b) + len(n),
+               share if share is not None else "—"))
+        # A brand word that catches everything is nearly always a typo or a
+        # word too short to be a brand, and saying so beats leaving somebody to
+        # work out why their whole account is defensive spend.
+        if (len(b) + len(n)) and len(b) == (len(b) + len(n)):
+            out["warning"] = (
+                "Every single term matched, which almost always means a brand "
+                "word is too short or too common rather than that all your "
+                "advertising is defensive. Check the list above.")
+        elif words and min(len(w) for w in words) < 3:
+            out["warning"] = (
+                "One of your brand words is shorter than three letters, and a "
+                "short word matches terms that have nothing to do with your "
+                "brand. Check the list above.")
     return out
