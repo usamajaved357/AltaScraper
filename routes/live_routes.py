@@ -759,6 +759,164 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             mkt_id = _acc2.marketplace_id(mkt) if hasattr(_acc2, "marketplace_id") else ""
         except Exception:
             mkt_id = ""
+
+        def _enrich_items(items):
+            """Compliance, handling and COGS/profit -- for whichever source.
+
+            One pass, called from both, because "what a listing costs and what
+            it earns" must not depend on which Amazon endpoint the row arrived
+            from (CLAUDE.md Rule 12).
+
+            HANDLING COMES FREE FROM THE API AND NOT FROM THE REPORT.
+            _attach_handling can only carry a figure across for SKUs the images
+            path happens to have fetched -- measured, 46 of 47 listings reached
+            the screen without one. The Listings API returns
+            lead_time_to_ship_max_days for every listing in the same call, so
+            when it is there it is used, and _attach_handling then skips those
+            rows (it already declines to overwrite a known value).
+            """
+            for it in (items or []):
+                if it.get("handling") is None and it.get("handling_time"):
+                    try:
+                        it["handling"] = int(str(it["handling_time"]).strip())
+                    except (TypeError, ValueError):
+                        pass
+            _attach_compliance(items, mkt)
+            _attach_handling(items, aid, mkt)
+            for it in (items or []):
+                cost, csrc = _resolve_cogs(aid, it.get("sku", ""))
+                if cost is not None:
+                    it["cogs"] = cost
+                    it["cogs_source"] = csrc
+                    prof = _estimate_profit(it.get("price", ""), cost)
+                    if prof:
+                        it["profit"] = prof
+            return items
+
+        def _finish(items, report_source, report_built_at="", warnings=None,
+                    notes=None, hdr=None):
+            """Cache, store and answer -- whichever source produced `items`.
+
+            EVERY source ends here, which is the point. This was the tail of the
+            report flow; the Listings-API path below needs the same shrink
+            guard, the same durable write and the same reply shape, and a second
+            copy of it would be a second set of rules about when a catalogue is
+            allowed to get smaller (CLAUDE.md Rule 12).
+            """
+            warnings = list(warnings or [])
+            notes = list(notes or [])
+            hdr = list(hdr or [])
+            # AN EMPTY OR SHRUNKEN RESULT MUST NOT ERASE WHAT YOU ALREADY HAVE.
+            # Amazon returns nothing for reasons that are not errors -- a report
+            # still generating, a transient empty, a marketplace briefly not
+            # answering. None of those raise, so the last-resort handler never
+            # sees them, and the catalogue would simply be replaced by nothing.
+            # That is the "sync wiped my listings" symptom.
+            _prev = _snap.get(CONFIG_PATH, aid, mkt) or {}
+            _prev_items = _prev.get("items") or []
+            if _prev_items and len(items) < len(_prev_items):
+                _shrink = len(_prev_items) - len(items)
+                _age_prev = _snap.age_seconds(_prev)
+                if not items:
+                    # Nothing at all came back -- keep the saved copy verbatim.
+                    return jsonify({
+                        "ok": True, "items": _attach_compliance(
+                            _attach_handling(_prev_items, aid, mkt), mkt),
+                        "count": len(_prev_items), "cached": True,
+                        "from_snapshot": True, "stale": True,
+                        "synced_at": _prev.get("ts"), "age_seconds": _age_prev,
+                        "report_source": _prev.get("report_source", ""),
+                        "warnings": (_prev.get("warnings") or []) + [
+                            "Amazon returned an EMPTY catalogue just now, which "
+                            "usually means a report was still being generated. "
+                            "Your last successful sync is still shown -- nothing "
+                            "was lost. Try Sync again in a minute."]})
+                # AN OBSERVATION, NOT A FAULT -- and the difference matters,
+                # because `partial` decides whether the store accepts the write.
+                # This used to be appended to `warnings`, so a catalogue that
+                # legitimately got smaller marked its own sync incomplete and
+                # the store refused it, for that sync and every later one. Two
+                # accounts sat frozen for half a day with restocked SKUs still
+                # reading qty 0.
+                notes = list(notes or []) + [
+                    f"Amazon returned {len(items)} listing(s), {_shrink} fewer than "
+                    f"the last sync ({len(_prev_items)}). Showing the new result. If "
+                    f"that is unexpected, sync again -- a partly-built report can "
+                    f"come back short."]
+            _LIVE_CACHE[ck] = {"ts": _t.time(), "items": items}
+            # DURABLE WRITE. Everything above is process memory that a restart
+            # or a redeploy erases; this is the copy that survives.
+            #
+            # `partial` means ONE thing: a whole category of listing is missing
+            # from this sync because a report failed. save() then fills those
+            # gaps from the previous record rather than refusing the write, so a
+            # failed half can neither erase a good catalogue nor freeze it.
+            #
+            # ONLY REAL WARNINGS ARE STORED. Notes describe how one particular
+            # sync went; replayed hours later beside a snapshot they are at best
+            # meaningless and at worst wrong -- "Amazon is rate-limiting us just
+            # now" is a lie the moment it is read back from disk. The snapshot
+            # path returns whatever is stored here, so anything kept must
+            # still be true whenever it is next read.
+            _stored = _snap.save(CONFIG_PATH, aid, mkt, items,
+                                 report_source=report_source,
+                                 partial=bool(warnings),
+                                 warnings=list(warnings or []))
+            _carried = int(_stored.get("carried_listings") or 0)
+            return jsonify({"ok": True, "items": items, "count": len(items),
+                            "cached": False, "columns": hdr,
+                            "report_source": report_source,
+                            "report_built_at": report_built_at,
+                            "partial": bool(warnings),
+                            # TWO CHANNELS, kept apart all the way to the
+                            # screen. The browser interrupts for `warnings` and
+                            # shows `notes` on the sync label. Merging them here
+                            # is what made every note behave like a warning.
+                            "warnings": list(warnings or []),
+                            "notes": list(notes or []),
+                            # How many listings the stored copy kept from the
+                            # previous sync because this one could not see them.
+                            "carried_listings": _carried,
+                            "synced_at": _t.time()})
+
+        # ---- AMAZON'S LISTINGS API FIRST, THE REPORTS AS A FALLBACK ----------
+        #
+        #     "if api gives more accurate data and quick use it instead of
+        #      reports, use what do you think is better"
+        #
+        # It does, and it is not close. Measured on nestwell_goods/UK, 7 Sep
+        # 2026, against the newest report Amazon held (built 14:05:24Z):
+        #
+        #   report   39 listings, 1 QUOTA'D request (~1/min), minutes to build,
+        #            and it did not contain a listing Amazon had published an
+        #            hour earlier -- the reported symptom, exactly:
+        #            "i am not able to see it in my app" after Sync
+        #   API      40 listings, 2 ungated requests, ~2 seconds, that listing
+        #            included, plus the HANDLING TIME the report has never
+        #            carried (dashboard.py:2765 checked all 30 columns)
+        #
+        # It also frees the report quota, which is the scarce thing on this
+        # account: the Sales figures compete for it, and this view was asking
+        # for TWO reports in one breath (active, then inactive) -- the second
+        # routinely throttled, which is how suppressed listings intermittently
+        # disappeared from the screen.
+        #
+        # WHY THE REPORT PATH STAYS. Measured the same day: jack_uk,
+        # sheelady_us and selvora_limited all answer 403 Unauthorized on this
+        # API, having no Listings role granted. Only nestwell_goods succeeds.
+        # A failure here is therefore ordinary, not exceptional, and falls
+        # through to the reports below with nothing said to the user.
+        try:
+            from api import amazon_listings as _al
+            _seller = str(acc.get("seller_id") or "").strip()
+            if _seller and mkt_id:
+                _api = _al.catalogue(creds, mkt, _seller, mkt_id)
+                if _api.get("status") == _al.OK and _api.get("items"):
+                    return _finish(_enrich_items(_api["items"]), "api")
+        except Exception:
+            # Never fatal, never mentioned. The reports below are the answer.
+            pass
+
         try:
             # timeout so a stalled Amazon Reports call can't hang the request forever
             # (every other SP-API client here already passes one; this one didn't, which
@@ -1065,105 +1223,22 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                         "Suppressed and inactive listings could not be loaded, "
                         "so this list shows ACTIVE listings only. Amazon said: "
                         "%s." % (str(_ie)[:160] or _nm))
-            _attach_compliance(items, mkt)
-            _attach_handling(items, aid, mkt)
-            # enrich each item with COGS + profit estimate
-            for it in items:
-                cost, csrc = _resolve_cogs(aid, it.get("sku", ""))
-                if cost is not None:
-                    it["cogs"] = cost
-                    it["cogs_source"] = csrc
-                    prof = _estimate_profit(it.get("price", ""), cost)
-                    if prof:
-                        it["profit"] = prof
+            # Compliance, handling, COGS and profit -- the same pass the API
+            # path runs, so the two sources cannot disagree about what a
+            # listing costs or earns (Rule 12).
+            _enrich_items(items)
             # capture the header so we can diagnose missing-title issues
             hdr = []
             try:
                 hdr = [h.strip() for h in (text.splitlines()[0].split("\t"))] if text else []
             except Exception:
                 hdr = []
-            # AN EMPTY OR SHRUNKEN REPORT MUST NOT ERASE WHAT YOU ALREADY HAVE.
-            # Amazon returns 0 rows for reasons that are not errors -- a report
-            # still generating, a transient empty, a marketplace briefly not
-            # answering. None of those raise, so the last-resort handler below
-            # never sees them, and the catalogue would simply be replaced by
-            # nothing. That is the "sync wiped my listings" symptom.
-            #
-            # The rule mirrors what save() already does on disk: a smaller result
-            # never silently replaces a larger one. It is REPORTED instead, so a
-            # genuine deletion on Amazon is still visible rather than hidden.
-            _prev = _snap.get(CONFIG_PATH, aid, mkt) or {}
-            _prev_items = _prev.get("items") or []
-            if _prev_items and len(items) < len(_prev_items):
-                _shrink = len(_prev_items) - len(items)
-                _age_prev = _snap.age_seconds(_prev)
-                if not items:
-                    # Nothing at all came back -- keep the saved copy verbatim.
-                    return jsonify({
-                        "ok": True, "items": _attach_compliance(
-                            _attach_handling(_prev_items, aid, mkt), mkt),
-                        "count": len(_prev_items), "cached": True,
-                        "from_snapshot": True, "stale": True,
-                        "synced_at": _prev.get("ts"), "age_seconds": _age_prev,
-                        "report_source": _prev.get("report_source", ""),
-                        "warnings": (_prev.get("warnings") or []) + [
-                            "Amazon returned an EMPTY report just now, which usually "
-                            "means the report was still being generated. Your last "
-                            "successful sync is still shown -- nothing was lost. "
-                            "Try Sync again in a minute."]})
-                # AN OBSERVATION, NOT A FAULT -- and the difference matters,
-                # because `partial` decides whether the store accepts the write.
-                #
-                # This used to be appended to `warnings`, and `partial` was
-                # bool(warnings). So a catalogue that legitimately got smaller --
-                # somebody deleted a listing -- marked its own sync incomplete,
-                # and the store refused it. It refused every later one too, for
-                # the same reason, and the message said "Showing the new result"
-                # while the disk kept the old. Two accounts sat frozen for half a
-                # day with restocked SKUs still reading qty 0.
-                #
-                # Kept separate so it still reaches the screen and no longer
-                # votes on whether the data is trustworthy.
-                notes = list(notes or []) + [
-                    f"Amazon returned {len(items)} listing(s), {_shrink} fewer than "
-                    f"the last sync ({len(_prev_items)}). Showing the new result. If "
-                    f"that is unexpected, sync again -- a partly-built report can "
-                    f"come back short."]
-            _LIVE_CACHE[ck] = {"ts": _t.time(), "items": items}
-            # DURABLE WRITE. Everything above is process memory that a restart or
-            # a redeploy erases; this is the copy that survives.
-            #
-            # `partial` means ONE thing: a whole category of listing is missing
-            # from this sync because a report failed. Only the inactive-report
-            # handlers above set it. save() then fills those gaps from the
-            # previous record rather than refusing the write, so a failed half
-            # can neither erase a good catalogue nor freeze it.
-            # ONLY REAL WARNINGS ARE STORED. Notes describe how one particular
-            # sync went; replayed hours later beside a snapshot they are at best
-            # meaningless and at worst wrong -- "Amazon is rate-limiting us just
-            # now" is a lie the moment it is read back from disk. The snapshot
-            # path below returns whatever is stored here, so anything kept must
-            # still be true whenever it is next read.
-            _stored = _snap.save(CONFIG_PATH, aid, mkt, items,
-                                 report_source=report_source,
-                                 partial=bool(warnings),
-                                 warnings=list(warnings or []))
-            _carried = int(_stored.get("carried_listings") or 0)
-            return jsonify({"ok": True, "items": items, "count": len(items),
-                            "cached": False, "columns": hdr,
-                            "report_source": report_source,
-                            "report_built_at": report_built_at,
-                            "partial": bool(warnings),
-                            # TWO CHANNELS, kept apart all the way to the screen.
-                            # The browser interrupts for `warnings` and shows
-                            # `notes` on the sync label. Merging them here is what
-                            # made every note behave like a warning.
-                            "warnings": list(warnings or []),
-                            "notes": list(notes or []),
-                            # How many listings the stored copy kept from the
-                            # previous sync because this one could not see them.
-                            "carried_listings": _carried,
-                            "synced_at": _t.time()})
+            # The shrink guard, the durable write and the reply shape are all in
+            # _finish, above -- shared with the Listings-API path, because the
+            # rules about when a catalogue may get smaller must not depend on
+            # which Amazon endpoint the rows came from (Rule 12).
+            return _finish(items, report_source, report_built_at,
+                           warnings, notes, hdr)
         except Exception as e:
             # Print the FULL traceback to the terminal so the real cause is always
             # visible (the JSON only carries a truncated string). Without this the
