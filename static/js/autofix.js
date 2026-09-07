@@ -1607,7 +1607,14 @@ function _fullDataParts(r){
   // in `a`, so a live-only main_product_image_locator would have slipped past
   // it and drawn a raw URL cell next to the drawer's own image panel.
   const aKeys=[...new Set([...Object.keys(a), ..._liveKeys])]
-      .filter(k=>!HIDEKEYS.has(k) && !IMGRE.test(k)
+      // _AHIDE TOO, and it was missing here. `provenance` is a MAP of where
+      // each other field's value came from -- it is metadata about the row, not
+      // a field of the product -- and _prov[k] is how it reaches the field it
+      // describes. It was filtered out of the drawer's grid (presentTop, below)
+      // and not out of this list, which is what the product page draws from, so
+      // that page rendered a row labelled "Provenance" whose value was an
+      // object: on screen, literally "[object Object]".
+      .filter(k=>!HIDEKEYS.has(k) && !IMGRE.test(k) && !_AHIDE.has(k)
                  && !_BARCODE_HANDLED.has(String(k).split(".")[0]));
   // fields the script fills itself (structural / identity / dimensions) -- never shown as needs-value
   const EXCLUDE_REQ=new Set(["item_name","bullet_point","product_description","generic_keyword","purchasable_offer","fulfillment_availability","brand","condition_type","merchant_shipping_group","supplier_declared_has_product_identifier_exemption","externally_assigned_product_identifier","list_price","manufacturer","model_number","part_number","item_dimensions","item_package_dimensions","item_depth_width_height","item_length_width_height","website_shipping_weight","recommended_browse_nodes","browse_node","browse_nodes"]);
@@ -1618,7 +1625,55 @@ function _fullDataParts(r){
   const _schemaLoaded=(allAttrs||[]).length>0;
   const _axisTargets=new Set(Object.values(AXIS_FIELD));            // item_width/depth/height/length
   const _structOK=new Set(["item_depth_width_height","item_length_width_height"]);
+
+  // WHAT AN AMAZON ATTRIBUTE NAME LOOKS LIKE, checked WHETHER OR NOT the schema
+  // has loaded.
+  //
+  //     "amazon rejected a barcode, i replaced it with a new one and then again
+  //      hit the preview button but the notice still says that amazon did not
+  //      accept the barcode"
+  //
+  // He had typed the new barcode into a box whose LABEL was 04545844574868 --
+  // the old barcode itself, rendered as though it were a field. Saving it wrote
+  // an attribute literally named after a number, the real identifier was never
+  // touched, and the next Preview correctly reported the same clash. The screen
+  // offered a box that could not possibly work.
+  //
+  // WHERE THAT BOX CAME FROM: the guard below used to begin `if(!_schemaLoaded)
+  // return true`, and the schema is fetched ASYNCHRONOUSLY -- pdp.js calls
+  // loadSchemas().then(re-render). So on the first paint there is no schema,
+  // every name Amazon's reply yields is accepted, and Amazon puts the offending
+  // VALUE in attributeNames beside the field name. The real field,
+  // externally_assigned_product_identifier, is in EXCLUDE_REQ because the
+  // barcode has its own dedicated box -- so the only identifier box on screen
+  // was the phantom one.
+  //
+  // Amazon's attribute names are snake_case identifiers: lowercase letters and
+  // digits, underscores, dots for nesting, never a leading digit and never all
+  // digits. That is a property of the NAME, not of any particular schema, so it
+  // can be enforced before the schema arrives -- which is exactly the window
+  // this bug lived in. It is the same lesson as the "The"/"Your" phantom-field
+  // bug: a name that cannot be a field must never become an input, and a
+  // barcode is the most damaging possible instance because it looks plausible
+  // enough to type into.
+  // CASE-SENSITIVE, deliberately. Amazon's attribute names are lowercase
+  // snake_case without exception, so testing the string AS GIVEN also catches
+  // the original phantom-field words -- "The" and "Your", the capitalised first
+  // word of Amazon's prose, which a case-insensitive test would wave through as
+  // the perfectly ordinary attribute names "the" and "your". CLAUDE.md records
+  // that bug and that its fix was "a case-sensitive parse PLUS a schema check";
+  // this is the same reasoning applied one layer further out, where it also
+  // holds before the schema has arrived.
+  const _NAMEOK=/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
+  const _looksLikeField=f=>{
+    const s=String(f||"").trim();
+    if(!s || s.length>120) return false;
+    return _NAMEOK.test(s);
+  };
   const isRealAttr=f=>{
+    // Structural first, and it applies in BOTH branches. Without the schema
+    // this is the only check there is; with it, it costs nothing.
+    if(!_looksLikeField(f)) return false;
     if(!_schemaLoaded) return true;
     const top=String(f).split(".")[0];
     return (allAttrs.indexOf(top)>=0) || !!enums[top] || !!(sc.subs||{})[top]

@@ -204,6 +204,31 @@ function pdpOpen(sku){
   }
   try{ window.scrollTo(0, 0); }catch(e){}
 
+  // THE PER-LISTING CHECKS, WHICH THIS PAGE NEVER ASKED FOR.
+  //
+  //     "if i have a barcode which is already used on any other listing, it
+  //      should show me a notification before i hit preview, but i am not
+  //      having any type of indicator telling me this?"
+  //
+  // The check exists and works. routes/listing_routes._attach_identifier reads
+  // domain/barcode_clash -- the one place that answers "is this barcode already
+  // on another listing" -- and attaches the verdict, the clashing listings and
+  // whether any of them is LIVE. identifierPanel() below draws it, and the
+  // DRAWER has shown it all along.
+  //
+  // But _attach_identifier runs on ONE endpoint, /row, and the drawer is the
+  // only caller. This page builds its row from the list that /rows returned,
+  // and /rows attaches none of these -- 107 rows would mean 107 clash queries
+  // on every list load. So r.identifier was undefined here, identifierPanel()
+  // returned "" as it is written to, and the page that he actually edits and
+  // previews on was the one screen that never warned him.
+  //
+  // Asking the same endpoint rather than computing it again (Rule 12): it also
+  // carries the restricted, viability, claim-flag and brand-send checks, and
+  // the FRESH api_issues, so an error banner here cannot be staler than the
+  // drawer's. See pdpRefreshChecks.
+  pdpRefreshChecks(sku);
+
   // The product type's schema drives the attribute dropdowns and the nested
   // sub-field boxes. openDrawer fetches it on demand for exactly this reason;
   // without it the fields render as flat boxes with no allowed values.
@@ -331,8 +356,29 @@ function pdpHero(r){
     +   '<div class="pdp-meta">'
     +     '<div><span class="pdp-mlabel">ASIN</span>' + asinTxt + '</div>'
     +     '<div><span class="pdp-mlabel">SKU</span><b>' + esc(r.sku || "") + '</b></div>'
+    // THE BARCODE IS TYPEABLE HERE, AND CHECKED AS IT IS TYPED.
+    //
+    //     "i will add a new barcode in the pdp, so if that new barcode is also
+    //      used somewhere else, flag it immediately in 1 second"
+    //
+    // It was read-only text on this page. The only identifier box on screen was
+    // the phantom one the parser had invented out of the OLD barcode's digits,
+    // so a new code typed there went to a field named after a number and the
+    // real identifier never moved -- which is why Preview kept reporting the
+    // same clash.
+    //
+    // A real box, saving to the UPC column through the same /edit every other
+    // field uses, with the clash answered while typing rather than after a
+    // Preview and an Amazon refusal.
     +     '<div><span class="pdp-mlabel">Barcode</span>'
-    +       (r.barcode ? '<b>' + esc(r.barcode) + '</b>' : '<span class="pdp-dim">none</span>') + '</div>'
+    +       '<input class="pdp-barcode" id="pdp_barcode" '
+    +       'value="' + esc(r.barcode || "") + '" placeholder="none" '
+    +       'inputmode="numeric" autocomplete="off" spellcheck="false" '
+    // esc() with explicit quotes, which is this file's convention -- jsArg is
+    // declared in shell.js and is not in scope here.
+    +       'oninput="pdpBarcodeTyped(\'' + esc(r.sku) + '\', this.value)" '
+    +       'onchange="pdpBarcodeSave(\'' + esc(r.sku) + '\', this.value)">'
+    +       '<span id="pdp_barcode_say" class="pdp-barcode-say"></span></div>'
     +     '<div><span class="pdp-mlabel">Brand</span>'
     +       (r.brand ? '<b>' + esc(r.brand) + '</b>' : '<span class="pdp-dim">not set</span>') + '</div>'
     +   '</div>'
@@ -1177,6 +1223,136 @@ function pdpApiIssues(r){
         +  '</details>';
   }
   return '<div class="pdp-errors">' + out + '</div>';
+}
+
+/* THE PER-LISTING CHECKS, FETCHED FOR THIS PAGE.
+ *
+ * routes/listing_routes._attach_identifier -- which reads domain/barcode_clash,
+ * the one place that answers "is this barcode already on another listing" --
+ * runs on the /row endpoint only, and the drawer was its only caller. This page
+ * built its row from the list /rows returned, and /rows attaches none of these
+ * because 107 rows would mean 107 clash queries on every load. So r.identifier
+ * was undefined here and identifierPanel() returned "" exactly as it is written
+ * to: the page he edits and previews on was the one screen that never warned
+ * him about a barcode another listing already had.
+ *
+ * MERGED over the list row rather than replacing it -- the list row carries
+ * screen state the endpoint knows nothing about -- and dropped if the page has
+ * moved to another listing while the request was in flight, so one listing's
+ * verdicts can never be painted onto another's.
+ */
+function pdpRefreshChecks(sku){
+  if(typeof acctUrl !== "function") return;
+  fetch(acctUrl("/row?sku=" + encodeURIComponent(sku)))
+    .then(function(res){ return res.json(); })
+    .then(function(j){
+      if(!j || !j.ok || !j.row) return;
+      if(PDP_SKU !== sku) return;
+      const i = (typeof ROWS !== "undefined")
+        ? ROWS.findIndex(function(x){ return String(x.sku) === String(sku); })
+        : -1;
+      if(i >= 0) ROWS[i] = Object.assign({}, ROWS[i], j.row);
+      pdpRender();
+    })
+    .catch(function(){});
+}
+
+/* THE BARCODE, CHECKED WHILE IT IS BEING TYPED.
+ *
+ *     "if that new barcode is also used somewhere else, flag it immediately in
+ *      1 second. then i will put another barcode."
+ *
+ * The whole point is the loop: type a code, learn within a moment whether it is
+ * free, try another. Waiting for a Preview and Amazon's refusal makes that loop
+ * minutes long, and the answer was available locally the entire time --
+ * domain/barcode_clash reads the app's own listings.
+ *
+ * DEBOUNCED at 450ms. A request per keystroke on a thirteen-digit EAN is
+ * thirteen queries to answer one question, and the answer to a half-typed code
+ * is always "not a valid barcode", which would flash a red warning at somebody
+ * in the middle of typing a perfectly good one.
+ *
+ * THE REPLY IS DROPPED IF THE BOX HAS MOVED ON. Two codes typed quickly can
+ * answer out of order, and painting the first reply after the second would
+ * report the previous barcode's verdict against the current one -- the exact
+ * class of mistake this feature exists to prevent.
+ */
+let _PDP_BC_T = null, _PDP_BC_SEQ = 0;
+
+function pdpBarcodeTyped(sku, val){
+  PDP_DIRTY = true;
+  const say = document.getElementById("pdp_barcode_say");
+  const v = String(val || "").trim();
+  if(say){
+    say.className = "pdp-barcode-say checking";
+    say.textContent = v ? "checking…" : "";
+  }
+  if(_PDP_BC_T) clearTimeout(_PDP_BC_T);
+  if(!v) return;
+  const seq = ++_PDP_BC_SEQ;
+  _PDP_BC_T = setTimeout(function(){
+    const qs = "?code=" + encodeURIComponent(v) + "&sku=" + encodeURIComponent(sku);
+    fetch((typeof acctUrl === "function") ? acctUrl("/barcode/check" + qs)
+                                          : ("/barcode/check" + qs))
+      .then(function(res){ return res.json(); })
+      .then(function(j){
+        if(seq !== _PDP_BC_SEQ) return;            // a later keystroke won
+        const el = document.getElementById("pdp_barcode_say");
+        if(!el || !j || !j.ok) return;
+        if(j.state === "unusable"){
+          el.className = "pdp-barcode-say bad";
+          el.textContent = j.why || "Not a usable barcode.";
+        }else if(j.state === "clash_live" || j.state === "clash"){
+          el.className = "pdp-barcode-say bad";
+          // The sentence names the listing it is on and whether that one is
+          // live, which is what decides whether Amazon will refuse outright.
+          el.textContent = j.note || "This barcode is already on another listing.";
+        }else if(j.state === "free"){
+          el.className = "pdp-barcode-say good";
+          el.textContent = "Not used on any other listing.";
+        }else{
+          // "unknown" -- the lookup failed. Silence here would read as "fine".
+          el.className = "pdp-barcode-say";
+          el.textContent = "Could not check this barcode against your listings.";
+        }
+      })
+      .catch(function(){
+        if(seq !== _PDP_BC_SEQ) return;
+        const el = document.getElementById("pdp_barcode_say");
+        if(el){ el.className = "pdp-barcode-say"; el.textContent = ""; }
+      });
+  }, 450);
+}
+
+/* Saved on blur THROUGH editField, which is the app's one write path.
+ *
+ * Not a fetch("/edit") of its own -- test_pdp.js asserts that this file never
+ * calls /edit directly and it caught a first version of this that did. The
+ * reason is Rule 12 and it is a real one: editField also mirrors the value into
+ * ROWS, keeps the column and the attribute in step, and is where every other
+ * field's save behaviour lives. A second writer drifts from it silently, and
+ * the drift only shows when one of them lets something through the other stops.
+ *
+ * THE CLASH CHECK DOES NOT GATE THIS. A clash is reported, never enforced --
+ * he may be about to delete the other listing, and an app that refuses the
+ * typing is an app he has to fight. */
+async function pdpBarcodeSave(sku, val){
+  const v = String(val || "").trim();
+  if(typeof editField !== "function") return;
+  const j = await editField(sku, "col", "UPC", v);
+  if(!j || !j.ok){
+    if(typeof toast === "function")
+      toast("Save failed: " + ((j && j.error) || ""));
+    return;
+  }
+  const i = (typeof ROWS !== "undefined")
+    ? ROWS.findIndex(function(x){ return String(x.sku) === String(sku); }) : -1;
+  if(i >= 0) ROWS[i].barcode = v;
+  if(typeof toast === "function") toast(v ? "Barcode saved ✓" : "Barcode cleared");
+  // Re-ask /row so the identifier banner above agrees with the box: it is
+  // computed server-side from the SAVED value, and would otherwise still be
+  // describing the barcode that has just been replaced.
+  if(PDP_SKU === sku) pdpRefreshChecks(sku);
 }
 
 /* Back up to the banner, from a field that says Amazon complained about it.
