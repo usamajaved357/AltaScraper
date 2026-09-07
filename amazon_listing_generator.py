@@ -2740,6 +2740,7 @@ def read_input_sheet(ws_in) -> list:
     # nothing replaces it yet. Reading it through the repo anyway means the day
     # something does (a paste screen, an upload), this call site does not change.
     from listing import repo as _repo
+    from listing import suppliers as _suppliers
     rows = _repo.read_grid(ws_in)
     if not rows:
         return []
@@ -2752,6 +2753,16 @@ def read_input_sheet(ws_in) -> list:
         item = dict(zip(headers, row))
         norm = {
             "ebay_url":      item.get("ebay_link",     item.get("ebay_url",      "")),
+            # EVERY SUPPLIER ON THE ROW, in the owner's priority order.
+            #
+            # The sheet has always had one link column. Several sellers list the
+            # same product and each fills in a different amount, so the second
+            # and third carry specifics the first left blank. listing/suppliers
+            # finds whatever supplier columns the sheet has -- Supplier 2,
+            # Source URL 3, and so on -- so adding a sixth is a new column and
+            # no code change. `ebay_url` stays as it was, and is the first of
+            # these, so nothing that reads it needs to know about the rest.
+            "supplier_urls": _suppliers.urls_from(item, headers),
             "source_cost":   item.get("ebay_price",    item.get("ebay_cost",     "")),
             "amazon_url":    item.get("amazon_link",   item.get("amazon_url",    "")),
             "selling_price": item.get("amazon_price",  item.get("selling_price", "")),
@@ -2773,6 +2784,16 @@ def read_input_sheet(ws_in) -> list:
         # specifics and images from it, and the eBay seller import creates drafts
         # with no competitor ASIN at all. So either link is enough to start from.
         #
+        # A ROW WHOSE ONLY LINK IS IN A SUPPLIER COLUMN still has a source.
+        #
+        # `ebay_url` reads the primary column, so a row filled in only under
+        # "Supplier 2" would have had an empty ebay_url and been dropped by the
+        # gate below -- silently, which is the exact failure the note above
+        # describes and the reason it was written. The first supplier found IS
+        # the primary link when the primary column is blank.
+        if not str(norm["ebay_url"]).strip() and norm["supplier_urls"]:
+            norm["ebay_url"] = norm["supplier_urls"][0][1]
+
         # A row with NEITHER is still dropped: there is nothing to generate from.
         if norm["amazon_url"].strip() or norm["ebay_url"].strip():
             products.append(norm)
@@ -4132,18 +4153,49 @@ async def process_row(row: dict, client, ws_out,
     ebay_url     = str(row.get("ebay_url", "")).strip()
     ebay_first   = bool(ebay_url)   # eBay drives content when a link exists
 
+    # EVERY SUPPLIER ON THE ROW, IN THE OWNER'S ORDER.
+    #
+    #     "they all sell same item so some suppliers may have less listing
+    #      optimized and the 2nd will have some attributes the first missed"
+    #
+    # First non-empty wins and nothing is ever overwritten -- supplier 2 fills
+    # only what supplier 1 left blank. The merging lives in listing/suppliers
+    # (Rule 7: no new logic in this file); this fetches and reports.
+    #
+    # A LATER SUPPLIER IS ONLY FETCHED IF THERE IS STILL A GAP. Three suppliers
+    # would otherwise mean three eBay calls on every listing to answer a
+    # question the first one usually already answered. `_supp_gap` asks whether
+    # anything is still missing; when the first seller's page is complete the
+    # rest are never called at all.
+    from listing import suppliers as _suppliers
+    _sup_urls = row.get("supplier_urls") or ([(1, ebay_url)] if ebay_url else [])
     ebay_supp = {}
-    if ebay_url:
-        console.print("[bold]PRE-FLIGHT 1/3:[/bold] Fetching eBay source data (primary)")
+    _supp_parts = []
+    if _sup_urls:
+        console.print(f"[bold]PRE-FLIGHT 1/3:[/bold] Fetching eBay source data "
+                      f"({len(_sup_urls)} supplier(s))")
         t = Timer()
-        ebay_supp = fetch_ebay_supplement(ebay_url, ebay_app_id, ebay_cert_id)
+        for _pos, _url in _sup_urls:
+            if _supp_parts and not _suppliers.has_gap(_supp_parts):
+                console.print(f"  [dim]supplier {_pos}: not needed -- nothing "
+                              f"left to fill[/dim]")
+                continue
+            # A DEAD OR CHANGED LINK ON SUPPLIER 2 MUST NOT LOSE THE LISTING.
+            # fetch_ebay_supplement already answers with an empty dict rather
+            # than raising, and an empty part simply contributes nothing.
+            _part = fetch_ebay_supplement(_url, ebay_app_id, ebay_cert_id)
+            _supp_parts.append((_pos, _url, _part))
+        ebay_supp, _supp_prov = _suppliers.merge(_supp_parts)
+        row["_supplier_provenance"] = _supp_prov
+        for _line in _suppliers.summary(_supp_parts, ebay_supp):
+            console.print(f"  [cyan]{_line}[/cyan]")
         if ebay_supp.get("title"):
-            console.print(f"  [cyan]eBay source: '{ebay_supp['title'][:50]}' | "
+            console.print(f"  [cyan]merged: '{ebay_supp['title'][:50]}' | "
                            f"{len(ebay_supp.get('item_specifics', {}))} specs | "
                            f"{ebay_supp.get('image_count', 0)} imgs | {ebay_supp.get('price','')}[/cyan]"
                            f" ({t.elapsed()}s)")
         else:
-            console.print(f"  [yellow]eBay returned no usable data for this URL -- "
+            console.print(f"  [yellow]No supplier returned usable data -- "
                            f"falling back to Amazon as source.[/yellow]")
             ebay_first = False
 
@@ -4643,6 +4695,40 @@ async def process_row(row: dict, client, ws_out,
         compliance_risk=comp_result["highest_risk"], ip_risk=ip_risk_level)
     ok = sheet_write_row(ws_out, row_data, comp_asin)
     if ok:
+        # THE SUPPLIERS THE DRAFT WAS BUILT FROM BECOME ITS TRACKED SOURCES.
+        #
+        #     "when i add suppliers for draft creation, enroll those suppliers
+        #      automatically in all orders section where we see the available
+        #      suppliers and also in the repricer where we see the available
+        #      suppliers of the asin"
+        #
+        # Both screens read domain/source_repo, so enrolling once serves both
+        # (Rule 12). The sheet's order becomes the source priority, so the
+        # repricer prefers the same seller the listing was written from.
+        #
+        # Never fatal: this row has already cost model calls and API quota, and
+        # failing to enrol must not lose it. listing/suppliers.enrol swallows
+        # per-source failures and reports them.
+        try:
+            # The same two the rest of this file uses to reach the store, and
+            # the same default -- a run with no account named is the
+            # "dropshipping" workspace, so its sources land where its listings
+            # do rather than in a workspace nothing reads.
+            _n = _suppliers.enrol(
+                str(config.get("_config_path") or CONFIG_PATH),
+                str(config.get("_account_id") or "").strip() or "dropshipping",
+                # The same one-line derivation used at line 775, rather than a
+                # helper of its own -- MARKETPLACE_ID is reassigned on a
+                # marketplace switch, so it must be read now, not cached.
+                ("US" if MARKETPLACE_ID == US_MARKETPLACE_ID else "UK"), sku,
+                (row.get("supplier_urls") or []),
+                log=lambda m: console.print(f"  [yellow]{m}[/yellow]"))
+            if _n:
+                console.print(f"  [dim]{_n} supplier(s) enrolled for the "
+                              f"repricer and the orders screen[/dim]")
+        except Exception as _e:
+            console.print(f"  [yellow]suppliers not enrolled: "
+                          f"{str(_e)[:90]}[/yellow]")
         console.print(f"  [green]OK[/green] Written | Total: {t_total.elapsed()}s")
     return ok
 
