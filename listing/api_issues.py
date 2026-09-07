@@ -126,6 +126,107 @@ def errors(rec):
     return [i for i in rec["issues"] if i["severity"] == "ERROR"]
 
 
+# Amazon's code for "the data you sent matches an existing ASIN, and disagrees
+# with it". It is NOT a complaint about any one value being wrong.
+CATALOGUE_MATCH_CODES = {"8541"}
+
+# An ASIN, for NAMING the products in the explanation only. The decision is made
+# on the CODE, never on the prose (CLAUDE.md Rule 4).
+_ASIN_RE = None
+
+
+def catalogue_conflict(rec):
+    """Is Amazon refusing because our data MATCHES another product? -> dict|None.
+
+    -> {"code", "fields", "asins", "message"} or None.
+
+    WHY THIS IS NOT AN ORDINARY REJECTED FIELD, and why auto-fix must stop.
+
+        "a color is not something amazon should stuck on"
+
+    Right, and it was not really stuck on the colour. On 11.96_2Days_B0FM82BDC5
+    Amazon answered:
+
+        "We found more than one ASIN matching the SKU data provided. The
+         '{color.value,color.standardized_values}' conflicts with 1 ASINs in the
+         catalogue (Merchant Green / Amazon Blue) for B0HJ3W6M84..."
+
+    Amazon names `color` because that is where our data DISAGREES with an ASIN it
+    thinks we are describing -- not because the colour is invalid. Auto-fix read
+    it as an ordinary flagged field, asked for a value, was given "Green" (which
+    it already was), applied it, previewed, got the identical answer, and
+    declared itself stuck. Two rounds spent on a field that was never wrong.
+
+    AND THE "FIX" WOULD HAVE BEEN THE WORST OUTCOME. The only value that
+    satisfies the complaint is Amazon's -- Blue. Setting it would make our
+    product match somebody else's ASIN, which is precisely the piggyback listing
+    CLAUDE.md Rule 1 exists to prevent. So this is not a field to try harder at;
+    it is a stop.
+
+    Decided on the CODE. The ASINs are pulled out for the sentence only, with a
+    strict pattern, and nothing branches on them.
+    """
+    global _ASIN_RE
+    if not isinstance(rec, dict) or "issues" not in rec:
+        rec = parse(rec)
+    for raw in rec.get("issues") or []:
+        # THROUGH _one, LIKE EVERY OTHER READER HERE. Amazon spells it
+        # attributeNames on the way in and this column spells it fields on the
+        # way back out, and _one is the one place that knows both. Reading
+        # i["fields"] directly worked on a stored record and came back empty on
+        # a reply straight from Amazon -- the same silent-empty-field-list bug
+        # this module's own note about _one describes.
+        i = _one(raw)
+        if not i:
+            continue
+        if str(i.get("code") or "").strip() not in CATALOGUE_MATCH_CODES:
+            continue
+        if _ASIN_RE is None:
+            import re
+            _ASIN_RE = re.compile(r"\bB0[A-Z0-9]{8}\b")
+        msg = str(i.get("message") or "")
+        asins = []
+        for a in _ASIN_RE.findall(msg):
+            if a not in asins:
+                asins.append(a)
+        return {"code": str(i.get("code") or ""),
+                "fields": list(i.get("fields") or []),
+                "asins": asins,
+                "message": msg}
+    return None
+
+
+def catalogue_conflict_note(cc):
+    """The sentence to show when catalogue_conflict() fires. Plain English.
+
+    It says three things, because all three were missing from the log the owner
+    read: that the field named is not the fault, what Amazon has actually done,
+    and what the two ways out are. Neither of them is "let the app pick a
+    value" -- the app changing our product to match somebody else's ASIN is the
+    one outcome that must never happen by itself (CLAUDE.md Rule 1).
+    """
+    if not cc:
+        return ""
+    fields = [f for f in (cc.get("fields") or []) if f]
+    asins = cc.get("asins") or []
+    out = ("Stopped: Amazon has matched this listing's details to "
+           + ("an existing product (%s)" % ", ".join(asins[:3]) if asins
+              else "an existing product")
+           + " and says they disagree")
+    if fields:
+        out += " on " + ", ".join(fields[:4])
+    out += (". That is not a value being wrong -- it is Amazon deciding this is "
+            "the same product as one already in its catalogue. Auto-fix will "
+            "not change it, because the only value that satisfies the "
+            "complaint is Amazon's own, and adopting it would attach your new "
+            "product to somebody else's ASIN.\n\n"
+            "Two ways out: make the listing clearly a different product (its "
+            "own title, brand and specifics), or -- if it really is that "
+            "product -- take it up with Selling Partner Support, which is what "
+            "Amazon's own message suggests.")
+    return out
+
+
 def stale_identifiers(issues, current_barcode):
     """Barcodes Amazon is still complaining about that this listing no longer uses.
 

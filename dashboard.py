@@ -1968,6 +1968,34 @@ def _run_autofix_bg_inner(jid):
                 if verdict == "error":
                     key = "|".join(sorted(fields))
                     entry["diagnosis"] = "Amazon flagged: " + (", ".join(fields) or "(no field named)")
+                    # A CATALOGUE MATCH IS NOT A FIELD TO TRY HARDER AT.
+                    #
+                    #     "a color is not something amazon should stuck on"
+                    #
+                    # And it was not really stuck on the colour. Amazon code 8541
+                    # means our data MATCHES an existing ASIN and disagrees with
+                    # it; the field it names is where the disagreement is, not a
+                    # value that is wrong. The only value that would satisfy it
+                    # is Amazon's own -- which would attach our new product to
+                    # somebody else's ASIN, the piggyback listing Rule 1 exists
+                    # to prevent. So this stops on the FIRST round rather than
+                    # spending another one re-applying a value that was already
+                    # right. listing/api_issues.py owns the recognition and
+                    # decides on the CODE, never the prose (Rule 4).
+                    try:
+                        _rec = _api_issues.parse(
+                            (next((r for r in _records(_ws())
+                                   if str(r.get("SKU", "")).strip() == sku), {}) or {})
+                            .get("API Issues JSON"))
+                        _cc = _api_issues.catalogue_conflict(_rec)
+                    except Exception:
+                        _cc = None
+                    if _cc:
+                        entry["diagnosis"] = _api_issues.catalogue_conflict_note(_cc)
+                        outcome = "stuck"; diagnosis = entry["diagnosis"]
+                        _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — stopped: Amazon "
+                                      f"matched this to an existing ASIN")
+                        break
                     if prev_errors is not None and prev_errors == key:
                         entry["diagnosis"] += " — identical to the previous round, no progress."
                         outcome = "stuck"; diagnosis = entry["diagnosis"]
