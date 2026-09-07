@@ -87,11 +87,68 @@ function selectAllVisible(on){
   render(); updateSelBar();
 }
 function clearSelection(){ SELECTED.clear(); render(); updateSelBar(); }
+
+/* HOW MANY OF THE SELECTION IS NOT ON THIS SCREEN.
+ *
+ *     "i selected 36 listings by going to first filter and select all and then
+ *      set the handling time ... as 2 day handling time and got this message
+ *      why"
+ *
+ * Because 46 were sent, not 36. SELECTED survives a change of tab and of
+ * filter -- deliberately, so a selection can be built across pages -- and
+ * selectAllVisible ADDS to it. Ten rows ticked in an earlier view were still in
+ * it, so "select all" on a 36-listing tile acted on 46, and the reply's numbers
+ * only made sense against a total he had never been shown: 13 saved + 33 with
+ * no row = 46, and 36 pushed + 10 not live = 46.
+ *
+ * The selection is not narrowed -- carrying one across pages is the point of
+ * it. It is COUNTED, so the bar says what is really about to happen.
+ */
+function selectedOffScreen(){
+  if(typeof visibleSelectableSkus !== "function") return 0;
+  let here;
+  try{ here = new Set(visibleSelectableSkus()); }catch(e){ return 0; }
+  if(!here.size) return 0;                 // nothing drawn yet: say nothing
+  let n = 0;
+  SELECTED.forEach(s => { if(!here.has(String(s))) n++; });
+  return n;
+}
+
+/* The sentence every bulk action says when the selection reaches past the view.
+ *
+ * ONE SENTENCE, NOT FOUR. Handling, stock, price, Delete, Auto-fix and the GTIN
+ * exemption all read the same SELECTED set and all inherit the same surprise.
+ * Delete now removes a live listing FROM AMAZON and the exemption is a
+ * declaration about the products, so this matters most on the two that cannot
+ * be taken back -- and a copy of the warning per caller is how one of them ends
+ * up without it (CLAUDE.md Rule 12).
+ *
+ * Returns "" when the selection is entirely on screen, so a caller can
+ * concatenate it unconditionally.
+ */
+function selectionScopeNote(verb){
+  const off = (typeof selectedOffScreen === "function") ? selectedOffScreen() : 0;
+  if(!off) return "";
+  return off + " of them " + (off === 1 ? "is" : "are") + " not in the view you "
+       + "are looking at — a selection is kept as you move between tabs and "
+       + "filters. Cancel and press Clear if that is not what you meant"
+       + (verb ? (" before " + verb) : "") + ".\n\n";
+}
+
 function updateSelBar(){
   const bar=document.getElementById('selbar'); if(!bar) return;
   const n=SELECTED.size;
   bar.style.display = n? 'flex':'none';
-  const cnt=document.getElementById('selcount'); if(cnt) cnt.textContent=n+' selected';
+  const cnt=document.getElementById('selcount');
+  if(cnt){
+    const off = selectedOffScreen();
+    cnt.textContent = n + ' selected' + (off ? (' · ' + off + ' not in this view') : '');
+    cnt.title = off
+      ? ('A selection is kept as you move between tabs and filters, so ' + off
+         + ' of these ' + (off === 1 ? 'is' : 'are') + ' not on screen now. '
+         + 'Everything selected is acted on. Press Clear to start again.')
+      : '';
+  }
 }
 function selectedSkus(){ return Array.from(SELECTED); }
 
