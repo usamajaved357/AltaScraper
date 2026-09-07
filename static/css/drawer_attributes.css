@@ -61,7 +61,7 @@
 .lv-cnt.diff{ color:#EF9F27; }
 .lv-cnt.live{ color:#85B7EB; }
 
-.lv-fill,.lv-refresh{
+.lv-fill,.lv-push,.lv-refresh{
   margin-left:auto; background:none; border:1px solid #3a3a45; border-radius:4px;
   color:#c8c7cc; font-family:inherit; font-size:10px; padding:2px 7px;
   cursor:pointer; line-height:1.5;
@@ -69,6 +69,12 @@
 .lv-fill{ margin-left:auto; border-color:#2a6cb5; color:#85B7EB; }
 .lv-fill + .lv-refresh{ margin-left:0; }
 .lv-fill:hover{ background:#1b2a3d; }
+/* THE ONE BUTTON ON THIS BAR THAT CHANGES THE LIVE LISTING, and it is coloured
+   like it. Everything else here reads Amazon or writes to the app; this patches
+   the shopfront, so it does not look like its neighbours. */
+.lv-push{ margin-left:auto; border-color:#B5762A; color:#EF9F27; }
+.lv-push + .lv-refresh, .lv-fill + .lv-push{ margin-left:0; }
+.lv-push:hover{ background:#3d2f1b; }
 .lv-refresh:hover{ background:#2a2a35; color:#eeedf0; }
 
 /* ---- 2. AMAZON'S OWN COMPLAINTS --------------------------------------- */

@@ -214,21 +214,57 @@ truthy("  and that they were not touched", g["noteSaysWhat"])
 truthy("  and what to do about it", g["noteSaysNext"])
 truthy("  named for the action being taken", g["noteUsesVerb"])
 
-print("\n=== every draft action splits, and no live action does ===")
-# Approve/Hold, Delete and Auto-fix act on the payload this app holds.
+print("\n=== the draft-only actions split; DELETE no longer does ===")
+# Approve/Hold and Auto-fix act on the payload this app holds, so a listing with
+# no draft here has nothing for them to act on.
 truthy("bulkStatus splits before sending", "splitByDraft(_sel)" in MILES.split(
     "async function bulkStatus")[1][:600])
-truthy("bulkDelete splits before sending", "splitByDraft(_sel)" in MILES.split(
-    "async function bulkDelete")[1][:600])
 truthy("bulkAutoFix splits before starting", "splitByDraft(sel)" in AUTOFIX)
-# ...and each one refuses outright rather than sending an empty list, which
-# would read as "approved 0" instead of "there was nothing to approve".
 truthy("bulkStatus stops when none of them is a draft",
        "if(!skus.length){" in MILES.split("async function bulkStatus")[1][:1200])
-truthy("bulkDelete says it never removes a live listing",
-       "never removes a live" in MILES)
 truthy("bulkAutoFix stops when none of them is a draft",
        "if(!s.drafts.length){" in AUTOFIX)
+
+# DELETE CHANGED SIDES on 7 Sep 2026, at the owner's instruction. It used to be
+# in the list above, and this file asserted that it "never removes a live
+# listing -- to end one, close it in Seller Central". That is precisely what he
+# was then doing by hand:
+#
+#     "i deleted some listings from the app but they were not deleted now after
+#      45 minutes i am deleting them from seller central"
+#
+#     "when a listing is live delete button delets from amazon, when in draft
+#      delete means delete from app, because it is not live on amazon"
+#
+# So the whole selection is sent and the SERVER decides per SKU, by asking
+# Amazon rather than trusting a stored status -- this is the one action that
+# cannot be undone by sending something else.
+_bd = MILES.split("async function bulkDelete")[1][:2500]
+truthy("bulkDelete sends the WHOLE selection", "skus=_sel;" in _bd)
+# CODE ONLY. The sentence that used to refuse is quoted in the comment that
+# replaced it, so the next reader knows what changed and why -- counting the
+# comment would make that explanation look like the behaviour it describes.
+_miles_code = "\n".join(
+    l for l in MILES.splitlines() if not l.strip().startswith("//"))
+check("  and no longer refuses live listings",
+      "never removes a live" in _miles_code, False)
+truthy("  it counts how many are live before asking", "_liveN" in _bd)
+truthy("  and says they will go from Amazon", "DELETED FROM AMAZON" in _bd)
+truthy("  a draft is still described as local-only", "nothing on \" \n" not in _bd
+       and "Amazon changes." in _bd)
+truthy("  the single-row delete warns the same way",
+       "function _delWarning(" in MILES and "DELETED FROM AMAZON" in MILES)
+# THE SERVER IS THE ONE THAT DECIDES. The browser's warning is a warning; if it
+# were the decision, a stale ROWS entry would delete a live listing believing it
+# was a draft, or leave one standing believing it was live.
+L = open(os.path.join(HERE, "routes", "listing_routes.py"), encoding="utf-8").read()
+truthy("the route asks Amazon before deleting anything there",
+       "def _delete_on_amazon(" in L)
+truthy("  and treats a SKU Amazon does not have as a draft",
+       "_al.GONE" in L)
+truthy("  keeping the row when the check itself failed",
+       "could not check Amazon" in L)
+truthy("  and when Amazon refused the delete", "draft was kept" in L)
 
 # Handling/stock/price are live Amazon changes -- an Amazon-only listing is
 # their most ordinary target, so they must NOT split.
