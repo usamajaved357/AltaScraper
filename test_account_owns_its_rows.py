@@ -58,12 +58,33 @@ SRC = open(os.path.join("routes", "listing_routes.py"), encoding="utf-8").read()
 
 print("=== the store can be opened for a NAMED workspace ===")
 truthy("there is one helper for it", "def _store_for(" in SRC)
+# THE BODY MOVED TO data/backend.py on 7 Sep 2026, unchanged, when the bulk
+# handling-time endpoint turned out to need the same thing and was using _ws()
+# -- the server-wide active workspace -- for a WRITE. Two answers to "which
+# store belongs to this account" is the duplication Rule 12 exists to stop, and
+# the one that was wrong recorded a handling-time change against whichever
+# account the server happened to have open:
+#
+#     "i did this multiple time in the past with days of break in between but
+#      still app shows 3, it is not changing to 2"
+#
+# So the assertions follow it. They are the same three invariants.
 _sf = SRC.split("def _store_for(")[1].split("    def ")[0]
-truthy("  it opens that workspace's own store", "ListingStore(aid" in _sf)
+truthy("  it asks the one shared helper",
+       "_backend.store_for(aid, _cfg(), CONFIG_PATH)" in _sf)
+_BK = open(os.path.join(HERE, "data", "backend.py"), encoding="utf-8").read()
+_bs = _BK.split("def store_for(")[1].split("\ndef ")[0]
+truthy("  it opens that workspace's own store", "ListingStore(aid" in _bs)
 # It must not invent a store for a backend that has no such thing, nor blow up
 # a working screen when it cannot help.
-truthy("  it declines when there is no account named", "if not aid:" in _sf)
-truthy("  and when the backend is not the database", '!= "db"' in _sf)
+truthy("  it declines when there is no account named", "if not aid:" in _bs)
+truthy("  and when the backend is not the database", '!= "db"' in _bs)
+# Behaviour, not just spelling -- the three above are read off the source, so
+# one call each proves they are true of the running code.
+from data import backend as _B
+check("  proven: no account -> None", _B.store_for("", {}, None), None)
+check("  proven: sheets backend -> None",
+      _B.store_for("nestwell_goods", {"data_backend": "sheets"}, None), None)
 
 print("\n=== the three routes that read or write a workspace's rows ===")
 for name, marker in (("rows_all", "_store_for(_use_aid)"),

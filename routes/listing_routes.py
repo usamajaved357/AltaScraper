@@ -300,29 +300,17 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
     def _store_for(aid):
         """The listings store for ONE named workspace, on the database backend.
 
-        "no one account data should be shared with another"
+        The body moved to data/backend.store_for on 7 Sep 2026, unchanged, when
+        the bulk handling-time endpoint turned out to need the same thing and
+        was using _ws() -- the server-wide active workspace -- instead. Two
+        answers to "which store belongs to this account" is the duplication
+        Rule 12 exists to stop, and the one that was wrong wrote to whichever
+        account the server happened to have open.
 
-        On the database a workspace IS the unit of storage -- data/store.StoreBook
-        says it plainly, "on the database a tab is a workspace" -- so a store can
-        simply be opened for the account that was asked about. Verified before
-        this was used: ListingStore("jack_uk") holds 87 SKUs,
-        ListingStore("nestwell_goods") 86, and none is shared between them.
-
-        Returns None when there is no account to open or the backend is not the
-        database, so callers keep their existing behaviour rather than losing
-        their rows to a helper that could not help.
+        This name stays because a dozen callers in this file use it.
         """
-        aid = str(aid or "").strip()
-        if not aid:
-            return None
-        try:
-            from data import choice as _ch
-            if _ch.resolve(_cfg(), None) != "db":
-                return None
-            from data.store import ListingStore, SheetLikeStore
-            return SheetLikeStore(ListingStore(aid, config_path=CONFIG_PATH))
-        except Exception:
-            return None
+        from data import backend as _backend
+        return _backend.store_for(aid, _cfg(), CONFIG_PATH)
 
     def _asked_account():
         """The account the caller named, or None. Body first, then query string.
