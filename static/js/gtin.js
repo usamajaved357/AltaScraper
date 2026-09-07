@@ -100,7 +100,11 @@ async function bulkGtinExemption(on){
     : ("Turn the GTIN exemption OFF on " + skus.length + " listing(s)?\n\n"
        + "They will need a real barcode in the Barcode / GTIN box, or Amazon "
        + "will refuse them for want of an identifier.");
-  if(!await uiConfirm(msg)) return;
+  // A DECLARATION TO AMAZON, so the scope of it is worth being sure of. The
+  // selection survives a change of tab and of filter; see selectionScopeNote.
+  const _scope = (typeof selectionScopeNote === "function")
+    ? selectionScopeNote("declaring this") : "";
+  if(!await uiConfirm(msg + (_scope ? ("\n\n" + _scope.trim()) : ""))) return;
 
   const btn = document.getElementById("gtinexemptbtn");
   if(btn){ btn.disabled = true; btn.dataset._t = btn.textContent; btn.textContent = "Saving…"; }

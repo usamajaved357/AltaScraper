@@ -924,7 +924,12 @@ async function bulkDelete(){
     _msg += "\n\nThese are drafts and were never sent to Amazon, so nothing on "
           + "Amazon changes.";
   }
-  if(!await uiConfirm(_msg + "\n\nThis cannot be undone.")) return;
+  // THE ONE THAT CANNOT BE TAKEN BACK. A selection carried in from another view
+  // is a nuisance on a handling time and a disaster here, now that a live
+  // listing is deleted from Amazon as well.
+  const _scope = (typeof selectionScopeNote === "function")
+    ? selectionScopeNote("deleting anything") : "";
+  if(!await uiConfirm(_msg + "\n\n" + _scope + "This cannot be undone.")) return;
   let ok=0, fail=0, amzOk=0;
   const why=[];
   toast("Deleting "+skus.length+"…");

@@ -112,7 +112,18 @@ async function bulkHandling(){
   if(!skus.length){ toast("Select some listings first (or use Select all)"); return; }
 
   const usingAll = !((typeof selectedSkus==="function") && selectedSkus().length);
+  // A SELECTION CARRIED IN FROM ANOTHER VIEW IS NAMED BEFORE ANYTHING IS SENT.
+  //
+  //     "i selected 36 listings by going to first filter and select all and
+  //      then set the handling time ... and got this message why"
+  //
+  // 46 went. Ten were still ticked from an earlier view, and the only place
+  // that could have been noticed was a count in the corner of the selection
+  // bar. This is the last moment before it reaches Amazon, so it is said here.
+  const _scope = (!usingAll && typeof selectionScopeNote === "function")
+    ? selectionScopeNote("sending this to Amazon") : "";
   if(!await uiConfirm(`Set handling time to ${days} day(s) on ${skus.length} ${usingAll?'listing(s) in this view':'selected listing(s)'}?\n\n`
+             + _scope
              +`This saves it here AND pushes the change live to Amazon. Any listing Amazon refuses is reported on its own; the rest still go.`)) return;
 
   const btn = document.getElementById("handlingbtn");
@@ -130,7 +141,25 @@ async function bulkHandling(){
     const okN = j.pushed_ok||0, failArr = results.filter(r=>!r.ok);
     const notLive = failArr.filter(r=>/no listing with this sku|not_found/i.test(r.error||"")).length;
     const realFail = failArr.length - notLive;
-    let msg = `Handling time set to ${days} day(s).`;
+    // THE TOTAL FIRST, OR NONE OF THE REST ADDS UP.
+    //
+    //     "i selected 36 listings ... and got this message why"
+    //
+    // Because 46 went, not 36 -- ten rows ticked in an earlier view were still
+    // selected. Every figure below was then measured against a number he had
+    // never been shown: 13 saved + 33 with no row = 46, and 36 pushed + 10 not
+    // live = 46, and neither pair matched the 36 on the tile he had just used.
+    // Saying the total makes both lines readable and makes a stale selection
+    // visible at the one moment it matters.
+    let msg = `Handling time set to ${days} day(s) on ${skus.length} listing(s).`;
+    msg += `\n\nOn Amazon — this is the number buyers see:`;
+    msg += `\n• Changed: ${okN}`;
+    if(notLive) msg += `\n• Not on Amazon yet, so it will apply on submit: ${notLive}`;
+    // A REFUSAL BELONGS BESIDE THE PUSH, not under the local save. It sat below
+    // "Saved", which reads as the save having failed when it is Amazon that
+    // said no.
+    if(realFail) msg += `\n• Amazon refused: ${realFail} (named below)`;
+    msg += `\n\nRecorded here — this app's own copy:`;
     msg += `\n• Saved: ${savedN}`;
     // WHY SOME WERE NOT SAVED, in the server's own words rather than a guess
     // here. It used to say "nowhere to record it" for every reason there was,
@@ -139,9 +168,6 @@ async function bulkHandling(){
     // fault. sheet_note now distinguishes an error, a missing column, and a
     // listing this app simply has no draft of.
     if(j.sheet_note) msg += ` — ${j.sheet_note}`;
-    msg += `\n• Pushed live to Amazon: ${okN}`;
-    if(notLive) msg += `\n• Not live yet (will apply on submit): ${notLive}`;
-    if(realFail) msg += `\n• Failed: ${realFail} (see details below)`;
     if(realFail){
       const lines = failArr.filter(r=>!/no listing with this sku|not_found/i.test(r.error||""))
                            .slice(0,8).map(r=>`  – ${r.sku}: ${r.error||"error"}`).join("\n");
