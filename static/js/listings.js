@@ -1219,35 +1219,28 @@ function summary(){
   // you to them.
   // EACH COUNT GOES TO ITS OWN LIST. Both of these used to pass 'holds', which
   // is the UNION -- so clicking a count of 3 showed 28 rows. See isHold.
-  if(c.ERROR){
-    extras.push(`<button class="linkbtn" style="color:var(--red)"
-        onclick="metricFilter('refused')"
-        title="Sent to Amazon, and Amazon rejected it. Open one to see what Amazon said.">${c.ERROR}
-        listing${c.ERROR>1?'s':''} Amazon refused</button>`);
-  }
-  if(c.HOLD){
-    // A STORED VERDICT IS NOT A CURRENT ONE, and this line could not say so.
-    //
-    //     "i still see 52 held by a compliance or IP check ... they should go
-    //      away if that is inaccurate"
-    //
-    // Fair, and the count on its own gave no way to find out which it was. This
-    // flag was written ONCE, when the listing was generated, against ip_rules
-    // and compliance_rules AS THEY WERE THEN. Change a rule afterwards and
-    // every already-generated row keeps the old verdict -- the rule moved, the
-    // rows did not. That is what flags.RESCANNABLE_STATUSES and /rescan/preview
-    // exist for, and neither was reachable from the number complaining about it.
-    //
-    // So the count now offers the check beside itself. Preview only: it lists
-    // what WOULD change and writes nothing until you say yes, which is the right
-    // default for something that rewrites a verdict on 52 listings at once.
-    extras.push(`<button class="linkbtn" style="color:var(--red)"
-        onclick="metricFilter('blocked')"
-        title="Held by this app's own IP or compliance check BEFORE anything was sent to Amazon. Nothing reached Amazon. Click to see just these; open one to see which rule stopped it.">${c.HOLD}
-        held by a compliance or IP check</button>
-      <button class="linkbtn" onclick="rescanFlags()"
-        title="These flags were decided when each listing was generated, against the rules as they were then. If a rule has changed since, the stored verdict is out of date. This re-runs the checks against the copy already stored and shows you what would change — it writes nothing until you confirm.">re-check them</button>`);
-  }
+  // THE TWO RED COUNTS ARE GONE, at the owner's request.
+  //
+  //     "2 listings Amazon refused · 52 held by a compliance or IP check
+  //      re-check them the app shows me this message on the all listing page,
+  //      i donot want to know how many of the listings show this status so
+  //      please remove it"
+  //
+  // They were:
+  //     `${c.ERROR} listing(s) Amazon refused`        -> metricFilter('refused')
+  //     `${c.HOLD} held by a compliance or IP check`  -> metricFilter('blocked')
+  //     `re-check them`                               -> rescanFlags()
+  //
+  // NOTHING WAS LOST WITH THEM, which was checked before deleting rather than
+  // assumed. rescanFlags() has its own toolbar button ("Re-check flags",
+  // templates/dashboard.html), and both filters remain reachable from the
+  // status tabs -- so the capability stayed and only the running total went.
+  //
+  // Why he is right about the total specifically: a count of held listings is a
+  // number you cannot act on. It says how many rows carry a verdict without
+  // saying which rows, or which rule, and it sat above a list those rows were
+  // already in. The per-listing flag on the row itself says the same thing
+  // where it can be acted on.
   // The published rows the Drafts list is deliberately not showing. Said in
   // words rather than counted into a tile above a list they are not in, and
   // with the way to go and look at them.

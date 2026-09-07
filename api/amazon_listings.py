@@ -115,6 +115,185 @@ def get_item(creds, marketplace, seller_id, sku, marketplace_id,
     return out
 
 
+def catalogue(creds, marketplace, seller_id, marketplace_id,
+              page_size=20, max_pages=200, timeout=60):
+    """EVERY listing on the account, from Amazon's Listings API. Never raises.
+
+    -> {"status", "items": [ ... ], "error", "http_code", "pages", "raw_count"}
+
+    WHY THIS EXISTS -- IT REPLACES A REPORT.
+
+        "if api gives more accurate data and quick use it instead of reports"
+
+    The catalogue was built from GET_MERCHANT_LISTINGS_ALL_DATA merged with
+    GET_MERCHANT_LISTINGS_INACTIVE_DATA. Measured on nestwell_goods/UK on
+    7 Sep 2026, against the newest report Amazon held (built 14:05:24Z, an hour
+    after the listing in question was created):
+
+        report        39 listings   1 request, QUOTA'D (~1/min), minutes to build
+                      -- and it did NOT contain 9.99_2Days_B0BP1HNW8G at all
+        this call     40 listings   2 requests, ungated, 1.4-1.9 seconds
+                      -- including that SKU, BUYABLE, £19.99, qty 10
+
+    That gap is not a rounding error: it is the reported symptom. A listing
+    Amazon had published an hour earlier could not be seen in the app however
+    many times Sync was pressed, because the report Sync reads did not have it.
+
+    IT ALSO CARRIES THE HANDLING TIME, which the report does not
+    (dashboard.py:2765 says so, having dumped all 30 columns to check). The app
+    fetches that per-SKU afterwards; from here it arrives in the same call.
+
+    THE SHAPE IS _parse_listings_report's SHAPE, deliberately. Everything
+    downstream -- the snapshot, the catalogue screen, the repricer -- already
+    reads those keys, and a second shape would mean every reader learning which
+    source it came from (Rule 12). Two adapters, one vocabulary.
+
+    NOT EVERY ACCOUNT MAY USE THIS. Measured the same day: jack_uk, sheelady_us
+    and selvora_limited all answer 403 Unauthorized, having no Listings role
+    granted; only nestwell_goods succeeds. So this returns a status the caller
+    must check, and the caller keeps the report path for the rest.
+    """
+    out = {"status": FAILED, "items": [], "error": "", "http_code": None,
+           "pages": 0, "raw_count": 0}
+    if not (seller_id and marketplace_id):
+        out["error"] = "need a seller id and a marketplace id"
+        return out
+    raw = []
+    token = None
+    expected = None
+    try:
+        cl = _client(creds, marketplace, timeout=timeout)
+        while True:
+            kw = {"marketplaceIds": [marketplace_id],
+                  "pageSize": int(page_size),
+                  "includedData": ["summaries", "offers",
+                                   "fulfillmentAvailability", "attributes"]}
+            if token:
+                kw["pageToken"] = token
+            resp = cl.search_listings_items(seller_id, **kw)
+            data = resp.payload if hasattr(resp, "payload") else (resp or {})
+            raw.extend((data or {}).get("items") or [])
+            out["pages"] += 1
+            if expected is None:
+                try:
+                    expected = int((data or {}).get("numberOfResults"))
+                except (TypeError, ValueError):
+                    expected = None
+            # WHERE THE NEXT PAGE TOKEN ACTUALLY IS. sp-api lifts `pagination`
+            # out of the body and hands it back as `next_token`; the payload's
+            # own pagination key comes through as null. Reading only the payload
+            # stopped after ONE page and quietly returned 20 of 40 listings --
+            # a half catalogue that looks exactly like a complete one, which is
+            # the failure mode this whole change exists to remove.
+            token = getattr(resp, "next_token", None)
+            if not token:
+                token = ((data or {}).get("pagination") or {}).get("nextToken")
+            if not token or out["pages"] >= int(max_pages):
+                break
+    except Exception as e:
+        out["error"] = "%s: %s" % (type(e).__name__, str(e)[:200])
+        out["http_code"] = getattr(e, "code", None) or getattr(e, "status_code", None)
+        return out
+    # AMAZON SAYS HOW MANY THERE ARE. If we did not collect that many, say so
+    # rather than returning a short list as though it were the catalogue -- the
+    # caller keeps its previous snapshot instead of shrinking it.
+    if expected is not None and len(raw) < expected:
+        out["error"] = ("collected %d of %d listing(s) Amazon reported"
+                        % (len(raw), expected))
+        out["items"] = []
+        return out
+    out["raw_count"] = len(raw)
+    out["expected"] = expected
+    out["items"] = [_as_catalogue_row(i, marketplace_id) for i in raw]
+    out["items"] = [i for i in out["items"] if i.get("sku")]
+    out["status"] = OK
+    return out
+
+
+# Amazon's product-id types that are actually barcodes. An ASIN or an ISBN
+# printed under the word EAN is worse than the blank it replaces -- the same
+# rule dashboard.py applies to the report's product-id-type column.
+_BARCODE_TYPES = {"ean", "upc", "gtin", "gcid", "isbn13"}
+
+
+def _first(attrs, key, field="value"):
+    """The first scalar of a Listings attribute, or "". Attributes arrive as
+    [{"value": x, "marketplace_id": ...}] and a missing one must not raise."""
+    v = (attrs or {}).get(key)
+    if not isinstance(v, list) or not v:
+        return ""
+    e = v[0]
+    if isinstance(e, dict):
+        return str(e.get(field, "") or "")
+    return str(e or "")
+
+
+def _as_catalogue_row(item, marketplace_id):
+    """One API listing -> the dict _parse_listings_report produces.
+
+    Kept beside the call rather than in the route, because the mapping is a fact
+    about Amazon's reply shape, not a decision about what to show.
+    """
+    s = (item.get("summaries") or [{}])[0] or {}
+    attrs = item.get("attributes") or {}
+    offers = item.get("offers") or []
+    avail = item.get("fulfillmentAvailability") or []
+
+    price = ""
+    if offers:
+        p = offers[0].get("price") or {}
+        price = str(p.get("amount", "") or "")
+
+    qty, channel, handling = "", "", ""
+    if avail:
+        a0 = avail[0] or {}
+        q = a0.get("quantity")
+        qty = "" if q is None else str(q)
+        channel = str(a0.get("fulfillmentChannelCode", "") or "")
+    # The handling time the report has never carried. It is on the ATTRIBUTE,
+    # not on the fulfillmentAvailability summary, which is why asking for
+    # attributes is worth the payload.
+    fa = attrs.get("fulfillment_availability")
+    if isinstance(fa, list) and fa and isinstance(fa[0], dict):
+        lt = fa[0].get("lead_time_to_ship_max_days")
+        handling = "" if lt is None else str(lt)
+        if not channel:
+            channel = str(fa[0].get("fulfillment_channel_code", "") or "")
+
+    # BUYABLE is the only status that means somebody can buy it. DISCOVERABLE
+    # alone is a product page with no offer attached -- see the verify branch in
+    # amazon_listing_generator.py, where treating the two as one put a green row
+    # on screen for a listing nobody could purchase.
+    statuses = [str(x).upper() for x in (s.get("status") or [])]
+    status = "Active" if "BUYABLE" in statuses else "Inactive"
+
+    barcode = ""
+    ident = attrs.get("externally_assigned_product_identifier")
+    if isinstance(ident, list) and ident and isinstance(ident[0], dict):
+        if str(ident[0].get("type", "") or "").lower() in _BARCODE_TYPES:
+            barcode = str(ident[0].get("value", "") or "")
+
+    return {
+        "sku":   str(item.get("sku", "") or ""),
+        "asin":  str(s.get("asin", "") or ""),
+        "title": str(s.get("itemName", "") or ""),
+        "price": price,
+        "qty":   qty,
+        "status": status,
+        "brand": _first(attrs, "brand"),
+        "fulfillment": channel,
+        "ship_group": _first(attrs, "merchant_shipping_group"),
+        "barcode": barcode,
+        # NOT IN THE REPORT'S SHAPE, and additive on purpose: a reader that does
+        # not know about it is unaffected, and the one that does is spared a
+        # per-SKU getListingsItem for every listing on the account.
+        "handling_time": handling,
+        # What Amazon literally said, kept so a screen can tell "page created,
+        # no offer" from "suppressed" without asking Amazon again.
+        "amazon_status": statuses,
+    }
+
+
 def put(creds, marketplace, seller_id, sku, marketplace_id, product_type,
         attributes, issue_locale="en_GB", timeout=90):
     """Create or fully replace a listing. Never raises.
