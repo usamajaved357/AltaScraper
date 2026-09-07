@@ -677,6 +677,20 @@ function ppcaProfitability(j, cur){
                     // because a dash on a profit card reads as a broken screen
                     // rather than as a deliberate refusal.
                     why: (np.why || "Needs the account's measured rates."),
+                    // A MONTHLY CHARGE LANDING IN A SHORT WINDOW IS NOT A BAD
+                    // WEEK. Amazon sends the subscription fee with no date, so
+                    // it is filed on whichever day the figures were last
+                    // pulled. Over two days it IS the figure -- measured on
+                    // nestwell_goods, £30.00 on a day that sold nothing, giving
+                    // a confident -£30.00 for an account that traded fine.
+                    // The total is right; this says which part of it is a
+                    // calendar artefact rather than trading.
+                    note2: (np.note
+                            ? ('<span style="color:var(--ppc-orange)">'
+                               + _pEsc(np.note) + ' Without it: '
+                               + ppcMoney0(np.net_profit_excl_undated, cur)
+                               + '.</span>')
+                            : ""),
                     note: period,
                     help: "Everything the account sold in this window, "
                         + "advertised AND organic, less Amazon's fees, less "

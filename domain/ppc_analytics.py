@@ -1214,8 +1214,36 @@ def net_profit(config_path, workspace_id, marketplace, start, end, totals=None):
         out["why"] = ("No advertising spend is stored for these days, so this "
                       "is the account's profit with nothing taken off for ads.")
         out["net_profit"] = round(float(sp), 2)
-        return out
-    out["net_profit"] = round(float(sp) - float(spend), 2)
+    else:
+        out["net_profit"] = round(float(sp) - float(spend), 2)
+
+    # A MONTHLY CHARGE LANDING IN A SHORT WINDOW IS NOT A BAD WEEK.
+    #
+    # Amazon sends its subscription fee with no date, so it is filed on whatever
+    # day the figures were last pulled. Measured on nestwell_goods/UK: 30.00 on
+    # 2026-09-07, a day with no sales at all. Across thirty days that is noise
+    # against 859 of sales; across the last two days it IS the figure, and the
+    # card reads -30.00 for an account that traded perfectly well.
+    #
+    # The total is right either way. This says which part of a loss is a
+    # calendar artefact, so nobody reads a monthly bill as a failed week.
+    try:
+        from domain import finance_data as _fd
+        lump = _fd.undated_lumps(config_path, workspace_id, marketplace,
+                                 start, end)
+    except Exception:
+        lump = None
+    if lump and lump.get("amount"):
+        out["undated_fees"] = lump["amount"]
+        out["undated_days"] = lump.get("days") or []
+        out["note"] = lump.get("why") or ""
+        # WITHOUT IT, so the trading can be seen on its own. Offered beside the
+        # real figure and never instead of it -- the money did leave the account.
+        try:
+            out["net_profit_excl_undated"] = round(
+                float(out["net_profit"]) + float(lump["amount"]), 2)
+        except (TypeError, ValueError):
+            pass
     return out
 
 

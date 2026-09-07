@@ -463,7 +463,10 @@ function ppcArm(hostId){
  * All three screens answer for the same window, because moving between them
  * with the dates silently reset is how two screens get compared across
  * different months. */
-const PPCWIN = {days: 30, start: "", end: ""};
+// `shown` is what the date boxes were last drawn with -- the picked window when
+// there is one, otherwise the server's. ppcSetDate falls back to it so changing
+// one end keeps the other. See the note there.
+const PPCWIN = {days: 30, start: "", end: "", shown: {start: "", end: ""}};
 
 function ppcSeg(days, onchange){
   return '<div class="ppc-seg">'
@@ -507,6 +510,15 @@ function ppcDateRange(j, onchange){
   // rather than sitting empty until touched.
   const s = PPCWIN.start || w.start || "";
   const e = PPCWIN.end || w.end || "";
+  // WHAT THE BOXES ARE SHOWING, remembered for ppcSetDate.
+  //
+  // Changing ONE end must keep the other as displayed. PPCWIN.start and .end
+  // are EMPTY while the day buttons are driving -- the boxes are showing the
+  // server's window, not a picked one -- so a handler that fell back to
+  // PPCWIN had nothing to fall back to. Touching the end box then set the
+  // start to the same day and collapsed the window to twenty-four hours,
+  // which is what "i am not able to select more than 2 days in past" was.
+  PPCWIN.shown = {start: s, end: e};
   const box = function(which, val){
     return '<input type="date" class="ppc-fctl ppc-date" value="'
       + _pEsc(val) + '" max="' + _pEsc(ppcToday()) + '"'
@@ -589,11 +601,23 @@ function ppcZoomTo(from, to, cid, reload){
 function ppcSetDate(which, value, fn){
   const v = String(value || "").slice(0, 10);
   if(!v) return;
-  // The OTHER end, taken from whatever is on screen now, so setting one date
-  // does not leave the window half-defined and unqueryable.
+  // THE OTHER END IS WHATEVER THE OTHER BOX IS SHOWING.
+  //
+  // Changing one date must leave the other alone. This used to fall back to
+  // PPCWIN.start / PPCWIN.end, which are EMPTY whenever the day buttons are
+  // driving -- the boxes show the SERVER's window then, not a picked one. So
+  // touching the end box read the start as "", `if(!s) s = e` set it to the
+  // same day, and a thirty-day view collapsed to twenty-four hours. From the
+  // outside that is "i am not able to select more than 2 days in past": every
+  // attempt to move one end threw the other away.
+  //
+  // PPCWIN.shown is what ppcDateRange last drew, so the fallback is the range
+  // actually on screen. today() remains the last resort for a first render
+  // that somehow had neither.
+  const shown = PPCWIN.shown || {};
   const other = (which === "start")
-    ? (PPCWIN.end || ppcToday())
-    : (PPCWIN.start || "");
+    ? (PPCWIN.end || shown.end || ppcToday())
+    : (PPCWIN.start || shown.start || "");
   let s = (which === "start") ? v : other;
   let e = (which === "end") ? v : other;
   if(!s) s = e;
