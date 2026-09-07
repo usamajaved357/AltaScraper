@@ -3203,22 +3203,14 @@ function identifierPanel(r){
 // repricer's is in sourcing.js and this file must not depend on that one.
 function _sarg2(s){ return "'" + String(s || "").replace(/'/g, "\\'") + "'"; }
 
-async function setGtinExemption(sku, on){
-  try{
-    const j = await (await fetch("/edit", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({sku: sku, target: "col", key: "GTIN Exemption",
-                            value: on ? "yes" : "",
-                            account: (typeof CUR_ACCOUNT !== "undefined"
-                                      && CUR_ACCOUNT) ? CUR_ACCOUNT.id : ""})
-      })).json();
-    if(!j || !j.ok){ toast((j && j.error) || "Could not save that"); return; }
-    toast(on ? "GTIN exemption will be claimed for this listing"
-             : "GTIN exemption is off for this listing");
-    if(typeof refreshRow === "function") refreshRow(sku);
-    else if(typeof loadRows === "function") loadRows();
-  }catch(e){ toast(String(e)); }
-}
+/* setGtinExemption MOVED TO static/js/gtin.js.
+ *
+ * The tick box above still calls it by name (the onchange is resolved when it
+ * is clicked, so which file it lives in does not matter). It moved because the
+ * owner asked for a second way to claim the exemption -- several selected
+ * drafts at once -- and two ways of writing the same declaration to Amazon,
+ * living in two files, is exactly the duplication Rule 12 forbids. gtin.js
+ * holds the single write and both routes into it. */
 
 function complianceBanner(r){
   const rr = r.restricted, v = r.viability, claims = r.claim_flags || [];

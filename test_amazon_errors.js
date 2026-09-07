@@ -106,8 +106,22 @@ check("a mistyped barcode", cd.id, "barcode_check_digit");
 truthy("  it explains what a check digit is, without the term",
        /last digit is worked out from the ones before it/i.test(cd.plain));
 truthy("  it says a typo, not a fabrication", /typo rather than a made-/i.test(cd.plain));
-truthy("  and offers the exemption when no real barcode exists",
-       /GTIN exemption/i.test(cd.action));
+// IT USED TO SEND HIM TO EMPTY THE BOX. This line asserted that the advice
+// "offers the exemption when no real barcode exists", because a blank barcode
+// once made the app claim the GTIN exemption by itself. The owner banned that:
+//
+//     "REMOVE THE GTIN EXEMPTION OPTION ENTIRELY I ALWAYS HAVE A BARCODE SO
+//      DONOT AUTOMATICALLY EXEMPT AUTOMATICALLY"
+//
+// Emptying the box now sends Amazon no identifier at all and the listing is
+// refused -- so advice to empty it is advice to break the listing. A mistyped
+// check digit means the RIGHT number exists; the fix is to go and read it.
+truthy("  it sends him back to the invoice, since the right number exists",
+       /invoice|packaging/i.test(cd.action));
+truthy("  and warns that emptying the box is not a way out",
+       /do not empty the box/i.test(cd.action));
+truthy("  saying what emptying it would actually do",
+       /no identifier/i.test(cd.action));
 // Rule 1 again: the two barcode faults must stay apart.
 check("  and it is not confused with the linked-elsewhere case",
       tr(REAL.linked_elsewhere, {}).id, "barcode_linked_elsewhere");

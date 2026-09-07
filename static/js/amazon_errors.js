@@ -44,7 +44,7 @@
   var AMZ_ERROR_PATTERNS = [
     {
       // The check-digit case. The generator already catches this BEFORE sending
-      // (and falls back to the GTIN exemption), but the same wording reaches
+      // (and then sends no identifier at all), but the same wording reaches
       // this translator from stored error text, and "check digit" means nothing
       // to most people. The three patterns further down cover the barcode being
       // taken, conflicting, or refused for a new ASIN -- this covers the one
@@ -63,10 +63,17 @@
                          "one digit is wrong." : "This one fails that check.") +
                  " It is the right length, so it is a typo rather than a made-" +
                  "up number.",
+          // EMPTYING THE BOX IS NOT A ROUTE ANY MORE. It used to be: a blank
+          // barcode made the app claim the GTIN exemption on the owner's behalf,
+          // and this line sent people to do exactly that. Clearing it now sends
+          // Amazon no identifier at all and the listing is refused.
+          //
+          //     "REMOVE THE GTIN EXEMPTION OPTION ENTIRELY I ALWAYS HAVE A
+          //      BARCODE SO DONOT AUTOMATICALLY EXEMPT AUTOMATICALLY"
           action: "Read it off the supplier's invoice or the product packaging " +
-                  "again, digit by digit. If no real barcode exists for this " +
-                  "product, leave the field empty — the listing goes up under " +
-                  "the GTIN exemption."
+                  "again, digit by digit — one digit is wrong, so the right " +
+                  "number exists and is worth finding. Do not empty the box: " +
+                  "that sends Amazon no identifier and the listing is refused."
         };
       }
     },
@@ -141,8 +148,10 @@
                  "registered to <b>" + E(asin) + "</b>, which Amazon can see is not " +
                  "what you are listing. This happens with bought or reused EANs — " +
                  "they carry whatever product they were first registered against.",
-          action: "Clear the Barcode / GTIN box so the listing uses the GTIN exemption, " +
-                  "or put in a barcode registered to THIS product. Never invent one."
+          action: "Put in a barcode registered to THIS product — one you bought " +
+                  "for it, not a reused one. Never invent one. Clearing the box " +
+                  "is not a way out: it sends Amazon no identifier and the " +
+                  "listing is refused."
         };
       }
     },
@@ -183,7 +192,8 @@
           plain: "Your barcode " + (bc ? "<b>" + E(bc) + "</b> " : "") +
                  "is already registered to a different ASIN (<b>" + E(asin) + "</b>). Amazon matched " +
                  "your listing to that product and found a mismatch on <b>" + E(attrStr) + "</b>.",
-          action: "Fix: clear the Barcode / GTIN field to use the GTIN exemption, or replace it with a unique barcode for THIS product."
+          action: "Fix: replace it with a unique barcode registered to THIS product. " +
+                  "Clearing the field does not help — it sends Amazon no identifier at all."
         };
       }
     },
@@ -217,7 +227,14 @@
           title: "Barcode rejected",
           plain: "Amazon won’t accept " + (bc ? "barcode <b>" + E(bc) + "</b>" : "this barcode") +
                  " to create a new listing — purchased/reseller EANs aren’t GS1-registered to your brand, so Amazon’s GS1 check rejects it.",
-          action: "Replace it with a barcode registered to this product, or empty the Barcode / GTIN box to use the GTIN exemption (needs GTIN-exemption approval for this brand + category)."
+          // The exemption is still a real route out of THIS one -- but it is the
+          // owner's declaration to make, and it is made by ticking the box, not
+          // by emptying the barcode field. Tick it on the listing itself, or on
+          // several at once from the toolbar.
+          action: "Replace it with a barcode registered to this product. If this " +
+                  "product genuinely has no barcode, tick “Apply for GTIN exemption” " +
+                  "on the listing (needs GTIN-exemption approval for this brand + " +
+                  "category). Emptying the box does neither."
         };
       }
     },

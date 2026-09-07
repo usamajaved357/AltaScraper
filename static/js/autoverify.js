@@ -261,10 +261,34 @@ let AV_STALE_RUNNING = false;
  * the same single run lock as a Preview, so firing them together would mean
  * every one after the first bailing out.
  */
+/* A LISTING THE SCHEDULE IS STILL CHASING IS NOT STALE.
+ *
+ *     "although i changed the ean before submitting, i am confused here"
+ *
+ * This sweep runs when the listings finish loading -- and submit.js reloads the
+ * listings ~5s after a submit finishes, so it was asking Amazon about a listing
+ * SIX SECONDS OLD. Amazon's own publication window is 5-30 minutes (see the
+ * comment in amazon_listing_generator.py's verify branch), so the answer was
+ * always the failed PREVIOUS attempt's issues, still attached to the SKU. Worse,
+ * avMarkAsked then pinned that answer on screen for AV_STALE_COOLDOWN.
+ *
+ * That is not what this sweep is for. Its own note above says so: not "has it
+ * appeared yet" -- the 5/10/15 schedule owns that -- but "what happened to it",
+ * for a listing hours or days old. So while a submit's schedule is still
+ * running, the schedule keeps it, and this leaves it alone.
+ */
+function avScheduleStillOwns(sku){
+  const e = avEntryFor(sku);
+  if(!e) return false;
+  const age = Date.now() - Number(e.at || 0);
+  return age >= 0 && age < AV_WARN_AT;
+}
+
 async function avCheckStaleOnLoad(){
   if(AV_STALE_RUNNING) return;
   if(!avAccountId()) return;
   const due = avWaitingRows()
+    .filter(r => !avScheduleStillOwns(r.sku))
     .filter(r => !avAskedRecently(r.sku))
     .slice(0, AV_STALE_MAX);
   if(!due.length) return;

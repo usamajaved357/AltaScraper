@@ -634,6 +634,14 @@
           <button id="pricepctbtn" onclick="bulkPricePercent()">Change price %</button>
         </span>
         <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:var(--accent);color:var(--accent2)"><i class="ti ti-wand"></i> Auto-fix</button>
+        <!-- GTIN EXEMPTION, THE ONLY WAY TO CLAIM IT IN BULK.
+             The app never claims it on its own: an empty barcode box now sends
+             Amazon no identifier at all rather than a silent declaration that
+             the product has none. This button and the tick box on a single
+             listing are the two deliberate ways in, which is what was asked for
+             — "ONLY EXEMPT WHEN USER SELECTS MULTIPLE DRAFTS AND CLICK ON APPLY
+             FOR GTIN EXEMPTION OR DO IT INSIDE THE PDP ONE BY ONE". -->
+        <button id="gtinexemptbtn" onclick="bulkGtinExemption(true)" title="Declare to Amazon that the selected products have no barcode. Needs GTIN-exemption approval for the brand and category. Nothing is sent now — it is claimed on the next submit."><i class="ti ti-barcode-off"></i> Apply for GTIN exemption</button>
         <!-- The cost upload used to sit here as well as on the toolbar. A price
              list covers the whole account, not the rows that happen to be
              ticked, so a selection bar was never its home -- and having it in
@@ -2216,6 +2224,10 @@
      the sentence that describes it. Must load BEFORE listings.js, which calls it. -->
 <script src="/static/js/liststatus.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/listings.js?v={{ ASSET_V }}"></script>
+<!-- The GTIN exemption: the single write, the tick box's handler, and the bulk
+     action. After listings.js because it uses splitByDraft/selectedSkus from
+     there; the tick box's onchange resolves at click time either way. -->
+<script src="/static/js/gtin.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
 <!-- The full-screen product page. It arranges blocks the two files above
      build (_fullDataParts, dwTitleParts, _dwWarnings) and defines none of its
