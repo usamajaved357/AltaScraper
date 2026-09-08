@@ -1302,14 +1302,35 @@ function pdpBarcodeTyped(sku, val){
         if(j.state === "unusable"){
           el.className = "pdp-barcode-say bad";
           el.textContent = j.why || "Not a usable barcode.";
+        }else if(j.state === "clash_amazon"){
+          // AMAZON ALREADY HAS IT, which is the one that cannot be argued with:
+          // it matches on the identifier and refuses with 8541. It is checked
+          // against the whole catalogue of THIS marketplace, so it catches a
+          // code owned by any seller -- including, in the case this was built
+          // from, one of his own listings on another account that the local
+          // check could not see.
+          el.className = "pdp-barcode-say bad";
+          el.textContent = j.amazon_note
+            || "This barcode already belongs to a product in Amazon's catalogue.";
         }else if(j.state === "clash_live" || j.state === "clash"){
           el.className = "pdp-barcode-say bad";
           // The sentence names the listing it is on and whether that one is
           // live, which is what decides whether Amazon will refuse outright.
           el.textContent = j.note || "This barcode is already on another listing.";
         }else if(j.state === "free"){
-          el.className = "pdp-barcode-say good";
-          el.textContent = "Not used on any other listing.";
+          // FREE HERE IS NOT ALWAYS FREE AT AMAZON. Three of four accounts
+          // cannot read the catalogue, and a barcode that was never checked
+          // against it must not be reported as clean -- that is the answer
+          // that lets a submit go ahead into a refusal.
+          if(j.amazon_checked){
+            el.className = "pdp-barcode-say good";
+            el.textContent = "Not used on any other listing, and not in Amazon's catalogue.";
+          }else{
+            el.className = "pdp-barcode-say";
+            el.textContent = "Not used on any of your listings. "
+              + "Amazon's catalogue could not be checked"
+              + (j.amazon_why ? (" — " + j.amazon_why) : "") + ".";
+          }
         }else{
           // "unknown" -- the lookup failed. Silence here would read as "fine".
           el.className = "pdp-barcode-say";
