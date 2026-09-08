@@ -2058,7 +2058,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         the row rather than quietly orphaning a live listing.
         """
         out = {"attempted": False, "ok": False, "was_live": False,
-               "asin": "", "error": ""}
+               "asin": "", "error": "", "marketplace": "", "untracked": False}
         aid = str(account_id or "").strip()
         if not (sku and aid):
             return out
@@ -2068,6 +2068,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             acc = _acc_mod.get_account(_cfg(), aid, CONFIG_PATH) or {}
             seller = str(acc.get("seller_id") or "").strip()
             mkt = str(marketplace or acc.get("default_marketplace") or "UK").upper()
+            out["marketplace"] = mkt
             mkt_id = _acc_mod.marketplace_id(mkt)
             if not (seller and mkt_id):
                 out["error"] = "no seller id or marketplace for this account"
@@ -2092,6 +2093,25 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             res = _al.delete(creds, mkt, seller, sku, mkt_id)
             if res.get("status") in (_al.OK, _al.GONE):
                 out["ok"] = True
+                # AND THE REPRICER LETS GO OF IT.
+                #
+                #     "when a item is deleted from amazon, delete it from
+                #      repricer too, stop tracking and disarm"
+                #
+                # A SKU that cannot be sold is one the pricer would go on
+                # checking suppliers for and, if armed, go on trying to push a
+                # price to. source_repo.stop_tracking does both halves in one
+                # call -- unenrol and mark GONE, which is what disarms it.
+                #
+                # NEVER FATAL. The listing is already off Amazon by this point;
+                # a bookkeeping failure must not turn a completed delete into a
+                # reported one.
+                try:
+                    from domain import source_repo as _srepo
+                    out["untracked"] = bool(_srepo.stop_tracking(
+                        CONFIG_PATH, aid, mkt, sku))
+                except Exception:
+                    pass
             else:
                 out["error"] = str(res.get("error") or "Amazon refused")[:200]
         except Exception as e:
@@ -2123,7 +2143,31 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
                 if found.ok:
                     target = found.row
-            if target is None and row:                # fall back to row number (blank rows)
+            # A ROW NUMBER IS ONLY TRUSTED WHEN THERE IS NO SKU.
+            #
+            #     "the app is not letting me delete some drafts, it says
+            #      Deleted 0 listing(s) / 1 failed – 7.99_2Days_B0CGDKS28N:
+            #      Nothing was deleted"
+            #
+            # It used to fall back to the row NUMBER whenever the SKU lookup
+            # missed, and a row number is a POSITION, not an identity. Two ways
+            # that goes wrong, and the second is much worse than the first:
+            #
+            #   the reported failure -- a bulk delete removes rows as it goes,
+            #     so every remaining row number shifts. The client sorts
+            #     bottom-up to mitigate that, but a stale number then resolves
+            #     to a SKU already deleted and the store removes nothing: "0
+            #     deleted", which is what he saw.
+            #
+            #   the one nobody saw -- a stale number that resolves to a
+            #     DIFFERENT listing deletes that listing instead. Silently, and
+            #     now that a live listing goes from Amazon too, irreversibly.
+            #
+            # So the fallback is kept for exactly the case it was written for --
+            # a blank row that HAS no SKU to match on -- and refused when a SKU
+            # was named and simply not found. A named SKU that is not here is an
+            # answer worth reporting, not a reason to delete by position.
+            if target is None and row and not sku:
                 try:
                     target = int(row)
                 except Exception:
@@ -2173,7 +2217,18 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     return jsonify({"ok": False, "amazon": _amz,
                                     "error": "Amazon refused to delete it: %s"
                                              % _amz["error"]}), 502
-                return jsonify({"ok": False, "error": "row not found"}), 404
+                # SAY WHICH SKU AND WHERE IT LOOKED. "row not found" names
+                # nothing and suggests nothing, and this is the message that
+                # comes back on a bulk delete where several may be involved.
+                return jsonify({
+                    "ok": False,
+                    "error": ("No listing with SKU %s in the %s workspace, so "
+                              "there was nothing here to delete. It may belong "
+                              "to another account, sit on a different tab, or "
+                              "have been removed already — Sync will show which."
+                              % (sku or "(none given)",
+                                 str(b.get("account") or "current")))
+                }), 404
             # AMAZON FIRST, AND THE ROW ONLY IF IT WORKED. Removing our record
             # of a listing Amazon still holds would leave it selling with
             # nothing here to find it by -- the state that is hardest to get out

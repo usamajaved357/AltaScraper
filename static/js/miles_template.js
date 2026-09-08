@@ -880,7 +880,11 @@ async function delRow(sku, row, btn){
       // the listing had been removed from Amazon or merely from here, which is
       // the difference that mattered.
       const a = j.amazon || {};
-      toast(a.ok ? "Deleted from Amazon and removed here"
+      // THE REPRICER LETTING GO IS WORTH SAYING. It is the half nobody would
+      // think to check, and a SKU still being priced after its listing went is
+      // exactly what was reported.
+      const stopped = a.untracked ? " · repricer stopped tracking it" : "";
+      toast(a.ok ? ("Deleted from Amazon and removed here" + stopped)
                  : (a.error ? ("Removed here — Amazon: " + a.error)
                             : "Draft removed (it was not on Amazon)"));
       loadRows();
@@ -945,11 +949,19 @@ async function bulkDelete(){
   // whether that SKU is live, deletes it there when it is, and removes the row
   // here either way. A draft costs no Amazon call.
   const _s=splitByDraft(_sel), skus=_sel;
+  // GUARDED THE SAME WAY _delWarning IS. isAmazonLive hands the row to
+  // isActuallyLive, which reads r.sku -- so an undefined row throws, and a
+  // throw here happens while BUILDING the confirmation, which means the dialog
+  // never opens and the button silently does nothing. That is exactly how the
+  // single delete broke: "pressing the delete listing button but nothing is
+  // happening".
   const _liveN = (_s.amazonOnly || []).length
     + (_s.drafts || []).filter(s => {
-        const r = (typeof ROWS !== "undefined" && ROWS.find)
-          ? ROWS.find(x => String(x.sku) === String(s)) : null;
-        return (typeof isAmazonLive === "function") ? isAmazonLive(r) : false;
+        try{
+          const r = (typeof ROWS !== "undefined" && ROWS && ROWS.find)
+            ? ROWS.find(x => x && String(x.sku) === String(s)) : null;
+          return (r && typeof isAmazonLive === "function") ? !!isAmazonLive(r) : false;
+        }catch(e){ return false; }
       }).length;
   let _msg = "Delete " + skus.length + " selected listing(s)?";
   if(_liveN){
