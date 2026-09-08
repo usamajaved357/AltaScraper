@@ -216,12 +216,34 @@
       // Amazon before it ever reaches this check -- so the barcode MASKS this,
       // and fixing the barcode reveals it rather than removing it.
       //
-      // THE TWO PERMISSIONS ARE NOT THE SAME THING, which is the heart of it.
-      // A Brand Approval case saying "approved to LIST UNDER this brand" is
-      // permission to SELL that brand's products. This error asks for
-      // permission to CREATE NEW ASINs under it, which is the Manage Your
-      // Brands connection, per selling account. Somebody holding the first can
-      // read this error as a mistake, and it is not.
+      // AND IT IS NOT ABOUT BRAND REGISTRY, which is what this note used to
+      // imply and what he corrected:
+      //
+      //     "you are wrong who said we need brand registry to create a listing
+      //      under a brand name"
+      //
+      // Right. Registration is not the axis at all. Previewing ONE listing five
+      // ways, same payload, seconds apart, settled what the axis is:
+      //
+      //     Nestwell Goods   -> VALID
+      //     AltaboltaVoo     -> 100550  global_catalog_owner
+      //     altaboltavoo     -> 100550  global_catalog_owner  (case-insensitive)
+      //     Altabolta Voo    -> 5665    "has not been approved"
+      //     Zqvurtleplinth   -> 5665    "has not been approved"
+      //
+      // So Amazon has TWO different answers, and they mean opposite things.
+      // 5665 is "I have never heard of this name" (below). 100550 is "I know
+      // this name and YOU are not its owner" -- a name already in the
+      // catalogue, held by somebody, and that somebody is not this account.
+      //
+      // Confirmed by looking: searchCatalogItems returns 35 live UK ASINs whose
+      // brand is AltaboltaVoo, one of which (B0H8SYL36V) is a listing on his
+      // OWN OTHER ACCOUNT. The brand works perfectly -- on the account that
+      // created those ASINs. It is a per-account link, and it is missing here.
+      //
+      // NOTE FOR WHOEVER READS THIS NEXT: the app's own Brands list is a local
+      // list typed into settings. It never tells Amazon anything. A brand
+      // sitting in that list is not evidence Amazon has granted it.
       id: "brand_not_connected",
       test: function (t) {
         return /connect your brand|create new asins with this brand/i.test(t)
@@ -233,23 +255,72 @@
         return {
           icon: "🏷️",
           title: "Amazon has not linked this brand to this account",
-          plain: "Amazon will not create a NEW product under " +
+          plain: "Amazon knows " +
                  (brand ? ("<b>" + E(brand) + "</b>") : "this brand") +
-                 " on this selling account until the brand is connected to it. " +
-                 "This is <b>not</b> the same as being approved to sell that " +
-                 "brand — an approval saying “you are approved to list under " +
-                 "this brand” lets you sell its products; creating new ASINs " +
-                 "needs the brand connected under Manage Your Brands, and it is " +
-                 "held <i>per selling account</i>, so a brand linked to one of " +
-                 "your accounts is not linked to another.",
-          action: "Open " + (link
+                 " perfectly well — products already exist in its catalogue " +
+                 "under that name. What it is saying is that <b>this selling " +
+                 "account</b> is not the account the brand is attached to, so " +
+                 "this account may not create new products under it. The link " +
+                 "is held <i>per selling account</i>: a brand that works on one " +
+                 "of your accounts is not automatically usable on another. " +
+                 "Nothing is misspelled, and this has nothing to do with Brand " +
+                 "Registry — a name Amazon has never seen gives a different " +
+                 "error entirely (“has not been approved”).",
+          action: "Two ways out. <b>Either</b> create these listings from the " +
+                  "account that already owns the brand — the one whose existing " +
+                  "products carry it — where it works today. <b>Or</b> get the " +
+                  "brand attached to this account as well, in " + (link
                     ? ('<a href="' + E(link) + '" target="_blank" rel="noopener">'
                        + 'Manage Your Brands</a>')
                     : "Seller Central › Manage Your Brands") +
-                  " <b>while logged into this account</b> and connect the brand, " +
-                  "then submit again. Nothing in this app can grant it. " +
-                  "Meanwhile the listing will go through under a brand this " +
-                  "account already owns."
+                  " <b>while logged into this account</b>. Only Amazon can grant " +
+                  "that; the Brands list in this app is a local list and does " +
+                  "not tell Amazon anything."
+        };
+      }
+    },
+    {
+      // AMAZON HAS NEVER SEEN THIS BRAND NAME. Code 5665.
+      //
+      //     "new brand names wont be accepted, only the approved brand names
+      //      are accepted like nestwell goods and AltaboltaVoo"
+      //
+      // Exactly so, and this is the error that says it. It had no handler,
+      // which mattered more once the Brand box started accepting any text at
+      // his instruction -- a typed name Amazon does not hold now lands here,
+      // and the raw paragraph reads like a rejected VALUE rather than a
+      // missing PERMISSION.
+      //
+      // Measured: an invented string (Zqvurtleplinth) and a real brand with one
+      // space added (Altabolta Voo) both give 5665, while the same name without
+      // the space gives 100550. So this is Amazon's "unknown name" answer, and
+      // A ONE-CHARACTER DIFFERENCE IS ENOUGH TO LAND HERE -- which is why the
+      // note below asks about spelling first. It is the cheap thing to check
+      // before opening a case.
+      id: "brand_not_approved",
+      test: function (t) {
+        return /brand name you have entered has not been approved/i.test(t)
+            || /^\s*request approval for\b/i.test(t);
+      },
+      build: function (t) {
+        var brand = (t.match(/request approval for\s+(.+?)\s*(?:the brand name|$)/i)
+                     || [])[1] || "";
+        return {
+          icon: "🏷️",
+          title: "Amazon does not recognise this brand name",
+          plain: "Amazon has no record of " +
+                 (brand ? ("<b>" + E(brand) + "</b>") : "this brand name") +
+                 " on this account, so it will not create products under it. " +
+                 "This is the answer for a name Amazon has <i>never seen</i> — " +
+                 "different from a name it knows but has attached to a " +
+                 "different account of yours.",
+          action: "<b>Check the spelling first.</b> Amazon treats one extra " +
+                  "space or character as a completely different brand — the " +
+                  "same name with a space added stops being recognised at all. " +
+                  "Compare it letter for letter against a listing that already " +
+                  "works. If the spelling is right, the name genuinely is not " +
+                  "granted to this account yet and only Amazon can grant it, " +
+                  "through the approval request in Seller Central."
         };
       }
     },
