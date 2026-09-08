@@ -1745,6 +1745,29 @@ function _fullDataParts(r){
     const _rec=r.api_issues||null;
     ((_rec&&_rec.issues)||[]).forEach(function(i){
       if(String((i&&i.severity)||"").toUpperCase()!=="ERROR") return;
+      /* A CATALOGUE MATCH NAMES FIELDS THAT ARE NOT WRONG.
+       *
+       *     "why is it highlighting color if the problem is with the
+       *      identifier/ean?"
+       *
+       * Because this drew a box for every field Amazon named, and on error 8541
+       * Amazon names every attribute that DISAGREES with the ASIN it matched
+       * the barcode to. Amazon's own definition: the error "occurs when your
+       * Product ID, such as UPC, EAN, JAN, and ISBN, corresponds to the Product
+       * ID of an existing ASIN". The colour is a symptom of the match, not a
+       * value that needs typing.
+       *
+       * Proved on 11.96_2Days_B0FM82BDC5: its barcode 4545944574867 already
+       * belongs to B0H8SYL36V, a car headrest pillow. The colour was never the
+       * problem, and a box inviting him to change it was inviting the one edit
+       * that would attach this listing to that ASIN (Rule 1).
+       *
+       * So these fields get no box. The error itself is still shown in full by
+       * the panel above -- amazon_errors.js explains 8541 and points at the
+       * barcode -- so nothing is hidden; what goes is the invitation to fix the
+       * wrong thing.
+       */
+      if(String((i&&i.code)||"").trim()==="8541") return;
       ((i&&i.fields)||[]).forEach(function(f){
         const k=String(f||"").trim();
         if(!k || !isRealAttr(k)) return;

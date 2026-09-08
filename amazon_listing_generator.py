@@ -3580,6 +3580,40 @@ def resolve_account_brand(row_brand, config):
     only the owner knows, and the account's Brands list is where they say so. So
     the swap is ANNOUNCED, with the exact thing to do about it.
 
+    ...AND THE SWAP IS GONE. IT REPORTS NOW, AND SENDS WHAT WAS TYPED.
+
+        "please do not force the listing to use the brand name from the
+         approved or added brand list just allow the types brand name to go to
+         amazon if there is a typo or some error amazon will reveal in preview"
+
+    He is right, and the argument is Amazon's own enforcement. A brand this
+    account does not own CANNOT be used to create a listing: Amazon refuses it
+    with code 100550, "You need to connect your brand X with your account to
+    create new ASINs with this brand", and hands back the Manage Your Brands
+    link. So the worst case the substitution was written to prevent -- one
+    account's trademark on another's listing -- is a case Amazon already blocks,
+    at the only place that actually knows which brands are approved.
+
+    And the substitution had its own cost, in his words the first time:
+
+        "Typing AltaboltaVoo was REPLACED with 'Nestwell Goods' without a word"
+
+    Replacing it did not make the listing correct. It made it go out under a
+    brand nobody chose, and hid the thing that needed fixing.
+
+    THE APP CANNOT KNOW WHICH BRANDS AMAZON APPROVED, and this is not a gap that
+    can be closed: Amazon's own documentation says SP-API "doesn't provide
+    information about intellectual property restrictions for new products or
+    details about gated brands". There is no endpoint to read the list and none
+    to apply. So the account's Brands list is a note the owner keeps for himself
+    -- useful for spotting a stale value, and never authoritative enough to
+    overrule what he typed.
+
+    THE NOTE STAYS. A brand that is not on the account's list is still worth
+    saying out loud, because a leaked or stale value looks exactly like a
+    deliberate one. What changed is that it is now a remark about a value being
+    sent, not an announcement of a value being changed.
+
     ONE COPY, used by build_api_attributes and by the submit guard (rule 12).
     They disagreed about nothing, but two copies of "whose brand is this" is one
     more than a listing can safely have.
@@ -3589,21 +3623,28 @@ def resolve_account_brand(row_brand, config):
             if str(x).strip()]
     if acct:
         if brand and brand not in acct:
-            return acct[0], (
+            return brand, (
                 "Brand: the row says %r, which is not one of this account's "
-                "registered brands (%s). Sending %r instead. If %r really is "
-                "approved for this account in Seller Central, add it to the "
-                "account's Brands list and run again — the app will use it "
-                "then." % (brand, ", ".join(acct), acct[0], brand))
-        return (brand if brand in acct else acct[0]), ""
+                "listed brands (%s). Sending it as typed — Amazon decides which "
+                "brands this account may use, and refuses with code 100550 if "
+                "it is not linked. If %r is right, add it to the account's "
+                "Brands list so this note stops; if it is not, change it on the "
+                "row." % (brand, ", ".join(acct), brand))
+        # Typed and recognised, or nothing typed -- then the account's primary,
+        # which is the only case left where the app supplies a brand at all.
+        return (brand or acct[0]), ""
     if config.get("_account_brand") is not None:
-        # Account resolved and no trademark set: send no brand at all rather
-        # than borrow one.
+        # Account resolved and no trademark listed. A TYPED brand still goes --
+        # the list is the owner's own note, not Amazon's permission, and an
+        # empty list is far more likely to mean he has not filled it in than
+        # that he owns no brands. Only a row with no brand at all sends none,
+        # because there is then nothing to send and nothing to borrow.
         if brand:
-            return "", (
-                "Brand: the row says %r but this account has no registered "
-                "brand, so no brand is being sent. Add it to the account's "
-                "Brands list." % brand)
+            return brand, (
+                "Brand: sending %r as typed. This account has no brands listed "
+                "in its settings, so nothing here could confirm it — Amazon "
+                "will, and refuses with code 100550 if the brand is not linked "
+                "to the account." % brand)
         return "", ""
     return (brand or config.get("brand_name", "")), ""   # legacy / no account
 

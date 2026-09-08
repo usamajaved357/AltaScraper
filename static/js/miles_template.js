@@ -492,8 +492,18 @@ function render(){
   const note = (empties.length
     ? `<div class="emptynote">${empties.length} empty row${empties.length>1?'s':''} hidden — <button class="linkbtn" onclick="clearEmpty(this)">clear them ${storeFrom()}</button></div>`
     : "")
+    // NOT RED.
+    //
+    //     "please dont display it in red color, i already know that the
+    //      listings which are deleted from live on amazon page goes to removed
+    //      section"
+    //
+    // Red is for something that needs doing. This is bookkeeping he already
+    // understands, so it takes the ordinary note styling the empty-rows line
+    // above it uses and stops competing with the things that are actually
+    // wrong. The count and the way to them stay.
     + (goneRows.length
-    ? `<div class="emptynote" style="border-color:var(--red-line);color:var(--red)">
+    ? `<div class="emptynote">
          ${goneRows.length} listing${goneRows.length>1?'s are':' is'} no longer on Amazon —
          <button class="linkbtn" onclick="setListSource('removed')">see ${goneRows.length>1?'them':'it'} in Removed</button>
        </div>`

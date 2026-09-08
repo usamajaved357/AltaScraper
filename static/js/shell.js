@@ -136,19 +136,63 @@ function workspaceGroups(){
 }
 
 let ACCOUNTS = [];
+/* ONE DROPPED CONNECTION USED TO EMPTY THE SCREEN.
+ *
+ *     "many times i recieve error saying Could not load listings: TypeError:
+ *      Failed to fetch and no listings are displayed when i get this error"
+ *
+ * "Failed to fetch" is not a timeout and not an error from the server -- it is
+ * the browser saying the request never completed at all. The connection went.
+ * In production this app is served by Flask's own development server
+ * (docker-entrypoint.sh runs `python dashboard.py`), so anything that restarts
+ * or recycles the process -- a redeploy, the container running out of memory --
+ * drops every request in flight, and the listings load is a long one.
+ *
+ * The request is worth making again. It was not refused, it was interrupted.
+ *
+ * WHAT IS NOT RETRIED, and this is the important half:
+ *
+ *   a TIMEOUT      the server IS answering, just slowly. Asking again doubles
+ *                  the load on the thing already struggling.
+ *   anything but a GET
+ *                  a POST may have been APPLIED before the connection died.
+ *                  /delete now removes a listing from Amazon; /handling pushes
+ *                  a change live. Sending one of those twice because the reply
+ *                  went missing is a far worse outcome than an error message.
+ *   an HTTP error  4xx and 5xx are answers. They arrive as JSON and are for the
+ *                  caller to read, not for this to second-guess.
+ */
+function _fetchRetryable(opts){
+  const m = String(((opts || {}).method) || "GET").toUpperCase();
+  return m === "GET";
+}
+
 async function _fetchJSON(url, opts, ms){
   // fetch with a hard timeout so a slow/stalled route can't freeze the page
   ms = ms || 12000;
-  const ctrl = new AbortController();
-  const t = setTimeout(()=>ctrl.abort(), ms);
-  try{
-    const r = await fetch(url, Object.assign({signal:ctrl.signal}, opts||{}));
-    clearTimeout(t);
-    return await r.json();
-  }catch(e){
-    clearTimeout(t);
-    return {ok:false, error:(e&&e.name==='AbortError')?('timed out after '+(ms/1000)+'s'):String(e), _failed:true};
+  const tries = _fetchRetryable(opts) ? 2 : 1;
+  let last = null;
+  for(let i = 0; i < tries; i++){
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), ms);
+    try{
+      const r = await fetch(url, Object.assign({signal:ctrl.signal}, opts||{}));
+      clearTimeout(t);
+      return await r.json();
+    }catch(e){
+      clearTimeout(t);
+      const aborted = e && e.name === 'AbortError';
+      last = {ok:false,
+              error:(aborted ? ('timed out after '+(ms/1000)+'s') : String(e)),
+              _failed:true};
+      // Only a genuine network drop is worth asking again, and only once. A
+      // short pause first: an instant retry lands while the server is still
+      // coming back up and fails the same way.
+      if(aborted || i === tries - 1) return last;
+      await new Promise(r2 => setTimeout(r2, 900));
+    }
   }
+  return last;
 }
 async function loadHome(){
   const grid=document.getElementById("wsgrid");

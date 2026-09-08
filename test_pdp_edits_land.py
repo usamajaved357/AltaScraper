@@ -130,17 +130,27 @@ print("\n== 3. WHAT SUBMIT SENDS ==")
 yes("the payload's brand is the Brand column",
     'brand, _brand_note = resolve_account_brand(g("Brand"), config)' in GEN)
 yes("  through the one resolver", "def resolve_account_brand(row_brand, config)" in GEN)
-# THE GUARD STAYS. One account's trademark on another's listing is the worse
-# fault, and it has happened -- see the docstring.
+# THE SWAP IS GONE, at the owner's instruction on 8 Sep 2026:
+#
+#     "just allow the types brand name to go to amazon if there is a typo or
+#      some error amazon will reveal in preview"
+#     "that altaboltaVoo is not a brand registry brand, that is just a brand
+#      name amazon allowed me to use so let me use it"
+#
+# Amazon refuses a brand the account may not use with code 100550, so it is
+# enforced at the only place that knows which brands are approved -- SP-API
+# exposes no such list, by Amazon's own documentation. What survives is the
+# REPORT: a brand off the account's list is still said out loud, because a
+# leaked value looks exactly like a deliberate one.
 _fn = GEN[GEN.index("def resolve_account_brand"):]
 _fn = _fn[:_fn.index("\ndef ")]
 # The sentence is split across source lines, so match a fragment that is really
 # contiguous rather than the wording as it reads on screen.
-yes("  a brand not on the account's list is replaced, not sent",
+yes("  a brand not on the account's list is SENT, and remarked on",
     "which is not one of this account's " in _fn
-    and "registered brands (%s). Sending %r instead." in _fn)
-yes("  and an account with no brand sends none rather than borrowing one",
-    "so no brand is being sent" in _fn)
+    and "Sending it as typed" in _fn)
+yes("  and Amazon is named as the authority on it",
+    "refuses with code 100550" in _fn)
 # It is NEVER the global. That leak is how one account's brand reached another's
 # listings, and the docstring records it.
 yes("  never the global brand_name once an account is resolved",
