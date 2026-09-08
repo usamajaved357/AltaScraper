@@ -30,6 +30,21 @@ NOT EVERY ACCOUNT MAY ASK. Measured the same day: jack_uk, sheelady_us and
 selvora_limited all answer 403 Unauthorized on this API; only nestwell_goods
 succeeds. So a refusal here is ordinary, not exceptional, and the caller must
 treat "could not check" as its own answer rather than as "the barcode is free".
+
+AND NOTHING FOUND IS NOT PROOF THE BARCODE IS FREE.
+
+    MEASURED 8 Sep 2026, and it corrected this file's first wording within a
+    day. Barcode 4545987573490 on 7.96_3Days_B0841BD4JY returned
+    numberOfResults 0 here, and getCatalogItem on the ASIN Amazon later named
+    -- B0H95D18GP -- answered 404 NOT_FOUND in that marketplace. A Preview then
+    matched the barcode straight to it, refusing with code 8541.
+
+Amazon's LISTING matcher can see ASINs its public CATALOGUE will not return:
+suppressed ones, unpublished ones, and ones deleted since -- which is precisely
+what an earlier attempt at the same product leaves behind, and therefore the
+most likely kind to collide with. This catches a barcode belonging to a product
+that is findable; it cannot catch one belonging to a ghost, and callers must not
+word their answer as though it could. Preview remains the final check.
 """
 
 OK = "ok"

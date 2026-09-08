@@ -1323,8 +1323,24 @@ function pdpBarcodeTyped(sku, val){
           // against it must not be reported as clean -- that is the answer
           // that lets a submit go ahead into a refusal.
           if(j.amazon_checked){
+            // NOT "not in Amazon's catalogue" -- that claimed more than the
+            // check can know, and it was wrong within a day of shipping.
+            //
+            // MEASURED 8 Sep 2026 on 7.96_3Days_B0841BD4JY: barcode
+            // 4545987573490 returned 0 results from searchCatalogItems, and
+            // getCatalogItem on the ASIN Amazon later named (B0H95D18GP)
+            // answered 404 NOT_FOUND. Yet a Preview matched the barcode
+            // straight to it. Amazon's LISTING matcher can see ASINs its
+            // public catalogue will not return -- suppressed, unpublished, or
+            // deleted ones, which is exactly what an earlier attempt at the
+            // same product leaves behind.
+            //
+            // So this says what was actually checked and leaves Preview as the
+            // final word, which is what the owner said it was.
             el.className = "pdp-barcode-say good";
-            el.textContent = "Not used on any other listing, and not in Amazon's catalogue.";
+            el.textContent = "Not used on any of your listings, and no product "
+              + "in Amazon's search carries it. Preview is still the final "
+              + "check — Amazon can match a barcode to a hidden listing.";
           }else{
             el.className = "pdp-barcode-say";
             el.textContent = "Not used on any of your listings. "

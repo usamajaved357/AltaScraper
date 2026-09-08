@@ -198,6 +198,62 @@
       }
     },
     {
+      // THE BRAND GATE. Code 100550, attributeNames ['global_catalog_owner'].
+      //
+      //     "if the barcode is the problem why i am gettting the message to
+      //      register the brand in the setting, if that is fake error message
+      //      fix it"
+      //
+      // It is not fake, and it is a DIFFERENT failure from the barcode one
+      // below -- which is exactly why it was confusing, because nothing here
+      // told them apart and Amazon's own paragraph was printed raw.
+      //
+      // MEASURED 8 Sep 2026 on nestwell_goods. Two listings whose barcodes are
+      // bound to nothing, previewed twice each, seconds apart:
+      //     brand Nestwell Goods -> VALID, 0 errors
+      //     brand AltaboltaVoo   -> 100550, and nothing else
+      // Fifteen others failed at 8541 first, because a bound barcode stops
+      // Amazon before it ever reaches this check -- so the barcode MASKS this,
+      // and fixing the barcode reveals it rather than removing it.
+      //
+      // THE TWO PERMISSIONS ARE NOT THE SAME THING, which is the heart of it.
+      // A Brand Approval case saying "approved to LIST UNDER this brand" is
+      // permission to SELL that brand's products. This error asks for
+      // permission to CREATE NEW ASINs under it, which is the Manage Your
+      // Brands connection, per selling account. Somebody holding the first can
+      // read this error as a mistake, and it is not.
+      id: "brand_not_connected",
+      test: function (t) {
+        return /connect your brand|create new asins with this brand/i.test(t)
+            || /\bglobal_catalog_owner\b/i.test(t);
+      },
+      build: function (t) {
+        var brand = (t.match(/connect your brand\s+([^\s]+(?:\s+[^\s]+)?)\s+with/i) || [])[1] || "";
+        var link = (t.match(/https?:\/\/[^\s"']+manage-your-brands[^\s"']*/i) || [])[0] || "";
+        return {
+          icon: "🏷️",
+          title: "Amazon has not linked this brand to this account",
+          plain: "Amazon will not create a NEW product under " +
+                 (brand ? ("<b>" + E(brand) + "</b>") : "this brand") +
+                 " on this selling account until the brand is connected to it. " +
+                 "This is <b>not</b> the same as being approved to sell that " +
+                 "brand — an approval saying “you are approved to list under " +
+                 "this brand” lets you sell its products; creating new ASINs " +
+                 "needs the brand connected under Manage Your Brands, and it is " +
+                 "held <i>per selling account</i>, so a brand linked to one of " +
+                 "your accounts is not linked to another.",
+          action: "Open " + (link
+                    ? ('<a href="' + E(link) + '" target="_blank" rel="noopener">'
+                       + 'Manage Your Brands</a>')
+                    : "Seller Central › Manage Your Brands") +
+                  " <b>while logged into this account</b> and connect the brand, " +
+                  "then submit again. Nothing in this app can grant it. " +
+                  "Meanwhile the listing will go through under a brand this " +
+                  "account already owns."
+        };
+      }
+    },
+    {
       // AMAZON MATCHED THIS TO AN EXISTING PRODUCT. Code 8541.
       //
       //     "a color is not something amazon should stuck on"
@@ -213,8 +269,23 @@
       // dumps and two ASINs -- and auto-fix treated the named field as an
       // ordinary rejection and looped on it.
       id: "catalogue_match_conflict",
+      // AMAZON WRITES 8541 TWO WAYS and the first version of this only knew
+      // one of them, so the commoner message matched NO pattern at all and the
+      // drawer printed Amazon's raw paragraph:
+      //
+      //   "We found more than one ASIN matching the SKU data provided..."
+      //   "...The ean, ean provided matches the ASIN B0H8V2XGRZ, but some of
+      //    the listing data contradicts what is already in the Amazon
+      //    catalogue. The following listing attribute value(s) conflict..."
+      //
+      // Both are the same refusal: the identifier matched something and the
+      // rest disagrees. Measured on nestwell_goods -- 15 of 18 listings came
+      // back in the second shape, and none of them in the first.
       test: function (t) {
-        return /more than one asin matching|conflicts with \d+ asins? in the catalog/i.test(t);
+        return /more than one asin matching/i.test(t)
+            || /conflicts? with \d+ asins? in the catalog/i.test(t)
+            || (/provided matches the asin\b/i.test(t)
+                && /contradicts|conflict with amazon catalog/i.test(t));
       },
       build: function (t) {
         var asins = t.match(/\bB0[A-Z0-9]{8}\b/g) || [];

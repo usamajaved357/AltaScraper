@@ -169,10 +169,38 @@ class ListingStore:
         return n
 
     def delete_row(self, sku):
+        """Remove one listing by SKU. -> how many rows went.
+
+        MATCHED THE WAY THE SKU IS WRITTEN, not byte for byte.
+
+            "i am still not able to delete the drafted listing"
+
+        This was an exact `sku=?` compare. A SKU stored with a trailing space,
+        or in a different case from the one the caller holds, was shown on
+        screen, found by repo.locate, converted back from its row number -- and
+        then matched NOTHING here. rowcount 0, and the screen reported "Nothing
+        was deleted, no row in this workspace matched that SKU" about a row it
+        had just located.
+
+        EXACT FIRST, THEN TRIMMED AND CASE-INSENSITIVE. The loose pass runs only
+        when the strict one found nothing, so two SKUs differing only in case
+        cannot both be swept by one call. Same problem and same answer as
+        domain/cogs_store.norm, where a cost keyed "10.99_3Days_..." was
+        invisible to a lookup for "10.99_3DAYS_..." -- different tables, one
+        shape of fix (Rule 12).
+        """
+        want = str(sku or "")
         with _WRITE_LOCK:
-            cur = self._conn().execute(
+            conn = self._conn()
+            cur = conn.execute(
                 "DELETE FROM listings WHERE workspace_id=? AND sku=?",
-                (self.workspace_id, str(sku or "")))
+                (self.workspace_id, want))
+            if cur.rowcount:
+                return cur.rowcount
+            cur = conn.execute(
+                "DELETE FROM listings WHERE workspace_id=? "
+                "AND UPPER(TRIM(IFNULL(sku,''))) = UPPER(TRIM(?))",
+                (self.workspace_id, want))
         return cur.rowcount
 
     def delete_empty_rows(self):
