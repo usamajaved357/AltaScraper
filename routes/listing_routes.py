@@ -2238,7 +2238,33 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                                 "error": "Amazon refused to delete it, so the "
                                          "draft was kept: %s" % (_amz.get("error")
                                                                  or "unknown")}), 502
-            gone = _repo.delete_row(ws, target)
+            # BY SKU WHEN WE HAVE ONE, never by round trip.
+            #
+            #     "i am still not able to delete the drafted listing ... still
+            #      the same error appears"
+            #
+            # The old path was: SKU -> row NUMBER (repo.locate) -> back to a SKU
+            # (SheetLikeStore._sku_for_row) -> delete. Two different reads of
+            # the same table, and the number in the middle means nothing outside
+            # whichever ordering produced it. When the two disagreed by so much
+            # as a trailing space the delete matched nothing, and the screen
+            # reported "no row in this workspace matched that SKU" about a row
+            # it had located a line earlier.
+            #
+            # The database can delete by SKU directly -- ListingStore.delete_row
+            # takes one. So the row number is not used at all when a SKU was
+            # given, which removes the round trip rather than making it more
+            # careful. The sheet backend, which genuinely addresses rows by
+            # position, still goes the old way.
+            gone = 0
+            _store = getattr(ws, "store", None)
+            if sku and _store is not None and hasattr(_store, "delete_row"):
+                try:
+                    gone = int(_store.delete_row(sku) or 0)
+                except Exception:
+                    gone = 0
+            if not gone:
+                gone = _repo.delete_row(ws, target)
             # BUST THE READ CACHE. THIS IS WHY DELETED DRAFTS CAME BACK.
             #
             #     "i have deleted a listing like 10 times now but it is not

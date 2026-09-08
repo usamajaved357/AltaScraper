@@ -209,24 +209,70 @@ def catalogue_conflict_note(cc):
         return ""
     fields = [f for f in (cc.get("fields") or []) if f]
     asins = cc.get("asins") or []
-    out = ("Stopped: the barcode on this listing already belongs to a product "
-           "in Amazon's catalogue"
-           + (" (%s)" % ", ".join(asins[:3]) if asins else "")
-           + ". Amazon matched the two on that barcode and then refused because "
-             "the rest of the details disagree")
+    out = ("Stopped: this listing's barcode already belongs to "
+           + (", ".join(asins[:3]) if asins else "a product in Amazon's catalogue")
+           + ", and Amazon refuses because the details disagree")
     if fields:
-        out += " (" + ", ".join(fields[:4]) + ")"
-    out += (".\n\nTHE FIELD AMAZON NAMES IS NOT THE FAULT. Matching is done on "
-            "the product identifier -- Amazon's own words: error 8541 \"occurs "
-            "when your Product ID, such as UPC, EAN, JAN, and ISBN, corresponds "
-            "to the Product ID of an existing ASIN\". The colour or title it "
-            "then complains about is what disagrees AFTER the match, not what "
-            "caused it. Changing them cannot clear it.\n\n"
-            "Check the barcode first: if it is on the wrong product, replace it "
-            "with one that belongs to this one. Auto-fix will not adjust the "
-            "other fields to match, because the only values that satisfy the "
-            "complaint are the other product's, and adopting them would attach "
-            "this listing to somebody else's ASIN (CLAUDE.md Rule 1).")
+        out += " on " + ", ".join(fields[:4])
+    out += ".\n\n"
+
+    # WHAT DISAGREES, IN AMAZON'S OWN FIGURES. It supplies both sides -- Merchant
+    # X / Amazon Y -- and printing them is the difference between "something
+    # conflicts" and knowing which value to change to what.
+    pairs = _conflicting_values(cc.get("message") or "")
+    if pairs:
+        for f, mine, theirs in pairs[:4]:
+            out += "    %s: you say %s, that product is %s\n" % (f, mine, theirs)
+        out += "\n"
+
+    out += ("THE FIELD AMAZON NAMES IS NOT THE FAULT. Matching is done on the "
+            "product identifier -- Amazon's own words: error 8541 \"occurs when "
+            "your Product ID, such as UPC, EAN, JAN, and ISBN, corresponds to "
+            "the Product ID of an existing ASIN\". Whatever it then complains "
+            "about is what disagrees AFTER the match, not what caused it.\n\n"
+            "SO THERE ARE TWO REAL WAYS OUT, and Amazon lists them itself:\n"
+            "  * give this listing a barcode that is not already in use -- it "
+            "then becomes a new product and the disagreement is moot; or\n"
+            "  * if it really IS that product, change your values to match it.\n"
+            "\nThe app will not make that second change for you. The only "
+            "values that satisfy the complaint are the other product's, and "
+            "adopting them attaches this listing to that ASIN -- which is the "
+            "owner's decision, not a fix to apply automatically (Rule 1).")
+    return out
+
+
+# Amazon writes each conflict as:  'brand' (Merchant [en_GB: "A"] / Amazon [en_GB: "B"])
+_CONFLICT_RE = None
+
+
+def _conflicting_values(msg):
+    """[(field, ours, theirs)] from an 8541 message. [] when it says none.
+
+    FOR DISPLAY ONLY. The decision is made on the CODE (see catalogue_conflict);
+    this reads the prose purely to show the two figures Amazon already put in
+    it, because "brand conflicts" without the values is a fact you cannot act
+    on. A message shaped differently simply yields nothing.
+    """
+    global _CONFLICT_RE
+    if _CONFLICT_RE is None:
+        import re
+        _CONFLICT_RE = re.compile(
+            r"'([a-z_][a-z0-9_.]*)'\s*\(Merchant\s*\[([^\]]*)\]\s*/\s*"
+            r"Amazon\s*'?\[([^\]]*)\]", re.I)
+
+    def _first(chunk):
+        # en_GB: "Nestwell Goods", pl_PL: "..." -> Nestwell Goods
+        import re as _re
+        m = _re.search(r'"([^"]+)"', chunk or "")
+        if m:
+            return m.group(1)
+        return str(chunk or "").strip()[:40]
+
+    out = []
+    for m in _CONFLICT_RE.finditer(str(msg or "")):
+        f, mine, theirs = m.group(1), _first(m.group(2)), _first(m.group(3))
+        if f and (mine or theirs):
+            out.append((f, mine or "(nothing)", theirs or "(nothing)"))
     return out
 
 

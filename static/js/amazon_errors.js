@@ -198,6 +198,133 @@
       }
     },
     {
+      // THE BRAND GATE. Code 100550, attributeNames ['global_catalog_owner'].
+      //
+      //     "if the barcode is the problem why i am gettting the message to
+      //      register the brand in the setting, if that is fake error message
+      //      fix it"
+      //
+      // It is not fake, and it is a DIFFERENT failure from the barcode one
+      // below -- which is exactly why it was confusing, because nothing here
+      // told them apart and Amazon's own paragraph was printed raw.
+      //
+      // MEASURED 8 Sep 2026 on nestwell_goods. Two listings whose barcodes are
+      // bound to nothing, previewed twice each, seconds apart:
+      //     brand Nestwell Goods -> VALID, 0 errors
+      //     brand AltaboltaVoo   -> 100550, and nothing else
+      // Fifteen others failed at 8541 first, because a bound barcode stops
+      // Amazon before it ever reaches this check -- so the barcode MASKS this,
+      // and fixing the barcode reveals it rather than removing it.
+      //
+      // AND IT IS NOT ABOUT BRAND REGISTRY, which is what this note used to
+      // imply and what he corrected:
+      //
+      //     "you are wrong who said we need brand registry to create a listing
+      //      under a brand name"
+      //
+      // Right. Registration is not the axis at all. Previewing ONE listing five
+      // ways, same payload, seconds apart, settled what the axis is:
+      //
+      //     Nestwell Goods   -> VALID
+      //     AltaboltaVoo     -> 100550  global_catalog_owner
+      //     altaboltavoo     -> 100550  global_catalog_owner  (case-insensitive)
+      //     Altabolta Voo    -> 5665    "has not been approved"
+      //     Zqvurtleplinth   -> 5665    "has not been approved"
+      //
+      // So Amazon has TWO different answers, and they mean opposite things.
+      // 5665 is "I have never heard of this name" (below). 100550 is "I know
+      // this name and YOU are not its owner" -- a name already in the
+      // catalogue, held by somebody, and that somebody is not this account.
+      //
+      // Confirmed by looking: searchCatalogItems returns 35 live UK ASINs whose
+      // brand is AltaboltaVoo, one of which (B0H8SYL36V) is a listing on his
+      // OWN OTHER ACCOUNT. The brand works perfectly -- on the account that
+      // created those ASINs. It is a per-account link, and it is missing here.
+      //
+      // NOTE FOR WHOEVER READS THIS NEXT: the app's own Brands list is a local
+      // list typed into settings. It never tells Amazon anything. A brand
+      // sitting in that list is not evidence Amazon has granted it.
+      id: "brand_not_connected",
+      test: function (t) {
+        return /connect your brand|create new asins with this brand/i.test(t)
+            || /\bglobal_catalog_owner\b/i.test(t);
+      },
+      build: function (t) {
+        var brand = (t.match(/connect your brand\s+([^\s]+(?:\s+[^\s]+)?)\s+with/i) || [])[1] || "";
+        var link = (t.match(/https?:\/\/[^\s"']+manage-your-brands[^\s"']*/i) || [])[0] || "";
+        return {
+          icon: "🏷️",
+          title: "Amazon has not linked this brand to this account",
+          plain: "Amazon knows " +
+                 (brand ? ("<b>" + E(brand) + "</b>") : "this brand") +
+                 " perfectly well — products already exist in its catalogue " +
+                 "under that name. What it is saying is that <b>this selling " +
+                 "account</b> is not the account the brand is attached to, so " +
+                 "this account may not create new products under it. The link " +
+                 "is held <i>per selling account</i>: a brand that works on one " +
+                 "of your accounts is not automatically usable on another. " +
+                 "Nothing is misspelled, and this has nothing to do with Brand " +
+                 "Registry — a name Amazon has never seen gives a different " +
+                 "error entirely (“has not been approved”).",
+          action: "Two ways out. <b>Either</b> create these listings from the " +
+                  "account that already owns the brand — the one whose existing " +
+                  "products carry it — where it works today. <b>Or</b> get the " +
+                  "brand attached to this account as well, in " + (link
+                    ? ('<a href="' + E(link) + '" target="_blank" rel="noopener">'
+                       + 'Manage Your Brands</a>')
+                    : "Seller Central › Manage Your Brands") +
+                  " <b>while logged into this account</b>. Only Amazon can grant " +
+                  "that; the Brands list in this app is a local list and does " +
+                  "not tell Amazon anything."
+        };
+      }
+    },
+    {
+      // AMAZON HAS NEVER SEEN THIS BRAND NAME. Code 5665.
+      //
+      //     "new brand names wont be accepted, only the approved brand names
+      //      are accepted like nestwell goods and AltaboltaVoo"
+      //
+      // Exactly so, and this is the error that says it. It had no handler,
+      // which mattered more once the Brand box started accepting any text at
+      // his instruction -- a typed name Amazon does not hold now lands here,
+      // and the raw paragraph reads like a rejected VALUE rather than a
+      // missing PERMISSION.
+      //
+      // Measured: an invented string (Zqvurtleplinth) and a real brand with one
+      // space added (Altabolta Voo) both give 5665, while the same name without
+      // the space gives 100550. So this is Amazon's "unknown name" answer, and
+      // A ONE-CHARACTER DIFFERENCE IS ENOUGH TO LAND HERE -- which is why the
+      // note below asks about spelling first. It is the cheap thing to check
+      // before opening a case.
+      id: "brand_not_approved",
+      test: function (t) {
+        return /brand name you have entered has not been approved/i.test(t)
+            || /^\s*request approval for\b/i.test(t);
+      },
+      build: function (t) {
+        var brand = (t.match(/request approval for\s+(.+?)\s*(?:the brand name|$)/i)
+                     || [])[1] || "";
+        return {
+          icon: "🏷️",
+          title: "Amazon does not recognise this brand name",
+          plain: "Amazon has no record of " +
+                 (brand ? ("<b>" + E(brand) + "</b>") : "this brand name") +
+                 " on this account, so it will not create products under it. " +
+                 "This is the answer for a name Amazon has <i>never seen</i> — " +
+                 "different from a name it knows but has attached to a " +
+                 "different account of yours.",
+          action: "<b>Check the spelling first.</b> Amazon treats one extra " +
+                  "space or character as a completely different brand — the " +
+                  "same name with a space added stops being recognised at all. " +
+                  "Compare it letter for letter against a listing that already " +
+                  "works. If the spelling is right, the name genuinely is not " +
+                  "granted to this account yet and only Amazon can grant it, " +
+                  "through the approval request in Seller Central."
+        };
+      }
+    },
+    {
       // AMAZON MATCHED THIS TO AN EXISTING PRODUCT. Code 8541.
       //
       //     "a color is not something amazon should stuck on"
@@ -213,8 +340,23 @@
       // dumps and two ASINs -- and auto-fix treated the named field as an
       // ordinary rejection and looped on it.
       id: "catalogue_match_conflict",
+      // AMAZON WRITES 8541 TWO WAYS and the first version of this only knew
+      // one of them, so the commoner message matched NO pattern at all and the
+      // drawer printed Amazon's raw paragraph:
+      //
+      //   "We found more than one ASIN matching the SKU data provided..."
+      //   "...The ean, ean provided matches the ASIN B0H8V2XGRZ, but some of
+      //    the listing data contradicts what is already in the Amazon
+      //    catalogue. The following listing attribute value(s) conflict..."
+      //
+      // Both are the same refusal: the identifier matched something and the
+      // rest disagrees. Measured on nestwell_goods -- 15 of 18 listings came
+      // back in the second shape, and none of them in the first.
       test: function (t) {
-        return /more than one asin matching|conflicts with \d+ asins? in the catalog/i.test(t);
+        return /more than one asin matching/i.test(t)
+            || /conflicts? with \d+ asins? in the catalog/i.test(t)
+            || (/provided matches the asin\b/i.test(t)
+                && /contradicts|conflict with amazon catalog/i.test(t));
       },
       build: function (t) {
         var asins = t.match(/\bB0[A-Z0-9]{8}\b/g) || [];

@@ -114,9 +114,21 @@ truthy("  and the fields Amazon blamed", "color" in note)
 # listing Rule 1 exists to prevent, and it is the first of the three steps
 # Amazon's own message offers.
 truthy("it refuses to adopt the other product's values",
-       "somebody else's ASIN" in note)
-truthy("  and sends him to check the barcode first",
-       "Check the barcode" in note)
+       "not a fix to apply automatically" in note)
+truthy("  and offers a new barcode as the first way out",
+       "not already in use" in note)
+# THE TWO FIGURES AMAZON SUPPLIES. "brand conflicts" is not actionable; "you
+# say AltaboltaVoo, that product is Nestwell Goods" is. Measured on his own
+# refusal for 7.89_3Days_B0GX53PTY8 against B0H8V2XGRZ.
+_pairs = A._conflicting_values(
+    "conflict with Amazon catalogue value(s): 'brand' (Merchant [en_GB: "
+    "\"AltaboltaVoo\"] / Amazon [en_GB: \"Nestwell Goods\", pl_PL: \"Nestwell "
+    "Goods\"]), 'manufacturer' (Merchant [en_GB: \"A\"] / Amazon [en_GB: \"B\"])")
+check("both sides of each conflict are read out", _pairs,
+      [("brand", "AltaboltaVoo", "Nestwell Goods"), ("manufacturer", "A", "B")])
+check("  a message carrying none yields none, not a crash",
+      A._conflicting_values("We found more than one ASIN matching the SKU data."), [])
+check("  and neither does an empty one", A._conflicting_values(""), [])
 check("no conflict -> no sentence", A.catalogue_conflict_note(None), "")
 
 print("\n=== auto-fix stops on the FIRST round, not the second ===")
