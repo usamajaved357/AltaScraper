@@ -209,21 +209,24 @@ def catalogue_conflict_note(cc):
         return ""
     fields = [f for f in (cc.get("fields") or []) if f]
     asins = cc.get("asins") or []
-    out = ("Stopped: Amazon has matched this listing's details to "
-           + ("an existing product (%s)" % ", ".join(asins[:3]) if asins
-              else "an existing product")
-           + " and says they disagree")
+    out = ("Stopped: the barcode on this listing already belongs to a product "
+           "in Amazon's catalogue"
+           + (" (%s)" % ", ".join(asins[:3]) if asins else "")
+           + ". Amazon matched the two on that barcode and then refused because "
+             "the rest of the details disagree")
     if fields:
-        out += " on " + ", ".join(fields[:4])
-    out += (". That is not a value being wrong -- it is Amazon deciding this is "
-            "the same product as one already in its catalogue. Auto-fix will "
-            "not change it, because the only value that satisfies the "
-            "complaint is Amazon's own, and adopting it would attach your new "
-            "product to somebody else's ASIN.\n\n"
-            "Two ways out: make the listing clearly a different product (its "
-            "own title, brand and specifics), or -- if it really is that "
-            "product -- take it up with Selling Partner Support, which is what "
-            "Amazon's own message suggests.")
+        out += " (" + ", ".join(fields[:4]) + ")"
+    out += (".\n\nTHE FIELD AMAZON NAMES IS NOT THE FAULT. Matching is done on "
+            "the product identifier -- Amazon's own words: error 8541 \"occurs "
+            "when your Product ID, such as UPC, EAN, JAN, and ISBN, corresponds "
+            "to the Product ID of an existing ASIN\". The colour or title it "
+            "then complains about is what disagrees AFTER the match, not what "
+            "caused it. Changing them cannot clear it.\n\n"
+            "Check the barcode first: if it is on the wrong product, replace it "
+            "with one that belongs to this one. Auto-fix will not adjust the "
+            "other fields to match, because the only values that satisfy the "
+            "complaint are the other product's, and adopting them would attach "
+            "this listing to somebody else's ASIN (CLAUDE.md Rule 1).")
     return out
 
 

@@ -90,17 +90,33 @@ check("both ASINs are pulled out", cc["asins"], ["B0HJ3W6M84", "B0HHXTKT3B"])
 check("  and the fields Amazon blamed", cc["fields"],
       ["color", "externally_assigned_product_identifier"])
 
-print("\n=== the sentence says what to do, and what not to ===")
+print("\n=== the sentence points at the BARCODE, which is what matched ===")
+# CORRECTED 8 Sep 2026. The first version of this said the two listings were
+# "too similar" and told him to differentiate them. That was an inference stated
+# as fact, and it is wrong: Amazon's own definition of 8541 is that it "occurs
+# when your Product ID, such as UPC, EAN, JAN, and ISBN, corresponds to the
+# Product ID of an existing ASIN". The match is on the IDENTIFIER; the colour
+# and title it then names are what disagree AFTER the match.
+#
+# Proved on his data by asking Amazon's catalogue what the barcode resolves to:
+#     4545944574867 -> B0H8SYL36V, AltaboltaVoo
+#                      "Car Neck Headrest Pillows Pair Bone Shaped PU Leather"
+# The window cleaner was carrying a car headrest pillow's barcode.
 note = A.catalogue_conflict_note(cc)
-truthy("it says the value is not the fault", "not a value being wrong" in note)
+truthy("it names the barcode as the thing that matched",
+       "barcode" in note.lower())
+truthy("  quoting Amazon's own definition of the error", "Product ID" in note)
+truthy("  and says the named field is not the fault",
+       "NOT THE FAULT" in note)
 truthy("  names the products", "B0HJ3W6M84" in note)
-truthy("  and the fields", "color" in note)
-# THE THING IT MUST NEVER SUGGEST. Adopting Amazon's value is the piggyback
-# listing Rule 1 exists to prevent, and it is the one step Amazon's own message
-# offers first.
-truthy("it refuses to adopt Amazon's value", "somebody else's ASIN" in note)
-truthy("  and gives the two real ways out",
-       "different product" in note and "Selling Partner Support" in note)
+truthy("  and the fields Amazon blamed", "color" in note)
+# THE THING IT MUST NEVER SUGGEST. Adopting Amazon's values is the piggyback
+# listing Rule 1 exists to prevent, and it is the first of the three steps
+# Amazon's own message offers.
+truthy("it refuses to adopt the other product's values",
+       "somebody else's ASIN" in note)
+truthy("  and sends him to check the barcode first",
+       "Check the barcode" in note)
 check("no conflict -> no sentence", A.catalogue_conflict_note(None), "")
 
 print("\n=== auto-fix stops on the FIRST round, not the second ===")
@@ -119,8 +135,10 @@ print("\n=== and the drawer explains it instead of quoting Amazon ===")
 AE = open(os.path.join("static", "js", "amazon_errors.js"), encoding="utf-8").read()
 truthy("there is a pattern for it", "catalogue_match_conflict" in AE)
 truthy("  matching Amazon's own wording", "more than one asin matching" in AE.lower())
-truthy("  and it tells him NOT to take Amazon's values",
-       "Do NOT change your values to Amazon" in AE)
+truthy("  it names the barcode as the cause",
+       "already belongs to another product" in AE)
+truthy("  and tells him NOT to adopt the other product's values",
+       "change the colour, title or other fields to match Amazon" in AE)
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails:

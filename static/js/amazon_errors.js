@@ -230,20 +230,24 @@
         });
         return {
           icon: "🔗",
-          title: "Amazon thinks this is a product it already has",
-          plain: "Amazon matched the details you sent to " +
+          title: "This barcode already belongs to another product",
+          plain: "Amazon matched your listing to " +
                  (uniq.length ? ("<b>" + uniq.slice(0, 3).map(E).join("</b>, <b>") + "</b>")
-                              : "an existing product") +
-                 " and is refusing because your values disagree with it" +
-                 (attrs.length ? (" on <b>" + attrs.map(E).join(", ") + "</b>") : "") +
-                 ". Nothing you sent is invalid — this is Amazon deciding your " +
-                 "product is the same as one already in its catalogue.",
-          action: "Do NOT change your values to Amazon's. That would join your " +
-                  "listing to somebody else's ASIN instead of creating your own " +
-                  "product. Either make this listing clearly a different product " +
-                  "— its own title, brand and item specifics — or, if it really " +
-                  "is that product, contact Selling Partner Support, which is " +
-                  "what Amazon's own message suggests."
+                              : "a product already in its catalogue") +
+                 " <b>on the barcode</b>, and is refusing because the rest of the " +
+                 "details disagree with it" +
+                 (attrs.length ? (" (<b>" + attrs.map(E).join(", ") + "</b>)") : "") +
+                 ". The field it names is not the fault — matching is done on the " +
+                 "product identifier, and everything else is what disagrees " +
+                 "<i>after</i> the match. Amazon's own definition of this error: " +
+                 "it \"occurs when your Product ID, such as UPC, EAN, JAN, and " +
+                 "ISBN, corresponds to the Product ID of an existing ASIN\".",
+          action: "Check the barcode. If it is on the wrong product, replace it " +
+                  "with one that belongs to this one and the error goes. Do NOT " +
+                  "change the colour, title or other fields to match Amazon's — " +
+                  "that would join this listing to somebody else's ASIN instead " +
+                  "of creating your own product. If the barcode really is right " +
+                  "for this product, contact Selling Partner Support."
         };
       }
     },
