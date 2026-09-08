@@ -294,10 +294,20 @@ _PANEL_HTML = r"""
          what goes in the brand field. -->
     <div class="cc" style="font-size:11.5px;line-height:1.55;margin:0 0 12px;max-width:760px;border-left:2px solid var(--line);padding-left:10px">
       This page sets a brand&rsquo;s <b>voice and tone</b> for generated copy.
-      It does <b>not</b> decide which brands an account may list under &mdash;
-      that is the <b>Trademarks / brands</b> field on the account itself
-      (<b>Manage accounts</b> &rsaquo; edit the account). A listing whose Brand
-      is not on that list is sent under the account&rsquo;s first brand instead.
+      It does <b>not</b> decide which brands an account may list under.
+      <br><br>
+      <b>Neither does anything else in this app.</b> Whatever you type in a
+      listing&rsquo;s Brand field is sent to Amazon exactly as typed. Amazon
+      decides whether the account may use it, and refuses with code
+      <b>100550</b> (&ldquo;connect your brand&hellip;&rdquo;) if the brand is
+      not linked to <i>that selling account</i> in Seller Central &rsaquo;
+      <b>Manage Your Brands</b>. A brand linked to one of your accounts is not
+      linked to another &mdash; each selling account needs its own connection.
+      <br><br>
+      The <b>Trademarks / brands</b> field on the account (<b>Manage
+      accounts</b> &rsaquo; edit the account) is your own note of which brands
+      belong to it. It is used to point out a listing carrying something not on
+      that list; it no longer changes the value.
     </div>
     <div id="brand_cards" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
     <table class="kv">
