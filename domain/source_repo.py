@@ -84,6 +84,39 @@ def set_listing_state(config_path, workspace_id, marketplace, sku, state):
     conn.commit()
 
 
+def stop_tracking(config_path, workspace_id, marketplace, sku):
+    """This listing is gone from Amazon: stop tracking it and disarm it. -> bool.
+
+        "when a item is deleted from amazon, delete it from repricer too, stop
+         tracking and disarm"
+
+    TWO THINGS, AND DOING ONE IS WORSE THAN DOING NEITHER. Unenrolling stops it
+    being priced; marking it GONE is what disarms it (see set_listing_state,
+    which sets mode='dry_run' in the same statement). A SKU unenrolled but still
+    armed, or armed but marked gone, is a half-state somebody would have to
+    reason about later. So they are one call with one meaning.
+
+    WHY THE ROW IS KEPT rather than deleted. Its sources, its price history and
+    its rule outlive the listing -- the same reasoning set_listing_state records
+    -- and a listing deleted today may be relisted tomorrow under the same SKU.
+    Nothing is priced from a row that is unenrolled AND marked gone, so keeping
+    it costs a row and saves the audit trail.
+
+    Returns True when there was an enrolment to stop, so the caller can say so
+    rather than claiming it did something to a SKU the repricer never had.
+    """
+    conn = _db.get_db(config_path)
+    row = conn.execute(
+        "SELECT enrolled FROM sourcing_enrolment "
+        "WHERE workspace_id=? AND marketplace=? AND sku=?",
+        (workspace_id, marketplace, sku)).fetchone()
+    if not row:
+        return False
+    unenrol(config_path, workspace_id, marketplace, sku)
+    set_listing_state(config_path, workspace_id, marketplace, sku, GONE)
+    return True
+
+
 def enrolled(config_path, workspace_id=None, marketplace=None):
     """Every enrolled SKU, optionally narrowed to one account/marketplace."""
     conn = _db.get_db(config_path)

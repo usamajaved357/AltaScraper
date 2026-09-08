@@ -2058,7 +2058,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         the row rather than quietly orphaning a live listing.
         """
         out = {"attempted": False, "ok": False, "was_live": False,
-               "asin": "", "error": ""}
+               "asin": "", "error": "", "marketplace": "", "untracked": False}
         aid = str(account_id or "").strip()
         if not (sku and aid):
             return out
@@ -2068,6 +2068,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             acc = _acc_mod.get_account(_cfg(), aid, CONFIG_PATH) or {}
             seller = str(acc.get("seller_id") or "").strip()
             mkt = str(marketplace or acc.get("default_marketplace") or "UK").upper()
+            out["marketplace"] = mkt
             mkt_id = _acc_mod.marketplace_id(mkt)
             if not (seller and mkt_id):
                 out["error"] = "no seller id or marketplace for this account"
@@ -2092,6 +2093,25 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             res = _al.delete(creds, mkt, seller, sku, mkt_id)
             if res.get("status") in (_al.OK, _al.GONE):
                 out["ok"] = True
+                # AND THE REPRICER LETS GO OF IT.
+                #
+                #     "when a item is deleted from amazon, delete it from
+                #      repricer too, stop tracking and disarm"
+                #
+                # A SKU that cannot be sold is one the pricer would go on
+                # checking suppliers for and, if armed, go on trying to push a
+                # price to. source_repo.stop_tracking does both halves in one
+                # call -- unenrol and mark GONE, which is what disarms it.
+                #
+                # NEVER FATAL. The listing is already off Amazon by this point;
+                # a bookkeeping failure must not turn a completed delete into a
+                # reported one.
+                try:
+                    from domain import source_repo as _srepo
+                    out["untracked"] = bool(_srepo.stop_tracking(
+                        CONFIG_PATH, aid, mkt, sku))
+                except Exception:
+                    pass
             else:
                 out["error"] = str(res.get("error") or "Amazon refused")[:200]
         except Exception as e:
