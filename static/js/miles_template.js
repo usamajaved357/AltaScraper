@@ -492,8 +492,18 @@ function render(){
   const note = (empties.length
     ? `<div class="emptynote">${empties.length} empty row${empties.length>1?'s':''} hidden — <button class="linkbtn" onclick="clearEmpty(this)">clear them ${storeFrom()}</button></div>`
     : "")
+    // NOT RED.
+    //
+    //     "please dont display it in red color, i already know that the
+    //      listings which are deleted from live on amazon page goes to removed
+    //      section"
+    //
+    // Red is for something that needs doing. This is bookkeeping he already
+    // understands, so it takes the ordinary note styling the empty-rows line
+    // above it uses and stops competing with the things that are actually
+    // wrong. The count and the way to them stay.
     + (goneRows.length
-    ? `<div class="emptynote" style="border-color:var(--red-line);color:var(--red)">
+    ? `<div class="emptynote">
          ${goneRows.length} listing${goneRows.length>1?'s are':' is'} no longer on Amazon —
          <button class="linkbtn" onclick="setListSource('removed')">see ${goneRows.length>1?'them':'it'} in Removed</button>
        </div>`
@@ -817,23 +827,48 @@ function render(){
  * this is the one action that cannot be undone -- so this text is the warning,
  * not the decision.
  */
+/* NOTHING IN HERE MAY THROW, and the first version did.
+ *
+ *     "i am trying deleting a listing by clicking on that three dots in view 2,
+ *      and pressing the delete listing button but nothing is happening"
+ *
+ * ROWS.find returns UNDEFINED for a listing this app holds no draft of -- which
+ * is most of the Live view, 33 of 40 on this account -- and isAmazonLive passes
+ * it straight to isActuallyLive, which reads r.sku. That threw a TypeError while
+ * BUILDING THE ARGUMENT to uiConfirm, so the dialog never opened and the button
+ * did nothing at all, silently. A warning that stops the action it is warning
+ * about is worse than no warning.
+ *
+ * So: the row is looked up defensively, and a failure means "not known to be
+ * live" rather than an exception. The server decides anyway -- it asks Amazon
+ * before deleting anything there -- so being wrong here costs a sentence, not
+ * a listing.
+ */
 function _delWarning(sku){
-  const live = (typeof isAmazonLive === "function")
-    ? isAmazonLive((typeof ROWS !== "undefined" && ROWS.find)
-        ? ROWS.find(x => String(x.sku) === String(sku)) : null)
-    : false;
+  let live = false;
+  try{
+    const r = (typeof ROWS !== "undefined" && ROWS && ROWS.find)
+      ? ROWS.find(x => x && String(x.sku) === String(sku)) : null;
+    if(r && typeof isAmazonLive === "function") live = !!isAmazonLive(r);
+  }catch(e){ live = false; }
   return live
     ? ("\n\nThis listing is LIVE ON AMAZON, so it will be DELETED FROM AMAZON "
        + "as well as from here. Buyers will no longer see it, and Amazon keeps "
        + "no undo — the offer and its history go with it.")
-    : ("\n\nThis is a draft and was never sent to Amazon, so only the copy here "
-       + "is removed. Nothing on Amazon changes.");
+    // NOT "this is a draft". Without a row here we do not know that, and the
+    // server may well find it on Amazon and remove it. Say what is certain.
+    : ("\n\nIf this listing is live on Amazon it will be deleted there too. "
+       + "If it is only a draft here, nothing on Amazon changes.");
 }
 
 async function delRow(sku, row, btn){
-  if(!await uiConfirm("Delete " + sku + "?" + _delWarning(sku)
+  let _warn = "";
+  try{ _warn = _delWarning(sku); }catch(e){ _warn = ""; }
+  if(!await uiConfirm("Delete " + sku + "?" + _warn
                       + "\n\nThis cannot be undone.")) return;
-  btn.disabled=true;
+  // The three-dots menu passes `this`; other callers may not. A missing button
+  // must not stop the delete -- that is the same fault as above, one layer on.
+  if(btn) btn.disabled=true;
   try{
     // multi-tab: /delete removes BY ROW on the active tab — sync to this card's tab first
     // so we never delete the same row number on the wrong tab.
@@ -850,8 +885,11 @@ async function delRow(sku, row, btn){
                             : "Draft removed (it was not on Amazon)"));
       loadRows();
     }
-    else{ toast("Delete failed: "+(j.error||"")); btn.disabled=false; }
-  }catch(e){ toast("Delete failed"); btn.disabled=false; }
+    // AND SAY WHY. "Delete failed:" with an empty reason after it is what a
+    // caller sees when the server answered but this read the wrong field.
+    else{ toast("Delete failed: " + (j.error || "no reason given"));
+          if(btn) btn.disabled=false; }
+  }catch(e){ toast("Delete failed: " + e); if(btn) btn.disabled=false; }
 }
 async function bulkStatus(status){
   // APPROVE AND HOLD ARE ABOUT A DRAFT. Now that Amazon-only rows can be ticked

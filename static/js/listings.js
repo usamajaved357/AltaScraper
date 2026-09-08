@@ -1318,13 +1318,21 @@ function summary(){
   // saying which rows, or which rule, and it sat above a list those rows were
   // already in. The per-listing flag on the row itself says the same thing
   // where it can be acted on.
-  // The published rows the Drafts list is deliberately not showing. Said in
-  // words rather than counted into a tile above a list they are not in, and
-  // with the way to go and look at them.
-  if(_hiddenLive.length){
-    extras.push(`<span class="cc">${_hiddenLive.length} already live on Amazon, not shown here — `
-      + `<button class="linkbtn" onclick="setListSource('live')">see them</button></span>`);
-  }
+  // "N ALREADY LIVE ON AMAZON, NOT SHOWN HERE" IS GONE, at the owner's request.
+  //
+  //     "i dont need this message, i know that when a listing is live on amazon
+  //      it will be removed from draft"
+  //
+  // It was written to answer "where did my listing go", and it did -- but it
+  // answered it every single time the Drafts list was drawn, to somebody who
+  // has since learned the answer. A permanent line explaining a rule you
+  // already know is noise, and this one sat directly above the counts that do
+  // need reading.
+  //
+  // NOTHING IS HIDDEN THAT WAS NOT HIDDEN BEFORE: the Live on Amazon tab is a
+  // click away and is where those rows have always been. `_hiddenLive` is still
+  // computed above -- it is what excludes them from the Drafts list -- so this
+  // is the sentence going, not the behaviour.
   if(countDuplicateSkus()>0){
     extras.push(`<span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`);
   }

@@ -1083,15 +1083,58 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                             "clash": [], "note": "", "why": "",
                             "state": "unknown"})
         live = [c for c in clash if c.get("live")]
+
+        # ...AND WHAT AMAZON HAS, which the rows above cannot see.
+        #
+        #     "if a draft or the live listing or the deleted listing or anywhere
+        #      which holds information and from where it can detect this barcode
+        #      is already assosiated to this, it should flag in advance"
+        #
+        # Measured 8 Sep 2026: 4545944574867 was reported FREE by the check
+        # above and belongs to B0H8SYL36V -- which is this owner's own
+        # jack_uk/5.98_3Days_B0F7RQLCKC, live. The app's rows do not record that
+        # barcode against the jack_uk listing, so only Amazon knew, and the
+        # first he heard of it was a refusal.
+        #
+        # ONE CALL, AND ONLY HERE. searchCatalogItems allows 2 requests a second
+        # per account. This route is reached when a barcode is TYPED (the box
+        # debounces at 450ms) and never in a list sweep -- 86 rows would be 86
+        # calls and would starve the price and stock reads sharing that quota.
+        # domain/barcode_clash caches the answer for ten minutes, so re-reading
+        # the same code costs nothing.
+        amz = {"checked": False, "owners": [], "why": ""}
+        try:
+            amz = _bc.on_amazon(CONFIG_PATH, who, request.args.get("mkt"), code)
+        except Exception:
+            pass
+        amz_note = _bc.amazon_sentence(amz, code)
+
+        # A BARCODE AMAZON ALREADY HAS IS THE WORST OF THE THREE, because it is
+        # the one that cannot be argued with: Amazon matches on the identifier
+        # and refuses (code 8541). It outranks a local clash in the verdict.
+        state = ("clash_live" if live else ("clash" if clash else "free"))
+        if amz.get("owners"):
+            state = "clash_amazon"
+
         return jsonify({
             "ok": True, "code": code, "usable": True, "why": "",
             "clash": clash,
             "note": _bc.sentence(clash, code),
+            # Kept apart from `note`, because they are different facts: one is
+            # about this app's other listings, the other about Amazon's whole
+            # catalogue for this marketplace.
+            "amazon": amz,
+            "amazon_note": amz_note,
+            # WHETHER AMAZON WAS ACTUALLY ASKED. Three of four accounts answer
+            # 403 on the catalogue API, so "no owner found" and "could not look"
+            # must not read the same -- the second one is not a clean barcode.
+            "amazon_checked": bool(amz.get("checked")),
+            "amazon_why": amz.get("why") or "",
             # A clash with a LIVE listing is the one that already cost him a
             # listing: Amazon matches the code to that product's ASIN and
             # refuses to create a second. A clash with a draft is worth saying
             # and is not yet fatal.
-            "state": ("clash_live" if live else ("clash" if clash else "free")),
+            "state": state,
         })
 
     @app.route("/rows")

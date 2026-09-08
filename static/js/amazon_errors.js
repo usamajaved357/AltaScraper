@@ -198,6 +198,60 @@
       }
     },
     {
+      // AMAZON MATCHED THIS TO AN EXISTING PRODUCT. Code 8541.
+      //
+      //     "a color is not something amazon should stuck on"
+      //
+      // It was not really the colour. Amazon names whichever attribute
+      // DISAGREES with the ASIN it thinks we are describing, so the field in
+      // the message is a symptom of the match, not a wrong value -- and the
+      // only value that satisfies it is Amazon's own, which would attach a new
+      // product to somebody else's ASIN (CLAUDE.md Rule 1).
+      //
+      // Nothing here understood this message at all, so the drawer printed
+      // Amazon's whole paragraph -- three numbered steps, two bracketed value
+      // dumps and two ASINs -- and auto-fix treated the named field as an
+      // ordinary rejection and looped on it.
+      id: "catalogue_match_conflict",
+      test: function (t) {
+        return /more than one asin matching|conflicts with \d+ asins? in the catalog/i.test(t);
+      },
+      build: function (t) {
+        var asins = t.match(/\bB0[A-Z0-9]{8}\b/g) || [];
+        var seen = {}, uniq = [];
+        asins.forEach(function (a) { if (!seen[a]) { seen[a] = 1; uniq.push(a); } });
+        // The attributes Amazon names, from its own quoted list rather than
+        // from the prose around it.
+        var attrs = [];
+        var m = t.match(/'\{?([a-z_][a-z0-9_.,{}]*)\}?'\s+conflicts/gi) || [];
+        m.forEach(function (x) {
+          var f = (x.match(/'\{?([a-z_][a-z0-9_.]*)/i) || [])[1];
+          if (f && attrs.indexOf(f) < 0) attrs.push(f);
+        });
+        return {
+          icon: "🔗",
+          title: "This barcode already belongs to another product",
+          plain: "Amazon matched your listing to " +
+                 (uniq.length ? ("<b>" + uniq.slice(0, 3).map(E).join("</b>, <b>") + "</b>")
+                              : "a product already in its catalogue") +
+                 " <b>on the barcode</b>, and is refusing because the rest of the " +
+                 "details disagree with it" +
+                 (attrs.length ? (" (<b>" + attrs.map(E).join(", ") + "</b>)") : "") +
+                 ". The field it names is not the fault — matching is done on the " +
+                 "product identifier, and everything else is what disagrees " +
+                 "<i>after</i> the match. Amazon's own definition of this error: " +
+                 "it \"occurs when your Product ID, such as UPC, EAN, JAN, and " +
+                 "ISBN, corresponds to the Product ID of an existing ASIN\".",
+          action: "Check the barcode. If it is on the wrong product, replace it " +
+                  "with one that belongs to this one and the error goes. Do NOT " +
+                  "change the colour, title or other fields to match Amazon's — " +
+                  "that would join this listing to somebody else's ASIN instead " +
+                  "of creating your own product. If the barcode really is right " +
+                  "for this product, contact Selling Partner Support."
+        };
+      }
+    },
+    {
       // Amazon says an attribute we sent doesn't apply to this product type (a warning, not a block).
       id: "attr_not_applicable",
       test: function (t) { return /does not belong or is no longer applicable to the product type/i.test(t); },

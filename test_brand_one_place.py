@@ -16,12 +16,32 @@ without a word, so the listing went out under a brand nobody chose -- and the
 only clue was a generic "Amazon flagged this" on a field the editor would not
 let you fix anyway.
 
-THE GUARD ITSELF IS RIGHT AND STAYS. A listing must go out under THIS account's
-own trademark; one account's brand on another's listing is the worse fault, and
-it has happened here before (a competitor's eBay data once supplied brand='YL').
-What was wrong was the silence: the app cannot know which brands Amazon approved
-for an account, only the owner can, and the account's Brands list is where they
-say so.
+THE SWAP WAS REMOVED ON 8 SEP 2026, at the owner's instruction:
+
+    "please do not force the listing to use the brand name from the approved or
+     added brand list just allow the types brand name to go to amazon if there
+     is a typo or some error amazon will reveal in preview"
+
+    "that altaboltaVoo is not a brand registry brand, that is just a brand name
+     amazon allowed me to use so let me use it"
+
+He is right, and Amazon's own enforcement is why it is safe: a brand this
+account may not use CANNOT create a listing -- Amazon refuses with code 100550
+and returns the Manage Your Brands link. The swap was guarding against a case
+Amazon already blocks, and paying for it by sending listings out under a brand
+nobody chose.
+
+The app cannot ever know the answer for itself, either. Amazon's documentation
+is explicit that SP-API "doesn't provide information about intellectual property
+restrictions for new products or details about gated brands" -- there is no
+endpoint to read the approved list and none to apply for one. So the account's
+Brands list is the owner's own note, useful for spotting a stale value and never
+authoritative enough to overrule what he typed.
+
+WHAT SURVIVES is the reporting. A brand that is not on the list is still said
+out loud, because a leaked value looks exactly like a deliberate one -- and the
+global config brand is still never borrowed for a blank row, which is the
+separate leak that put one account's brand on another's listings.
 """
 import os
 import sys
@@ -62,26 +82,49 @@ check("the account's own brand", R("Nestwell Goods", ONE), ("Nestwell Goods", ""
 check("  and the second of several", R("Jack Reacherd", TWO), ("Jack Reacherd", ""))
 check("  with nothing to report", R("AltaboltaVoo", TWO)[1], "")
 
-print("\n== an unregistered brand is swapped -- and SAID ==")
+print("\n== an unlisted brand is SENT AS TYPED, and remarked on ==")
+# THE SWAP IS GONE, at the owner's instruction on 8 Sep 2026:
+#
+#     "please do not force the listing to use the brand name from the approved
+#      or added brand list just allow the types brand name to go to amazon if
+#      there is a typo or some error amazon will reveal in preview"
+#
+# The argument is Amazon's own enforcement. A brand this account does not own
+# CANNOT create a listing -- Amazon refuses with code 100550 and hands back the
+# Manage Your Brands link. So the case the swap guarded against is one Amazon
+# already blocks, at the only place that knows which brands are approved, while
+# the swap itself sent listings out under a brand nobody chose (his first report,
+# quoted at the top of this file).
+#
+# The app cannot close that gap either: Amazon's docs say SP-API "doesn't
+# provide information about intellectual property restrictions for new products
+# or details about gated brands". There is no list to read and none to apply to.
 got, note = R("AltaboltaVoo", ONE)
-check("the account's first brand is sent", got, "Nestwell Goods")
-truthy("  and the swap is announced", note)
+check("what was typed is what is sent", got, "AltaboltaVoo")
+truthy("  and it is still remarked on", note)
 truthy("  naming what was typed", "AltaboltaVoo" in note)
-truthy("  and what was sent instead", "Nestwell Goods" in note)
-# The note must say what to DO. "Brand was changed" is not actionable.
-truthy("  and exactly what to do about it", "Brands list" in note)
-truthy("  including the case where the owner is right",
-       "really is" in note and "Seller Central" in note)
+truthy("  and what the account lists", "Nestwell Goods" in note)
+# The note is now about a value being SENT, not one being CHANGED.
+truthy("  saying it goes as typed", "as typed" in note)
+truthy("  and that Amazon is the authority", "100550" in note)
+falsy("  it no longer claims to have substituted anything",
+      "instead" in note.lower())
 
-print("\n== an account with no brand sends none, rather than borrowing ==")
+print("\n== an account with no brands listed still sends what was typed ==")
+# An empty list is far more likely to mean "not filled in" than "owns no
+# brands", and this used to BLOCK the submit outright.
 got, note = R("AltaboltaVoo", NONE_SET)
-check("nothing is sent", got, "")
-truthy("  and it says why", "no registered brand" in note)
-# The global config brand is NEVER used once an account is resolved -- that
-# leak is how one account's brand reached another's listings.
-check("the global brand is not borrowed",
-      R("x", {"_account_brands": [], "_account_brand": "",
-              "brand_name": "Someone Else"})[0], "")
+check("the typed brand is sent", got, "AltaboltaVoo")
+truthy("  and it says nothing here could confirm it",
+       "no brands listed" in note)
+check("a row with no brand at all still sends none",
+      R("", NONE_SET), ("", ""))
+# The global config brand is NEVER borrowed once an account is resolved -- that
+# leak is how one account's brand reached another's listings, and it is a
+# DIFFERENT thing from sending what the owner typed.
+check("the global brand is not borrowed for a blank row",
+      R("", {"_account_brands": [], "_account_brand": "",
+             "brand_name": "Someone Else"})[0], "")
 
 print("\n== with no account at all, the legacy fallback still works ==")
 check("the row wins", R("Typed", NO_ACCOUNT), ("Typed", ""))
