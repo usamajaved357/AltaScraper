@@ -687,10 +687,23 @@ function matchesSearch(r){
   // Single words are left to the substring pass above, deliberately: it
   // already matches inside a word ("fol" finds Folding and Foldable), and this
   // pass would not add anything.
-  const words = q.split(/\s+/).filter(w => w.length > 1);
-  if(words.length > 1){
-    const hay = fields.map(_sq).join(" ");
-    if(words.every(w => hay.indexOf(w) >= 0)) return true;
+  //
+  // THE RULE ITSELF NOW LIVES IN static/js/textsearch.js and the campaigns
+  // search asks the same function (CLAUDE.md Rule 12). It was written out here
+  // and nowhere else, so when the Campaign Analytics box needed it the choice
+  // was a second copy or one shared answer -- and two ideas of what searching
+  // means is exactly how one screen quietly stops finding what the other does.
+  //
+  // The FIELD LIST above stays here, where it belongs and where
+  // test_listings_asin.py and test_bookmarks_and_search.js read it from.
+  if(typeof altaSearchMatch === "function"){
+    if(altaSearchMatch(q, fields)) return true;
+  }else{
+    const words = q.split(/\s+/).filter(w => w.length > 1);
+    if(words.length > 1){
+      const hay = fields.map(_sq).join(" ");
+      if(words.every(w => hay.indexOf(w) >= 0)) return true;
+    }
   }
   // The attributes blob, so an EAN stored only inside the payload is still
   // findable -- that is where a barcode ends up once a listing is built.
