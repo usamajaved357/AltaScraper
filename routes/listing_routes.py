@@ -2027,10 +2027,66 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             else:
                 return jsonify({"ok": False, "error": "bad target"}), 400
             _bust_records_cache()
+            # A NEW BARCODE MEANS THE CLASH VERDICTS ARE OUT OF DATE.
+            #
+            #     "i replaced the ean with the fresh one and when i open the pdp
+            #      it says the ean can be used and it does not overlap with
+            #      another asin, but when i come our of pdp it still highlights
+            #      that the ean can not be used"
+            #
+            # The badge on the list reads listings.warnings, a column that
+            # listing/warnings.py computes and STORES. Its only writer is
+            # recompute_workspace, and its only caller was the end of a
+            # generate/retry run -- so editing a barcode changed the barcode and
+            # left the verdict about it exactly as it was. The PDP was right and
+            # the list was quoting an answer to a question nobody had re-asked.
+            #
+            # THE WHOLE WORKSPACE, NOT THIS ROW. A duplicate is not a property
+            # of one listing: measured on two planted drafts sharing an EAN,
+            # giving A a fresh barcode cleared the warning on B as well. A
+            # per-row recompute would have fixed the row you edited and left the
+            # other one accusing a listing that no longer clashes with it.
+            #
+            # Only for the barcode. Every other editable column is a property of
+            # its own row, and paying for a workspace pass on each keystroke's
+            # blur-save would be a real cost for no answer. dwBlurSave only calls
+            # this route when the text actually changed, so a barcode nobody
+            # touched costs nothing.
+            _wchanged = {}
+            if target == "col" and key == "UPC":
+                try:
+                    _wsid2 = _ws_id_of(ws) or str(b.get("account") or "") \
+                             or _state.get("active_account_id", "")
+                    if _wsid2:
+                        from listing import warnings as _warn2
+                        from data import db as _db2
+                        _c2 = _db2.get_db(CONFIG_PATH)
+                        _before = {r["sku"]: (r["warnings"] or "") for r in _c2.execute(
+                            "SELECT sku, warnings FROM listings WHERE workspace_id=?",
+                            (_wsid2,))}
+                        _warn2.recompute_workspace(CONFIG_PATH, _wsid2)
+                        # ONLY WHAT MOVED. Handing back every row's warnings on
+                        # a keystroke would be a large reply for a small fact,
+                        # and the screen only needs the rows whose verdict is
+                        # now different -- including the ones that went EMPTY,
+                        # which are exactly the ones being cleared.
+                        for r in _c2.execute(
+                                "SELECT sku, warnings FROM listings WHERE workspace_id=?",
+                                (_wsid2,)):
+                            if (r["warnings"] or "") != _before.get(r["sku"], ""):
+                                try:
+                                    _wchanged[r["sku"]] = json.loads(r["warnings"] or "[]")
+                                except Exception:
+                                    _wchanged[r["sku"]] = []
+                except Exception:
+                    # A verdict that could not be re-worked-out is not a reason
+                    # to fail a save that already happened.
+                    _wchanged = {}
             # `adopted` tells the screen a row was CREATED to hold this edit, so
             # it can say so. Saving a field and silently gaining a listing row is
             # a surprise, even though it is the surprise the owner asked for.
-            return jsonify({"ok": True, "adopted": _adopted})
+            return jsonify({"ok": True, "adopted": _adopted,
+                            "warnings_changed": _wchanged})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 

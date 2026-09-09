@@ -76,7 +76,55 @@ function ppccSort(k){
   ppccRender();
 }
 function ppccSet(f, v){ PPCC[f] = v; ppccRender(); }
-function ppccFilter(v){ PPCC.q = (v || "").toLowerCase(); ppccRender(); }
+/* THE SEARCH BOX. Three separate faults, measured on the running screen with
+ * this account's 254 campaigns:
+ *
+ *     "THE SEARCH CAMPAIGNS BAR IS NOT WORKING"
+ *
+ *   only the first letter ever landed -- this calls ppccRender(), which rebuilds
+ *     the whole of #ppcc_body. The input it drew carried no value= and was a NEW
+ *     element, so what you had typed was gone and the FOCUS went with it. Typing
+ *     "auto" left PPCC.q === "a" and the box empty: the u, t and o were sent to
+ *     the page, not to a box.
+ *   "  auto  " found 0 of 254 -- lowercased, never trimmed, so the spaces were
+ *     part of what it looked for. Trailing spaces arrive by pasting, which is
+ *     when you are least likely to suspect the search box.
+ *   "auto ceiling" found nothing -- a bare indexOf on the whole name, and these
+ *     names are underscore-joined segments (SP_AUTO_CeilingFan_DISC), so two
+ *     words can never be a single run of characters in one.
+ *
+ * The RAW text is kept now, not the lowercased copy: it is what goes back into
+ * the box, and altaSearchMatch lowercases both sides itself.
+ */
+function ppccFilter(v){
+  PPCC.q = (v == null ? "" : String(v));
+  // Remembered BEFORE the redraw destroys the element, and read back by
+  // ppccKeepFocus after it. `_focus` is what stops a filter pill or a column
+  // sort -- which also re-render -- from pulling the cursor into this box.
+  const el = document.getElementById("ppcc_q");
+  PPCC._focus = !!el && document.activeElement === el;
+  PPCC._caret = el ? el.selectionStart : null;
+  ppccRender();
+}
+
+/* Does one campaign match what is typed? Through the shared matcher in
+ * static/js/textsearch.js, which is also what the listings search uses -- so
+ * "every word somewhere, in any order" means the same thing on both screens
+ * and cannot drift (CLAUDE.md Rule 12).
+ *
+ * The FIELDS are this screen's business and stay here. Name first because it is
+ * what people search by; the type and state are included so "paused" or "SP"
+ * narrows the list the way the pills do, without having to reach for them. */
+function ppccMatch(r){
+  if(typeof altaSearchMatch !== "function"){
+    // textsearch.js not loaded: fall back to what this did before rather than
+    // filtering everything out and showing an empty screen.
+    const q = String(PPCC.q || "").trim().toLowerCase();
+    return !q || String(r.name || "").toLowerCase().indexOf(q) >= 0;
+  }
+  return altaSearchMatch(PPCC.q, [r.name, r.campaignType, r.type, r.state,
+                                  r.status, r.targetingType]);
+}
 function ppccToggle(id){
   PPCC.open = (PPCC.open === id) ? null : id;
   ppccRender();
@@ -94,10 +142,8 @@ function ppccHighlight(id){
 function ppccRows(){
   const j = PPCC.data;
   let rows = (j && j.campaigns) || [];
-  if(PPCC.q){
-    rows = rows.filter(function(r){
-      return String(r.name || "").toLowerCase().indexOf(PPCC.q) >= 0;
-    });
+  if(String(PPCC.q || "").trim()){
+    rows = rows.filter(ppccMatch);
   }
   if(PPCC.type !== "All"){
     const want = {SP: "SPONSORED_PRODUCTS", SB: "SPONSORED_BRANDS",
@@ -160,9 +206,35 @@ function ppccRender(){
   h += ppccTable(j, cur);
 
   host.innerHTML = h + '</div>';
+  ppccKeepFocus();
   PPCC.loading = false;
   ppcBusy("ppcc_body", false);
   ppcArm("ppcc_body");
+}
+
+/* PUT THE CURSOR BACK IN THE SEARCH BOX.
+ *
+ * This is the half of "the search bar is not working" that value= alone does
+ * not fix. Every keystroke calls ppccRender(), which replaces the whole of
+ * #ppcc_body -- so the element being typed into stops existing. The browser has
+ * nothing to return focus to, and the next letter goes to the page instead of
+ * the box. Measured: typing "auto" left PPCC.q === "a".
+ *
+ * So the box is refocused after the redraw, with the caret where it was rather
+ * than at the start -- a caret that jumps to position 0 makes a search box type
+ * backwards, which is a worse bug than the one being fixed.
+ *
+ * Only when it was ALREADY focused: pressing a filter pill or sorting a column
+ * also re-renders, and stealing the cursor into the search box then would be
+ * its own small madness. */
+function ppccKeepFocus(){
+  const el = document.getElementById("ppcc_q");
+  if(!el || !PPCC._focus) return;
+  try{
+    el.focus();
+    const n = (PPCC._caret == null) ? el.value.length : PPCC._caret;
+    el.setSelectionRange(n, n);
+  }catch(e){}                 // a browser that refuses is not worth failing over
 }
 
 /* ---- 1. the breakdown panel --------------------------------------------- */
@@ -728,8 +800,13 @@ function ppccTable(j, cur){
     + '<div style="display:flex;justify-content:space-between;'
     +   'align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">'
     + '<span style="font-size:15px;font-weight:700">Top Campaigns</span>'
+    // value= AND an id. The value so the box still holds what was typed after
+    // ppccRender() replaces it; the id so the focus and the caret can be put
+    // back afterwards -- see ppccKeepFocus. Without both, this box accepted
+    // exactly one character.
     + '<input class="ppc-input ppc-pill-input" style="width:200px" '
-    +   'placeholder="Search campaigns…" oninput="ppccFilter(this.value)">'
+    +   'id="ppcc_q" placeholder="Search campaigns…" '
+    +   'value="' + _pEsc(PPCC.q) + '" oninput="ppccFilter(this.value)">'
     + '</div>'
     + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:16px;'
     +   'flex-wrap:wrap">'

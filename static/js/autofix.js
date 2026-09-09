@@ -1178,6 +1178,29 @@ async function editField(sku, target, key, value){
        && String(PDP_SKU) === String(sku)){
       pdpMarkDirty();
     }
+    // AND THE CLASH VERDICTS THE SERVER JUST RE-WORKED-OUT.
+    //
+    //     "when i come our of pdp it still highlights that the ean can not be
+    //      used"
+    //
+    // The badge on the list reads r.warnings, which is the SERVER's answer,
+    // stored per row. Changing a barcode used to change the barcode and leave
+    // that answer alone, so the list went on quoting a clash that no longer
+    // existed. /edit recomputes it for the workspace now and hands back only
+    // the rows whose verdict MOVED -- which includes the ones that went empty,
+    // and those are precisely the ones being cleared here.
+    //
+    // MORE THAN THE EDITED ROW, deliberately: a duplicate is a fact about a
+    // PAIR, so giving one listing a fresh barcode clears the other one too.
+    // Applying only the row that was edited would leave the other still
+    // accusing a listing it no longer clashes with.
+    const _wc = j && j.warnings_changed;
+    if(_wc && typeof ROWS !== "undefined" && ROWS){
+      Object.keys(_wc).forEach(function(k){
+        const row = ROWS.find(x => String(x.sku) === String(k));
+        if(row) row.warnings = _wc[k];
+      });
+    }
     // AND A STORED AMAZON COMPLAINT ABOUT THIS FIELD IS NOW OUT OF DATE.
     //
     //     "The stale error message makes it impossible to know if your fix
