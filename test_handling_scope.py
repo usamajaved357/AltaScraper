@@ -57,10 +57,15 @@ truthy("data/backend owns it", hasattr(B, "store_for"))
 check("no account named -> nothing, rather than a guess",
       B.store_for("", {}, None), None)
 check("  and None is not an account either", B.store_for(None, {}, None), None)
-# Off the database backend it declines, so a sheets install keeps the behaviour
-# it had rather than losing its rows to a helper that cannot help.
-check("not on the database -> declines",
-      B.store_for("nestwell_goods", {"data_backend": "sheets"}, None), None)
+# THIS USED TO CHECK THE OPPOSITE. Off the database backend store_for declined,
+# so a sheets install kept the behaviour it had rather than losing its rows to a
+# helper that could not help. There is no sheets install any more -- the
+# spreadsheet was unlinked on 9 Sep 2026 (see data/choice.py and
+# test_sheets_unlinked.py), so asking for it is reported and overruled rather
+# than obeyed, and store_for answers for the database whatever is requested.
+check("asking for sheets no longer declines -- there is only the database",
+      B.store_for("nestwell_goods", {"data_backend": "sheets"}, None) is not None,
+      True)
 
 L = open(os.path.join("routes", "listing_routes.py"), encoding="utf-8").read()
 truthy("listing_routes asks that one function",
