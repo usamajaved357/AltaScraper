@@ -67,6 +67,32 @@ def decide(config=None, config_path=None):
     Never raises. A caller that only wants the answer should use resolve().
     """
     requested, source = _raw(config, config_path)
+
+    # THE STORE IS THE DATABASE. See the note under resolve(). The requested
+    # value is still reported, so /diag can say "your config asks for sheets and
+    # it is being ignored" rather than pretending nobody asked.
+    if _SHEETS_UNLINKED:
+        note = ""
+        if requested == SHEETS:
+            note = ("%s asks for the Google Sheet, which is ignored: the "
+                    "spreadsheet is permanently unlinked and the database is "
+                    "the only store." % (source[0].upper() + source[1:]))
+        elif requested not in VALID:
+            # A TYPO IS STILL REPORTED. This used to be caught below, by the
+            # branch that sent an unrecognised value back to the sheet and named
+            # the mistake -- "sqlite" instead of "db" was the case it was written
+            # for. Returning early would have swallowed it: the app would do the
+            # right thing and say nothing, so the misspelling stays in the config
+            # for the next person to puzzle over. The ANSWER cannot change any
+            # more; the fact that somebody asked for something that is not a
+            # store still can, and should.
+            note = ("%r is not a recognised store (expected 'sheets' or 'db'). "
+                    "The database is being used either way -- the spreadsheet is "
+                    "permanently unlinked -- but fix %s."
+                    % (requested, source))
+        return {"backend": DB, "requested": requested, "source": source,
+                "note": note, "unlinked": True}
+
     out = {"backend": requested, "requested": requested, "source": source, "note": ""}
 
     if requested not in VALID:
@@ -99,6 +125,57 @@ def resolve(config=None, config_path=None):
     return decide(config, config_path)["backend"]
 
 
+# ===========================================================================
+# GOOGLE SHEETS IS UNLINKED. THE ANSWER IS THE DATABASE, ALWAYS.
+# ===========================================================================
+#
+#     "i thought the google sheets are permanently removed from the workflow,
+#      unlink the google sheets permanently from my app wherever they are"
+#
+# It was not removed -- it was switched off in ONE config.json, the local one.
+# The deployed app keeps its config on a Render disk (render.yaml: CONFIG_PATH
+# =/data/config.json), that copy never had read_sheets_as_well in it, and the
+# key defaults to ON. So production was running backend=db with the spreadsheet
+# ALSO being read, which is the state that produced this:
+#
+#     "why the deleted listings from drafts are not permanently deleting from
+#      the database ... when i try to delete them again they give the error
+#      that they are not here, but i am still seeing them here"
+#
+# The delete was working. routes/listing_routes.py then read the sheet as well
+# (line ~1564, `cards = db_cards + sheet_only`), showed the row the sheet still
+# had -- appended AFTER the database rows, which is why they moved to the end --
+# and auto_import_once copied it back into the database. Delete it again and the
+# database genuinely does not have it, so the app says so while the sheet's copy
+# is still on screen.
+#
+# A SETTING WAS THE WRONG PLACE FOR THIS. The two functions below used to answer
+# from config.json and the environment, so "is this app on Sheets" had a
+# different answer on every machine and could be turned back on by a file nobody
+# can see from here. The decision is made in code now, once, and no config or
+# environment variable can undo it.
+#
+# WHAT THIS DOES NOT TOUCH, deliberately:
+#   * Google DRIVE -- product images live there and it is a different service.
+#   * An explicit, user-pressed one-time import or backup. Those ask for a
+#     spreadsheet by name; this only governs whether one is consulted BEHIND
+#     the app's back, which is the thing that was resurrecting deleted rows.
+#
+# The sheets code paths are now unreachable rather than deleted. Deleting them
+# is Phase 6 of the restructure and a change of a different size -- 111 files
+# mention Sheets, most of them archives and backups -- and an unreachable path
+# cannot resurrect a listing.
+_SHEETS_UNLINKED = True
+
+
+def sheets_unlinked():
+    """Is the spreadsheet permanently out of the loop? Always True.
+
+    A function rather than the bare constant so /diag and the settings screen
+    can state it, and so the reason travels with the answer."""
+    return _SHEETS_UNLINKED
+
+
 # A SECOND, SEPARATE QUESTION: may the Google Sheet still be read as well?
 #
 # "Which store" and "is the old store still consulted" are different things,
@@ -119,12 +196,22 @@ FALLBACK_ENV = "ALTA_READ_SHEETS"
 
 
 def sheets_fallback(config=None, config_path=None):
-    """Should the app still read Google Sheets alongside the database?
+    """Should the app still read Google Sheets alongside the database? NO.
 
-    Default TRUE, so nothing changes for anyone mid-migration. Meaningless on
-    the sheets backend, where the sheet IS the store -- answered True there so
-    no caller has to special-case it.
+    ALWAYS FALSE NOW. This is the switch that was resurrecting deleted drafts:
+    while it was on, the listings read merged the spreadsheet's rows in and
+    copied them back into the database, so a row the owner had deleted returned
+    on the next page load. It defaulted to ON for anyone who had not explicitly
+    set it, which is every deployment whose config.json was written before the
+    key existed -- including the live one.
+
+    The key and the environment variable below are still NAMED so an old config
+    carrying them does not read as a mystery, but neither is consulted. See the
+    note under resolve() for what is deliberately still allowed to touch a
+    spreadsheet (an explicit backup or one-time import) and what is not.
     """
+    if _SHEETS_UNLINKED:
+        return False
     if resolve(config, config_path) != DB:
         return True
     env = str(os.environ.get(FALLBACK_ENV) or "").strip().lower()

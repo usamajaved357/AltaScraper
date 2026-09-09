@@ -83,8 +83,14 @@ truthy("  and when the backend is not the database", '!= "db"' in _bs)
 # one call each proves they are true of the running code.
 from data import backend as _B
 check("  proven: no account -> None", _B.store_for("", {}, None), None)
-check("  proven: sheets backend -> None",
-      _B.store_for("nestwell_goods", {"data_backend": "sheets"}, None), None)
+# THE SECOND HALF OF THIS PAIR IS GONE, and the guard it checks is now dead
+# rather than wrong. store_for still refuses a backend that is not the database
+# -- that line is still up there and still worth having -- but no config can
+# produce one: the spreadsheet was unlinked on 9 Sep 2026, so resolve() answers
+# "db" whatever is asked for. See data/choice.py and test_sheets_unlinked.py.
+check("  proven: asking for sheets gets the database, not nothing",
+      _B.store_for("nestwell_goods", {"data_backend": "sheets"}, None) is not None,
+      True)
 
 print("\n=== the three routes that read or write a workspace's rows ===")
 for name, marker in (("rows_all", "_store_for(_use_aid)"),

@@ -376,7 +376,19 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         _state["active_tab_gid"] = str(acc.get("output_tab_gid") or "").strip()
         # resolve the tab NAME from the gid (so _ws can also fall back by name)
         _resolved_tab = None
-        if sid and _state["active_tab_gid"].isdigit():
+        # NOT WHILE THE SPREADSHEET IS UNLINKED. This opened the account's Google
+        # Sheet on EVERY account switch, purely to turn a tab gid into a tab
+        # name -- and a tab name means nothing now that no listing is ever read
+        # from a sheet. It was the last Google Sheets call left on a normal
+        # click: a network round trip to Google, on a screen change, for a
+        # string that is then only used as a label. _account_tab_name(acc) below
+        # is already the fallback and answers without leaving the machine.
+        try:
+            from data import choice as _choice_ac
+            _unlinked = _choice_ac.sheets_unlinked()
+        except Exception:
+            _unlinked = False
+        if not _unlinked and sid and _state["active_tab_gid"].isdigit():
             try:
                 _bk = _client().open_by_key(sid)
                 _wsbygid = _bk.get_worksheet_by_id(int(_state["active_tab_gid"]))

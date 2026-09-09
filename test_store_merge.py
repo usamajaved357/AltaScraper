@@ -127,30 +127,48 @@ _cfg = _json.load(open("config.json", encoding="utf-8"))
 # testing "whoever ran this has not turned Sheets off yet" -- and they failed the
 # day the owner did exactly that, deliberately, having archived every workbook
 # first. The behaviour actually worth pinning is that SILENCE means keep reading.
+# ---- SUPERSEDED, 9 Sep 2026 -------------------------------------------------
+# This block used to pin the SETTING: silence meant "keep reading the sheet",
+# and either answer was honoured. That was right while the migration was in
+# progress and it is what the owner ended it on:
+#
+#     "i thought the google sheets are permanently removed from the workflow,
+#      unlink the google sheets permanently from my app wherever they are"
+#
+# The default was the fault. The deployed config.json lives on a Render disk,
+# never had the key in it, and the key defaulted to ON -- so production ran
+# backend=db with the spreadsheet still being read, which is what resurrected
+# deleted drafts. A setting was the wrong place for a decision nobody could see
+# the value of. What is pinned now is that there is no way back on.
 _unanswered = {k: v for k, v in _cfg.items() if k != _choice.FALLBACK_KEY}
-check("with nobody having said, the sheet is still read",
-      _choice.sheets_fallback(_unanswered, "config.json"), True)
-check("  which is what stops a half-migrated account showing an empty screen",
-      _choice.sheets_fallback(dict(_unanswered), "config.json"), True)
-# And that saying so is honoured -- the point of the setting.
-check("turning it off is respected",
-      _choice.sheets_fallback(dict(_unanswered, **{_choice.FALLBACK_KEY: False}),
-                              "config.json"), False)
-check("  and turning it back on",
+check("silence no longer means 'keep reading the sheet'",
+      _choice.sheets_fallback(_unanswered, "config.json"), False)
+check("  and this is production's exact config shape",
+      _choice.sheets_fallback(dict(_unanswered), "config.json"), False)
+check("asking for it in config does not turn it back on",
       _choice.sheets_fallback(dict(_unanswered, **{_choice.FALLBACK_KEY: True}),
-                              "config.json"), True)
-check("it can be switched off in config",
-      _choice.sheets_fallback(dict(_cfg, read_sheets_as_well=False), "config.json"), False)
-check("  including as a string, since config files are edited by hand",
-      _choice.sheets_fallback(dict(_cfg, read_sheets_as_well="off"), "config.json"), False)
-os.environ["ALTA_READ_SHEETS"] = "0"
-check("and by environment variable", _choice.sheets_fallback(_cfg, "config.json"), False)
+                              "config.json"), False)
+check("  nor as a string, since config files are edited by hand",
+      _choice.sheets_fallback(dict(_cfg, read_sheets_as_well="on"), "config.json"), False)
+os.environ["ALTA_READ_SHEETS"] = "1"
+check("  nor by environment variable",
+      _choice.sheets_fallback(_cfg, "config.json"), False)
 os.environ.pop("ALTA_READ_SHEETS", None)
-# On the sheets backend the sheet IS the store, so the question is meaningless
-# and must never answer False -- that would turn off the only store there is.
-check("it is always True on the sheets backend",
-      _choice.sheets_fallback({"data_backend": "sheets", "read_sheets_as_well": False},
-                              "config.json"), True)
+# The sheets BACKEND is gone the same way: asking for it is reported and ignored
+# rather than obeyed. It used to be answered True here on the grounds that the
+# sheet was the only store; there is only the database now.
+check("the sheets backend cannot be selected either",
+      _choice.sheets_fallback({"data_backend": "sheets", "read_sheets_as_well": True},
+                              "config.json"), False)
+check("  and resolve() says database whatever is asked for",
+      _choice.resolve({"data_backend": "sheets"}, "config.json"), "db")
+# ASKING IS STILL REPORTED. A config that asks for the sheet and is overruled
+# must say so -- an app that silently ignores its own settings is the thing
+# /diag exists to catch.
+_d = _choice.decide({"data_backend": "sheets"}, "config.json")
+truthy("a config asking for sheets is told it is being ignored",
+       "permanently unlinked" in (_d.get("note") or ""))
+truthy("  and the answer says it is unlinked", _d.get("unlinked") is True)
 
 LRS = open("routes/listing_routes.py", encoding="utf-8").read()
 truthy("the listings route honours it", "sheets_fallback" in LRS)
