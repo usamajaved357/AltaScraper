@@ -725,7 +725,7 @@ async function studioRunSecondary(){
     });
   });
   const total=jobs.length;
-  if(tooManyProducts("secondary image", total)) return;
+  if(await tooManyProducts("secondary image", total)) return;
   if(total>4 && !await uiConfirm("This will generate "+total+" secondary image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+roles.length+" image(s)).\nEach is a paid OpenRouter call. Continue?")) return;
   if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   studioRunBackground("secondary", jobs, total);
@@ -846,7 +846,7 @@ async function studioRunAplus(){
     });
   });
   const total=jobs.length;
-  if(tooManyProducts("A+ module image", total)) return;
+  if(await tooManyProducts("A+ module image", total)) return;
   if(total>4 && !await uiConfirm("This will generate "+total+" A+ module image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+mods.length+" module(s)).\nEach is a paid OpenRouter call. Continue?")) return;
   if(!await confirmIfExisting(STUDIO.skus, "aplus")) return;
   studioRunBackground("aplus", jobs, total);
@@ -1163,7 +1163,13 @@ async function studioGenAllConcepts(auto){
     ? (_nsku+" products × "+concepts.length+" idea"
        +(concepts.length>1?"s":"")+" = "+jobs.length+" "+_what+"s")
     : (jobs.length+" "+_what+(jobs.length>1?"s":""));
-  if(tooManyProducts(_what, jobs.length)) return;
+  // AWAITED. tooManyProducts is async -- it may stop to show a message -- so it
+  // hands back a Promise, and a Promise is always truthy. Without `await` this
+  // line returned on EVERY press: "Suggest & auto-generate" showed the ideas and
+  // then never generated them, with no progress and no error. The same missing
+  // word was in studioRunSecondary and studioRunAplus (20 Aug 2026, 75bdac5).
+  // Pinned by test_genimage_starts.py.
+  if(await tooManyProducts(_what, jobs.length)) return;
   if(jobs.length>4 && !await uiConfirm(
       "This will generate "+_sum+".\n\nEach one is a paid call.\n\nContinue?")) return;
   studioRunBackgroundConcept(jobs, jobs.length);
