@@ -83,6 +83,23 @@ ALIASES = {
                       "dispatch_time", "lead_time", "days"],
     "upc": ["ean", "upc",
             "barcode", "gtin", "isbn", "product_id", "ean_upc"],
+    # THE BRAND THE LISTING GOES OUT UNDER, and there was no way to say it.
+    #
+    #     "the brand name seems to be hardcored, the new drafts are saying the
+    #      brand as nestwell goods, can you give me an option to write the brand
+    #      name also in the csv"
+    #
+    # It was never hardcoded. resolve_account_brand sends the row's Brand EXACTLY
+    # as typed -- that is the 8 Sep 2026 instruction, "just allow the types brand
+    # name to go to amazon" -- and falls back to the account's primary brand only
+    # when the row has none. Every uploaded row had none, because there was no
+    # column here to carry one, so the fallback fired every time and every draft
+    # came out "Nestwell Goods".
+    #
+    # NOT aliased to `manufacturer`: Amazon treats brand and manufacturer as
+    # different fields, and a file that names the factory would otherwise put it
+    # on the listing as the brand.
+    "brand": ["brand", "brand_name", "our_brand", "listing_brand"],
 }
 
 # normalised spelling -> canonical column, built once.
@@ -243,12 +260,47 @@ def ebay_ids(url):
         return "", ""
 
 
+def resolved_asin(product):
+    """The competitor ASIN for a product being queued. "" when there is none.
+
+    THE ASIN IS INSIDE THE AMAZON LINK, AND THE UPLOAD THREW IT AWAY.
+
+        "the drafted created have the sku format like 00_3Days_336636956670 and
+         also i see no images shown in these drafts"
+
+    MEASURED on the file that produced those rows: all 14 had an amazon_url, all
+    14 were ordinary /dp/ links, and the shared extractor reads an ASIN from
+    every one of them (row 7 -> B099NVTV5F, the row that became
+    0.00_3Days_336636956670). Nothing here ever asked it. The SKU therefore fell
+    back to the eBay item id, and -- worse -- the link was never stored, so the
+    generator's own `comp_asin = _extract_asin(amazon_url)` had nothing to read
+    either and the run lost its Amazon source entirely.
+
+    WHY IT WAS MISSED. row_to_product below says it in a comment: "The ASIN is
+    NOT derived here: input_import.add_row already fills competitor_asin from
+    amazon_url when it is empty." That was true until the queue table was
+    removed and the upload stopped going through add_row. The comment was the
+    only thing guarding the behaviour, and a comment cannot notice that its
+    caller has moved.
+
+    ONE EXTRACTOR, the one input_import already uses -- not a fourth copy of a
+    three-line regex (CLAUDE.md Rule 12).
+    """
+    p = product or {}
+    asin = str(p.get("competitor_asin", "") or "").strip().upper()
+    if asin:
+        return asin
+    from data.input_import import _asin_of        # lazy: avoids an import cycle
+    return str(_asin_of(p.get("amazon_url", "")) or "").strip().upper()
+
+
 def build_queued_sku(product, taken_skus):
     """The real SKU for a product being queued. (sku, was_duplicate).
 
     Falls back the way the brief asked: no cost -> 0.00 (a shape that already
     exists in the data, e.g. 0.00_2Days_B0FFH5P2VY), no days -> 3, no ASIN ->
-    NOASIN.
+    NOASIN. The ASIN itself comes from resolved_asin, so an Amazon link in the
+    file is as good as an ASIN column.
     """
     from amazon_listing_generator import build_sku      # lazy: it is a big module
     cost = _first_number(product, SKU_PRICE_FIELDS)
@@ -256,7 +308,7 @@ def build_queued_sku(product, taken_skus):
     import re as _re
     m = _re.search(r"\d+", days)
     days = m.group(0) if m else DEFAULT_DAYS
-    asin = str((product or {}).get("competitor_asin", "") or "").strip().upper()
+    asin = resolved_asin(product)
     if not asin:
         # The eBay item id is what the seller-import path already puts in this
         # slot (see SKUs like 23.99_3Days_336475288886v54595), so it is a better
@@ -300,7 +352,12 @@ def to_listing_row(product, taken_skus):
         "SKU": sku,
         "Status": "QUEUED",
         "Source URL": str(p.get("ebay_url", "") or "").strip(),
-        "Competitor ASIN": str(p.get("competitor_asin", "") or "").strip().upper(),
+        # Taken from the file's amazon_url when no ASIN column was given -- the
+        # SAME answer build_queued_sku puts in the SKU, so the row and its own
+        # name can never disagree about which product this is. Stored here is
+        # what lets the generator work from Amazon at all: the Amazon URL itself
+        # has no column, so an ASIN not captured on this line is gone.
+        "Competitor ASIN": resolved_asin(p),
         "Title": str(p.get("item_name", "") or "").strip(),
         "UPC": str(p.get("upc", "") or "").strip(),
     }
@@ -311,6 +368,15 @@ def to_listing_row(product, taken_skus):
     if days:
         row["Handling Time"] = days
         row["Handling Days"] = days
+    # THE BRAND, WHEN THE FILE NAMED ONE. Written only when it did, because a
+    # blank Brand is not a missing value here -- it is the instruction to use the
+    # account's own brand, which resolve_account_brand does at generation time.
+    # Sent to Amazon exactly as typed (8 Sep 2026: "just allow the types brand
+    # name to go to amazon"); Amazon refuses with code 100550 if the account may
+    # not use it, which is the only place that actually knows.
+    brand = str(p.get("brand", "") or "").strip()
+    if brand:
+        row["Brand"] = brand
 
     # THE OTHER SUPPLIERS, carried through to the row so the generator can read
     # them. "Source URL" above is supplier 1; these are 2 upward.
@@ -349,16 +415,25 @@ def to_listing_row(product, taken_skus):
     return row, extras
 
 
+# What a QUEUED product can carry. input_import.COLUMNS is the legacy queue
+# TABLE's column list and its SQL is built by joining it, so `brand` is added
+# HERE rather than there: the uploader gains a column without changing the shape
+# of a table. The alias table above stays the one place that says which header
+# spelling means which column (Rule 12).
+QUEUE_COLUMNS = tuple(COLUMNS) + ("brand",)
+
+
 def row_to_product(row, mapping):
     """One file row + the header mapping -> a queue product dict.
 
     Every column the queue has is present, blank where the file did not offer
-    it, so a caller never has to ask whether a key exists. The ASIN is NOT
-    derived here: input_import.add_row already fills competitor_asin from
-    amazon_url when it is empty, and a second implementation of that would be
-    the third copy of the same three-line regex.
+    it, so a caller never has to ask whether a key exists.
+
+    The ASIN is not derived here: resolved_asin() does it, at the two places
+    that actually need it (the SKU, and the stored row), so this stays a plain
+    rename of the file's own headers.
     """
-    out = {c: "" for c in COLUMNS}
+    out = {c: "" for c in QUEUE_COLUMNS}
     for i, col in (mapping or {}).items():
         if i < len(row):
             v = row[i]

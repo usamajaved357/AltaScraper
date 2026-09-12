@@ -273,7 +273,7 @@ def register(app, *, CONFIG_PATH, _state):
         #
         # They are optional. A row with only ebay_url behaves exactly as before.
         headers = ["ebay_url", "supplier_2", "supplier_3", "amazon_url",
-                   "item_name", "source_cost", "selling_price", "upc",
+                   "item_name", "brand", "source_cost", "selling_price", "upc",
                    "handling_time"]
         buf = io.StringIO()
         w = csv.writer(buf)
@@ -284,18 +284,31 @@ def register(app, *, CONFIG_PATH, _state):
             "https://www.ebay.co.uk/itm/3234567890",
             "https://www.amazon.co.uk/dp/B0EXAMPLE1",
             "Stainless Steel Garlic Press",
+            "Your Brand Name",
             "4.20", "12.99", "5012345678900", "3",
         ])
         w.writerow([
             "", "", "", "",
             "DELETE BOTH EXAMPLE ROWS. Only ebay_url OR amazon_url is "
-            "required, not both. Leave selling_price empty and the app prices "
-            "it from the cost and Amazon's fees. supplier_2 and supplier_3 are "
-            "OPTIONAL other sellers of the SAME product — they fill in only "
-            "what supplier 1 left blank, in that order, and are never used to "
-            "overwrite it. Add supplier_4, supplier_5 as more columns if you "
-            "have them.",
-            "", "", "", "",
+            "required, not both — but give amazon_url whenever you have it: "
+            "the Amazon product code (ASIN) is taken out of that link, and it "
+            "is what fills the listing's details and pictures when eBay is "
+            "thin. PUT WHAT YOU PAY THE SUPPLIER IN source_cost — it becomes "
+            "the first part of the SKU (4.20_3Days_B0EXAMPLE1). Leave it blank "
+            "and the SKU reads 0.00 for the life of the listing: the name is "
+            "fixed when the row is created and is never rewritten, even once "
+            "the app has read the real price from eBay. Leave selling_price "
+            "empty and the app prices it from the cost and Amazon's fees. "
+            "supplier_2 and supplier_3 are OPTIONAL other sellers of the SAME "
+            "product — they fill in only what supplier 1 left blank, in that "
+            "order, and are never used to overwrite it. Add supplier_4, "
+            "supplier_5 as more columns if you have them. PUT THE BRAND THE "
+            "LISTING SHOULD GO OUT UNDER IN brand — it is sent to Amazon "
+            "exactly as you type it, and Amazon decides whether this account "
+            "may use it. Leave it blank and the account's own brand is used "
+            "instead, which is why drafts uploaded without this column all "
+            "came out under the same name.",
+            "", "", "", "", "",
         ])
         w.writerow([""] * len(headers))
         return Response(
