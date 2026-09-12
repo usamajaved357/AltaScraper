@@ -243,12 +243,47 @@ def ebay_ids(url):
         return "", ""
 
 
+def resolved_asin(product):
+    """The competitor ASIN for a product being queued. "" when there is none.
+
+    THE ASIN IS INSIDE THE AMAZON LINK, AND THE UPLOAD THREW IT AWAY.
+
+        "the drafted created have the sku format like 00_3Days_336636956670 and
+         also i see no images shown in these drafts"
+
+    MEASURED on the file that produced those rows: all 14 had an amazon_url, all
+    14 were ordinary /dp/ links, and the shared extractor reads an ASIN from
+    every one of them (row 7 -> B099NVTV5F, the row that became
+    0.00_3Days_336636956670). Nothing here ever asked it. The SKU therefore fell
+    back to the eBay item id, and -- worse -- the link was never stored, so the
+    generator's own `comp_asin = _extract_asin(amazon_url)` had nothing to read
+    either and the run lost its Amazon source entirely.
+
+    WHY IT WAS MISSED. row_to_product below says it in a comment: "The ASIN is
+    NOT derived here: input_import.add_row already fills competitor_asin from
+    amazon_url when it is empty." That was true until the queue table was
+    removed and the upload stopped going through add_row. The comment was the
+    only thing guarding the behaviour, and a comment cannot notice that its
+    caller has moved.
+
+    ONE EXTRACTOR, the one input_import already uses -- not a fourth copy of a
+    three-line regex (CLAUDE.md Rule 12).
+    """
+    p = product or {}
+    asin = str(p.get("competitor_asin", "") or "").strip().upper()
+    if asin:
+        return asin
+    from data.input_import import _asin_of        # lazy: avoids an import cycle
+    return str(_asin_of(p.get("amazon_url", "")) or "").strip().upper()
+
+
 def build_queued_sku(product, taken_skus):
     """The real SKU for a product being queued. (sku, was_duplicate).
 
     Falls back the way the brief asked: no cost -> 0.00 (a shape that already
     exists in the data, e.g. 0.00_2Days_B0FFH5P2VY), no days -> 3, no ASIN ->
-    NOASIN.
+    NOASIN. The ASIN itself comes from resolved_asin, so an Amazon link in the
+    file is as good as an ASIN column.
     """
     from amazon_listing_generator import build_sku      # lazy: it is a big module
     cost = _first_number(product, SKU_PRICE_FIELDS)
@@ -256,7 +291,7 @@ def build_queued_sku(product, taken_skus):
     import re as _re
     m = _re.search(r"\d+", days)
     days = m.group(0) if m else DEFAULT_DAYS
-    asin = str((product or {}).get("competitor_asin", "") or "").strip().upper()
+    asin = resolved_asin(product)
     if not asin:
         # The eBay item id is what the seller-import path already puts in this
         # slot (see SKUs like 23.99_3Days_336475288886v54595), so it is a better
@@ -300,7 +335,12 @@ def to_listing_row(product, taken_skus):
         "SKU": sku,
         "Status": "QUEUED",
         "Source URL": str(p.get("ebay_url", "") or "").strip(),
-        "Competitor ASIN": str(p.get("competitor_asin", "") or "").strip().upper(),
+        # Taken from the file's amazon_url when no ASIN column was given -- the
+        # SAME answer build_queued_sku puts in the SKU, so the row and its own
+        # name can never disagree about which product this is. Stored here is
+        # what lets the generator work from Amazon at all: the Amazon URL itself
+        # has no column, so an ASIN not captured on this line is gone.
+        "Competitor ASIN": resolved_asin(p),
         "Title": str(p.get("item_name", "") or "").strip(),
         "UPC": str(p.get("upc", "") or "").strip(),
     }

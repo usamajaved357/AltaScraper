@@ -121,7 +121,27 @@ def urls_from(item, headers=None):
 # What a supplement carries that is worth merging. Named rather than "whatever
 # keys turned up", so a new key in the fetcher cannot start silently
 # participating in a merge nobody designed.
-MERGE_KEYS = ("title", "description", "price", "condition", "category_path")
+#
+# AND THAT NAMED LIST IS WHY THE DRAFTS HAD NO PICTURES.
+#
+#     "images was supposed to be coming from ebay why my draftws dont have
+#      images"
+#
+# fetch_ebay_supplement returns the eBay photo URLs as `images` (up to ten of
+# them), and the generator reads exactly that -- comp_data["images"] =
+# ebay_supp["images"][:5] -- code that has worked since July 2026. When this
+# merge went in on 7 Sep 2026 it became the thing handing that dict over, and
+# `images` was not on this list. So from that day the URLs were fetched from
+# eBay and dropped one step later, on every run. Only image_count survived,
+# which is why a run could log "7 imgs" over a draft that had none.
+#
+# The safeguard the paragraph above describes is right, and the answer to it is
+# to NAME the key rather than to widen the rule. First non-empty wins applies to
+# the photos as it does to everything else, so supplier 1's pictures stand and a
+# later seller's are used only when supplier 1 had none -- the owner's own
+# priority order, which is the whole point of the ordering.
+MERGE_KEYS = ("title", "description", "price", "condition", "category_path",
+              "images")
 DICT_KEYS = ("item_specifics",)
 NUM_KEYS = ("image_count",)
 
@@ -177,9 +197,15 @@ def merge(parts):
     merged["item_specifics"] = specs
     # THE MOST IMAGES ANY ONE SUPPLIER HAD, not the sum: they are photographs of
     # the same product, and adding them would claim a picture count nobody has.
-    merged["image_count"] = imgs
+    #
+    # Except when the URLs themselves came through, where the count is simply
+    # how many there are. Keeping the maximum then would restate the old defect
+    # in miniature: a count describing pictures this dict is not carrying, which
+    # is precisely what allowed a run to log "7 imgs" over a draft that had
+    # none.
+    merged["image_count"] = len(merged["images"]) if merged.get("images") else imgs
     for k in MERGE_KEYS:
-        merged.setdefault(k, "")
+        merged.setdefault(k, [] if k == "images" else "")
     prov["item_specifics"] = spec_prov
     return merged, prov
 
