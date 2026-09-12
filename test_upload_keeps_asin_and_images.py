@@ -149,6 +149,36 @@ check("source_cost becomes the first part of the SKU",
       row3.get("SKU"), "4.20_2Days_B099NVTV5F")
 
 
+# ====================================================================== brand
+print("\n== the brand can be named in the file ==")
+#     "the brand name seems to be hardcored, the new drafts are saying the brand
+#      as nestwell goods"
+#
+# It never was hardcoded. resolve_account_brand sends the row's Brand exactly as
+# typed and falls back to the account's primary ONLY when the row has none --
+# and every uploaded row had none, because no column carried one.
+truthy("brand is a column the uploader knows", "brand" in IR.QUEUE_COLUMNS)
+check("  'Brand Name' means the same column",
+      IR._LOOKUP.get(IR.norm_header("Brand Name")), "brand")
+check("  so does 'our_brand'", IR._LOOKUP.get(IR.norm_header("our_brand")), "brand")
+# Amazon keeps brand and manufacturer apart, and so must this: a file naming the
+# factory must not put the factory on the listing as the brand.
+check("  'manufacturer' does NOT mean brand",
+      IR._LOOKUP.get(IR.norm_header("manufacturer")), None)
+
+rowb, _ = IR.to_listing_row({"ebay_url": EBAY, "brand": "AltaboltaVoo"}, set())
+check("the typed brand lands on the row", rowb.get("Brand"), "AltaboltaVoo")
+rowc, _ = IR.to_listing_row({"ebay_url": EBAY}, set())
+falsy("  and a file with no brand sets none, so the account's own is used",
+      "Brand" in rowc)
+
+print("\n  the blank template offers the column")
+UPH = read("routes", "input_upload_routes.py")
+truthy("brand is in the template's headers", '"brand", "source_cost"' in UPH)
+truthy("  and the instructions say what it does",
+       "PUT THE BRAND THE" in UPH and "exactly as you type it" in UPH)
+
+
 # =================================================================== template
 print("\n== the template says where to put the source price ==")
 UP = read("routes", "input_upload_routes.py")

@@ -273,7 +273,7 @@ def register(app, *, CONFIG_PATH, _state):
         #
         # They are optional. A row with only ebay_url behaves exactly as before.
         headers = ["ebay_url", "supplier_2", "supplier_3", "amazon_url",
-                   "item_name", "source_cost", "selling_price", "upc",
+                   "item_name", "brand", "source_cost", "selling_price", "upc",
                    "handling_time"]
         buf = io.StringIO()
         w = csv.writer(buf)
@@ -284,6 +284,7 @@ def register(app, *, CONFIG_PATH, _state):
             "https://www.ebay.co.uk/itm/3234567890",
             "https://www.amazon.co.uk/dp/B0EXAMPLE1",
             "Stainless Steel Garlic Press",
+            "Your Brand Name",
             "4.20", "12.99", "5012345678900", "3",
         ])
         w.writerow([
@@ -301,8 +302,13 @@ def register(app, *, CONFIG_PATH, _state):
             "supplier_2 and supplier_3 are OPTIONAL other sellers of the SAME "
             "product — they fill in only what supplier 1 left blank, in that "
             "order, and are never used to overwrite it. Add supplier_4, "
-            "supplier_5 as more columns if you have them.",
-            "", "", "", "",
+            "supplier_5 as more columns if you have them. PUT THE BRAND THE "
+            "LISTING SHOULD GO OUT UNDER IN brand — it is sent to Amazon "
+            "exactly as you type it, and Amazon decides whether this account "
+            "may use it. Leave it blank and the account's own brand is used "
+            "instead, which is why drafts uploaded without this column all "
+            "came out under the same name.",
+            "", "", "", "", "",
         ])
         w.writerow([""] * len(headers))
         return Response(
