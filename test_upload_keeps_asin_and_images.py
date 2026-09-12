@@ -179,6 +179,34 @@ truthy("  and the instructions say what it does",
        "PUT THE BRAND THE" in UPH and "exactly as you type it" in UPH)
 
 
+# ================================================================== barcode
+print("\n== the barcode can be named however you spell it ==")
+# This already worked -- ean/gtin/barcode have always been aliases of upc -- but
+# the template only ever showed "upc", so there was no way to know.
+for _h in ("ean", "upc", "gtin", "barcode", "ean_upc", "EAN", "Barcode", "EAN/UPC"):
+    check("'%s' means the barcode column" % _h, IR.column_for(_h), "upc")
+
+hdrs = ["ebay_url", "amazon_url", "item_name", "brand", "ean",
+        "source_cost", "handling_time"]
+mapping, matched, ignored = IR.map_headers(hdrs)
+check("a file using those headings is fully understood", ignored, [])
+truthy("  the barcode is reported as matched", "upc" in matched)
+# The bug this caught: `matched` was built from the OLD column list, so a file
+# that named a brand was told the column had not been recognised.
+truthy("  and so is brand", "brand" in matched)
+
+rowe, _ = IR.to_listing_row({"ebay_url": EBAY, "upc": "5012345678900"}, set())
+check("the barcode lands on the row", rowe.get("UPC"), "5012345678900")
+# CLAUDE.md Rule 1: the app never invents a barcode, and never claims the GTIN
+# exemption from a condition. A row without one simply carries none.
+rowf, _ = IR.to_listing_row({"ebay_url": EBAY}, set())
+check("  and a row without one carries none", rowf.get("UPC"), "")
+truthy("the template says which headings the barcode column accepts",
+       "ean, gtin, barcode" in UPH)
+truthy("  and that nothing invents one",
+       "NEVER invents" in UPH and "tick it yourself" in UPH)
+
+
 # =================================================================== template
 print("\n== the template says where to put the source price ==")
 UP = read("routes", "input_upload_routes.py")

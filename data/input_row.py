@@ -171,7 +171,11 @@ def map_headers(headers):
             continue
         seen.add(col)
         mapping[i] = col
-    matched = [c for c in COLUMNS if c in seen]
+    # QUEUE_COLUMNS, not COLUMNS: `brand` is understood by column_for above and
+    # would be imported, but listing it from COLUMNS left it out of the "matched
+    # columns" the upload reports back -- so a file that DID name a brand would
+    # be told it had not been recognised. The two lists must be the same list.
+    matched = [c for c in QUEUE_COLUMNS if c in seen]
     return mapping, matched, ignored
 
 
