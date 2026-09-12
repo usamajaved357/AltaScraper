@@ -178,6 +178,17 @@ def token(app_id, cert_id, timeout=15):
 # the returns fall away sharply after the common vowels.
 SWEEP_TERMS = ("a", "e", "i", "o", "u", "s", "n", "r", "t", "l")
 
+# How far the CATEGORY sweep goes. See the note in search_seller: the word sweep
+# alone found 17 of a 444-item shop, because eBay matches whole words and these
+# ten letters are rarely words. The second pass asks about the categories the
+# seller's own items turned up in, which needs no guessing at all.
+#
+# Bounded because this is somebody else's API: the busiest categories first, and
+# a page cap on each. 12 x 10 x per_page is the ceiling, and the same "a short
+# page means exhausted" break usually ends it far sooner.
+CATEGORY_SWEEP_MAX = 12          # most categories to sweep
+CATEGORY_PAGES = 10              # most pages per category
+
 
 def search_seller(seller, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
                   terms=None, pages_per_term=3, per_page=200, timeout=20,
@@ -202,9 +213,9 @@ def search_seller(seller, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
     a whole catalogue is how items go missing without anybody noticing.
     """
     out = {}
-    meta = {"seller": seller, "terms": [], "calls": 0, "errors": [],
-            "complete": False, "reported_totals": [], "seller_known": None,
-            "rejected": 0}
+    meta = {"seller": seller, "terms": [], "categories": [], "calls": 0,
+            "errors": [], "complete": False, "reported_totals": [],
+            "seller_known": None, "rejected": 0}
     if not seller:
         meta["errors"].append("no seller given")
         return [], meta
@@ -216,15 +227,21 @@ def search_seller(seller, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
 
     want = seller.strip().lower()
 
-    for term in (terms or SWEEP_TERMS):
-        meta["terms"].append(term)
+    def _sweep(label, base_params, max_pages):
+        """Page through ONE query, keeping this seller's items. -> "" or "abort".
+
+        ONE COPY OF THE PAGING AND THE SELLER CHECK. The category sweep below
+        needs exactly what the term sweep needs, and a second copy of the
+        filter-lied defence is the last thing this function should have
+        (CLAUDE.md Rule 12).
+        """
         offset = 0
-        for _page in range(int(pages_per_term)):
-            q = urllib.parse.urlencode({
-                "q": term, "limit": int(per_page), "offset": offset,
-                "filter": "sellers:{%s}" % seller,
-            })
-            url = ("https://api.ebay.com/buy/browse/v1/item_summary/search?" + q)
+        for _page in range(int(max_pages)):
+            params = dict(base_params)
+            params.update({"limit": int(per_page), "offset": offset,
+                           "filter": "sellers:{%s}" % seller})
+            url = ("https://api.ebay.com/buy/browse/v1/item_summary/search?"
+                   + urllib.parse.urlencode(params))
             req = urllib.request.Request(url, headers={
                 "Authorization": "Bearer " + tok,
                 "X-EBAY-C-MARKETPLACE-ID": marketplace,
@@ -235,8 +252,8 @@ def search_seller(seller, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
                     data = json.loads(r.read().decode("utf-8"))
                 meta["calls"] += 1
             except Exception as e:
-                meta["errors"].append("%s: %s" % (term, str(e)[:120]))
-                break
+                meta["errors"].append("%s: %s" % (label, str(e)[:120]))
+                return ""
 
             got = data.get("itemSummaries") or []
             if data.get("total") is not None:
@@ -279,18 +296,60 @@ def search_seller(seller, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
                     "eBay does not recognise %r as a seller, so it ignored the "
                     "filter and answered with its whole catalogue instead of "
                     "refusing. Nothing was imported." % seller)
-                meta["found"] = 0
-                meta["highest_reported_total"] = max(meta["reported_totals"] or [0])
-                return [], meta
+                return "abort"
             if kept:
                 meta["seller_known"] = True
 
             if log:
-                log("%s '%s' offset %d -> %d items, %d theirs (%d unique so far)"
-                    % (seller, term, offset, len(got), kept, len(out)))
+                log("%s %s offset %d -> %d items, %d theirs (%d unique so far)"
+                    % (seller, label, offset, len(got), kept, len(out)))
             if len(got) < int(per_page):
-                break                       # that term is exhausted
+                return ""                   # that query is exhausted
             offset += int(per_page)
+        return ""
+
+    # ---- pass 1: the word sweep ------------------------------------------
+    for term in (terms or SWEEP_TERMS):
+        meta["terms"].append(term)
+        if _sweep("'%s'" % term, {"q": term}, pages_per_term) == "abort":
+            meta["found"] = 0
+            meta["highest_reported_total"] = max(meta["reported_totals"] or [0])
+            return [], meta
+
+    # ---- pass 2: the CATEGORY sweep --------------------------------------
+    #
+    #     "the app is showing only 17 items but this seller has about 444 items
+    #      in his store listed"
+    #
+    # MEASURED on velvetio-store: the word sweep returned 17 of roughly 444.
+    # SWEEP_TERMS is ten single letters, and eBay matches whole WORDS -- so "a"
+    # finds only titles containing a standalone "a", which product titles rarely
+    # have ("Adult Beach Poncho Sand Free Changing Robe" contains none of the
+    # ten). The sweep was searching for something almost nothing is called.
+    #
+    # category_ids is the way out, and it needs no guessing. The API rejects a
+    # seller filter ALONE, but it names category_ids as one of the parameters
+    # that satisfies it (see the docstring), so a category plus the seller
+    # filter is a legal call -- and pass 1 has already revealed which categories
+    # this seller is actually in. Their own items name them, so the second pass
+    # asks about the shop that exists rather than the words we hoped it used.
+    #
+    # BOUNDED, because this is somebody else's API: the busiest categories
+    # first, a page cap each, and the same exhaustion break as pass 1.
+    if out:
+        counts = {}
+        for it in out.values():
+            for c in (it.get("categories") or []):
+                cid = str((c or {}).get("categoryId") or "").strip()
+                if cid:
+                    counts[cid] = counts.get(cid, 0) + 1
+        ranked = sorted(counts, key=lambda c: -counts[c])[:CATEGORY_SWEEP_MAX]
+        for cid in ranked:
+            meta["categories"].append(cid)
+            if _sweep("category %s" % cid,
+                      {"category_ids": cid}, CATEGORY_PAGES) == "abort":
+                break                       # pass 1 already proved the seller
+    meta["complete"] = False
 
     meta["found"] = len(out)
     meta["highest_reported_total"] = max(meta["reported_totals"] or [0])

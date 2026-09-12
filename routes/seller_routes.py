@@ -91,10 +91,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "rows": rows, "found": len(rows), "meta": meta,
             # Said in the reply, not only in the UI: any caller of this endpoint
             # needs to know the number is a floor and not a total.
-            "note": ("Found %d items. eBay has no way to list a seller's whole "
-                     "inventory, so this is what %d searches turned up — treat it "
-                     "as a floor, not a total."
-                     % (len(rows), len(meta.get("terms") or [])))})
+            "note": ("Found %d items — %d word searches, then %d of their own "
+                     "categories. eBay has no way to list a seller's whole "
+                     "inventory, so this is a floor, not a total."
+                     % (len(rows), len(meta.get("terms") or []),
+                        len(meta.get("categories") or [])))})
 
     # ---- 2. screen -------------------------------------------------------
     @app.route("/seller/screen", methods=["POST"])
