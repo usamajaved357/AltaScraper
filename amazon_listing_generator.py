@@ -2801,8 +2801,10 @@ def read_input_sheet(ws_in) -> list:
 
 
 def _extract_asin(url: str) -> str:
-    m = re.search(r"/(?:dp|gp/product|gp/aw/d)/([A-Z0-9]{10})", url)
-    return m.group(1) if m else ""
+    # The one ASIN-from-a-link regex lives in data/input_import._asin_of; this
+    # used to be a second copy of it (CLAUDE.md Rule 12).
+    from data.input_import import _asin_of
+    return _asin_of(url)
 
 
 def _extract_ebay_item(url: str) -> str:
@@ -2833,9 +2835,11 @@ def select_rows(products: list, raw: str, sel_type: str = "auto"):
                        appears on no screen. Reachable from the command line via
                        --select-type row, where the position is at least
                        countable.
-      - 'asin'      -> match ASIN parsed from each row's amazon_url.
+      - 'asin'      -> match each row's ASIN (its competitor_asin, else the
+                       one in its amazon_url -- data/input_row.resolved_asin).
       - 'ebay_item' -> match item number parsed from each row's ebay_url.
     """
+    from data.input_row import resolved_asin
     raw = (raw or "").strip()
     if not raw:
         return products, ""   # empty -> generate all (unchanged)
@@ -2848,7 +2852,7 @@ def select_rows(products: list, raw: str, sel_type: str = "auto"):
             if not asin:
                 return [], f"Couldn't read an ASIN from that Amazon URL: {raw[:60]}"
             hits = [(i, p) for i, p in enumerate(products, 1)
-                    if _extract_asin(p.get("amazon_url", "")) == asin]
+                    if resolved_asin(p) == asin]
             return _finish_match(hits, f"ASIN {asin}")
         if "ebay." in low:
             item = _extract_ebay_item(raw)
@@ -2892,7 +2896,7 @@ def select_rows(products: list, raw: str, sel_type: str = "auto"):
     if sel_type == "asin":
         asin = raw.upper()
         hits = [(i, p) for i, p in enumerate(products, 1)
-                if _extract_asin(p.get("amazon_url", "")) == asin]
+                if resolved_asin(p) == asin]
         return _finish_match(hits, f"ASIN {asin}")
 
     # --- Bare eBay item number ------------------------------------------------
@@ -4110,8 +4114,16 @@ async def process_row(row: dict, client, ws_out,
     manufacturer   = (user_brand or "").strip() or config.get("manufacturer", fallback_brand)
     shipping       = float(config.get("shipping_cost", "3.99"))
 
-    amazon_url    = str(row.get("amazon_url",    "")).strip()
-    comp_asin     = _extract_asin(amazon_url)
+    from data.input_row import resolved_asin
+    # THE ROW'S OWN ASIN FIRST, THEN THE LINK. A queued row (upload / "Add a
+    # product") arrives with competitor_asin filled and amazon_url EMPTY --
+    # listings has no Amazon-URL column (listing/queued_input.py). Reading only
+    # the link meant every queued row from 29 Aug 2026 generated with no Amazon
+    # source at all: no catalogue product type (a folding table went out as
+    # HOME), no Buy Box price, no Amazon specs or pictures. resolved_asin is the
+    # same answer the upload used to build the SKU, so the row and its SKU name
+    # one product.
+    comp_asin     = resolved_asin(row)
     upc           = str(row.get("upc",           "")).strip()
     item_name     = str(row.get("item_name",     "")).strip()
     source_cost   = float(re.sub(r"[^\d.]", "", str(row.get("source_cost",  "0"))) or 0)
