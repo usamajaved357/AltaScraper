@@ -131,6 +131,85 @@ def backfill(config_path, workspace_id):
     return len(rows), filled
 
 
+# ---- correcting drafts from Amazon's catalogue ---------------------------------
+#
+#     "why am i seeing that error on almost all of my listings"
+#     "fix the product types from amazon"
+#
+# From 29 Aug 2026 every queued draft generated without its competitor ASIN, so
+# its type was guessed from the title -- and HOME is what the guess says for
+# almost anything (see amazon_listing_generator.process_row). Amazon then
+# re-typed them at Preview: "updated from HOME to TABLE".
+#
+# THE ANSWER IS THE COMPETITOR ASIN'S TYPE, which is what the generator would
+# have used had it been handed the ASIN. Nothing is written here: compare()
+# says what WOULD change, and the owner applies it through the listing's own
+# save path, so there is still exactly one thing that writes a field.
+
+# A listing Amazon already holds is not a draft, and its type is Amazon's own
+# business now. The same "on Amazon" set the barcode clash check uses (Rule 12);
+# a variation PARENT and a not-yet-generated QUEUED row are not drafts either.
+from domain.barcode_clash import _LIVE as _ON_AMAZON
+_NOT_DRAFTS = set(_ON_AMAZON) | {"PARENT", "QUEUED"}
+
+
+def drafts_to_check(config_path, workspace_id):
+    """The drafts in one workspace that have a competitor ASIN to ask about.
+
+    -> [{"sku", "title", "asin", "product_type", "status", "marketplace"}]
+    """
+    from data import db as _db
+    import re as _re
+    out = []
+    try:
+        conn = _db.get_db(config_path)
+        rows = [dict(r) for r in conn.execute(
+            "SELECT sku, title, competitor_asin, product_type, status, "
+            "listing_marketplace FROM listings WHERE workspace_id=?",
+            (workspace_id,))]
+    except Exception:
+        return out
+    for r in rows:
+        status = str(r.get("status") or "").strip().upper()
+        asin = str(r.get("competitor_asin") or "").strip().upper()
+        if status in _NOT_DRAFTS or not _re.fullmatch(r"[A-Z0-9]{10}", asin):
+            continue
+        out.append({"sku": str(r.get("sku") or ""),
+                    "title": str(r.get("title") or ""),
+                    "asin": asin,
+                    "product_type": str(r.get("product_type") or "").strip(),
+                    "status": status,
+                    "marketplace": str(r.get("listing_marketplace") or "").strip().upper()})
+    return out
+
+
+def compare(drafts, answers):
+    """What Amazon's answers would change. Pure: no database, no network.
+
+    `answers` is {asin: api.amazon_catalog.product_type_of(...) result}.
+
+    -> [{"sku", "title", "asin", "current", "amazon", "verdict", "why"}]
+       verdict: "change"      Amazon's type differs -- the one to apply
+                "same"        already right
+                "not_checked" Amazon could not answer; nothing is changed
+    """
+    out = []
+    for d in drafts or []:
+        ans = (answers or {}).get(d.get("asin")) or {}
+        amazon = str(ans.get("product_type") or "").strip().upper()
+        current = str(d.get("product_type") or "").strip().upper()
+        if ans.get("status") != "ok" or not amazon:
+            verdict, why = "not_checked", (ans.get("error") or "not asked")
+        elif amazon == current:
+            verdict, why = "same", ""
+        else:
+            verdict, why = "change", ""
+        out.append({"sku": d.get("sku"), "title": d.get("title"),
+                    "asin": d.get("asin"), "current": current,
+                    "amazon": amazon, "verdict": verdict, "why": why})
+    return out
+
+
 def still_blank(config_path, workspace_id):
     """The SKUs that even the title could not type, so a screen can say so
     rather than leaving the field quietly empty."""

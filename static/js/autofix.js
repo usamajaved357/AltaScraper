@@ -826,35 +826,38 @@ function PT_NODE_DEFAULT(){
   try{ pt = (window.OPT_CURRENT&&OPT_CURRENT.product_type) || (window.OPT_EDIT_ROW&&OPT_EDIT_ROW.product_type) || ""; }catch(e){}
   return PT_NODE_MAP[(pt||"").toUpperCase()] || "";
 }
-// Product Type control: defaults to Amazon's catalogue-assigned type (the
-// ground truth). The static list is still selectable, but choosing anything
-// other than the Amazon-assigned type shows a clear warning, because that's
-// what causes "product type not allowed" rejections.
+// Product Type control: the listing's current type, the short static list, and
+// Amazon's own product-type search underneath (static/js/product_type.js).
+//
+// THE CURRENT TYPE IS LABELLED "(current)", NOT "(Amazon-assigned)". It was
+// called Amazon-assigned on the belief that it always came from the catalogue;
+// from 29 Aug 2026 queued drafts were typed from their TITLE instead, and HOME
+// sat in this box claiming Amazon had chosen it.
 function productTypeCell(sku, r){
-  const amazonPT = String(r.product_type||"").trim();   // assigned by get_catalog_item
-  // option list = the Amazon type first (always), then the static list
+  const curPT = String(r.product_type||"").trim();
+  // option list = the current type first (always), then the static list
   const opts = [];
-  if(amazonPT) opts.push(amazonPT);
+  if(curPT) opts.push(curPT);
   (PTYPES||[]).forEach(p=>{ if(p && opts.indexOf(p)<0) opts.push(p); });
   const wid="pt_"+sid(sku);
-  let h=`<select id="${wid}" class="ed" onchange="onProductTypeChange(this,'${esc(sku)}','${esc(amazonPT)}')">`;
-  if(!amazonPT) h+=`<option value="" selected>—</option>`;
+  let h=`<select id="${wid}" class="ed" onchange="onProductTypeChange(this,'${esc(sku)}','${esc(curPT)}')">`;
+  if(!curPT) h+=`<option value="" selected>—</option>`;
   opts.forEach(o=>{
-    const isAmz = (o===amazonPT);
-    h+=`<option value="${esc(o)}"${o===amazonPT?" selected":""}>${esc(o)}${isAmz?" (Amazon-assigned)":""}</option>`;
+    h+=`<option value="${esc(o)}"${o===curPT?" selected":""}>${esc(o)}${o===curPT?" (current)":""}</option>`;
   });
   h+=`</select>`;
   h+=`<div id="${wid}_warn" class="cwarn" style="display:none"></div>`;
+  if(typeof ptSearchBox === "function") h+=ptSearchBox(sku, r);
   return h;
 }
-function onProductTypeChange(sel, sku, amazonPT){
+function onProductTypeChange(sel, sku, curPT){
   const warn=document.getElementById("pt_"+sid(sku)+"_warn");
   const chosen=sel.value;
   if(warn){
-    if(amazonPT && chosen && chosen!==amazonPT){
+    if(curPT && chosen && chosen!==curPT){
       warn.style.display="block";
-      warn.innerHTML="⚠ Amazon assigned this product the type <b>"+esc(amazonPT)+"</b>. "
-        +"Listing it as <b>"+esc(chosen)+"</b> may be rejected. Only change this if you are certain.";
+      warn.innerHTML="⚠ Changed from <b>"+esc(curPT)+"</b> to <b>"+esc(chosen)+"</b>. "
+        +"A different type asks for different details, so run Preview to see what Amazon now needs.";
     } else { warn.style.display="none"; warn.innerHTML=""; }
   }
   // save via the normal column path
@@ -1513,7 +1516,7 @@ function _fullDataParts(r){
     + '</span><i class="ti ti-lock dw2-rolock" title="' + esc(why) + '"></i>';
 
   const idRows=[
-    dwFieldRow("Product type", productTypeCell(sku, r), {hint:"Amazon-assigned from the catalogue. Changing it can cause rejection."}),
+    dwFieldRow("Product type", productTypeCell(sku, r), {hint:"Search Amazon's product types below. A different type asks for different details."}),
     dwFieldRow("SKU", dwRo(r.sku)),
     // The brand gets a SECONDARY note, not the alarm: "The brand field can show
     // a secondary note ... but the EAN field is where the user needs to act
@@ -2150,7 +2153,7 @@ function _fullDataParts(r){
    * only ones that changed shape are the ones the design draws differently.
    */
   const _ptTag = r.product_type
-        ? '<span class="dw2-tag info" title="Amazon assigned this product type from its catalogue. Changing it can cause rejection.">'+esc(r.product_type)+'</span>'
+        ? '<span class="dw2-tag info" title="This listing\'s current product type. Search Amazon\'s product types in the Product type field to change it.">'+esc(r.product_type)+'</span>'
         : '<span class="dw2-tag warn">no product type</span>';
   // The drawer keeps ONE "Identity and offer" section, exactly as before. The
   // product page shows the two halves as separate tabs, so they are also

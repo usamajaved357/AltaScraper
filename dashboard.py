@@ -4497,6 +4497,11 @@ def build_app(backend=None):
     import routes.input_upload_routes as _input_upload_routes
     _input_upload_routes.register(app, CONFIG_PATH=CONFIG_PATH, _state=_state)
 
+    # Amazon's product types: the drawer's search, and correcting drafts from
+    # the competitor ASIN's catalogue type. Asks Amazon only; saves go via /edit.
+    import routes.product_type_routes as _product_type_routes
+    _product_type_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg, _state=_state)
+
     import routes.misc_routes as _misc_routes
     _misc_routes.register(app, CONFIG_PATH=CONFIG_PATH, _active_account=_active_account,
                           _state=_state)

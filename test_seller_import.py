@@ -537,6 +537,80 @@ truthy("  and the route accepts one where a name is asked for",
 truthy("  an unknown seller is REFUSED, not returned as a catalogue",
        'meta.get("seller_known") is False' in _fsrc)
 
+
+# ---- the seller's whole shop, not the part that happens to contain a vowel --
+#
+#     "the app is showing only 17 items but this seller has about 444 items in
+#      his store listed"
+#
+# SWEEP_TERMS is ten single LETTERS, and eBay matches whole WORDS -- so the word
+# sweep only finds titles carrying one of them as a word, which product titles
+# rarely do ("Adult Beach Poncho Sand Free Changing Robe" has none of the ten).
+# MEASURED on velvetio-store: 17 items of roughly 444.
+#
+# The second pass needs no guessing: pass 1's items NAME the categories the shop
+# sells in, and category_ids is one of the parameters eBay accepts in place of a
+# search term, so a category plus the seller filter is a legal call.
+print("\n=== the category sweep reaches what no letter would ===")
+truthy("there is a category sweep", hasattr(E, "CATEGORY_SWEEP_MAX"))
+truthy("  and it is bounded per category", E.CATEGORY_PAGES <= 20)
+
+
+def _item_cat(n, who, cat):
+    d = _item(n, who)
+    d["categories"] = [{"categoryId": cat, "categoryName": "Bedding"}]
+    return d
+
+
+def _fake_by_url(handler):
+    """urlopen stand-in that answers according to the query string."""
+    import json as _j
+
+    def _open(req, timeout=None):
+        body = _j.dumps(handler(req.full_url)).encode("utf-8")
+
+        class _R:
+            def read(self_inner): return body
+            def __enter__(self_inner): return self_inner
+            def __exit__(self_inner, *a): return False
+        return _R()
+    return _open
+
+
+_hit = {"cat": 0}
+
+
+def _pages(url):
+    if "category_ids=20444" in url:
+        _hit["cat"] += 1
+        # The rest of the shop: items no single-letter search would return.
+        return {"total": 444, "itemSummaries":
+                [_item_cat(50 + i, "velvetio-store", "20444") for i in range(3)]}
+    if "category_ids=" in url:
+        return {"total": 0, "itemSummaries": []}
+    # The word sweep finds one item -- and that one names the category.
+    return {"total": 444, "itemSummaries":
+            [_item_cat(1, "velvetio-store", "20444")]}
+
+
+E._TOKEN_CACHE["token"] = "t"
+E._TOKEN_CACHE["expires_at"] = 9e18
+try:
+    _ur.urlopen = _fake_by_url(_pages)
+    items5, meta5 = E.search_seller("velvetio-store", "a", "b",
+                                    pages_per_term=1, per_page=10)
+finally:
+    _ur.urlopen = _real_open
+    E._TOKEN_CACHE["token"] = None
+
+check("the seller's own category is swept", meta5["categories"], ["20444"])
+truthy("  the call was actually made", _hit["cat"] >= 1)
+# 1 from the word sweep + 3 only the category pass could reach.
+check("  and its items are included", len(items5), 4)
+# The number is still a floor. Nothing here can promise a whole catalogue, and
+# saying so is the difference between a count and a claim.
+check("  the result is still not claimed to be complete", meta5["complete"], False)
+
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)
 sys.exit(1 if fails else 0)
