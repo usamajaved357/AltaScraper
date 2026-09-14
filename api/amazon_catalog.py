@@ -51,6 +51,21 @@ OK = "ok"
 NONE = "none"          # asked, and Amazon has nothing with this barcode
 DENIED = "denied"      # this account may not ask
 FAILED = "failed"      # could not ask -- never means the barcode is free
+NOT_FOUND = "not_found"  # asked about an ASIN this marketplace does not have
+
+
+def _is_denied(e):
+    """Did Amazon refuse this account, as opposed to the call breaking?"""
+    code_n = getattr(e, "code", None) or getattr(e, "status_code", None)
+    name = type(e).__name__.lower()
+    return (code_n == 403 or "forbidden" in name
+            or "unauthorized" in str(e).lower())
+
+
+def _is_throttled(e):
+    code_n = getattr(e, "code", None) or getattr(e, "status_code", None)
+    low = (type(e).__name__ + " " + str(e)).lower()
+    return code_n == 429 or "throttl" in low or "quotaexceeded" in low
 
 
 def _enum(marketplace):
@@ -99,9 +114,7 @@ def owners_of_barcode(creds, marketplace, marketplace_id, barcode,
             includedData=["summaries"])
         data = res.payload if hasattr(res, "payload") else (res or {})
     except Exception as e:
-        code_n = getattr(e, "code", None) or getattr(e, "status_code", None)
-        name = type(e).__name__.lower()
-        if code_n == 403 or "forbidden" in name or "unauthorized" in str(e).lower():
+        if _is_denied(e):
             out["status"] = DENIED
             out["error"] = "this account may not read Amazon's catalogue"
             return out
@@ -116,4 +129,128 @@ def owners_of_barcode(creds, marketplace, marketplace_id, barcode,
             "title": str(s.get("itemName") or ""),
         })
     out["status"] = OK if out["items"] else NONE
+    return out
+
+
+# ---- product types ------------------------------------------------------------
+#
+#     "why am i seeing that error on almost all of my listings"
+#     (Amazon: "your product type has been updated from HOME to TABLE")
+#
+# Both answers below are Amazon's, read straight from the reply. MEASURED
+# 14 Sep 2026 on nestwell_goods, UK, before either function was written
+# (CLAUDE.md Rule 4):
+#
+#   getCatalogItem 2022-04-01, includedData=productTypes, B0DNYVCK4J
+#     {"asin": "B0DNYVCK4J",
+#      "productTypes": [{"marketplaceId": "A1F83G8C2ARO7P", "productType": "TABLE"}]}
+#   an ASIN the marketplace lacks -> SellingApiNotFoundException, code 404
+#   jack_uk                       -> SellingApiForbiddenException, code 403
+#
+#   searchDefinitionsProductTypes, itemName="Folding Camping Table Lightweight
+#   Aluminium Portable Picnic 40x34cm"
+#     {"productTypes": [{"name": "TABLE", "displayName": "Table",
+#                        "marketplaceIds": ["A1F83G8C2ARO7P"]}],
+#      "productTypeVersion": "..."}
+#   keywords="table" -> a loose list (PORTABLE_AUDIO, GRAPHIC_TABLET, ...);
+#   keywords="camping,table" -> just TABLE. jack_uk and selvora_limited: 403.
+#
+# So a refusal is ordinary here, exactly as for the barcode search, and both
+# functions say DENIED rather than pretending there was nothing to find.
+
+
+def product_type_of(creds, marketplace, marketplace_id, asin, timeout=30):
+    """Amazon's product type for one ASIN in one marketplace.
+
+    -> {"status": OK | NOT_FOUND | DENIED | FAILED, "product_type", "error"}
+
+    NEVER RAISES. One retry when throttled: getCatalogItem allows about two
+    calls a second, and a list of drafts is exactly the shape that hits it.
+    """
+    import time
+    out = {"status": FAILED, "product_type": "", "error": ""}
+    asin = str(asin or "").strip().upper()
+    if not (asin and marketplace_id):
+        out["error"] = "need an ASIN and a marketplace"
+        return out
+    data = None
+    for attempt in (1, 2):
+        try:
+            from sp_api.api import CatalogItemsV20220401
+            cl = CatalogItemsV20220401(credentials=creds,
+                                       marketplace=_enum(marketplace),
+                                       timeout=timeout)
+            res = cl.get_catalog_item(asin, marketplaceIds=[marketplace_id],
+                                      includedData=["productTypes"])
+            data = res.payload if hasattr(res, "payload") else (res or {})
+            break
+        except Exception as e:
+            code_n = getattr(e, "code", None) or getattr(e, "status_code", None)
+            if _is_denied(e):
+                out["status"] = DENIED
+                out["error"] = "this account may not read Amazon's catalogue"
+                return out
+            if code_n == 404 or "notfound" in type(e).__name__.lower():
+                out["status"] = NOT_FOUND
+                out["error"] = "Amazon has no %s in this marketplace" % asin
+                return out
+            if _is_throttled(e) and attempt == 1:
+                time.sleep(2)
+                continue
+            out["error"] = "%s: %s" % (type(e).__name__, str(e)[:180])
+            return out
+
+    types = (data or {}).get("productTypes") or []
+    # The entry for THIS marketplace; the reply is already scoped to it, so the
+    # first entry is the fallback rather than a guess about another country.
+    mine = [t for t in types if isinstance(t, dict)
+            and t.get("marketplaceId") == marketplace_id]
+    pick = (mine or [t for t in types if isinstance(t, dict)] or [{}])[0]
+    out["product_type"] = str(pick.get("productType") or "").strip()
+    out["status"] = OK if out["product_type"] else NOT_FOUND
+    if not out["product_type"]:
+        out["error"] = "Amazon returned no product type for %s" % asin
+    return out
+
+
+def search_product_types(creds, marketplace, marketplace_id, item_name="",
+                         keywords="", timeout=30):
+    """Amazon's product types for a title, or for some words.
+
+    -> {"status": OK | NONE | DENIED | FAILED,
+        "types": [{"name", "display_name"}], "error"}
+
+    item_name is Amazon's own ranking of what a product with that title is --
+    measured to return the one right answer. keywords is a looser word match,
+    for when the owner wants to look further; words are sent comma-separated,
+    which is the form that narrowed "camping table" to TABLE.
+    """
+    out = {"status": FAILED, "types": [], "error": ""}
+    item_name = str(item_name or "").strip()
+    words = [w for w in str(keywords or "").replace(",", " ").split() if w]
+    if not marketplace_id or not (item_name or words):
+        out["error"] = "need a title or some words, and a marketplace"
+        return out
+    kw = {"itemName": item_name[:200]} if item_name else {"keywords": ",".join(words[:10])}
+    try:
+        from sp_api.api import ProductTypeDefinitions
+        cl = ProductTypeDefinitions(credentials=creds,
+                                    marketplace=_enum(marketplace),
+                                    timeout=timeout)
+        res = cl.search_definitions_product_types(marketplaceIds=[marketplace_id], **kw)
+        data = res.payload if hasattr(res, "payload") else (res or {})
+    except Exception as e:
+        if _is_denied(e):
+            out["status"] = DENIED
+            out["error"] = "this account may not search Amazon's product types"
+            return out
+        out["error"] = "%s: %s" % (type(e).__name__, str(e)[:180])
+        return out
+
+    for t in ((data or {}).get("productTypes") or []):
+        name = str((t or {}).get("name") or "").strip()
+        if name:
+            out["types"].append({"name": name,
+                                 "display_name": str(t.get("displayName") or name)})
+    out["status"] = OK if out["types"] else NONE
     return out

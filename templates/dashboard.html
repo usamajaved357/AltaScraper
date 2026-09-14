@@ -530,6 +530,7 @@
                the tooltip now names them instead of saying "sync". -->
           <button class="mktbtn" onclick="syncLive()" title="Not a repeat of the automatic refresh — four things happen only when you press this:&#10;&#10;• Amazon builds a BRAND NEW listings report. Opening this tab reuses the last one, so the list can be right about which listings exist and still be behind on price, stock and status.&#10;• Each listing's actual CONTENTS are pulled — images, A+, bullets, description, variations, and Amazon's own handling time. Nothing else on this screen ever fetches these.&#10;• Drafts you have submitted are checked against Amazon and marked live where Amazon has published them.&#10;• Listings deleted or deactivated on Amazon are settled against what this app holds.&#10;&#10;It takes a few minutes on a large catalogue. The label beside this button says when Amazon was last actually read."><i class="ti ti-refresh"></i> Sync</button>
           <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
+          <button class="mktbtn" title="Checks every unsent draft against its competitor ASIN's product type in Amazon's catalogue, shows what would change, and asks before saving anything. Submitted and live listings are not touched." onclick="ptFixDrafts()"><i class="ti ti-category"></i> Fix product types</button>
           <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose</button>
           <!-- THE SHEET TO FILL IN, before the button that uploads it. There
                was an upload and no template, so the columns had to be guessed
@@ -2249,6 +2250,9 @@
      them in the same format from the same data. -->
 <script src="/static/js/draftsources.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
+<!-- Amazon's product types: the search under the product-type box, and the
+     "Fix product types" toolbar button. Saves go through autofix.js's editField. -->
+<script src="/static/js/product_type.js?v={{ ASSET_V }}"></script>
 <!-- The full-screen product page. It arranges blocks the two files above
      build (_fullDataParts, dwTitleParts, _dwWarnings) and defines none of its
      own, so it loads after them -- the order on the page matching the order of

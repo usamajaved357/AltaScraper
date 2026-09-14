@@ -60,7 +60,7 @@ function LOGIC_REGISTRY(){
       `<b>The red ★</b> marks a field Amazon requires, read straight from the live schema's <code>required</code> list for this product type.`,
       `<b>Before Preview</b> we show every <i>static</i> required field. Some are <i>conditional</i> (e.g. the lithium-battery group) and Amazon only reveals them after a Preview.`,
       `<b>After Preview</b> every field Amazon flags gets a visible box — including nested sub-fields — so nothing the validator wants is hidden from you.`,
-      `<b>Product type</b> defaults to the type Amazon assigned in the catalogue ("Amazon-assigned"); changing it warns you, because a wrong type causes rejection.` ]},
+      `<b>Product type</b> shows the listing's current type ("current"). The search under it asks Amazon for its product types by the listing's title or by words you type; "Fix product types from Amazon" on the listings toolbar checks every unsent draft against its competitor ASIN's catalogue type and asks before changing any.` ]},
     // ---------- OPTIMIZE: the red-dot fixer ----------
     opt_fetch: { title:"How 'Optimize live listing' loads the data", steps:[
       `<b>Reads the LIVE listing from Amazon.</b> Calls SP-API <code>getListingsItem</code> with <code>includedData="attributes,summaries,issues"</code> on the connected seller account — so the title, status and fields are the real current ones, not a cached report.`,
