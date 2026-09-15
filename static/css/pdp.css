@@ -554,7 +554,11 @@ body.pdp-on{ overflow:hidden; }
 
 /* Where "go to this field" lands. Fades out on its own -- a highlight that
    stayed would read as a permanent state rather than an answer to a click. */
-.pdp-attr.pdp-hit{
+/* .dw2-fr too: a field Amazon names that is not an attribute -- product_type,
+   in the Identity section on the Offer tab -- is highlighted the same way when
+   its chip in Amazon's warning is clicked (pdp.js, PDP_FIELD_HOME). */
+.pdp-attr.pdp-hit,
+.dw2-fr.pdp-hit{
   background:var(--pdp-dangerbg) !important;
   box-shadow:inset 3px 0 0 var(--pdp-danger);
   transition:background .5s;

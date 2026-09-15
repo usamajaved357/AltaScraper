@@ -1405,11 +1405,50 @@ function pdpScrollToErrors(){
  * The attributes are a SECTION of Product Details now, not a tab, so this
  * switches to details rather than to a tab that no longer exists. The scroll
  * waits a frame because the section does not exist until the re-render has run.
+ *
+ * NOT EVERY FIELD AMAZON NAMES IS AN ATTRIBUTE.
+ *
+ *     "when i click on product type written in this message it says amazon
+ *      named product type but this listing has no such field"
+ *
+ * Amazon's code 18367 -- "your product type has been updated from HOME to
+ * PILLOW" -- names `product_type` in its attributeNames. That is a property of
+ * the LISTING, not one of its attributes: productTypeCell draws it in the
+ * Identity section, which this page puts on the OFFER tab. This only ever
+ * looked in the attribute table on Details, so for product_type it could not
+ * succeed, and told the owner the field did not exist on a page that has it.
+ *
+ * PDP_FIELD_HOME says where such a field actually lives: the tab, and the id
+ * prefixes its control is built with (+ sid(sku)). The type SEARCH box comes
+ * first, because what the warning asks for is choosing a type, and that box is
+ * where Amazon's own types are searched; the dropdown is the fallback.
  */
+const PDP_FIELD_HOME = {
+  product_type: {tab: "offer", ids: ["ptsx_", "pt_"]},
+};
+
 function pdpGoToField(key){
   const base = String(key || "").split(".")[0];
-  if(PDP_TAB !== "details"){ PDP_TAB = "details"; pdpRender(); }
+  const home = PDP_FIELD_HOME[base] || null;
+  if(home){
+    if(PDP_TAB !== home.tab){ PDP_TAB = home.tab; pdpRender(); }
+  } else if(PDP_TAB !== "details"){ PDP_TAB = "details"; pdpRender(); }
   setTimeout(function(){
+    if(home){
+      const s = (typeof sid === "function") ? sid(PDP_SKU) : String(PDP_SKU);
+      for(let k = 0; k < home.ids.length; k++){
+        const el = document.getElementById(home.ids[k] + s);
+        if(!el) continue;
+        const row = (el.closest && el.closest(".dw2-fr")) || el;
+        row.scrollIntoView({block: "center", behavior: "smooth"});
+        row.classList.add("pdp-hit");
+        setTimeout(function(){ row.classList.remove("pdp-hit"); }, 2200);
+        const box = (el.matches && el.matches("input, textarea, select")) ? el
+                  : (el.querySelector ? el.querySelector("input, textarea, select") : null);
+        if(box) try{ box.focus(); }catch(e){}
+        return;
+      }
+    }
     const rows = document.querySelectorAll("#pdp .pdp-attr-label");
     for(let i = 0; i < rows.length; i++){
       const t = String(rows[i].getAttribute("title") || "");
