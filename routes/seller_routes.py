@@ -318,48 +318,62 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             except Exception as e:
                 errors.append({"sku": d["sku"], "error": str(e)[:160]})
 
-        # ---- and the repricer starts watching them ---------------------------
-        # From the moment the draft exists, not from whenever somebody remembers
-        # to enroll it. The eBay item this came from IS the supplier, and its URL
-        # is already in hand -- the gap between drafting and enrolling is exactly
-        # the window where the source's price moves and nobody notices.
+        # ---- the supplier is recorded; the REPRICER waits for go-live ---------
         #
-        # DRY RUN, always. A dry-run enrollment watches and records what it WOULD
-        # do without changing a price or a stock level. Arming it is a separate,
-        # deliberate act that needs a floor price per SKU, and an import that
-        # armed 104 SKUs with no floor could reprice them to whatever a supplier
-        # happened to be charging.
-        enrolled, enrol_errors = 0, []
+        #     "why so many items left repricer"
+        #
+        # This used to ENROL every draft in the repricer the moment it was saved,
+        # on the reasoning that the gap between drafting and enrolling is when a
+        # supplier's price moves unseen. The cost of that was measured on
+        # nestwell_goods: 29 children of eBay listing 188400267090 were drafted
+        # and enrolled, the daily check asked Amazon for each SKU, Amazon answered
+        # 404 -- correctly, they were never published -- and all 29 were announced
+        # as "left the repricer", reading as though live listings had been
+        # deleted.
+        #
+        # It also contradicted the owner's 7 Sep 2026 instruction, already built
+        # into listing/suppliers.enrol for every other way a draft is made: the
+        # repricer takes a listing "when the listing goes live, not on draft".
+        # Two rules for one question is what CLAUDE.md Rule 12 exists to stop.
+        #
+        # So this does what the CSV route does. The eBay item IS the supplier and
+        # its link is in hand, so it is recorded now -- at stage DRAFT, where the
+        # drafts page can show its price and delivery and the repricer's pricing
+        # pass cannot see it. Joining the repricer happens once Amazon lists the
+        # SKU as Active (listing.suppliers.join_live), through the one rule that
+        # decides it (source_repo.auto_enrol).
+        recorded, enrol_errors = 0, []
         if b.get("enroll") is not False:
             from domain import source_repo as _repo
             for d in saved:
                 src = d.get("_source") or {}
                 # The parent is not a product. Nothing buys it, nothing supplies
-                # it, and it has no price to track -- enrolling it would put a
-                # permanently unreadable source in every sweep.
+                # it, and it has no price to track.
                 if src.get("role") == "parent":
                     continue
                 url = src.get("url") or ""
                 if not url:
                     continue
                 try:
-                    _repo.enrol(CONFIG_PATH, wsid, mkt, d["sku"], mode="dry_run")
                     _repo.ensure_source(CONFIG_PATH, wsid, mkt, d["sku"], url,
                                         kind="ebay",
-                                        label=(d.get("title") or "")[:120])
-                    enrolled += 1
+                                        label=(d.get("title") or "")[:120],
+                                        priority=1, stage=_repo.DRAFT)
+                    recorded += 1
                 except Exception as e:
-                    # A draft that saved is not lost because its enrollment
-                    # failed. Reported separately so the two are not confused.
+                    # A draft that saved is not lost because recording its
+                    # supplier failed. Reported separately so the two are not
+                    # confused.
                     enrol_errors.append({"sku": d["sku"], "error": str(e)[:160]})
+        enrolled = 0        # kept in the reply's shape; drafts are never enrolled
 
         note = ("Drafted into this app only — nothing has been sent to Amazon. "
                 "Review them on the Listings screen and submit the ones you want.")
-        if enrolled:
-            note += (" %d are now watched by the repricer in dry run: it records "
-                     "what it would do as the eBay price and stock move, and "
-                     "changes nothing until you set a floor price and arm it."
-                     % enrolled)
+        if recorded:
+            note += (" The eBay supplier is recorded on %d of them. Each joins the "
+                     "repricer by itself once Amazon lists it as live — a draft "
+                     "does not belong there, and nothing is priced until you set "
+                     "a floor price and arm it." % recorded)
         return jsonify({"ok": not (errors or enrol_errors), "drafted": written,
                         "enrolled": enrolled, "enrol_errors": enrol_errors,
                         "errors": errors, "skus": [d["sku"] for d in drafts],

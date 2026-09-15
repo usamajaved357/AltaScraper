@@ -117,6 +117,131 @@ def stop_tracking(config_path, workspace_id, marketplace, sku):
     return True
 
 
+# ---- joining the repricer when a listing goes live ---------------------------
+#
+#     "why so many items left repricer and new listings didn't joined repricer?"
+#     "i received its order but couldn't find it in repricer, no suppliers, why?
+#      i think i am creating listings with their suppliers in the sheet, so the
+#      suppliers should already be there"
+#
+# Being IN the repricer means an enrolment row with enrolled=1. Nothing ever
+# wrote one when a listing went live: promote_to_live moved a supplier's STAGE
+# and stopped there, so a listing could be selling, have suppliers, and never
+# appear. Measured on nestwell_goods 12.90_2Days_B0CZ6SWQQY -- Active in the live
+# catalogue as B0HJ8S7C82, with an eBay link on its own row, and neither a source
+# nor an enrolment in the repricer.
+
+ADDED = "added"
+REJOINED = "rejoined"
+
+
+def auto_enrol(config_path, workspace_id, marketplace, sku):
+    """A LIVE listing joins the repricer, unless somebody decided it should not.
+
+    -> ADDED, REJOINED, or "" when nothing changed.
+
+    FOUR CASES, and the difference between them is the whole function:
+
+      no enrolment row at all   never in the repricer -> ADDED, in dry run
+      enrolled=1                already in. Its MODE IS THE OWNER'S: enrol()
+                                overwrites the mode on conflict, so calling it
+                                here would silently DISARM an armed SKU on the
+                                next sync. Left exactly as it is.
+      enrolled=0, state GONE    the APP took it out, because Amazon answered 404.
+                                Amazon now lists it again, so the reason it was
+                                removed is no longer true -> REJOINED. Still in
+                                dry run: marking it GONE already disarmed it.
+      enrolled=0, anything else the OWNER took it out by hand. An automatic job
+                                that put it back every sync would be overruling
+                                him on a timer -> left out.
+
+    DRY RUN, ALWAYS. Joining watches and records; nothing moves a price until a
+    floor is set and the SKU is armed, which stays a deliberate act.
+    """
+    conn = _db.get_db(config_path)
+    row = conn.execute(
+        "SELECT enrolled, listing_state FROM sourcing_enrolment "
+        "WHERE workspace_id=? AND marketplace=? AND sku=?",
+        (workspace_id, marketplace, sku)).fetchone()
+    if row is None:
+        enrol(config_path, workspace_id, marketplace, sku, mode="dry_run")
+        return ADDED
+    if row[0]:
+        return ""
+    if str(row[1] or "") == GONE:
+        conn.execute(
+            "UPDATE sourcing_enrolment SET enrolled=1, listing_state=?, "
+            "listing_checked=? WHERE workspace_id=? AND marketplace=? AND sku=?",
+            (LIVE_OK, _now(), workspace_id, marketplace, sku))
+        conn.commit()
+        return REJOINED
+    return ""
+
+
+def has_sources(config_path, workspace_id, marketplace, sku):
+    """Does this SKU have at least one supplier recorded? -> bool."""
+    conn = _db.get_db(config_path)
+    return bool(conn.execute(
+        "SELECT 1 FROM sourcing_sources "
+        "WHERE workspace_id=? AND marketplace=? AND sku=? LIMIT 1",
+        (workspace_id, marketplace, sku)).fetchone())
+
+
+def listing_supplier_urls(config_path, workspace_id, sku):
+    """The supplier links written ON THE LISTING ITSELF. -> [(position, url)].
+
+    WHERE THE MISSING SUPPLIERS ACTUALLY ARE. The sheet's supplier columns reach
+    the listing row -- Source URL is supplier 1, Supplier 2 and Supplier 3 the
+    rest (data/column_map.py). Copying them into the repricer only started with
+    generation on 7 Sep 2026 (3cdf2cf), so every listing made before that has its
+    supplier on the row and nowhere else. Reading them back here is what lets an
+    older listing join with the supplier it was built from.
+
+    Columns are looked up rather than assumed: supplier_2 and supplier_3 were
+    added later, and a SELECT naming a column a database does not have would
+    lose supplier 1 along with them.
+    """
+    conn = _db.get_db(config_path)
+    try:
+        have = {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
+        cols = [c for c in ("source_url", "supplier_2", "supplier_3") if c in have]
+        if not cols:
+            return []
+        row = conn.execute(
+            "SELECT %s FROM listings WHERE workspace_id=? AND sku=?"
+            % ", ".join(cols), (workspace_id, sku)).fetchone()
+    except Exception:
+        return []
+    if not row:
+        return []
+    pos_of = {"source_url": 1, "supplier_2": 2, "supplier_3": 3}
+    out, seen = [], set()
+    for i, c in enumerate(cols):
+        u = str(row[i] or "").strip()
+        k = u.lower().rstrip("/")
+        if u and k not in seen:            # one link pasted twice is one supplier
+            seen.add(k)
+            out.append((pos_of[c], u))
+    return out
+
+
+def listing_status(config_path, workspace_id, sku):
+    """The Status word on this SKU's listing row, or None if there is no row.
+
+    None and "" are different answers and are kept apart. None means this app
+    holds no listing for the SKU at all -- nothing can be concluded about it --
+    while a row that exists and says GENERATED is positive evidence that the
+    listing was never sent to Amazon.
+    """
+    conn = _db.get_db(config_path)
+    try:
+        row = conn.execute("SELECT status FROM listings WHERE workspace_id=? "
+                           "AND sku=?", (workspace_id, sku)).fetchone()
+    except Exception:
+        return None
+    return None if row is None else str(row[0] or "")
+
+
 def enrolled(config_path, workspace_id=None, marketplace=None):
     """Every enrolled SKU, optionally narrowed to one account/marketplace."""
     conn = _db.get_db(config_path)

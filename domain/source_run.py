@@ -299,11 +299,16 @@ def check_listings(config_path, account, workspace_id, marketplace,
     mid = _acc_mod.marketplace_id(marketplace)
     seller = str(acc.get("seller_id") or "")
     out = {"checked": len(rows), "gone": [], "removed": [], "still_there": 0,
-           "unreadable": [], "note": "", "error": ""}
+           "not_published": [], "unreadable": [], "note": "", "error": ""}
     if not (seller and mid):
         out["error"] = ("this account has no seller id or marketplace, so "
                         "Amazon cannot be asked about its listings")
         return out
+
+    # "Did this app ever hand the listing to Amazon?" -- the Python spelling of
+    # static/js/liststatus.js lsWasSentToAmazon, taken from the module that
+    # already holds it rather than written out a fourth time (Rule 12).
+    from domain.barcode_clash import _LIVE as _SENT_STATUSES
 
     for r in rows:
         sku = str(r.get("sku") or "")
@@ -317,11 +322,38 @@ def check_listings(config_path, account, workspace_id, marketplace,
             out["unreadable"].append(sku)
             continue
         if got["status"] == _al.GONE:
+            # NEVER PUBLISHED IS NOT DELETED.
+            #
+            #     "why so many items left repricer"
+            #
+            # A 404 means Amazon has no listing under this SKU. For a listing
+            # that was live, that is a deletion. For a draft that was never
+            # sent, it is simply true and always has been -- and 29 seller-import
+            # drafts on nestwell_goods were announced as "left the repricer",
+            # which read as 29 live listings vanishing.
+            #
+            # A draft is recognised only on POSITIVE evidence: this app holds a
+            # listing row for the SKU, its status is not one that was ever sent
+            # to Amazon, and no earlier check ever found it live. A SKU with no
+            # listing row keeps the old reading, because nothing here can say it
+            # was a draft -- and a real deletion must never be explained away.
+            _status = _repo.listing_status(config_path, workspace_id, sku)
+            _never_sent = (_status is not None
+                           and _status.strip().upper() not in _SENT_STATUSES
+                           and str(r.get("listing_state") or "") != _repo.LIVE_OK)
             # Marked and disarmed in one statement, then taken out of the
             # repricer. In that order: a SKU that is unenrolled but still armed
             # would be one nothing is watching and something could still push.
+            # A draft is marked GONE too, deliberately: that is the state
+            # source_repo.auto_enrol reads as "the app removed it", so the draft
+            # rejoins by itself once Amazon lists it as live.
             _repo.set_listing_state(config_path, workspace_id, marketplace,
                                     sku, _repo.GONE)
+            if _never_sent:
+                out["not_published"].append(sku)
+                if remove_gone:
+                    _repo.unenrol(config_path, workspace_id, marketplace, sku)
+                continue
             out["gone"].append(sku)
             if remove_gone:
                 _repo.unenrol(config_path, workspace_id, marketplace, sku)
@@ -347,6 +379,15 @@ def check_listings(config_path, account, workspace_id, marketplace,
     elif out["gone"]:
         note += (" — auto-pricing is now off for %s" % ", ".join(out["gone"][:6])
                  + (" and others" if len(out["gone"]) > 6 else ""))
+    if out["not_published"]:
+        _one = len(out["not_published"]) == 1
+        note += (". %d %s never been published on Amazon, so %s taken out as a "
+                 "draft rather than reported as deleted — %s by itself once "
+                 "Amazon lists %s as live"
+                 % (len(out["not_published"]), "has" if _one else "have",
+                    "it was" if _one else "they were",
+                    "it rejoins" if _one else "each rejoins",
+                    "it" if _one else "them"))
     if out["unreadable"]:
         note += (". %d could not be read and were left exactly as they were"
                  % len(out["unreadable"]))

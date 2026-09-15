@@ -269,6 +269,35 @@ def save(config_path, account_id, marketplace, items, report_source="",
         _sh.record(config_path, account_id, marketplace, rec.get("items") or [])
     except Exception:
         pass
+
+    # AND A LISTING AMAZON CALLS ACTIVE JOINS THE REPRICER.
+    #
+    #     "why so many items left repricer and new listings didn't joined
+    #      repricer?"
+    #
+    # This is where the app learns that a listing is live -- every refresh of
+    # Amazon's catalogue comes through here, the Sync button and the background
+    # refresher alike -- so it is the one place that reaches listings already
+    # selling as well as ones just published. listing.suppliers.join_live carries
+    # the rules: it records the suppliers written on the listing row if the
+    # repricer has none, and enrols through the single decision in
+    # source_repo.auto_enrol, in dry run, without disarming anything or
+    # re-adding what the owner took out.
+    #
+    # ONLY "Active". Suppressed and Inactive listings are on Amazon but cannot be
+    # bought, and a repricer watching them would be pricing nothing.
+    #
+    # Best-effort beside the stock history above, and for the same reason: the
+    # catalogue is worth having whether or not this bookkeeping succeeded.
+    try:
+        _active = [str(i.get("sku") or "").strip()
+                   for i in (rec.get("items") or [])
+                   if str(i.get("status") or "").strip().lower() == "active"]
+        if _active:
+            from listing import suppliers as _sup
+            _sup.join_live(config_path, account_id, marketplace, _active)
+    except Exception:
+        pass
     return rec
 
 

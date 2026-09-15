@@ -320,3 +320,69 @@ def enrol(config_path, workspace_id, marketplace, sku, urls, log=None):
                 log("could not enrol supplier %d (%s): %s"
                     % (pos, url[:50], str(e)[:80]))
     return n
+
+
+def join_live(config_path, workspace_id, marketplace, skus, log=None):
+    """Listings Amazon reports as ACTIVE join the repricer, with their suppliers.
+
+    -> {"added": [...], "rejoined": [...], "backfilled": [...], "no_supplier": [...]}
+
+        "new listings didn't joined repricer"
+        "i received an order of the sku 12.90_2Days_B0CZ6SWQQY ... couldn't find
+         it in repricer, no suppliers, why? i think i am creating listings with
+         their suppliers in the sheet, so the suppliers should already be there"
+
+    He was right that they were there. MEASURED on nestwell_goods: that SKU is
+    Active in the live catalogue as B0HJ8S7C82, and its own row holds the eBay
+    link it was built from -- but it was generated on 13 Aug 2026, and copying a
+    row's suppliers into the repricer only began with generation on 7 Sep
+    (3cdf2cf). Nothing went back for the listings made before. And even a listing
+    that DID have its suppliers recorded never joined, because going live only
+    moved their stage (promote_to_live) and never enrolled the SKU.
+
+    CALLED FROM ONE PLACE: domain/live_snapshots.save, which every route to
+    Amazon's live catalogue goes through -- the Sync button and the background
+    refresher alike. That is where the app LEARNS a listing is live, so it is the
+    only place that sees old listings as well as new ones. A hook on the submit
+    path would never reach a listing already selling.
+
+    PER SKU, in this order:
+      1. no supplier recorded yet -> read them off the listing row and record
+         them, through enrol() above so priority and dedupe are the same as at
+         generation (Rule 12)
+      2. still no supplier -> left out. The repricer prices FROM a supplier; a
+         SKU with none has nothing for it to do, and it stays on the Add screen
+         for the owner to enrol by hand if he wants it watched anyway.
+      3. promote its suppliers to LIVE, then source_repo.auto_enrol -- the one
+         rule that decides whether it joins, which never disarms an armed SKU and
+         never re-adds one the owner removed.
+
+    DRY RUN, ALWAYS, which is what makes an automatic join safe: nothing moves a
+    price until a floor is set and the SKU is armed by hand. Never raises -- a
+    catalogue that saved must not be undone by the bookkeeping after it.
+    """
+    from domain import source_repo as _repo
+    out = {"added": [], "rejoined": [], "backfilled": [], "no_supplier": []}
+    for sku in (skus or []):
+        s = str(sku or "").strip()
+        if not s:
+            continue
+        try:
+            if not _repo.has_sources(config_path, workspace_id, marketplace, s):
+                urls = _repo.listing_supplier_urls(config_path, workspace_id, s)
+                if urls and enrol(config_path, workspace_id, marketplace, s,
+                                  urls, log=log):
+                    out["backfilled"].append(s)
+            if not _repo.has_sources(config_path, workspace_id, marketplace, s):
+                out["no_supplier"].append(s)
+                continue
+            _repo.promote_to_live(config_path, workspace_id, marketplace, s)
+            got = _repo.auto_enrol(config_path, workspace_id, marketplace, s)
+            if got == _repo.ADDED:
+                out["added"].append(s)
+            elif got == _repo.REJOINED:
+                out["rejoined"].append(s)
+        except Exception as e:
+            if log:
+                log("could not join %s to the repricer: %s" % (s, str(e)[:120]))
+    return out
