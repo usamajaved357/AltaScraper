@@ -554,6 +554,36 @@ def sourcing_listings(workspace_id=None):
                     marketplace=mkt)
             except Exception:
                 pass      # never let saying so undo the doing
+        # DRAFTS ARE NOT DELETIONS, AND ARE NOT ANNOUNCED AS ONE.
+        #
+        #     "why so many items left repricer"
+        #
+        # 29 never-published drafts were reported under the heading above, which
+        # reads as 29 live listings disappearing. They get their own sentence,
+        # saying what actually happened and that nothing needs doing.
+        _np = got.get("not_published") or []
+        removed += len(_np)
+        if _np:
+            try:
+                from domain import notify as _notify
+                _one = len(_np) == 1
+                _notify.announce(
+                    config_path, ws, _notify.LISTING_GONE,
+                    "%d draft%s taken out of the repricer until %s live"
+                    % (len(_np), "" if _one else "s",
+                       "it goes" if _one else "they go"),
+                    lines=[("Amazon has never had %s, so %s not deleted listings "
+                            "— %s never published, and a draft does not belong in "
+                            "the repricer. Nothing was lost: suppliers, history and "
+                            "rules are kept, and each rejoins by itself the moment "
+                            "Amazon lists it as live."
+                            % ("this SKU" if _one else "these SKUs",
+                               "it is" if _one else "they are",
+                               "it was" if _one else "they were"))]
+                          + _np[:20],
+                    marketplace=mkt)
+            except Exception:
+                pass
     return {"checked": checked, "removed": removed, "unreadable": unreadable}
 
 

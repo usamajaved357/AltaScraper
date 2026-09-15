@@ -384,8 +384,18 @@ check("an empty URL adds nothing",
       SR.ensure_source(_cfgp, "w", "UK", "SKU1", "")[1], False)
 
 _rsrc = _insp.getsource(__import__("routes.seller_routes", fromlist=["x"]).register)
-truthy("enrollment is DRY RUN -- it watches, it does not reprice",
-       'mode="dry_run"' in _rsrc)
+# A DRAFT IS NOT ENROLLED AT ALL -- a stronger guarantee than the dry-run one this
+# used to pin. Enrolling drafts at import meant the daily check asked Amazon about
+# SKUs that were never published, got 404, and announced 29 of them on
+# nestwell_goods as "left the repricer". The owner's rule since 7 Sep 2026: the
+# repricer takes a listing "when the listing goes live, not on draft". The eBay
+# supplier is still recorded now, at stage DRAFT, which the pricing pass cannot
+# see; listing.suppliers.join_live enrols it once Amazon lists it as Active.
+_draft_src = _rsrc.split("def seller_draft(")[1]
+check("a draft is NOT enrolled -- nothing watches or prices it until it is live",
+      "_repo.enrol(" in _draft_src, False)
+truthy("  its eBay supplier is recorded at stage DRAFT instead",
+       "stage=_repo.DRAFT" in _draft_src)
 truthy("  the parent is never enrolled: nothing supplies it",
        'src.get("role") == "parent"' in _rsrc)
 truthy("  a failed enrollment does not lose the draft that saved",
