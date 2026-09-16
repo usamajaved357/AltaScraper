@@ -1,7 +1,9 @@
 """routes/product_type_routes.py -- Amazon's product types, asked for directly.
 
-    GET  /product_types/drafts    the drafts that have a competitor ASIN to ask about
-    POST /product_types/lookup    Amazon's type for a few of those ASINs
+    GET|POST /product_types/drafts  the drafts to ask about (ticked, or the account),
+                                    and every listing left out with its reason
+    POST /product_types/lookup    Amazon's type for a few of those: by competitor
+                                  ASIN, or by title when a draft has no ASIN
     GET  /product_types/search    Amazon's product types for a title, or for words
     POST /product_types/recheck   work the warnings out again after types changed
 
@@ -76,18 +78,36 @@ def register(app, *, CONFIG_PATH, _cfg, _state):
                 "ok": False, "denied": True, "error": str(e)}), 200)
         return aid, mkt, mid, creds, None
 
-    @app.route("/product_types/drafts", methods=["GET"])
+    def _truthy(v):
+        return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+    @app.route("/product_types/drafts", methods=["GET", "POST"])
     def product_types_drafts():
-        aid = request.args.get("account")
+        """What Fix product types will check, and every listing it leaves out.
+
+        POST {"account", "skus": [...ticked], "include_submitted"}; GET still
+        works with ?account= for the whole account. `drafts` now includes drafts
+        with no competitor ASIN (method "title"); `skipped` says why each other
+        listing was left out -- see listing/product_type.candidates.
+        """
+        b = (request.get_json(silent=True) or {}) if request.method == "POST" else {}
+        aid = b.get("account") or request.args.get("account")
         bad = _wrong_account(aid)
         if bad:
             return bad
         aid = str(aid or (_state or {}).get("active_account_id") or "").strip()
         if not aid:
             return jsonify({"ok": False, "error": "Open an account first."}), 400
+        skus = b.get("skus")
+        if skus is None:
+            skus = [s for s in (request.args.get("skus") or "").split(",") if s.strip()]
+        include = _truthy(b.get("include_submitted",
+                                request.args.get("include_submitted", "")))
         from listing import product_type as _pt
-        return jsonify({"ok": True, "account": aid,
-                        "drafts": _pt.drafts_to_check(CONFIG_PATH, aid)})
+        got = _pt.candidates(CONFIG_PATH, aid, skus=(skus or None),
+                             include_submitted=include)
+        return jsonify({"ok": True, "account": aid, "selected": len(skus or []),
+                        "drafts": got["check"], "skipped": got["skipped"]})
 
     @app.route("/product_types/lookup", methods=["POST"])
     def product_types_lookup():
@@ -100,21 +120,35 @@ def register(app, *, CONFIG_PATH, _cfg, _state):
             return err
         from listing import product_type as _pt
         want = {str(s) for s in (b.get("skus") or [])}
+        include = _truthy(b.get("include_submitted", ""))
         # Re-read from the store rather than trusting what the browser says a
-        # row's ASIN and type are: the verdict is about what is saved.
-        drafts = [d for d in _pt.drafts_to_check(CONFIG_PATH, aid) if d["sku"] in want]
-        asins = []
+        # row's ASIN, title and type are: the verdict is about what is saved.
+        drafts = [d for d in _pt.candidates(CONFIG_PATH, aid, skus=(list(want) or None),
+                                            include_submitted=include)["check"]
+                  if d["sku"] in want]
+        asins, titled = [], []
         for d in drafts:
-            if _ASIN.match(d["asin"]) and d["asin"] not in asins:
+            if d["method"] == _pt.BY_TITLE:
+                titled.append(d)
+            elif _ASIN.match(d["asin"]) and d["asin"] not in asins:
                 asins.append(d["asin"])
-        if len(asins) > MAX_LOOKUP:
+        if len(asins) + len(titled) > MAX_LOOKUP:
             return jsonify({"ok": False,
-                            "error": "At most %d ASINs per request." % MAX_LOOKUP}), 400
+                            "error": "At most %d lookups per request." % MAX_LOOKUP}), 400
 
         from api import amazon_catalog as _cat
         answers = {}
+        # Refused once is refused for the rest OF THAT KIND: same account, same
+        # app. Kept per kind because the catalogue and the product-type search
+        # are separate Amazon permissions.
+        refused = {}
+        jobs = [(_pt.BY_ASIN, a) for a in asins] + [(_pt.BY_TITLE, d) for d in titled]
         last = 0.0
-        for i, a in enumerate(asins):
+        for i, (kind, what) in enumerate(jobs):
+            key = what if kind == _pt.BY_ASIN else _pt.answer_key(what)
+            if kind in refused:
+                answers[key] = dict(refused[kind])
+                continue
             # About two calls a second is Amazon's allowance -- but a call
             # measured 1.6-3.3s end to end from here, so only wait for whatever
             # is left of the gap since the previous one STARTED.
@@ -122,12 +156,24 @@ def register(app, *, CONFIG_PATH, _cfg, _state):
             if i and gap > 0:
                 time.sleep(gap)
             last = time.time()
-            answers[a] = _cat.product_type_of(creds, mkt, mid, a)
-            # Refused once is refused for all of them: same account, same app.
-            if answers[a]["status"] == _cat.DENIED:
-                for rest in asins[i + 1:]:
-                    answers[rest] = dict(answers[a])
-                break
+            if kind == _pt.BY_ASIN:
+                answers[key] = _cat.product_type_of(creds, mkt, mid, what)
+            else:
+                # NO COMPETITOR ASIN: Amazon's own ranking of what a product with
+                # this TITLE is -- the same search the listing's product-type box
+                # uses, and structured data rather than a reading of prose.
+                got = _cat.search_product_types(creds, mkt, mid, item_name=what["title"])
+                names = [t.get("name") for t in (got.get("types") or []) if t.get("name")]
+                status = got.get("status") or _cat.FAILED
+                answers[key] = {
+                    "status": _cat.OK if (status == _cat.OK and names) else status,
+                    "product_type": names[0] if names else "",
+                    "options": names[:10],
+                    "error": (got.get("error")
+                              or ("" if names else "Amazon suggested no product type for this title")),
+                }
+            if answers[key].get("status") == _cat.DENIED:
+                refused[kind] = dict(answers[key])
         denied = any(v.get("status") == _cat.DENIED for v in answers.values())
         return jsonify({"ok": True, "marketplace": mkt, "denied": denied,
                         "rows": _pt.compare(drafts, answers)})
