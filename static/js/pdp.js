@@ -1772,7 +1772,16 @@ function pdpRender(){
     // old strip of source thumbnails is kept underneath it: it carries the AI
     // generation panel and the per-image edit buttons, which are a different
     // job from deciding what goes in which slot.
-    tab = ((typeof pdpImagesTab === "function") ? pdpImagesTab(r) : "") + p.images;
+    //
+    //     "do you remember how we had the image generation built inside the
+    //      pdp?? i want that option again"
+    //
+    // It never left the page -- it was folded at the bottom of Safety &
+    // Compliance, and nothing on the page filled its model pickers or ran its
+    // connection check (only the old drawer called initGenPanel). So it is
+    // here, open, and started after the render below.
+    tab = ((typeof pdpImagesTab === "function") ? pdpImagesTab(r) : "") + p.images
+        + (p.gen ? pdpGenSection(p.gen) : "");
   } else if(PDP_TAB === "variations"){
     // The family this listing belongs to. Drawn by the variations screen's own
     // builder where there is one, so the parent/child rules live in one place.
@@ -1784,7 +1793,7 @@ function pdpRender(){
     tab = p.offerOnly + p.identityOnly;
   } else {
     tab = ((typeof _dwWarnings === "function") ? _dwWarnings(r) : "")
-        + p.compliance + p.tools;
+        + p.compliance + (p.toolsNoGen != null ? p.toolsNoGen : p.tools);
   }
 
   host.innerHTML = '<div class="pdp">' + top + pdpHero(r) + pdpTabBar(r)
@@ -1801,7 +1810,25 @@ function pdpRender(){
     // Bound once, here rather than in pdpOpen, because the host's contents are
     // what the listener delegates over and they do not exist until a render.
     pdpWatchEdits();
+    // Fill the generator's model pickers and check the connection -- the same
+    // start the drawer gives it (listings.js initGenPanel, Rule 12).
+    if(PDP_TAB === "images" && p.gen && typeof initGenPanel === "function"){
+      try{ initGenPanel(sid(r.sku)); }catch(e){}
+    }
   }, 40);
+}
+
+/* The AI image generator, as a section of the Images tab. The panel itself is
+ * built by _fullDataParts (autofix.js) and driven by doGen -- one generator,
+ * shown here and in the drawer. */
+function pdpGenSection(genHtml){
+  return '<div class="pdp-gen" style="margin-top:18px">'
+    + '<div class="pdp-sec-title" style="font-weight:600;margin:0 0 6px">'
+    + '<i class="ti ti-sparkles"></i> Generate an image with AI</div>'
+    + '<div class="cc" style="font-size:12px;margin:0 0 8px">Starts from the reference image and your '
+    + 'instructions. Each result is saved to this listing’s image library; '
+    + '<b>Use as main image</b> puts it on the listing.</div>'
+    + genHtml + '</div>';
 }
 
 /* Redraw after a structural edit (a field deleted, an optional one added, a

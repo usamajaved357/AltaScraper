@@ -2207,11 +2207,12 @@ function _fullDataParts(r){
   const _vf = (typeof _dwVerdictFoldParts === "function")
     ? _dwVerdictFoldParts(r)
     : {compliance: ((typeof _dwVerdictFolds === "function") ? _dwVerdictFolds(r) : ""), mirror: ""};
-  const toolFolds =
-      _vf.mirror
-    + dwFold("AI image generation",
-        '<span class="dw2-tag info"><i class="ti ti-sparkles"></i> generate</span>', genBlock)
-    + (milesBlock ? dwFold("Miles template", "", milesBlock) : "")
+  // The generator is kept apart from the other tools so the product page can
+  // put it on its Images tab; the drawer still gets all of them, in this order.
+  const _genFold = dwFold("AI image generation",
+        '<span class="dw2-tag info"><i class="ti ti-sparkles"></i> generate</span>', genBlock);
+  const _otherTools =
+      (milesBlock ? dwFold("Miles template", "", milesBlock) : "")
     + dwFold("Submission data",
         '<span class="dw2-count">'+allSubKeys.length+' fields · read-only</span>',
         fullSubBlock
@@ -2224,11 +2225,16 @@ function _fullDataParts(r){
             <pre class="raw payloadraw" id="pl_${sidv}">${esc(String(r.api_payload))}</pre>
             <button class="linkbtn" onclick="uiCopy(document.getElementById('pl_${sidv}').textContent,'Payload copied')">Copy payload</button>`)
        : "" );
+  const toolFolds = _vf.mirror + _genFold + _otherTools;
   const folds = _vf.compliance + toolFolds;
   return {highlights: secHighlights, bullets: secBullets, search: secSearch,
           desc: secDesc, images: secImages, identity: secIdentity,
           attrs: secAttrs, folds: folds,
           compliance: _vf.compliance, tools: toolFolds,
+          // THE IMAGE GENERATOR ON ITS OWN, and the tools without it, for the
+          // product page: generation belongs on its Images tab, not folded at
+          // the bottom of Safety & Compliance where nobody looks for it.
+          gen: genBlock, toolsNoGen: _vf.mirror + _otherTools,
           // The same two halves of "Identity and offer", apart, for the product
           // page's tabs. Not extra content -- the same rows, grouped.
           identityOnly: secIdentityOnly, offerOnly: secOfferOnly,
