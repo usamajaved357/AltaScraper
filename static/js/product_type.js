@@ -350,6 +350,11 @@ async function ptFixDrafts(){
       body: JSON.stringify(acctBody({}))});
   }catch(e){ /* the saves stand; warnings catch up on the next generate */ }
   if(typeof refreshView === "function"){ try{ refreshView(); }catch(e){} }
+  // The warnings on each listing's page are Amazon's reply to its LAST Preview or
+  // Submit, and only a new one replaces them -- say so, or a saved fix looks
+  // like a failed one ("it says it is fixed 33 but ... that error message still").
   await uiAlert("Changed " + ok + " product type(s)."
-    + (failed.length ? "\n\nNot saved:\n" + failed.join("\n") : ""));
+    + (failed.length ? "\n\nNot saved:\n" + failed.join("\n") : "")
+    + (ok ? "\n\nAmazon's old warnings stay on these listings until they are previewed again. "
+          + "Tick them and press Preview on the selection bar to refresh them all at once." : ""));
 }

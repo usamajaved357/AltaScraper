@@ -7404,11 +7404,9 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     # PREVIEW (validation only, read-only) should work on ANY row that has a SKU +
     # product type -- including NEEDS_REVIEW / COMPLIANCE_HOLD / IP_HOLD -- so you can
     # check what Amazon needs BEFORE approving. SUBMIT stays strict (APPROVED only).
-    if submit:
-        eligible = {"APPROVED", "API_READY"}
-    else:
-        eligible = {"APPROVED", "API_READY", "API_ERROR", "NEEDS_REVIEW",
-                    "COMPLIANCE_HOLD", "IP_HOLD", "HOLD", ""}
+    # The sets, and the SUBMITTED-when-ticked rule, live in listing/preview_scope.py.
+    from listing import preview_scope as _pscope
+    eligible = _pscope.eligible(submit, named=bool(only_skus))
 
     # batch sheet writes so we never hit the Google Sheets write-rate quota
     _updates = []
@@ -7569,6 +7567,9 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     for i, row in enumerate(records, start=2):        # row 1 = headers
         _st = str(row.get("Status", "")).strip().upper()
         sku = str(row.get("SKU", "")).strip()
+        # A SUBMITTED listing's Preview writes Amazon's reply only (preview_scope):
+        # no status, no note, no payload record.
+        _keep_status = _pscope.keeps_status(submit, _st)
         if only_skus and sku in only_skus:
             _requested_status[sku] = _st
         if _st not in eligible:
@@ -7626,7 +7627,8 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                         f"(Amazon's schema endpoint was too slow; the other rows still ran).")
                 console.print(f"  [red]row {i} {sku}: {_msg}[/red]")
                 try:
-                    queue(i, notes_col, _msg)          # log the skipped row so you know what to retry
+                    if not _keep_status:
+                        queue(i, notes_col, _msg)      # log the skipped row so you know what to retry
                 except Exception:
                     pass
                 skip += 1
@@ -7641,7 +7643,7 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
         # Save the EXACT payload we are about to send, so the dashboard can show
         # the literal wire data (not just the field view). Pretty-printed for the
         # human reader; this is read-only debug info and does not affect the call.
-        if payload_col:
+        if payload_col and not _keep_status:
             try:
                 queue(i, payload_col, json.dumps(body, ensure_ascii=False, indent=2))
             except Exception:
@@ -7725,7 +7727,15 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                                   + (f"  [yellow]({len(issues)} warning(s))[/yellow]" if issues else ""))
             else:
                 # PREVIEW: the submit-time validation IS the answer.
-                if errors:
+                if _keep_status:
+                    if errors:
+                        err += 1
+                    else:
+                        ok += 1
+                    console.print(f"  row {i} {sku}: already SUBMITTED -- Amazon's reply refreshed, "
+                                  f"status left as SUBMITTED ({len(errors)} error(s), "
+                                  f"{len(issues) - len(errors)} warning(s))")
+                elif errors:
                     err += 1
                     queue(i, status_col, "API_ERROR")
                     queue(i, notes_col, f"API PREVIEW - {len(errors)} error(s): {msgs}")
@@ -7746,10 +7756,12 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             if "timed out" in _eml or "timeout" in _eml or "read operation" in _eml:
                 # A timeout is NOT a listing problem -- don't make the user hunt for
                 # fields to fix. Mark it clearly as a transient connection slowness.
-                queue(i, notes_col, f"API call TIMED OUT (connection too slow to Amazon EU) -- not a listing problem; Preview again. ({em})")
+                if not _keep_status:
+                    queue(i, notes_col, f"API call TIMED OUT (connection too slow to Amazon EU) -- not a listing problem; Preview again. ({em})")
                 console.print(f"  [yellow]row {i} {sku}: validation call TIMED OUT after retries[/yellow] {em[:140]}")
             else:
-                queue(i, notes_col, f"API call failed: {em}")
+                if not _keep_status:
+                    queue(i, notes_col, f"API call failed: {em}")
                 console.print(f"  [red]row {i} {sku}: API call failed[/red] {em[:170]}")
 
         if (ok + err) % 20 == 0:
