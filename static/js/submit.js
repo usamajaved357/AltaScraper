@@ -294,6 +294,51 @@ function previewOne(sku){
   // background-job path (survives navigation + refresh; queues behind any active run)
   rqEnqueue(sku, "api", MINIMAL_MODE_ON);
 }
+/* PREVIEW THE TICKED LISTINGS, in one run.
+ *
+ *     "yes add the bulk preview button in the app. which lets user to preview
+ *      selected listings"
+ *
+ * Amazon's reply on a listing's page is the one from its last Preview or Submit,
+ * and only a new one replaces it -- so after "Fix product types" changed 33
+ * listings, their old warnings stayed until each was previewed by hand. This
+ * previews the whole selection as one run (one process, one log) rather than
+ * one queued job per listing.
+ *
+ * Which statuses are previewed, and that a SUBMITTED listing keeps its status,
+ * is decided on the server (listing/preview_scope.py); the run's log names any
+ * ticked listing it did not preview and why. Nothing is sent to Amazon.
+ */
+async function bulkPreview(){
+  const sel = (typeof selectedSkus === "function") ? selectedSkus() : [];
+  if(!sel.length){ toast("Select some listings first"); return; }
+  const s = (typeof splitByDraft === "function") ? splitByDraft(sel) : {drafts: sel, amazonOnly: []};
+  if(!s.drafts.length){
+    await uiAlert("None of the " + sel.length + " selected listing(s) has a draft in this app, "
+      + "so there is nothing to preview.\n\nThey are live on Amazon and were never generated here.");
+    return;
+  }
+  const want = new Set(s.drafts.map(String));
+  const submitted = (typeof ROWS !== "undefined" && ROWS ? ROWS : [])
+    .filter(r => want.has(String(r.sku)) && String(r.status || "").toUpperCase() === "SUBMITTED").length;
+  let msg = "Preview " + s.drafts.length + " listing(s) against Amazon?\n\n"
+    + "Nothing is sent — Amazon only checks them, and each listing's Amazon reply "
+    + "(the warnings on its page) is replaced with the new one.";
+  if(submitted){
+    msg += "\n\n" + submitted + " of them " + (submitted === 1 ? "is" : "are")
+      + " already submitted: " + (submitted === 1 ? "it stays" : "they stay")
+      + " Submitted; only Amazon's reply is refreshed.";
+  }
+  if(s.amazonOnly.length){
+    msg += "\n\n" + s.amazonOnly.length + " selected listing(s) are only on Amazon, with no draft here, and are left out.";
+  }
+  const _scope = (typeof selectionScopeNote === "function") ? selectionScopeNote("previewing") : "";
+  if(!await uiConfirm(msg + (_scope ? ("\n\n" + _scope.trim()) : ""))) return;
+  if(typeof runMode !== "function"){ toast("Preview isn't available on this page"); return; }
+  runMode("api", s.drafts);
+  const log = document.getElementById("log");
+  if(log && log.scrollIntoView){ try{ log.scrollIntoView({behavior:"smooth", block:"start"}); }catch(e){} }
+}
 async function submitOne(sku){
   if(!sku) return;
   // same safety as the global submit: precheck local images, then confirm the account

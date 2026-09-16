@@ -638,6 +638,7 @@
           <input id="pricepct" type="number" step="0.5" placeholder="+10 or -5" class="handlingdays" style="width:92px">
           <button id="pricepctbtn" onclick="bulkPricePercent()">Change price %</button>
         </span>
+        <button onclick="bulkPreview()" title="Check every selected listing against Amazon in one run. Nothing is sent. Each listing's Amazon warnings are replaced with the new reply; a submitted listing stays Submitted."><i class="ti ti-eye"></i> Preview</button>
         <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:var(--accent);color:var(--accent2)"><i class="ti ti-wand"></i> Auto-fix</button>
         <!-- GTIN EXEMPTION, THE ONLY WAY TO CLAIM IT IN BULK.
              The app never claims it on its own: an empty barcode box now sends

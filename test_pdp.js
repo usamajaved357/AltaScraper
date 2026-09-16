@@ -61,8 +61,11 @@ const pdpUses = [...new Set((PDPJS.match(/\bp\.(\w+)/g) || []).map(s => s.slice(
 // `attrs` (the drawer's cell grid) is deliberately absent: this page draws the
 // same attributes as a table from attrModel instead.
 check("and the product page places the rest", pdpUses,
-      ["addCtrl","attrModel","bullets","compliance","desc","highlights",
-       "identityOnly","images","offerOnly","search","tools"]);
+      // gen + toolsNoGen: the AI image generator is on the Images tab, and the
+      // Safety & Compliance tab takes the other tools ("tools" stays as the
+      // fallback when a part is missing).
+      ["addCtrl","attrModel","bullets","compliance","desc","gen","highlights",
+       "identityOnly","images","offerOnly","search","tools","toolsNoGen"]);
 // Nothing may be produced that NO view shows. Only TOP-LEVEL keys count --
 // everything after `attrModel: {` is that model's own contents, not a block.
 const topLevel = retM ? retM[0].slice(0, retM[0].indexOf("attrModel: {")) : "";
