@@ -119,30 +119,139 @@ function ptPick(sku, name){
 }
 
 // ---- the toolbar button ------------------------------------------------------
+//
+//     "i selected 64 listings and clicked on fix product types it shows check 2
+//      unsent draft(s) ... 2 already right 0 couldn't check"
+//
+// It read the whole account whatever was ticked, dropped every draft with no
+// competitor ASIN and every submitted one, and never said so -- so 62 left out
+// read as "2 already right". Now it takes the ticked listings, asks Amazon's
+// product-type search about a draft with no ASIN by its title, lets you include
+// submitted listings on purpose, and names every listing it leaves out and why.
+// The list and the reasons are decided on the server
+// (listing/product_type.candidates); this only shows them and asks.
+
+const PT_SKIP_WHY = {
+  on_amazon:      "already live on Amazon — its type is Amazon’s now",
+  submitted:      "already submitted to Amazon — left out",
+  parent:         "a variation parent, not a product",
+  queued:         "not generated yet",
+  nothing_to_ask: "no competitor ASIN and no title — nothing to ask Amazon about",
+  not_found:      "ticked, but not a draft in this account",
+};
+
+/* The listings left out, grouped by reason, in the order the reasons first
+ * appear. Pure, so it can be run without a page. */
+function ptSkipGroups(skipped){
+  const order = [], groups = {};
+  (skipped || []).forEach(function(s){
+    const k = (s && s.reason) || "other";
+    if(!groups[k]){ groups[k] = []; order.push(k); }
+    groups[k].push(s);
+  });
+  return order.map(function(k){ return {reason: k, why: PT_SKIP_WHY[k] || k, items: groups[k]}; });
+}
+
+/* A change is ticked for you only when there is ONE answer: the competitor
+ * ASIN's type, or a title search that came back with a single type. When the
+ * search offered several, you choose -- nothing is chosen on your behalf. */
+function ptPreticked(r){
+  if(!r || r.verdict !== "change") return false;
+  if(r.method === "title") return (r.options || []).length <= 1;
+  return true;
+}
+
+/* Read the results dialog: the ticked rows, each with the type chosen for it. */
+function ptReadChoices(wrap, changes){
+  const out = [];
+  const rows = wrap ? wrap.querySelectorAll(".ptfix-row") : [];
+  Array.prototype.forEach.call(rows, function(row){
+    const tick = row.querySelector(".ptfix-tick");
+    if(!tick || !tick.checked) return;
+    const base = (changes || [])[+row.getAttribute("data-i")];
+    if(!base) return;
+    const pick = row.querySelector(".ptfix-pick");
+    const value = pick ? String(pick.value || "").trim().toUpperCase() : String(base.amazon || "");
+    if(!value) return;
+    out.push(Object.assign({}, base, {amazon: value}));
+  });
+  return out;
+}
+
+function _ptSkipHtml(skipped){
+  const groups = ptSkipGroups(skipped);
+  if(!groups.length) return "";
+  const n = (skipped || []).length;
+  return '<details style="margin-top:8px;font-size:12px"' + (n <= 12 ? " open" : "") + '>'
+    + '<summary><b>' + n + '</b> left out, and why</summary>'
+    + groups.map(function(g){
+        return '<div style="margin:6px 0 2px"><b>' + g.items.length + '</b> — ' + esc(g.why) + '</div>'
+          + '<div class="cc" style="font-family:monospace;font-size:11px;line-height:1.5">'
+          + g.items.map(function(s){ return esc(s.sku); }).join("<br>") + '</div>';
+      }).join("")
+    + '</details>';
+}
+
+async function _ptList(skus, includeSubmitted){
+  try{
+    const j = await (await fetch("/product_types/drafts", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(acctBody({skus: skus || [], include_submitted: !!includeSubmitted}))})).json();
+    if(!j || !j.ok) throw new Error((j && j.error) || "refused");
+    return {drafts: j.drafts || [], skipped: j.skipped || []};
+  }catch(e){
+    await uiAlert("Couldn’t list the drafts: " + e.message);
+    return null;
+  }
+}
 
 async function ptFixDrafts(){
   const aid = (typeof acctId === "function") ? acctId() : "";
   if(!aid){ toast("Open an account first"); return; }
+
+  // THE LISTINGS YOU TICKED, when there are any -- otherwise the whole account.
+  const picked = (typeof selectedSkus === "function") ? selectedSkus() : [];
+  let listing = await _ptList(picked, false);
+  if(!listing) return;
+
+  // SUBMITTED LISTINGS ONLY ON PURPOSE. They are left out by default -- Amazon
+  // holds them -- but "your product type has been updated" is the note Amazon
+  // attaches when it accepts one, so bringing the app's type into line with
+  // Amazon's is a reason to include them. Asked, never assumed.
+  let includeSubmitted = false;
+  const subs = listing.skipped.filter(function(s){ return s.reason === "submitted"; });
+  if(subs.length){
+    includeSubmitted = !!(await _dlgOpen({title:"Fix product types from Amazon",
+      html:'<p style="margin:0 0 8px;font-size:12.5px"><b>' + subs.length + '</b> of '
+        + (picked.length ? "the listings you ticked" : "this account’s listings") + ' '
+        + (subs.length === 1 ? "is" : "are") + ' already <b>submitted</b> to Amazon.</p>'
+        + '<p style="margin:0;font-size:12.5px" class="cc">They are left out unless you include them. '
+        + 'Include them when Amazon has warned that it changed their product type, so this app’s '
+        + 'type matches Amazon’s.</p>',
+      cancelValue:false,
+      buttons:[{label:"Leave them out", value:false},
+               {label:"Include them", tone:"go", primary:true, value:true}]}));
+    if(includeSubmitted){
+      listing = await _ptList(picked, true);
+      if(!listing) return;
+    }
+  }
+  const drafts = listing.drafts, skipped = listing.skipped;
+  if(!drafts.length){
+    await _dlgOpen({title:"Fix product types from Amazon",
+      html:'<p style="margin:0 0 8px;font-size:12.5px">Nothing to check'
+        + (picked.length ? " among the " + picked.length + " listing(s) you ticked" : " in this account") + '.</p>'
+        + _ptSkipHtml(skipped),
+      cancelValue:null, buttons:[{label:"Close", tone:"go", primary:true, value:null}]});
+    return;
+  }
+
   let cancelled = false;
   _dlgOpen({title:"Fix product types from Amazon",
-            html:'<div id="ptfix_prog" style="font-size:12.5px">Finding drafts…</div>',
+            html:'<div id="ptfix_prog" style="font-size:12.5px">Asking Amazon…</div>',
             cancelValue:null, buttons:[{label:"Cancel", value:null}]})
     .then(function(){ cancelled = true; });
   const prog = t => { const el = document.getElementById("ptfix_prog"); if(el) el.textContent = t; };
-
-  let drafts = [];
-  try{
-    const j = await (await fetch(acctUrl("/product_types/drafts"))).json();
-    if(!j.ok) throw new Error(j.error || "refused");
-    drafts = j.drafts || [];
-  }catch(e){
-    await uiAlert("Couldn’t list the drafts: " + e.message);
-    return;
-  }
-  if(!drafts.length){
-    await uiAlert("No unsent drafts with a competitor ASIN in this account — nothing to check.");
-    return;
-  }
 
   // A few drafts per request, per marketplace. The verdicts come back decided
   // -- listing/product_type.compare() is the one definition of "change".
@@ -163,15 +272,16 @@ async function ptFixDrafts(){
       try{
         j = await (await fetch("/product_types/lookup", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify(acctBody({marketplace: mkt, skus: batch.map(d => d.sku)}))})).json();
+          body: JSON.stringify(acctBody({marketplace: mkt, skus: batch.map(d => d.sku),
+                                         include_submitted: includeSubmitted}))})).json();
       }catch(e){ j = {ok:false, error:"could not reach the app"}; }
       if(j.ok){
         (j.rows || []).forEach(r => rows.push(r));
         if(j.denied) denied = true;
       }else{
         if(j.denied) denied = true;
-        batch.forEach(d => rows.push({sku:d.sku, title:d.title, asin:d.asin,
-          current:d.product_type, amazon:"", verdict:"not_checked", why:j.error || "failed"}));
+        batch.forEach(d => rows.push({sku:d.sku, title:d.title, asin:d.asin, method:d.method,
+          current:d.product_type, amazon:"", verdict:"not_checked", why:j.error || "failed", options:[]}));
       }
       done += batch.length;
     }
@@ -180,35 +290,58 @@ async function ptFixDrafts(){
   const changes = rows.filter(r => r.verdict === "change");
   const same = rows.filter(r => r.verdict === "same").length;
   const unchecked = rows.filter(r => r.verdict === "not_checked");
+  const byAsin = rows.filter(r => r.method !== "title").length;
+  const byTitle = rows.length - byAsin;
 
-  let html = '<p style="margin:0 0 8px;font-size:12.5px">Checked ' + rows.length
-    + ' unsent draft(s) against their competitor ASIN in Amazon’s catalogue.</p>'
+  let html = '<p style="margin:0 0 8px;font-size:12.5px">'
+    + (picked.length ? "You ticked <b>" + picked.length + "</b> listing(s). " : "")
+    + 'Checked <b>' + rows.length + '</b>: ' + byAsin + ' by competitor ASIN, '
+    + byTitle + ' by title (Amazon’s product-type search).</p>'
     + '<p style="margin:0 0 8px;font-size:12.5px"><b>' + changes.length + '</b> to change'
-    + ' · ' + same + ' already right · ' + unchecked.length + ' couldn’t check</p>';
+    + ' · ' + same + ' already right · ' + unchecked.length + ' couldn’t check'
+    + ' · ' + skipped.length + ' left out</p>';
   if(denied){
-    html += '<p style="margin:0 0 8px;font-size:12px" class="cwarn">Amazon refused this account’s catalogue access, so those drafts were not checked and will not be changed.</p>';
+    html += '<p style="margin:0 0 8px;font-size:12px" class="cwarn">Amazon refused this account’s access for some of these, so they were not checked and will not be changed.</p>';
   }
   if(changes.length){
     html += '<div style="max-height:40vh;overflow-y:auto;font-size:12px;border-top:1px solid var(--line2)">'
-      + changes.map(r => '<div style="padding:5px 0;border-bottom:1px solid var(--line2)">'
-          + '<div style="font-family:monospace">' + esc(r.sku) + '</div>'
-          + '<div class="cc">' + esc(String(r.title || "").slice(0, 70)) + '</div>'
-          + '<div>' + esc(r.current || "(blank)") + ' → <b>' + esc(r.amazon) + '</b></div></div>'
-        ).join("") + '</div>'
-      + '<p style="margin:8px 0 0;font-size:12px" class="cc">A different type can ask for different details. Run Preview on these afterwards to see what Amazon needs.</p>';
+      + changes.map(function(r, i){
+          const opts = r.options || [];
+          const choose = (r.method === "title" && opts.length > 1)
+            ? '<select class="ptfix-pick" style="font-size:12px" onchange="this.closest(\'.ptfix-row\').querySelector(\'.ptfix-tick\').checked=true">'
+              + opts.map(o => '<option value="' + esc(o) + '"' + (o === r.amazon ? " selected" : "") + '>' + esc(o) + '</option>').join("")
+              + '</select>'
+            : '<b>' + esc(r.amazon) + '</b>';
+          return '<label class="ptfix-row" data-i="' + i + '" style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--line2)">'
+            + '<input type="checkbox" class="ptfix-tick"' + (ptPreticked(r) ? " checked" : "") + '>'
+            + '<span style="flex:1"><span style="font-family:monospace">' + esc(r.sku) + '</span>'
+            + ' <span class="cc">' + (r.method === "title" ? "· suggested from title" : "· from ASIN " + esc(r.asin || "")) + '</span>'
+            + '<div class="cc">' + esc(String(r.title || "").slice(0, 70)) + '</div>'
+            + '<div>' + esc(r.current || "(blank)") + ' → ' + choose + '</div></span></label>';
+        }).join("") + '</div>'
+      + '<p style="margin:8px 0 0;font-size:12px" class="cc">Title suggestions are Amazon’s best guess — check them. '
+      + 'Where Amazon offered several types, pick one and tick the row. Nothing is saved until you press Apply. '
+      + 'A different type can ask for different details: run Preview on these afterwards.</p>';
   }
-  if(unchecked.length && !denied){
+  if(unchecked.length){
     html += '<details style="margin-top:8px;font-size:12px"><summary>Couldn’t check (' + unchecked.length + ')</summary>'
       + unchecked.map(r => '<div>' + esc(r.sku) + ' — ' + esc(r.why) + '</div>').join("") + '</details>';
   }
-  const go = await _dlgOpen({title:"Fix product types from Amazon", html:html, cancelValue:false,
+  html += _ptSkipHtml(skipped);
+  const chosen = await _dlgOpen({title:"Fix product types from Amazon", html:html, cancelValue:null,
     buttons: changes.length
-      ? [{label:"Cancel", value:false}, {label:"Apply " + changes.length + " change(s)", tone:"go", primary:true, value:true}]
-      : [{label:"Close", tone:"go", primary:true, value:false}]});
-  if(!go) return;
+      ? [{label:"Cancel", value:null},
+         {label:"Apply ticked changes", tone:"go", primary:true,
+          take: function(wrap){
+            const got = ptReadChoices(wrap, changes);
+            if(!got.length){ toast("Tick at least one change"); return undefined; }
+            return got;
+          }}]
+      : [{label:"Close", tone:"go", primary:true, value:null}]});
+  if(!chosen || !chosen.length) return;
 
   let ok = 0; const failed = [];
-  for(const r of changes){
+  for(const r of chosen){
     const j = await editField(r.sku, "col", "Product Type", r.amazon);
     if(j && j.ok) ok++; else failed.push(r.sku + ": " + ((j && j.error) || "save failed"));
   }

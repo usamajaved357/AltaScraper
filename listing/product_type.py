@@ -150,17 +150,57 @@ def backfill(config_path, workspace_id):
 # business now. The same "on Amazon" set the barcode clash check uses (Rule 12);
 # a variation PARENT and a not-yet-generated QUEUED row are not drafts either.
 from domain.barcode_clash import _LIVE as _ON_AMAZON
-_NOT_DRAFTS = set(_ON_AMAZON) | {"PARENT", "QUEUED"}
 
 
-def drafts_to_check(config_path, workspace_id):
-    """The drafts in one workspace that have a competitor ASIN to ask about.
+# ---- which listings the button looks at, and why the others were left out ----
+#
+#     "i selected 64 listings and clicked on fix product types it shows check 2
+#      unsent draft(s) against their competitor asin in amazon's catalog, - to
+#      change, 2 already right 0 couldn't check"
+#     "no more than 30 drafts have competitor asins in them and even if it is
+#      looking at all the drafts this count is wrong and i still have that
+#      warning message where amazon shows error of product type in many of the
+#      items"
+#
+# FOUR THINGS were wrong with how the list was drawn up, and all four were silent:
+#   * a draft with no competitor ASIN was dropped. There was nothing to look up,
+#     which is true -- but Amazon's product-type SEARCH can say what a product
+#     is from its title, and the box on the listing already uses it;
+#   * a SUBMITTED listing was dropped. Right by default, never explained, and
+#     impossible to override -- yet "your product type has been updated" is the
+#     note Amazon attaches when it ACCEPTS a listing;
+#   * the listings the owner had ticked were ignored: the whole account was read;
+#   * the dialog reported only what it HAD checked, so everything left out read
+#     as nothing at all.
+#
+# candidates() draws up the list once, and says for every listing it leaves out
+# why it was left out. drafts_to_check() keeps its old meaning exactly --
+# competitor-ASIN drafts only, nothing submitted -- for anything relying on it.
 
-    -> [{"sku", "title", "asin", "product_type", "status", "marketplace"}]
+BY_ASIN = "asin"     # look the competitor ASIN up in Amazon's catalogue
+BY_TITLE = "title"   # no ASIN: ask Amazon's product-type search about the title
+
+SKIP_ON_AMAZON = "on_amazon"      # LIVE / ACTIVE -- its type is Amazon's now
+SKIP_SUBMITTED = "submitted"      # sent to Amazon; included only on request
+SKIP_PARENT = "parent"            # a variation parent is not a product
+SKIP_QUEUED = "queued"            # not generated yet
+SKIP_NOTHING = "nothing_to_ask"   # no competitor ASIN and no title either
+SKIP_NOT_FOUND = "not_found"      # ticked, but not a draft in this account
+
+
+def candidates(config_path, workspace_id, skus=None, include_submitted=False):
+    """The listings Fix product types will ask Amazon about, and the rest.
+
+    -> {"check":   [{"sku", "title", "asin", "product_type", "status",
+                     "marketplace", "method"}],
+        "skipped": [{"sku", "title", "status", "reason"}]}
+
+    `skus` narrows it to the listings the owner ticked; None means the account.
+    A ticked SKU this account holds no draft for is reported, not ignored.
     """
     from data import db as _db
     import re as _re
-    out = []
+    out = {"check": [], "skipped": []}
     try:
         conn = _db.get_db(config_path)
         rows = [dict(r) for r in conn.execute(
@@ -169,33 +209,94 @@ def drafts_to_check(config_path, workspace_id):
             (workspace_id,))]
     except Exception:
         return out
+
+    if skus:
+        wanted = [str(s).strip() for s in skus if str(s or "").strip()]
+        held = {str(r.get("sku") or "").strip() for r in rows}
+        for s in wanted:
+            if s not in held:
+                out["skipped"].append({"sku": s, "title": "", "status": "",
+                                       "reason": SKIP_NOT_FOUND})
+        keep = set(wanted)
+        rows = [r for r in rows if str(r.get("sku") or "").strip() in keep]
+
+    # The "on Amazon" set is barcode_clash's (Rule 12). SUBMITTED is split out of
+    # it because it is the one that may be included on purpose.
+    on_amazon = set(_ON_AMAZON) - {"SUBMITTED"}
     for r in rows:
+        sku = str(r.get("sku") or "")
+        title = str(r.get("title") or "").strip()
         status = str(r.get("status") or "").strip().upper()
-        asin = str(r.get("competitor_asin") or "").strip().upper()
-        if status in _NOT_DRAFTS or not _re.fullmatch(r"[A-Z0-9]{10}", asin):
+        base = {"sku": sku, "title": title, "status": status}
+        if status in on_amazon:
+            out["skipped"].append(dict(base, reason=SKIP_ON_AMAZON))
             continue
-        out.append({"sku": str(r.get("sku") or ""),
-                    "title": str(r.get("title") or ""),
-                    "asin": asin,
-                    "product_type": str(r.get("product_type") or "").strip(),
-                    "status": status,
-                    "marketplace": str(r.get("listing_marketplace") or "").strip().upper()})
+        if status == "SUBMITTED" and not include_submitted:
+            out["skipped"].append(dict(base, reason=SKIP_SUBMITTED))
+            continue
+        if status == "PARENT":
+            out["skipped"].append(dict(base, reason=SKIP_PARENT))
+            continue
+        if status == "QUEUED":
+            out["skipped"].append(dict(base, reason=SKIP_QUEUED))
+            continue
+        asin = str(r.get("competitor_asin") or "").strip().upper()
+        if _re.fullmatch(r"[A-Z0-9]{10}", asin):
+            method = BY_ASIN
+        elif title:
+            method, asin = BY_TITLE, ""
+        else:
+            out["skipped"].append(dict(base, reason=SKIP_NOTHING))
+            continue
+        out["check"].append({
+            "sku": sku, "title": title, "asin": asin,
+            "product_type": str(r.get("product_type") or "").strip(),
+            "status": status,
+            "marketplace": str(r.get("listing_marketplace") or "").strip().upper(),
+            "method": method})
     return out
+
+
+def drafts_to_check(config_path, workspace_id):
+    """The drafts in one workspace that have a competitor ASIN to ask about.
+
+    -> [{"sku", "title", "asin", "product_type", "status", "marketplace", "method"}]
+
+    Unchanged in meaning: competitor-ASIN drafts only, and nothing already on
+    Amazon or submitted. The wider list, with its reasons, is candidates().
+    """
+    return [d for d in candidates(config_path, workspace_id)["check"]
+            if d["method"] == BY_ASIN]
+
+
+def answer_key(draft):
+    """Where compare() finds the answer for one draft.
+
+    By ASIN for a catalogue lookup -- two drafts from one competitor share the
+    answer. By SKU for a title search, because two titles are two questions.
+    """
+    d = draft or {}
+    if d.get("method") == BY_TITLE:
+        return "title:" + str(d.get("sku") or "")
+    return d.get("asin")
 
 
 def compare(drafts, answers):
     """What Amazon's answers would change. Pure: no database, no network.
 
-    `answers` is {asin: api.amazon_catalog.product_type_of(...) result}.
+    `answers` is {answer_key(draft): result}, where a result is
+    api.amazon_catalog.product_type_of(...) for a catalogue lookup, or the same
+    shape plus "options" (every type Amazon's search offered) for a title.
 
-    -> [{"sku", "title", "asin", "current", "amazon", "verdict", "why"}]
+    -> [{"sku", "title", "asin", "current", "amazon", "verdict", "why",
+         "method", "options"}]
        verdict: "change"      Amazon's type differs -- the one to apply
                 "same"        already right
                 "not_checked" Amazon could not answer; nothing is changed
     """
     out = []
     for d in drafts or []:
-        ans = (answers or {}).get(d.get("asin")) or {}
+        ans = (answers or {}).get(answer_key(d)) or {}
         amazon = str(ans.get("product_type") or "").strip().upper()
         current = str(d.get("product_type") or "").strip().upper()
         if ans.get("status") != "ok" or not amazon:
@@ -204,9 +305,12 @@ def compare(drafts, answers):
             verdict, why = "same", ""
         else:
             verdict, why = "change", ""
+        options = [str(o).strip().upper() for o in (ans.get("options") or [])
+                   if str(o or "").strip()]
         out.append({"sku": d.get("sku"), "title": d.get("title"),
                     "asin": d.get("asin"), "current": current,
-                    "amazon": amazon, "verdict": verdict, "why": why})
+                    "amazon": amazon, "verdict": verdict, "why": why,
+                    "method": d.get("method") or BY_ASIN, "options": options})
     return out
 
 

@@ -190,7 +190,10 @@ try:
         calls.append((mkt, mid, asin)) or {"status": "ok", "product_type": "TABLE", "error": ""})
 
     j = cli.get("/product_types/drafts?account=nestwell_goods").get_json()
-    check("GET drafts", [d["sku"] for d in j["drafts"]], ["8.59_2Days_B0DNYVCK4J"])
+    # The draft with no competitor ASIN is now checked by its title
+    # (test_product_type_fix_scope.py covers that and the reasons).
+    check("GET drafts", [(d["sku"], d["method"]) for d in j["drafts"]],
+          [("8.59_2Days_B0DNYVCK4J", "asin"), ("0.00_3Days_336636956670", "title")])
 
     j = cli.post("/product_types/lookup", json={
         "account": "nestwell_goods", "marketplace": "UK",
