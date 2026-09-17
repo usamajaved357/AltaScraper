@@ -1122,6 +1122,40 @@ CREATE TABLE IF NOT EXISTS notifications(
 );
 CREATE INDEX IF NOT EXISTS idx_notif_ws ON notifications(workspace_id, is_read, id);
 
+-- EVERY FILE THAT CHANGED DATA, KEPT.
+--
+--     "i want to track which files were uploaded recently for creating listings
+--      like amazon has it, it stores files which were used to create or make
+--      any changes in the listings using the files or templates"
+--
+-- One row per upload that reached the app: what kind, which file, who, when,
+-- what it did (counts and a per-row report) and where the ORIGINAL bytes are
+-- kept on disk (stored_path, relative to the data directory). Kept for ever, by
+-- the owner's choice. See domain/upload_log.py.
+CREATE TABLE IF NOT EXISTS upload_log(
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id  TEXT,
+    marketplace   TEXT,
+    kind          TEXT,      -- product_template | cost_sheet | order_costs
+                             -- | tracking | supplier_links | min_prices | miles_items
+    filename      TEXT,
+    stored_path   TEXT,
+    bytes         INTEGER,
+    sha256        TEXT,
+    uploaded_by   TEXT,
+    status        TEXT,      -- done | done_with_errors | failed
+    rows_total    INTEGER,
+    rows_ok       INTEGER,
+    rows_skipped  INTEGER,
+    rows_error    INTEGER,
+    summary       TEXT,
+    error         TEXT,
+    report_json   TEXT,
+    skus_json     TEXT,
+    uploaded_at   TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_upload_ws ON upload_log(workspace_id, id);
+
 -- WHAT AMAZON SAID IT WOULD TAKE, PER PRODUCT.
 --
 --     "get accurate fees from amazon per item"

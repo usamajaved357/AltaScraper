@@ -158,6 +158,22 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         _MILES_STATE["source"] = str(b.get("filename", "") or "").strip()
         done = _miles_load_history()
         already = [it for it in clean if it in done]
+        # KEPT IN THE UPLOAD HISTORY, with the file the browser read the list from.
+        try:
+            from domain import upload_log as _ul
+            _acc = (_active_account() or {}) if callable(_active_account) else {}
+            _f = b.get("file") or {}
+            _ul.record(CONFIG_PATH, str(_acc.get("id") or ""),
+                       str(_acc.get("default_marketplace") or ""), "miles_items",
+                       _f.get("name") or _MILES_STATE["source"] or "item list",
+                       _ul.decode_data_url(_f.get("data")),
+                       ok=len(clean), skipped=len(items) - len(clean),
+                       summary=("%d item number(s) ready to harvest; %d already harvested before."
+                                % (len(clean), len(already))),
+                       rows=[{"item": it, "status": ("already harvested" if it in done else "queued")}
+                             for it in clean])
+        except Exception:
+            pass
         return jsonify({"ok": True, "count": len(clean), "items": clean[:50],
                         "already_harvested": already})
 

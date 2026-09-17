@@ -186,3 +186,7 @@ tracking-*.csv
 
 # one-time repair marks written beside config.json (listing/suppliers.py)
 .supplier_columns_repair_*.done
+
+# Upload history: the original files people uploaded (real costs, suppliers,
+# tracking). Kept beside config.json by domain/upload_log.py; never committed.
+/uploads/

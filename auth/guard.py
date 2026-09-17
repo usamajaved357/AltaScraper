@@ -513,6 +513,11 @@ FEATURE_PATHS = [
     ("/run",                  "generate"),
     ("/preview",              "generate"),
     ("/input",                "generate"),
+    # Upload history: the files that created drafts and changed costs, suppliers,
+    # floors and tracking. Governed ON ARRIVAL, with Generate, where most of
+    # those files are uploaded. Every address also names its account, which
+    # check() verifies against the user's workspaces.
+    ("/uploads",              "generate"),
 
     ("/sales",                "sales"),
     # (Contribution per product, orders, returns and AI spend all used to map

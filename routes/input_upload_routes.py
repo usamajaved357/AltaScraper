@@ -132,6 +132,12 @@ def register(app, *, CONFIG_PATH, _state):
     def _wsid():
         return str(_state.get("active_account_id", "") or "") or "_no_account"
 
+    def _keep(filename, data, **kw):
+        """Record this upload in the Upload history (domain/upload_log.py)."""
+        from domain import upload_log as _ul
+        _ul.record(CONFIG_PATH, _wsid(), _state.get("active_marketplace") or "",
+                   "product_template", filename, data, **kw)
+
     # ---- the upload ---------------------------------------------------------
 
     @app.route("/input/upload", methods=["POST"])
@@ -155,10 +161,12 @@ def register(app, *, CONFIG_PATH, _state):
 
         rows, err = rows_of(data, filename)
         if err:
+            _keep(filename, data, error=err)
             return jsonify({"ok": False, "error": err, "filename": filename}), 400
         # A header row on its own is a file with no products in it, which is a
         # different problem from a file that would not parse.
         if not rows:
+            _keep(filename, data, error="There are no rows in that file.")
             return jsonify({"ok": False, "filename": filename,
                             "error": "There are no rows in that file."}), 400
 
@@ -175,6 +183,8 @@ def register(app, *, CONFIG_PATH, _state):
             # SAY WHAT WAS IN THE FILE. "No columns matched" with nothing else
             # leaves the reader guessing at spelling; the headers we DID find
             # are the whole diagnosis.
+            _keep(filename, data, error=("None of the file's columns were recognised: %s"
+                                         % ", ".join(h for h in headers if h.strip())[:500]))
             return jsonify({"ok": False, "filename": filename,
                             "found_columns": [h for h in headers if h.strip()],
                             "error": (
@@ -186,6 +196,7 @@ def register(app, *, CONFIG_PATH, _state):
         wsid = _wsid()
         added = skipped = 0
         errors, preview = [], []
+        report, new_skus = [], []          # for the Upload history
         stopped = False
 
         # ROWS GO STRAIGHT INTO THE LISTINGS STORE AS status=QUEUED. There is no
@@ -211,17 +222,33 @@ def register(app, *, CONFIG_PATH, _state):
                 # rows that really did break.
                 if not _ir.is_generatable(product):
                     skipped += 1
+                    report.append({"row": n, "status": "skipped", "sku": "",
+                                   "note": "no source link, Amazon link/ASIN or product name"})
                     continue
                 extras = _qs.add_queued(CONFIG_PATH, wsid, product, taken=taken)
                 added += 1
+                new_skus.append(extras["sku"])
+                report.append({"row": n, "status": "added", "sku": extras["sku"],
+                               "note": str(product.get("item_name") or product.get("ebay_url")
+                                           or product.get("amazon_url") or "")[:200]})
                 if len(preview) < PREVIEW_ROWS:
                     preview.append(dict(product, sku=extras["sku"]))
             except Exception as e:
                 errors.append("Row %d: %s" % (n, str(e)[:160]))
+                report.append({"row": n, "status": "error", "sku": "", "note": str(e)[:300]})
 
         if stopped:
             errors.append("(stopped after %d errors — the rest of the file was "
                           "not read)" % MAX_ERRORS)
+            report.append({"row": "", "status": "stopped", "sku": "",
+                           "note": "stopped after %d errors; the rest of the file was not read"
+                                   % MAX_ERRORS})
+
+        _keep(filename, data, ok=added, skipped=skipped,
+              errors=len([r for r in report if r["status"] == "error"]),
+              summary="%d draft(s) queued, %d row(s) skipped, %d error(s)."
+                      % (added, skipped, len(errors)),
+              rows=report, skus=new_skus)
 
         return jsonify({
             "ok": True,

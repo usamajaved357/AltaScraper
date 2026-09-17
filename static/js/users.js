@@ -185,6 +185,9 @@ const SECTION_FEATURE = {
   // LISTINGS permission -- not traffic. Somebody who may read search data
   // should not thereby be able to create listings.
   asinstudio:"asinstudio",
+  // Upload history. Its routes are under /uploads, which auth/guard.py governs
+  // as "generate" -- the nav item hides on exactly the same permission.
+  uploads:"generate",
 };
 
 function featureLevel(feat){

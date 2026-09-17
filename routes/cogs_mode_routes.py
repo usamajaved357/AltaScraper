@@ -197,15 +197,24 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account,
         f = request.files.get("file")
         if not f:
             return jsonify({"ok": False, "error": "no file was sent"}), 400
-        headers, rows, err = _sb.read_table(f.read(), f.filename or "")
+        raw = f.read()
+        from domain import upload_log as _ul
+
+        def _keep(**kw):
+            _ul.record(CONFIG_PATH, wsid, mkt, "order_costs", f.filename or "", raw, **kw)
+
+        headers, rows, err = _sb.read_table(raw, f.filename or "")
         if err:
+            _keep(error=err)
             return jsonify({"ok": False, "error": err}), 400
         if not headers:
+            _keep(error="there were no columns in that file")
             return jsonify({"ok": False,
                             "error": "there were no columns in that file"}), 400
 
         res = _ocs.apply_sheet(CONFIG_PATH, wsid, mkt, headers, rows)
         if not res.get("ok"):
+            _keep(error=res.get("error") or "the sheet was refused")
             return jsonify(res), 400
 
         # SAY WHAT HAPPENED TO EVERY ROW, in the order it matters. A bulk action
@@ -231,6 +240,9 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account,
         if not bits:
             bits.append("Nothing in that file changed anything.")
         res["note"] = " ".join(bits)
+        _keep(ok=res["set"], skipped=res["blank"],
+              errors=res["unknown_order"] + res["bad_number"],
+              summary=res["note"], rows=res.get("rows") or [])
         return jsonify(res)
 
     @app.route("/cogs/order", methods=["POST"])

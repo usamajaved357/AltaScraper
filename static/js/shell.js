@@ -1208,6 +1208,7 @@ function navTo(sec){
   if(sec==="ppcterms"){ if(typeof ppctLoad==="function" && !PPCT.data) ppctLoad(); }
   if(sec==="ppccampaigns"){ if(typeof ppccLoad==="function" && !PPCC.data) ppccLoad(); }
   if(sec==="imagelib"){ if(typeof imagelibOnOpen==="function") imagelibOnOpen(); }
+  if(sec==="uploads"){ if(typeof uploadsOnOpen==="function") uploadsOnOpen(); }
   if(sec==="permissions"){ if(typeof permissionsOnOpen==="function") permissionsOnOpen(); }
   // studioPickerOnOpen draws the product picker and then calls
   // imagestudioOnOpen itself, so the Studio works with nothing chosen -- it no
@@ -1304,7 +1305,9 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        // Phase 1 analytics. Manual only -- see routes/keywords_routes.py.
                        "kwspy","kwasin","ranktracker","kwhistory",
                        // ASIN Studio: any ASIN in, a branded draft out.
-                       "asinstudio"];
+                       "asinstudio",
+                       // Upload history: every uploaded file, kept.
+                       "uploads"];
 
 // THE ADDRESS FOR ONE SECTION, so a nav item can be a real <a href>.
 //
