@@ -48,8 +48,22 @@ def row_to_product(row):
     except (TypeError, ValueError):
         cost = ""
 
+    # EVERY SUPPLIER ON THE ROW, not just the first.
+    #
+    #     "I generated the listings with 3 suppliers (ebay links) in the template
+    #      and the drafts are generated but the repricer has received only 1
+    #      supplier in it, other 2 are not there"
+    #
+    # The upload stores supplier_2 and supplier_3 on the queued row
+    # (data/input_row.to_listing_row), but this handed the generator ebay_url
+    # alone -- and process_row, given no supplier_urls, falls back to
+    # [(1, ebay_url)]. So only supplier 1 was fetched and only supplier 1 was
+    # enrolled. The sheet path (read_input_sheet) has carried supplier_urls
+    # since the feature was built; this is the upload path catching up.
+    from listing import suppliers as _suppliers
     return {
         "sku": sku,
+        "supplier_urls": _suppliers.from_listing_row(row),
         "ebay_url": str(row.get("source_url") or "").strip(),
         "amazon_url": "",
         "competitor_asin": str(row.get("competitor_asin") or "").strip(),
@@ -102,5 +116,17 @@ def read_products(path):
         # Carried through so process_row can keep the row's identity.
         row["sku"] = str(p.get("sku", "") or "")
         row["competitor_asin"] = str(p.get("competitor_asin", "") or "")
+        # JSON turns (position, url) into [position, url]; anything that is not
+        # that shape is dropped rather than handed to the generator.
+        sups = []
+        for s in (p.get("supplier_urls") or []):
+            try:
+                pos, url = int(s[0]), str(s[1] or "").strip()
+            except (TypeError, ValueError, IndexError, KeyError):
+                continue
+            if url:
+                sups.append((pos, url))
+        if sups:
+            row["supplier_urls"] = sups
         out.append(row)
     return out
