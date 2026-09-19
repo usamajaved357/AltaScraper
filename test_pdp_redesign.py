@@ -52,19 +52,50 @@ yes("  and the backdrop keeps a gap all round", "padding:40px 60px" in CSS)
 yes("the rail is 130px", re.search(r"\.pdp-side\{[^}]*width:130px", CSS, re.S))
 yes("content padding is 12px 16px", ".pdp-content{ flex:1; min-width:0; padding:12px 16px; }" in CSS)
 
-print("\n== item 2: what Amazon is showing shoppers, above the box ==")
+print("\n== item 2: what Amazon is holding IS the box; ours is underneath ==")
+# THE TWO SWAPPED, DELIBERATELY.
+#
+#     "i want to see what is actually present in amazon, the app should show
+#      that"
+#
+# The box used to hold the app's draft with Amazon's value greyed above it. For
+# a listing the app generated that draft was the only thing on the page that
+# looked authoritative, and nothing ever refreshed it -- so a listing edited in
+# Seller Central went on showing the generator's copy indefinitely. Now Amazon's
+# copy is in the box and ours is the grey line, drawn only where they differ.
 yes("the endpoint passes summaries on", '"summary": summary' in RT)
 yes("  under Amazon's own key names", '"itemName", "asin", "brand"' in RT)
 yes("  and the cache keeps it apart from `values`", "summary:j.summary||{}" in DA)
-yes("pdpLiveLine exists", "function pdpLiveLine(sku, kind)" in PDP)
-yes("  it prefers the catalogue value", "S.itemName" in PDP)
-yes("  and says which of the two it is showing", "pdp-livetag" in PDP and ".pdp-livetag{" in CSS)
+yes("pdpAmazonCopy exists", "function pdpAmazonCopy(sku)" in PDP)
+yes("  it prefers the catalogue title -- what a shopper sees", "S.itemName" in PDP)
 yes("  it draws nothing for a listing that is not live",
-    'L.state !== "ok"' in PDP.split("function pdpLiveLine")[1][:400])
+    'L.state !== "ok"' in PDP.split("function pdpAmazonCopy")[1][:600])
+yes("  and the row it returns is Amazon's copy over ours",
+    "Object.assign({}, own, live, {amazon_copy: true})" in PDP)
+# RULE 1. r.asin is the COMPETITOR slot; Amazon's answer is OUR listing's ASIN
+# and must never land there. pdpAmazonCopy returns only copy fields, so the
+# guard is that the returned keys are enumerable and asin is not among them.
+_ac = PDP.split("function pdpAmazonCopy")[1]
+_ac = _ac[:_ac.index("\n}")]
+yes("  it never writes the competitor ASIN slot (Rule 1)",
+    "out.asin" not in _ac and "out[\"asin\"]" not in _ac)
+yes("the app's own copy is shown where it differs",
+    "function pdpAppCopyLine(sku, kind)" in PDP)
+yes("  labelled as ours, not Amazon's", "the app’s copy" in PDP)
+yes("  and says which of the two it is showing", "pdp-livetag" in PDP and ".pdp-livetag{" in CSS)
+yes("  nothing is drawn when the two match",
+    "mine.trim() === shown.trim()" in PDP)
+yes("the page says once where the fields came from",
+    "function pdpAmazonCopyNote(r)" in PDP and "pdpAmazonCopyNote(r)" in PDP)
 _det = PDP[PDP.index('if(PDP_TAB === "details")'):]
 _det = _det[:_det.index("else if")]
 for kind in ("title", "bullets", "desc", "search"):
-    yes("  the details tab draws it for %s" % kind, 'pdpLiveLine(sku, "%s")' % kind in _det)
+    yes("  the details tab draws it for %s" % kind, 'pdpAppCopyLine(sku, "%s")' % kind in _det)
+# THE CALL THAT MAKES ANY OF IT POSSIBLE. It was gated on `!own`, so Amazon was
+# asked only about listings with no draft -- which is exactly the set that never
+# needed asking, because those already drew from Amazon.
+yes("Amazon is asked about a listing we DO hold a draft of",
+    "lvEnsure(own || cat || {sku: sku, status: \"LIVE\"})" in PDP)
 
 print("\n== item 3: a (?) on every attribute label, from Amazon's schema ==")
 yes("_load_schema collects Amazon's description", '"help": {}' in DASH)
