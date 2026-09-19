@@ -138,13 +138,23 @@ got, note = R("", ONE)
 check("the account brand is used", got, "Nestwell Goods")
 check("  with no complaint", note, "")
 
-print("\n== one copy of the rule, used by both callers ==")
+print("\n== one copy of the rule, used by every caller ==")
 src = open(os.path.join(HERE, "amazon_listing_generator.py"),
            encoding="utf-8").read()
 check("the helper is defined once",
       src.count("def resolve_account_brand("), 1)
-check("  and called from the builder and the submit guard",
-      src.count("resolve_account_brand("), 3)   # 1 def + 2 calls
+# A THIRD CALLER, 19 Sep 2026: process_row's per-product brand selection.
+#
+#     "i wrote the brand name as Gregvilo in the template ... but when the
+#      listing generated it shows my brand name as Nestwell Goods"
+#
+# That selection used to be `if user_brand: chosen_brand = user_brand` -- the
+# RUN's brand, which under a resolved account is the account's own trademark, so
+# the row's Brand column could never win. It asks this function now, like the
+# other two, which is why the count moved. See test_brand_from_template.py for
+# the whole chain.
+check("  and called from the builder, the submit guard and the row's own choice",
+      src.count("resolve_account_brand("), 4)   # 1 def + 3 calls
 truthy("  with the reason recorded", "ONE COPY, used by build_api_attributes" in src)
 # The old inline copies must be gone, or they will drift.
 falsy("no inline copy is left behind",

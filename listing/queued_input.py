@@ -27,8 +27,14 @@ import os
 import tempfile
 
 # The keys read_input_sheet produces. Anything downstream expects these names.
+#
+# `brand` IS ONE OF THEM, and this list is why adding it to row_to_product alone
+# would have changed nothing: read_products rebuilds each product from THIS tuple
+# and drops whatever is not in it, so a key written into the temp JSON but missing
+# here never reaches the generator. read_input_sheet produces `brand` too, so the
+# two input paths still produce the same shape.
 PRODUCT_KEYS = ("ebay_url", "source_cost", "amazon_url", "selling_price",
-                "item_name", "handling_time", "upc")
+                "item_name", "handling_time", "upc", "brand")
 
 
 def row_to_product(row):
@@ -64,6 +70,20 @@ def row_to_product(row):
     return {
         "sku": sku,
         "supplier_urls": _suppliers.from_listing_row(row),
+        # THE BRAND THE OWNER TYPED, and it used to stop here.
+        #
+        #     "i wrote the brand name as Gregvilo in the template and downloaded
+        #      it back in the app for listing generation but when the listing
+        #      generated it shows my brand name as Nestwell Goods even though i
+        #      did not put it there"
+        #
+        # The upload stores it (data/input_row.to_listing_row writes the Brand
+        # column when the file named one), and this handed the generator
+        # everything EXCEPT that -- so process_row saw no row brand, fell back to
+        # the account's own trademark, and wrote it into the finished listing.
+        # Exactly the fault the supplier_urls note below describes, on a
+        # different column.
+        "brand": str(row.get("brand") or "").strip(),
         "ebay_url": str(row.get("source_url") or "").strip(),
         "amazon_url": "",
         "competitor_asin": str(row.get("competitor_asin") or "").strip(),
