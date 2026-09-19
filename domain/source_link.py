@@ -156,6 +156,41 @@ def for_sku(config_path, workspace_id, sku):
 
 _ITEM_RE = re.compile(r"/itm/(?:[^/?#]*?/)?(\d{9,15})")
 
+# LABELS THE APP WROTE ITSELF, which are not names anybody chose.
+#
+# The label column is filled from two quite different directions. A person types
+# their own word for a supplier into the template -- "Bob's Wholesale" -- and
+# that rightly beats anything derived from a URL. But the app writes into the
+# same column, and what it writes is the SLOT the link arrived in, not a name:
+#
+#   listing/suppliers.enrol      "Supplier 1", "Supplier 2", "Supplier 3"
+#   source_repo.add_source       the URL again, via its `label or url` fallback
+#
+# Both outranked the seller name eBay publishes, because "is not a URL" was the
+# only test a label had to pass. Measured on nestwell_goods: the repricer named
+# a link "Supplier 1" while the eBay page that same link opens is sold by
+# UK Daily Supply 16 -- the app quietly refusing to say who a supplier is,
+# having been handed the answer on every check.
+#
+# Nothing is lost by refusing to read the slot as a name: it is already recorded
+# on the source row as `priority`, which is what orders the list.
+_SLOT_RE = re.compile(r"^(?:supplier|source)(?:\s*(?:url|link))?(?:\s*\d+)?$",
+                      re.I)
+
+
+def _typed(label):
+    """True when this label is somebody's own word for the supplier.
+
+    False for the two things the app puts in that column itself -- a raw URL and
+    a slot name -- so that both fall through to the seller name below.
+    """
+    label = str(label or "").strip()
+    if not label:
+        return False
+    if label.lower().startswith(("http://", "https://")):
+        return False
+    return not _SLOT_RE.match(label)
+
 
 def display_name(url, seller="", label=""):
     """The name to put on screen for a supplier link. Never the raw URL.
@@ -171,8 +206,10 @@ def display_name(url, seller="", label=""):
 
     In order of what is actually known about the link:
 
-      1. a label somebody typed against it in the supplier template -- their own
-         name for a supplier beats anything derived from a URL;
+      1. a label somebody TYPED against it in the supplier template -- their own
+         name for a supplier beats anything derived from a URL. Only a typed
+         one: see _typed(), which refuses the raw URL and the slot name the app
+         writes into the very same column;
       2. the seller name the supplier published (eBay's seller.username), which
          is the name printed on the listing itself and can be checked;
       3. the site, and the item number when the URL carries one. Honest about
@@ -181,10 +218,13 @@ def display_name(url, seller="", label=""):
     Nothing is invented. An unrecognisable URL returns "supplier link", which is
     true, rather than a guess dressed as a seller name.
     """
+    # A "label" that is just the URL again, or the slot the link came in on, is
+    # not a label. Both are written by the app into the same column a person
+    # types into, and both are still sitting in real rows -- so this is decided
+    # here, once, rather than by a migration that could only ever catch the rows
+    # that existed on the day it ran.
     label = str(label or "").strip()
-    # A "label" that is just the URL again is not a label. That is what the old
-    # `label or url` fallback wrote into the field, so it is still in the data.
-    if label and not label.lower().startswith(("http://", "https://")):
+    if _typed(label):
         return label
 
     seller = str(seller or "").strip()

@@ -348,9 +348,16 @@ def enrol(config_path, workspace_id, marketplace, sku, urls, log=None):
     n = 0
     for pos, url in urls:
         try:
+            # NO LABEL. This used to write "Supplier %d" -- the sheet column the
+            # link arrived in -- into the column a PERSON types their own name
+            # for a supplier into. domain/source_link.display_name reads a label
+            # as somebody's chosen name and stops there, so every enrolled link
+            # was called "Supplier 1" on the repricer and on the order panel for
+            # ever, while the eBay seller name sitting on each of its checks was
+            # never reached. The slot is not lost: it is `priority` below, which
+            # is what actually orders the list.
             _repo.ensure_source(config_path, workspace_id, marketplace, sku, url,
                                 kind="ebay",
-                                label="Supplier %d" % pos,
                                 priority=int(pos),
                                 stage=_repo.DRAFT)
             n += 1

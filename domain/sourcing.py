@@ -81,7 +81,23 @@ A NOTE ON THE FEE RATE
 """
 import datetime as _dt
 
+from domain import source_link as _slink  # the ONE thing that names a link
 from listing import pricing as _pricing   # the ONE definition of the pricing rule
+
+
+def _source_name(src, chk):
+    """What to CALL a supplier link, in the sentences this module writes.
+
+    Every reason and rejection here names a source, and they used to do it with
+    `label or url` -- a second, worse answer to a question domain/source_link
+    already answers for the order panel and the repricer (CLAUDE.md Rule 12).
+    The two disagreed in both directions: this printed "Supplier 1" where the
+    screen printed the seller, and 120 characters of eBay tracking parameters
+    where the screen printed "ebay.co.uk - item 235976183512".
+    """
+    return _slink.display_name((src or {}).get("url"),
+                               (chk or {}).get("seller"),
+                               (src or {}).get("label"))
 
 
 # ---- what a check can be ---------------------------------------------------
@@ -553,7 +569,7 @@ def choose(pairs, rule, now):
             ok.append((src, chk))
         else:
             rejected.append({"source_id": src.get("id"),
-                             "label": src.get("label") or src.get("url"),
+                             "label": _source_name(src, chk),
                              "reason": why})
     if not ok:
         return None, rejected
@@ -1120,7 +1136,7 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
                          "%.2f (the market price) -- the rules alone would have "
                          "priced it at %.2f, which is lower, so it was not used%s"
                          % (rule["strategy"], len(live) - len(rejections),
-                            src.get("label") or src.get("url"), cost,
+                            _source_name(src, chk), cost,
                             price, out["held_over"],
                             "" if lead is None else
                             "; " + handling_sentence(lead, disp, rule)))
@@ -1145,7 +1161,7 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         bits = []
         n_usable = len(live) - len(rejections)
         bits.append("Buying from %s at %.2f delivered%s."
-                    % (src.get("label") or src.get("url"), cost,
+                    % (_source_name(src, chk), cost,
                        "" if n_usable <= 1 else
                        " -- the %s of %d sources that can be used"
                        % ("cheapest" if rule["strategy"] == "cheapest"
