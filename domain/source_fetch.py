@@ -102,12 +102,13 @@ def _ebay_option(data):
     describe one real way of buying the thing.
 
     CHEAPEST, because that is what would actually be bought -- the repricer's
-    whole job is the landed cost. Ties broken by the earlier delivery, so a free
-    service that arrives sooner wins over an equally free one that does not, and
-    THEN by whether the option names a carrier at all, because a listing can
-    carry the same free postage twice under two names and the loser used to be
-    decided by eBay's list order (see _is_generic_service). eBay tends to return
-    them cheapest-first already, but "tends to" is not a rule to rest a price on.
+    whole job is the landed cost. Then, among equals, the option that NAMES a
+    carrier: a listing can carry the same free postage twice, once as "Royal
+    Mail Tracked 48" and once as eBay's "Other 48h courier" placeholder, and the
+    loser used to be decided by eBay's undocumented list order. Only then the
+    earlier delivery. See _is_generic_service for why the name outranks the date
+    and why that cannot move a price. eBay tends to return them cheapest-first
+    already, but "tends to" is not a rule to rest a price on.
 
     CALCULATED postage is skipped: it depends on a destination postcode, so the
     figure (if any) is not the figure we would pay. Skipping the option is the
@@ -128,12 +129,16 @@ def _ebay_option(data):
         # dates sort last so an option that gives one beats an option that does
         # not, at the same price.
         when = str(opt.get("maxEstimatedDeliveryDate") or "9999")
-        # ...AND THEN THE ONE THAT NAMES A CARRIER, which is a NAME-ONLY
-        # tie-break and cannot move a price or a date. See _is_generic_service.
-        # `idx` last, so that two options alike in every one of these is decided
-        # by eBay's order rather than by which happened to be compared first --
-        # the same answer every run, which "first one seen wins" was not.
-        key = (v, when, 1 if _is_generic_service(opt) else 0, idx)
+        # COST, THEN WHETHER ANYBODY IS NAMED, THEN THE DATE.
+        #
+        # The name sits AHEAD of the date, which is the owner's decision of
+        # 19 Sep 2026 and is the whole of what makes his case come out right --
+        # see _is_generic_service for the measurement and for why it is safe.
+        #
+        # `idx` last, so two options alike in all three are decided by eBay's
+        # order rather than by which happened to be compared first: the same
+        # answer every run, which "first one seen wins" was not.
+        key = (v, 1 if _is_generic_service(opt) else 0, when, idx)
         if best_key is None or key < best_key:
             best, best_key = opt, key
     return best
@@ -167,12 +172,31 @@ def _is_generic_service(opt):
     does not promise. The app printed one name, the page printed the other, and
     nothing about the listing had changed.
 
-    NAMED WINS, for three reasons and none of them is cosmetic: it is the line
-    eBay prints to the buyer, it is a promise that can be checked against a
-    tracking number, and at an equal price and an equal date it is the same
-    postage either way -- so this cannot move the landed cost the repricer
-    prices from, nor the dispatch estimate the handling time is built on. It
-    decides the NAME and nothing else.
+    NAMED WINS, and it wins AHEAD OF THE DELIVERY DATE. That is the part worth
+    justifying, because the same supplier also does this:
+
+        Royal Mail Tracked 48   free   arrives by 23 Sep   (named)
+        Other 48h courier       free   arrives by 22 Sep   (nobody)
+        Royal Mail Tracked 24   7.99   arrives by 23 Sep
+
+    Equal price, and the placeholder claims a day sooner. Ranking the date first
+    takes the placeholder, and the repricer then prints a service eBay's own page
+    does not show. The owner's decision, 19 Sep 2026: take the named one.
+
+    WHY THAT IS SAFE, which is the only reason it is allowed ahead of the date:
+
+      * the price is already equal -- cost is ranked first -- so the landed cost
+        the repricer prices from cannot move, whichever is chosen;
+      * it can only ever choose an equal or LATER delivery date, because when
+        the named option is the sooner one it already won. dispatch_days is
+        built from that date, so the handling time we promise can only get
+        LONGER. The module note at the top of this file states the preference
+        outright: too long costs some conversion, too short costs a late
+        shipment and account health.
+
+    And it is the line eBay prints to the buyer, and a promise that can be
+    checked against a tracking number. "Other 48h courier" names nobody, so
+    there is nothing to check it against.
 
     A carrierCode of "Other" is not a carrier either; it is the placeholder
     wearing the other field's clothes (measured on seller `schallen`).

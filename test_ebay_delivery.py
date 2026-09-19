@@ -369,21 +369,41 @@ CHEAPER_GENERIC["shippingOptions"] = [
 g2 = SF.from_ebay_item(CHEAPER_GENERIC, NOW2)
 check("a free placeholder beats a named service that costs money",
       (g2["carrier"], g2["shipping"]), ("Other 48h courier", 0.0))
+print("\n  ...and the named one wins even when the placeholder claims sooner")
+# THE OWNER'S DECISION, 19 Sep 2026, on a real case from the same supplier:
+#
+#     Royal Mail Tracked 48   free   arrives by 23 Sep   (named)
+#     Other 48h courier       free   arrives by 22 Sep   (nobody)
+#
+# The date used to rank ahead of the name, so the placeholder won and the
+# repricer printed a service eBay's own page does not show.
 FASTER_GENERIC = dict(TWO_FREE)
 FASTER_GENERIC["shippingOptions"] = [
     {"shippingServiceCode": "Royal Mail Tracked 48",
      "shippingCarrierCode": "Royal Mail", "type": "Economy Delivery",
      "shippingCost": {"value": "0.00", "currency": "GBP"},
      "shippingCostType": "FIXED",
-     "maxEstimatedDeliveryDate": "2026-09-25T10:00:00.000Z"},
+     "maxEstimatedDeliveryDate": "2026-09-23T10:00:00.000Z"},
     {"shippingServiceCode": "Other 48h courier", "type": "Standard Delivery",
      "shippingCost": {"value": "0.00", "currency": "GBP"},
      "shippingCostType": "FIXED",
      "maxEstimatedDeliveryDate": "2026-09-22T10:00:00.000Z"},
 ]
 g3 = SF.from_ebay_item(FASTER_GENERIC, NOW2)
-check("and an equally free placeholder that ARRIVES SOONER still wins",
-      g3["carrier"], "Other 48h courier")
+check("the named carrier is taken over the sooner placeholder",
+      g3["carrier"], "Royal Mail Tracked 48")
+check("  and the date reported is THAT option's, not the one we passed over",
+      g3["delivery_max"], "2026-09-23")
+# WHY THIS IS ALLOWED AHEAD OF THE DATE, as one assertion: the price is already
+# equal, and the date can only move LATER. A rule that could shorten the promise
+# would be a handling time that cannot be kept -- the fault this whole module
+# exists to prevent.
+_gen_only = dict(TWO_FREE)
+_gen_only["shippingOptions"] = [FASTER_GENERIC["shippingOptions"][1]]
+_sooner = SF.from_ebay_item(_gen_only, NOW2)["dispatch_days"]
+truthy("  choosing the named one never SHORTENS the dispatch estimate",
+       g3["dispatch_days"] >= _sooner)
+check("  the postage cost is still untouched", g3["shipping"], 0.0)
 
 print("\n  ...and what counts as naming nobody")
 gen = SF._is_generic_service
