@@ -105,20 +105,52 @@ check("and a failed read does not silently mean 'Amazon has nothing'",
 check("nor does it offer values it never got", ctx.lvKeys(SKU), []);
 
 // ---------------------------------------------------------------------------
-console.log("\nthe box keeps the APP's value; Amazon's is shown underneath");
+console.log("\nthe box holds AMAZON's value; the app's own is shown underneath");
+// THE TWO SWAPPED, ON PURPOSE.
+//
+//     "i want to see what is actually present in amazon, the app should show
+//      that"  ...  "yes do the attributes as well"
+//
+// The box used to hold the app's value with Amazon's greyed beneath it, so that
+// the box always equalled what a Submit would send. That sentence is still true
+// and still on screen -- it moved under the box and is now written out in words
+// instead of being implied by position.
 // ---------------------------------------------------------------------------
 seed({colour:"black"});
+check("Amazon's value is what goes in the box", ctx.lvBoxValue(SKU,"colour","blue"), "black");
+check("  ours stands where Amazon has nothing", ctx.lvBoxValue(SKU,"finish","matte"), "matte");
+check("  and where Amazon's is blank, which is not an answer",
+      ctx.lvBoxValue(SKU,"blankish","mine"), "mine");
+check("  a multi-valued attribute keeps OURS -- its box cannot express the rest",
+      (function(){ seed({special_feature:"portable"}, {special_feature:4});
+                   const v = ctx.lvBoxValue(SKU,"special_feature","ours");
+                   seed({colour:"black"}); return v; })(), "ours");
+check("  and with no live read at all, nothing changes",
+      (function(){ seedRaw({state:"error", values:{}, multi:{}, content:{}, issues:[]});
+                   const v = ctx.lvBoxValue(SKU,"colour","blue");
+                   seed({colour:"black"}); return v; })(), "blue");
+
 const below = ctx.lvBelow(SKU, "colour", "blue");
-truthy("Amazon's value is rendered under the control", below.indexOf("black") >= 0);
-truthy("with a button to take it",                     below.indexOf("lvUse(") >= 0);
+truthy("the APP's value is rendered under the control", below.indexOf("blue") >= 0);
+truthy("  named as the one that would actually be sent",
+       below.indexOf("what Submit would send") >= 0);
+truthy("  with a button that makes Amazon's the one we send",
+       below.indexOf("lvUse(") >= 0);
+truthy("  and marked as ours, not Amazon's", below.indexOf("lv-mine") >= 0);
 check("a field that agrees gets no second line",       ctx.lvBelow(SKU,"colour","black"), "");
 check("nor does a field only the app has",             ctx.lvBelow(SKU,"finish","matte"), "");
+// live_only: the box now shows Amazon's value and we hold nothing. Silence here
+// would hide that a Submit sends an empty field over the top of what is shown.
+seed({material:"steel"});
+const lo = ctx.lvBelow(SKU, "material", "");
+truthy("holding nothing is said out loud, not left blank",
+       lo.indexOf("the app holds nothing") >= 0);
 
 seed({desc:"y".repeat(400)});
-const longb = ctx.lvBelow(SKU, "desc", "z");
+const longb = ctx.lvBelow(SKU, "desc", "z".repeat(400));
 truthy("400 characters do not blow the cell open", longb.indexOf("…") >= 0);
 truthy("and the full text is still in the title attribute",
-       longb.indexOf("y".repeat(400)) >= 0);
+       longb.indexOf("z".repeat(400)) >= 0);
 
 // ---------------------------------------------------------------------------
 console.log("\nmore than one value on Amazon is read-only, and says so");

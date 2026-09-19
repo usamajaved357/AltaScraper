@@ -100,16 +100,35 @@
 .lv-tag.lv-app{   color:#7a7984; background:#26262f; }
 .lv-tag.lv-multi{ color:#C9A3E8; background:#251d2e; }
 
-/* ---- 4. AMAZON'S VALUE, UNDER THE CONTROL ------------------------------
-   Deliberately BELOW the editable value rather than replacing it: the box
-   still holds this app's value, which is what a submit would send. Showing
-   Amazon's in the box would make the drawer lie about what is about to go. */
+/* ---- 4. THE APP'S OWN VALUE, UNDER THE CONTROL -------------------------
+   THE TWO SWAPPED. This used to hold Amazon's value while the box held ours,
+   on the reasoning that the box must show what a submit would send. The box
+   now holds AMAZON's -- "i want to see what is actually present in amazon,
+   the app should show that" -- so the sentence that reasoning protected moved
+   down here and is written out in words (.lv-note) rather than implied by
+   position. Neither value is hidden; the difference is which one is in the
+   foreground, and Amazon is the one holding the truth.
+
+   The colour stays blue-ish for one row only: a multi-valued attribute keeps
+   the old arrangement (its box is not editable), so this strip can still be
+   Amazon's there. .lv-dot-app marks the common case -- ours. */
 .lv-below{
   display:flex; align-items:baseline; gap:5px;
   margin-top:3px; padding-top:3px; border-top:1px dashed #3a3a45;
   font-size:10px; color:#85B7EB; min-width:0;
 }
 .lv-below .lv-dot{ background:#85B7EB; align-self:center; }
+/* OURS, not Amazon's: a different colour so the two strips cannot be misread
+   for one another on a grid where both can appear. A modifier class on the row
+   rather than :has(), which is not worth a rendering difference between two
+   browsers for a line this small. */
+.lv-below.lv-mine{ color:#9a9aa6; }
+.lv-below .lv-dot-app{ background:#9a9aa6; }
+.lv-val-empty{ font-style:italic; opacity:.75; }
+.lv-note{
+  flex:none; font-size:9px; opacity:.8; letter-spacing:.02em;
+  white-space:nowrap;
+}
 .lv-val{
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   min-width:0; flex:1 1 auto;
