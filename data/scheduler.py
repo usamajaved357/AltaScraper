@@ -741,6 +741,22 @@ def register_jobs(app, workspace_ids=None, config_path=None, cfg=None):
         res = run_job(job_type, ws)
         return jsonify(res), (200 if res.get("ok") else 500)
 
+    # ONE-TIME: suppliers 2 and 3 of drafts generated from an upload before the
+    # generator carried them (listing/suppliers.run_row_supplier_repair_once).
+    # In a thread, so a large store never slows the app coming up, and never
+    # fatal -- it runs again on the next start if it did not finish.
+    if config_path:
+        import threading
+
+        def _repair():
+            try:
+                from listing import suppliers as _sup
+                _sup.run_row_supplier_repair_once(
+                    config_path, log=lambda m: print("[suppliers] %s" % m, flush=True))
+            except Exception as e:
+                print("[suppliers] repair skipped: %s" % str(e)[:160], flush=True)
+        threading.Thread(target=_repair, daemon=True, name="supplier-repair").start()
+
     return start(workspace_ids)
 
 

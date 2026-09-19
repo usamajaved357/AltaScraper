@@ -203,26 +203,17 @@ def listing_supplier_urls(config_path, workspace_id, sku):
     """
     conn = _db.get_db(config_path)
     try:
-        have = {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
-        cols = [c for c in ("source_url", "supplier_2", "supplier_3") if c in have]
-        if not cols:
-            return []
         row = conn.execute(
-            "SELECT %s FROM listings WHERE workspace_id=? AND sku=?"
-            % ", ".join(cols), (workspace_id, sku)).fetchone()
+            "SELECT * FROM listings WHERE workspace_id=? AND sku=?",
+            (workspace_id, sku)).fetchone()
     except Exception:
         return []
     if not row:
         return []
-    pos_of = {"source_url": 1, "supplier_2": 2, "supplier_3": 3}
-    out, seen = [], set()
-    for i, c in enumerate(cols):
-        u = str(row[i] or "").strip()
-        k = u.lower().rstrip("/")
-        if u and k not in seen:            # one link pasted twice is one supplier
-            seen.add(k)
-            out.append((pos_of[c], u))
-    return out
+    # Which columns are suppliers, their order and the dedupe are decided in one
+    # place, listing/suppliers.from_listing_row (Rule 12).
+    from listing import suppliers as _suppliers
+    return _suppliers.from_listing_row(dict(row))
 
 
 def listing_status(config_path, workspace_id, sku):

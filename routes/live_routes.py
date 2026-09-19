@@ -8,12 +8,36 @@ import urllib
 import datetime as _dt
 
 from listing.sourcing_viability import check_sourcing_viability as _viability
+from domain import listing_status as _lstatus   # the ONE status word (Rule 12)
 
 # How old an already-generated Amazon report may be before we refuse to reuse it.
 # getReports defaults createdSince to 90 DAYS and documents no sort order, so an
 # unbounded reuse could serve a weeks-old catalogue as if it were live. Six hours
 # keeps ordinary page views fast without ever showing yesterday's catalogue.
 _REPORT_REUSE_MAX_AGE = 6 * 3600
+
+# HOW LONG A **STATUS** MAY BE REUSED. Not _IMG_TTL, which is 24 hours and whose
+# own comment gives the reason: "product images rarely change".
+#
+# They do. A status does not: it changes the moment Amazon enforces or lifts
+# something, and until now it was kept for a day because it happened to be
+# fetched by the same call as the picture and stored in the same entry.
+#
+#     "the suppression was removed by Amazon ... but when I come to app the app
+#      still says that they are suppressed in the all listing page"
+#
+# So the entry now has two clocks. The picture keeps the day it was given; the
+# status, the fulfilment channel and the handling time expire in fifteen
+# minutes, and a SKU whose status has expired is re-asked even though its image
+# is still good.
+#
+# THE COST IS BOUNDED BY WHO IS RE-ASKED, not by the interval. Only listings the
+# catalogue does not already call Active go back to Amazon -- see _status_stale.
+# An account's suppressed and inactive listings are a handful (5 of 73 on
+# nestwell_goods, measured 19 Sep 2026), and they are the only ones whose status
+# is both wrong-able and worth watching; a healthy Active listing keeps the
+# picture's clock, because the catalogue pull already refreshes it.
+_STATUS_MAX_AGE = 15 * 60
 
 
 def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state, _APLUS_CACHE=None, _APLUS_TTL=1800, _MIRROR_CACHE=None, _MIRROR_TTL=6*3600):
@@ -385,10 +409,29 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         todo = []
         _pending_out = []      # SKUs this call did not reach (see the cap below)
         _failed = []           # SKUs Amazon refused -- usually throttling
+        def _status_stale(entry, age):
+            """Is this entry's STATUS too old to repeat? (its picture may be fine)
+
+            Only for a status that is not Active. A listing Amazon already calls
+            Active is refreshed by the catalogue pull itself, and re-asking for
+            every one of them every fifteen minutes would spend a rate-limited
+            request per SKU per quarter hour to be told nothing changed.
+
+            The ones that are re-asked are exactly the ones a seller is waiting
+            on: Suppressed, Incomplete, Inactive -- the states you fix something
+            to get out of, and therefore the states where a stale answer is the
+            app contradicting Seller Central.
+            """
+            st = str((entry or {}).get("status") or "")
+            if not st or st == "Active":
+                return False
+            return age >= _STATUS_MAX_AGE
+
         for sku in skus:
             ck = f"{aid}::{mkt}::{sku}"
             c = _IMG_CACHE.get(ck)
-            if c and (_t.time() - c["ts"] < _IMG_TTL):
+            _age = (_t.time() - c["ts"]) if c else None
+            if c and _age < _IMG_TTL and not _status_stale(c, _age):
                 out[sku] = c["url"]
                 if c.get("status"):
                     statuses[sku] = c["status"]
@@ -467,21 +510,18 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                         if summaries:
                             s0 = summaries[0]
                             live_title = s0.get("itemName", "") or ""
-                            st_arr = s0.get("status", []) or []
-                            has_error = any((iss.get("severity", "") == "ERROR") for iss in issues if isinstance(iss, dict))
-                            suppressed = any(("suppress" in str(iss.get("message", "")).lower()
-                                              or "search suppress" in str(iss.get("message", "")).lower())
-                                             for iss in issues if isinstance(iss, dict))
-                            if suppressed:
-                                real_status = "Suppressed"
-                            elif "BUYABLE" in st_arr:
-                                real_status = "Active"
-                            elif has_error:
-                                real_status = "Incomplete"
-                            elif st_arr:
-                                real_status = "Inactive"
-                            else:
-                                real_status = "Inactive"
+                            # THE SAME FOUR-WAY ANSWER THE CATALOGUE GIVES, from
+                            # the same function, so a listing cannot be Active in
+                            # the list and Suppressed in this overlay (Rule 12).
+                            #
+                            # It also stops reading Amazon's PROSE. This tested
+                            # `"suppress" in issue["message"]`, and Amazon uses
+                            # that word in sentences that mean the opposite --
+                            # "this will not lead to ASIN suppression". The fact
+                            # is in enforcements.actions, as data. CLAUDE.md
+                            # Rule 4's parsing rule, and see the note in
+                            # domain/listing_status.py for what was measured.
+                            real_status = _lstatus.of(summaries, issues)
                             if not fulfillment:
                                 fc = s0.get("fulfillmentChannel", "")
                                 if fc:

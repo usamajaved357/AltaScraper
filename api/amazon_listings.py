@@ -17,7 +17,13 @@ edits THAT structure and sends it back. The shape always comes from Amazon.
 
 No rules and no decisions live here. Whether a price SHOULD change is
 domain/sourcing.py; whether it is allowed to be pushed is domain/source_apply.py.
+The one word a listing's state is called is domain/listing_status.py -- imported
+rather than re-derived, because this file and routes/live_routes.py both need it
+and two answers to that question is the bug it was written to end.
 """
+# The only top-level import in this file, and deliberately a local module with
+# no imports of its own: sp_api is heavy and stays lazy inside the functions.
+from domain import listing_status as _status
 
 OK     = "ok"
 GONE   = "gone"        # Amazon does not have this SKU
@@ -164,10 +170,19 @@ def catalogue(creds, marketplace, seller_id, marketplace_id,
     try:
         cl = _client(creds, marketplace, timeout=timeout)
         while True:
+            # `issues` RIDES ALONG, and it is what lets this call answer
+            # "suppressed". Without it the catalogue could only ever say
+            # Active/Inactive, so the suppression word had to come from a
+            # separate per-SKU pass that cached its answer for 24 hours -- which
+            # is why a suppression Amazon had lifted stayed on screen for a day
+            # (domain/listing_status.py). Measured on nestwell_goods/UK,
+            # 19 Sep 2026: all 20 of 20 items on the first page carried the key,
+            # 73 of 73 across the account, no extra request and no extra quota.
             kw = {"marketplaceIds": [marketplace_id],
                   "pageSize": int(page_size),
                   "includedData": ["summaries", "offers",
-                                   "fulfillmentAvailability", "attributes"]}
+                                   "fulfillmentAvailability", "attributes",
+                                   "issues"]}
             if token:
                 kw["pageToken"] = token
             resp = cl.search_listings_items(seller_id, **kw)
@@ -264,8 +279,15 @@ def _as_catalogue_row(item, marketplace_id):
     # alone is a product page with no offer attached -- see the verify branch in
     # amazon_listing_generator.py, where treating the two as one put a green row
     # on screen for a listing nobody could purchase.
+    #
+    # ...AND SUPPRESSED OUTRANKS IT, which is why this is no longer decided here.
+    # A suppressed listing still reports BUYABLE, so `"Active" if BUYABLE` called
+    # every suppressed listing Active and the true word had to arrive later from
+    # somewhere else. domain/listing_status is the one place that answers this
+    # now, for this call and for the per-SKU one in routes/live_routes.py, so
+    # they cannot disagree about one listing (CLAUDE.md Rule 12).
     statuses = [str(x).upper() for x in (s.get("status") or [])]
-    status = "Active" if "BUYABLE" in statuses else "Inactive"
+    status = _status.of(item.get("summaries") or [], item.get("issues") or [])
 
     barcode = ""
     ident = attrs.get("externally_assigned_product_identifier")

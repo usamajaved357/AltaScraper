@@ -74,6 +74,25 @@ check("  and so does a URL with no host",
 # thing being complained about back on screen.
 check("a label that is only the URL again is not treated as a name",
       _slink.display_name(EBAY, "", EBAY), "ebay.co.uk · item 235976183512")
+# THE SECOND THING THE APP WRITES INTO THE LABEL COLUMN, and it cost more than
+# the URLs did: listing/suppliers.enrol wrote the SHEET COLUMN a link arrived in
+# ("Supplier 1", "Supplier 2", "Supplier 3") as though it were a name, so every
+# enrolled link was named after its slot on the repricer and the order panel for
+# ever, and the eBay seller name on each of its checks was never reached.
+# Measured on nestwell_goods: a row called "Supplier 1" opened an eBay page sold
+# by UK Daily Supply 16.
+for slot in ("Supplier 1", "supplier 2", "Supplier3", "Supplier", "Source URL",
+             "source link"):
+    check("  the slot %r is not a name either, so the seller shows" % slot,
+          _slink.display_name(EBAY, "topseller_uk", slot), "topseller_uk")
+check("  and with no seller it still never shows the slot",
+      _slink.display_name(EBAY, "", "Supplier 1"),
+      "ebay.co.uk · item 235976183512")
+# The rule must not eat a real name that merely starts with the same word. This
+# is why it is anchored at both ends rather than a `startswith`.
+for real in ("Supplier Direct Ltd", "UK Daily Supply 16", "Source Wholesale"):
+    check("  but %r is a name and still wins" % real,
+          _slink.display_name(EBAY, "topseller_uk", real), real)
 for out in (_slink.display_name(EBAY, "topseller_uk", ""),
             _slink.display_name(EBAY, "", ""),
             _slink.display_name(EBAY, "", EBAY)):
@@ -139,7 +158,12 @@ print("\n== one function names a link, not two ==")
 # screens (CLAUDE.md Rule 12).
 import re                                                     # noqa: E402
 srcs = {p: open(r"D:\AltaScraper\%s" % p, encoding="utf-8-sig").read()
-        for p in ("domain/order_sources.py", "routes/sourcing_routes.py")}
+        for p in ("domain/order_sources.py", "routes/sourcing_routes.py",
+                  # The reasons and rejections this module writes name a source
+                  # too -- "Buying from X at 12.99 delivered" -- and they are
+                  # read on the same screen as the supplier table. A second
+                  # answer here is the same drift by another route (Rule 12).
+                  "domain/sourcing.py")}
 for p, s in srcs.items():
     truthy("%s asks source_link for the name" % p,
            re.search(r"_slink\.display_name\(", s))
@@ -149,6 +173,12 @@ js = open(r"D:\AltaScraper\static\js\sourcing.js", encoding="utf-8-sig").read()
 # function still decides what a link is called (CLAUDE.md Rule 12).
 truthy("the repricer draws the server's name",
        "s.label || _srcShort(s.url)" in js)
+# And nothing writes the slot back into the column display_name reads.
+enrol = open(r"D:\AltaScraper\listing\suppliers.py", encoding="utf-8-sig").read()
+check("enrolling a supplier does not name it after its sheet column",
+      bool(re.search(r'label\s*=\s*"Supplier %d"', enrol)), False)
+check("  the slot is kept as the priority, which is what orders the list",
+      bool(re.search(r"priority\s*=\s*int\(pos\)", enrol)), True)
 
 print("\n%d failed" % len(fails))
 for f in fails:

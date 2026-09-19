@@ -1,8 +1,11 @@
 // ---- Miles Lubricants import ----
 let MILES_ITEMS=[];
+// The picked file itself, so the upload can send it to the Upload history.
+let MILES_FILE=null;
 function milesPickFile(input){
   const f=input.files&&input.files[0];
   if(!f) return;
+  MILES_FILE=f;
   const status=document.getElementById("miles_filestatus");
   status.textContent="Reading "+f.name+"…";
   const name=f.name.toLowerCase();
@@ -52,8 +55,11 @@ function milesParseRows(rows, fname){
   document.getElementById("miles_filestatus").textContent=fname+" — "+items.length+" item number(s)";
   document.getElementById("miles_items").textContent = items.length? ("Items: "+items.slice(0,30).join(", ")+(items.length>30?" …":"")) : "No item numbers found in the file.";
   // upload to server
-  fetch("/miles/upload",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({items, filename: fname})}).then(r=>r.json()).then(j=>{
+  // The original file goes with the item list, so the Upload history keeps it.
+  const _withFile = (typeof uphFileForUpload === "function")
+    ? uphFileForUpload(MILES_FILE) : Promise.resolve(null);
+  _withFile.then(file=>fetch("/miles/upload",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({items, filename: fname, file})})).then(r=>r.json()).then(j=>{
       const btn=document.getElementById("miles_runbtn");
       if(btn) btn.disabled = !(j.ok && j.count>0);
     }).catch(()=>{});

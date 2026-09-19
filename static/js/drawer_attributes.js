@@ -219,27 +219,89 @@ function lvTag(sku, key, localVal){
   if(v === "same")
     return '<span class="lv-tag lv-ok" title="This app and Amazon hold the same value.">matches Amazon</span>';
   if(v === "differs")
-    return '<span class="lv-tag lv-diff" title="This app and Amazon disagree. The app’s value is in the box; Amazon’s is shown underneath.">differs from Amazon</span>';
+    return '<span class="lv-tag lv-diff" title="This app and Amazon disagree. Amazon’s value is in the box; the app’s own — the one a Submit would send — is shown underneath.">differs from Amazon</span>';
   if(v === "live_only")
-    return '<span class="lv-tag lv-live" title="Amazon has a value for this field and this app does not.">only on Amazon</span>';
+    return '<span class="lv-tag lv-live" title="Amazon has a value for this field and this app does not. Amazon’s is in the box; a Submit would send nothing over it unless you press “use Amazon’s”.">only on Amazon</span>';
   return '<span class="lv-tag lv-app" title="This app has a value for this field and Amazon does not. It will be sent on the next submit.">not on Amazon</span>';
 }
 
-/* The line UNDER the control: Amazon's own value, and the button that takes it. */
+/* WHAT GOES IN THE BOX: Amazon's value, when Amazon has one.
+ *
+ *     "i want to see what is actually present in amazon, the app should show
+ *      that"  ... "yes do the attributes as well"
+ *
+ * This reverses the rule the grid was built on -- "the VALUE still comes from
+ * `a`, never from Amazon" (autofix.js) -- so it is worth being exact about what
+ * that rule was protecting and how the protection is kept.
+ *
+ * It was protecting one true sentence: WHAT IS IN THE BOX IS WHAT A SUBMIT
+ * WOULD SEND. That is still true of the app's stored value, and it is no longer
+ * true of the box -- so the app's value is now drawn under every box where the
+ * two differ, labelled as the one Submit sends (lvBelow), and "use this" makes
+ * them agree. Nothing is hidden in either direction; what changed is which of
+ * the two is in the foreground, because the foreground is where a person looks
+ * for the truth and Amazon is the one holding it.
+ *
+ * NOTHING IS WRITTEN BY LOOKING. Every control here saves through onchange or
+ * dwBlurSave -- both fire only when the text actually changes -- so opening a
+ * listing and reading it cannot copy Amazon's value into the row. lvUse still
+ * exists and is still a button somebody presses.
+ *
+ * MULTI-VALUED ATTRIBUTES ARE LEFT ALONE. Amazon holds several values, only the
+ * first is shown, and the cell is deliberately not editable because saving one
+ * would drop the rest on the next submit (see lvTag). Putting Amazon's first
+ * value in a box that cannot express the other four would be a worse lie than
+ * the one being fixed.
+ */
+function lvBoxValue(sku, key, localVal){
+  const L = lvGet(sku);
+  if(!L || L.state !== "ok") return localVal;
+  if((L.multi || {})[String(key).split(".")[0]]) return localVal;
+  if(!Object.prototype.hasOwnProperty.call(L.values || {}, key)) return localVal;
+  const lv = L.values[key];
+  if(lv == null || String(lv).trim() === "") return localVal;
+  return lv;
+}
+
+/* The line UNDER the control: the APP's own value, and the button that makes
+ * Amazon's the one we would send.
+ *
+ * It used to be the other way round -- Amazon's value here, ours in the box.
+ * The two swapped with lvBoxValue; this is the other half of that change, and
+ * "use this" means the same thing it always did: copy Amazon's value into the
+ * app, so that what Submit sends matches what you are looking at. */
 function lvBelow(sku, key, localVal){
   const v = lvVerdict(sku, key, localVal);
   if(v !== "differs" && v !== "live_only") return "";
   const L = lvGet(sku);
-  const lv = String(L.values[key]);
   const multi = (L.multi||{})[String(key).split(".")[0]] || 0;
-  const shown = lv.length > 120 ? (lv.slice(0,120) + "…") : lv;
-  return '<div class="lv-below">'
-       + '<span class="lv-dot" title="Live on Amazon"></span>'
-       + '<span class="lv-val" title="' + esc(lv) + '">' + esc(shown) + '</span>'
-       + (multi ? '' :
-          '<button class="lv-use" title="Copy Amazon’s value into this listing. '
-          + 'Saves to the app only — nothing is sent to Amazon until you press Submit."'
-          + ' onclick="lvUse(\'' + esc(sku) + '\',\'' + esc(key) + '\')">use this</button>')
+  // A multi still shows AMAZON's value underneath, because its box was left
+  // holding ours -- the one case where the old arrangement still stands.
+  if(multi){
+    const lv = String(L.values[key]);
+    return '<div class="lv-below">'
+         + '<span class="lv-dot" title="Live on Amazon"></span>'
+         + '<span class="lv-val" title="' + esc(lv) + '">'
+         + esc(lv.length > 120 ? (lv.slice(0, 120) + "…") : lv) + '</span>'
+         + '</div>';
+  }
+  const app = String(localVal == null ? "" : localVal).trim();
+  // live_only: Amazon has a value and we hold NOTHING. Saying so matters more
+  // than staying silent -- the box now shows Amazon's value, and without this
+  // line there would be nothing to reveal that a Submit would send an empty
+  // field over the top of it.
+  const shown = app
+    ? (app.length > 120 ? (app.slice(0, 120) + "…") : app)
+    : "(the app holds nothing for this field)";
+  return '<div class="lv-below lv-mine">'
+       + '<span class="lv-dot lv-dot-app" title="This app’s own value"></span>'
+       + '<span class="lv-val' + (app ? '' : ' lv-val-empty') + '" title="'
+       + esc(app || "empty") + '">' + esc(shown) + '</span>'
+       + '<span class="lv-note">what Submit would send</span>'
+       + '<button class="lv-use" title="Copy Amazon’s value into this listing, so '
+       + 'what Submit sends matches what is in the box. Saves to the app only — '
+       + 'nothing is sent to Amazon until you press Submit."'
+       + ' onclick="lvUse(\'' + esc(sku) + '\',\'' + esc(key) + '\')">use Amazon’s</button>'
        + '</div>';
 }
 

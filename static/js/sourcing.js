@@ -2479,9 +2479,11 @@ async function sourcingMinPriceUpload(input){
 
   let j;
   try{
+    // The file itself goes too, so the Upload history keeps the original.
+    const _file = (typeof uphFileForUpload === "function") ? await uphFileForUpload(f) : null;
     j = await (await fetch("/sourcing/minprice_upload", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: _srcBody({rows: filled, arm: !!arm})})).json();
+      body: _srcBody({rows: filled, arm: !!arm, file: _file})})).json();
   }catch(e){
     await uiAlert(String((e && e.message) || e), {title: "Upload failed"});
     return;

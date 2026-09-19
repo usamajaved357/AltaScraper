@@ -78,11 +78,22 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
                   or _state.get("active_account_id", "") or "")
         mkt = str(acc.get("default_marketplace")
                   or _state.get("active_marketplace") or "").upper()
-        headers, rows, err = _sb.read_table(f.read(), f.filename or "")
+        raw = f.read()
+        _previewing = str(request.form.get("dry_run") or "").lower() in ("1", "true", "yes")
+        from domain import upload_log as _ul
+
+        def _keep(**kw):
+            # A preview changes nothing, so only the real upload is kept.
+            if not _previewing:
+                _ul.record(CONFIG_PATH, aid, mkt, "cost_sheet", f.filename or "", raw, **kw)
+
+        headers, rows, err = _sb.read_table(raw, f.filename or "")
         if err:
+            _keep(error=err)
             return jsonify({"ok": False, "error": err}), 400
         rep = _cogs.apply_sheet(CONFIG_PATH, aid, mkt, headers, rows)
         if not rep.get("ok"):
+            _keep(error=rep.get("error") or "the sheet was refused")
             return jsonify(rep), 400
         dry = str(request.form.get("dry_run") or "").lower() in ("1", "true", "yes")
         if dry:
@@ -98,12 +109,17 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
         # Through the store, same as /cogs/set -- one way in, so a cost set by
         # sheet and a cost typed on a row cannot end up in different dicts.
         from domain import cogs_store as _cs
-        for sku, cost in (rep.pop("updates", None) or {}).items():
+        _updates = rep.pop("updates", None) or {}
+        for sku, cost in _updates.items():
             _cs.set_cost(CONFIG_PATH, aid, sku, cost)
         rep["note"] = ("%d cost%s set. %d row%s had no cost filled in and were "
                        "left alone." % (rep["set"], "" if rep["set"] == 1 else "s",
                                         rep["skipped"],
                                         "" if rep["skipped"] == 1 else "s"))
+        _rows = rep.get("rows") or []
+        _keep(ok=rep["set"], skipped=rep["skipped"],
+              errors=len([r for r in _rows if r.get("status") != "set"]),
+              summary=rep["note"], rows=_rows, skus=list(_updates.keys()))
         return jsonify(rep)
 
     @app.route("/cogs/set", methods=["POST"])

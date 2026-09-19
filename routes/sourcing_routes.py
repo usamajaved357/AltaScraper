@@ -814,6 +814,26 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             note += ", %d left blank" % skipped
         if errors:
             note += ", %d could not be read" % len(errors)
+        # KEPT IN THE UPLOAD HISTORY. The browser parses this sheet and sends the
+        # rows; it also sends the file itself ({file: {name, data}}) so the
+        # original is kept like every other upload's.
+        try:
+            from domain import upload_log as _ul
+            _f = b.get("file") or {}
+            _report = ([{"sku": d["sku"], "status": "floor set",
+                         "detail": "%.2f" % d["min_price"]
+                                   + (" · armed" if d["sku"] in armed else "")}
+                        for d in done]
+                       + [{"sku": e.get("row"), "status": "error", "detail": e.get("why")}
+                          for e in errors])
+            _ul.record(CONFIG_PATH, wsid, mkt, "min_prices",
+                       _f.get("name") or "min-prices (file not sent)",
+                       _ul.decode_data_url(_f.get("data")),
+                       ok=len(done) + (dirs if not done else 0), skipped=skipped,
+                       errors=len(errors), summary=note + ".", rows=_report,
+                       skus=[d["sku"] for d in done] + armed)
+        except Exception:
+            pass
         return jsonify({"ok": True, "updated": len(done), "armed": len(armed),
                         "directions": dirs,
                         "skipped": skipped, "errors": errors,
@@ -1188,10 +1208,31 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             data = f.read()
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:160]}), 400
-        headers, rows, err = _bulk.read_table(data, getattr(f, "filename", ""))
+        from domain import upload_log as _ul
+        fname = getattr(f, "filename", "") or ""
+        headers, rows, err = _bulk.read_table(data, fname)
         if err:
+            _ul.record(CONFIG_PATH, wsid, mkt, "supplier_links", fname, data, error=err)
             return jsonify({"ok": False, "error": err}), 400
         out = _bulk.apply_rows(CONFIG_PATH, wsid, mkt, headers, rows)
+        # Kept in the Upload history. A row with no link in any supplier column
+        # is the normal state of a sheet, not a failure; any other skip is.
+        _rows = out.get("rows") or []
+        if not out.get("ok"):
+            _ul.record(CONFIG_PATH, wsid, mkt, "supplier_links", fname, data,
+                       error=out.get("error") or "the sheet was refused")
+        else:
+            _blank = [r for r in _rows if r.get("status") == "skipped"
+                      and r.get("note") == "no supplier link on this row"]
+            _done = [r for r in _rows if r.get("status") == "attached"]
+            _ul.record(CONFIG_PATH, wsid, mkt, "supplier_links", fname, data,
+                       ok=len(_done), skipped=len(_blank),
+                       errors=len(_rows) - len(_done) - len(_blank),
+                       summary=("%d supplier link(s) added, %d already there, on %d SKU(s)."
+                                % (out.get("attached", 0), out.get("already", 0),
+                                   out.get("tracked", 0))),
+                       rows=_rows,
+                       skus=[s for r in _done for s in (r.get("matched") or [])])
         return jsonify(out), (200 if out.get("ok") else 400)
 
     @app.route("/sourcing/sources/count")

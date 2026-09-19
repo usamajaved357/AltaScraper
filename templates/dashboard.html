@@ -333,6 +333,7 @@
         <a class="navitem" data-sec="categories" href="#" onclick="return navGo(event,'categories')" title="Which Amazon categories your products are ranked in"><i class="ti ti-sitemap"></i> Category Explorer</a>
         <a class="navitem" data-sec="variations" href="#" onclick="return navGo(event,'variations')"><i class="ti ti-binary-tree"></i> Variations</a>
         <a class="navitem" data-sec="generate" href="#" onclick="return navGo(event,'generate')"><i class="ti ti-upload"></i> Generate &amp; submit</a>
+        <a class="navitem" data-sec="uploads" href="#" onclick="return navGo(event,'uploads')" title="Every file uploaded to create or change listings, costs, suppliers, floors or tracking -- kept, with what each one did"><i class="ti ti-file-upload"></i> Upload history</a>
         <a class="navitem" data-sec="sync" href="#" onclick="return navGo(event,'sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</a>
         <a class="navitem" data-sec="sellerimport" href="#" onclick="return navGo(event,'sellerimport')"><i class="ti ti-download"></i> Import seller</a>
         <a class="navitem" data-sec="miles" id="nav_harvest" href="#" onclick="return navGo(event,'miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</a>
@@ -1658,6 +1659,22 @@
       </div>
     </div>
 
+    <!-- UPLOAD HISTORY, like Seller Central's "Spreadsheet upload status".
+         "i want to track which files were uploaded recently for creating
+          listings like amazon has it". Every file that changed data, kept for
+          ever with its processing report. See domain/upload_log.py. -->
+    <div id="sec_uploads" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-file-upload"></i> Upload history</h2>
+        <div class="sub">Every file uploaded to this account &mdash; the original file and what it did, row by row.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select id="uph_kind" class="ed" style="width:auto" onchange="uploadsLoad()"><option value="">All uploads</option></select>
+          <button class="db-chip" onclick="uploadsLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+      </div>
+      <div id="uph_body"></div>
+    </div>
+
     <!-- DR PPC CONSOLE -- reads the advertising data and says what is wrong.
          Built BEFORE the Advertising API is connected, so the day credentials
          arrive there is a screen to point at them. It recommends and stops:
@@ -2406,6 +2423,8 @@
 <!-- One product picker, shared by the Image Library and the Image Studio. -->
 <script src="/static/js/productpicker.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/imagelibrary.js?v={{ ASSET_V }}"></script>
+<!-- Upload history: every uploaded file, kept, with what it did. -->
+<script src="/static/js/uploadhistory.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/studiopicker.js?v={{ ASSET_V }}"></script>
 <!-- User permissions, laid out the way Seller Central lays them out. -->
 <script src="/static/js/permissions.js?v={{ ASSET_V }}"></script>

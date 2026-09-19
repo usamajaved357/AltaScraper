@@ -118,6 +118,45 @@ def urls_from(item, headers=None):
     return out
 
 
+def from_listing_row(row):
+    """Every supplier link stored ON A LISTING ROW, in priority order. -> [(position, url)].
+
+    The listings store keeps supplier 1 as `source_url` and the rest as
+    `supplier_2`, `supplier_3`, ... (data/column_map.py). This is the one reader
+    of that shape: the generator's input for an uploaded row
+    (listing/queued_input.py) and the repricer's backfill
+    (domain/source_repo.listing_supplier_urls) both go through it (Rule 12).
+
+    Same rules as urls_from: blanks skipped, one link pasted twice is one
+    supplier, and the NUMBER orders them, so supplier_10 comes after supplier_9.
+    """
+    r = row or {}
+    found = []
+    first = str(r.get(PRIMARY) or "").strip()
+    if first:
+        found.append((1, first))
+    for k, v in r.items():
+        m = _PAT.match(_norm(k))
+        if not m:
+            continue
+        try:
+            pos = int(m.group(1))
+        except ValueError:
+            continue
+        u = str(v or "").strip()
+        if pos >= 2 and u:
+            found.append((pos, u))
+    found.sort(key=lambda x: x[0])
+    out, seen = [], set()
+    for pos, u in found:
+        k = u.lower().rstrip("/")
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append((pos, u))
+    return out
+
+
 # What a supplement carries that is worth merging. Named rather than "whatever
 # keys turned up", so a new key in the fetcher cannot start silently
 # participating in a merge nobody designed.
@@ -309,9 +348,16 @@ def enrol(config_path, workspace_id, marketplace, sku, urls, log=None):
     n = 0
     for pos, url in urls:
         try:
+            # NO LABEL. This used to write "Supplier %d" -- the sheet column the
+            # link arrived in -- into the column a PERSON types their own name
+            # for a supplier into. domain/source_link.display_name reads a label
+            # as somebody's chosen name and stops there, so every enrolled link
+            # was called "Supplier 1" on the repricer and on the order panel for
+            # ever, while the eBay seller name sitting on each of its checks was
+            # never reached. The slot is not lost: it is `priority` below, which
+            # is what actually orders the list.
             _repo.ensure_source(config_path, workspace_id, marketplace, sku, url,
                                 kind="ebay",
-                                label="Supplier %d" % pos,
                                 priority=int(pos),
                                 stage=_repo.DRAFT)
             n += 1
@@ -320,6 +366,107 @@ def enrol(config_path, workspace_id, marketplace, sku, urls, log=None):
                 log("could not enrol supplier %d (%s): %s"
                     % (pos, url[:50], str(e)[:80]))
     return n
+
+
+def add_missing_row_suppliers(config_path, workspace_id=None, log=None):
+    """Enrol the suppliers an UPLOADED draft carried and generation dropped.
+
+    -> {"skus": [...], "added": how many supplier rows}
+
+        "I generated the listings with 3 suppliers (ebay links) in the template
+         and the drafts are generated but the repricer has received only 1
+         supplier in it, other 2 are not there"
+
+    Until listing/queued_input carried supplier_urls, a row generated from an
+    upload enrolled supplier 1 only, while supplier_2 / supplier_3 stayed on the
+    listing row. join_live cannot mend it: it reads the row only for a SKU with
+    NO supplier at all, and these have one.
+
+    NARROW ON PURPOSE. A source the owner removes is deleted outright
+    (source_repo.remove_source), so nothing records that it was ever there, and
+    a repair that added "whatever the row names" would put back a supplier he
+    took out. So a SKU is repaired only when it carries exactly the signature
+    this bug leaves: every supplier recorded for it is one of its own row's
+    links, the row's supplier 1 is among them, and at least one of the row's
+    later links is missing. The added ones take the stage the recorded ones
+    have, so a live listing's suppliers are live and a draft's stay drafts.
+    Run once (see run_row_supplier_repair_once), not on a timer.
+    """
+    from data import db as _db
+    from domain import source_repo as _repo
+    out = {"skus": [], "added": 0}
+    conn = _db.get_db(config_path)
+    try:
+        q = "SELECT * FROM listings WHERE IFNULL(sku,'')<>''"
+        args = []
+        if workspace_id:
+            q += " AND workspace_id=?"
+            args.append(workspace_id)
+        rows = [dict(r) for r in conn.execute(q, args)]
+    except Exception:
+        return out
+    for row in rows:
+        urls = from_listing_row(row)
+        if len(urls) < 2:
+            continue
+        ws, sku = str(row.get("workspace_id") or ""), str(row.get("sku") or "")
+        want = {u.lower().rstrip("/"): (pos, u) for pos, u in urls}
+        first_key = urls[0][1].lower().rstrip("/") if urls[0][0] == 1 else None
+        try:
+            recorded = [dict(r) for r in conn.execute(
+                "SELECT marketplace, url, stage FROM sourcing_sources "
+                "WHERE workspace_id=? AND sku=?", (ws, sku))]
+        except Exception:
+            continue
+        by_mkt = {}
+        for r in recorded:
+            by_mkt.setdefault(str(r.get("marketplace") or ""), []).append(r)
+        for mkt, recs in by_mkt.items():
+            have = {str(r.get("url") or "").strip().lower().rstrip("/") for r in recs}
+            if not have or not have.issubset(set(want)):
+                continue            # something here the row does not name: hands off
+            if first_key is None or first_key not in have:
+                continue
+            missing = [want[k] for k in want if k not in have]
+            if not missing:
+                continue
+            n = enrol(config_path, ws, mkt, sku, missing, log=log)
+            if any(_repo._stage_of(r) == _repo.LIVE for r in recs):
+                _repo.promote_to_live(config_path, ws, mkt, sku)
+            if n:
+                out["added"] += n
+                out["skus"].append(sku)
+    return out
+
+
+_REPAIR_MARK = ".supplier_columns_repair_20260917.done"
+
+
+def run_row_supplier_repair_once(config_path, log=None):
+    """add_missing_row_suppliers, exactly once per data directory. -> result or None.
+
+    Once, because the repair cannot tell a supplier that was never enrolled from
+    one the owner later removed; after the generator carries every supplier, the
+    only drafts with the signature are the ones made before this fix. The mark
+    sits beside config.json -- on the persistent disk in production -- and is
+    written only after the repair finished, so a crash half way runs it again.
+    """
+    import os
+    base = os.path.dirname(os.path.abspath(str(config_path or "")))
+    mark = os.path.join(base, _REPAIR_MARK)
+    if os.path.exists(mark):
+        return None
+    res = add_missing_row_suppliers(config_path, log=log)
+    try:
+        with open(mark, "w", encoding="utf-8") as fh:
+            fh.write("added %d supplier(s) on %d SKU(s)\n%s\n"
+                     % (res["added"], len(res["skus"]), "\n".join(res["skus"])))
+    except Exception:
+        pass
+    if log:
+        log("supplier repair: added %d supplier(s) on %d SKU(s)"
+            % (res["added"], len(res["skus"])))
+    return res
 
 
 def join_live(config_path, workspace_id, marketplace, skus, log=None):

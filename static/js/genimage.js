@@ -958,15 +958,40 @@ async function studioRunBackground(kind, jobs, total){
   if(!resp.ok){ prog.innerHTML='<span style="color:var(--red)">'+esc(resp.error||"failed to start")+'</span>'; return; }
   const jobId=resp.job;
   STUDIO.currentJob=jobId;
-  let shown=0;
+  // WHICH RESULTS ARE ALREADY ON SCREEN, BY INDEX -- not "how many".
+  //
+  // ONE IMAGE, SHOWN FIVE TIMES. Measured on nestwell_goods (19 Sep 2026): the
+  // header read "Generating 6/7" -- six results on the server -- while the grid
+  // held twelve cards, concept 5 twice and concept 6 five times, every copy the
+  // same file at the same byte size. The server was never wrong: _job_push
+  // appends once per finished image under a lock.
+  //
+  // It was this loop. `shown` was read at the top of the tick and written AFTER
+  // an await, and the tick fires every 2 seconds whether or not the last one has
+  // come back. A job_status call that takes longer than 2s therefore has a
+  // second tick running inside it, reading the SAME stale `shown`, rendering the
+  // same tail of the list again -- and a third, and a fourth, which is why the
+  // duplicate count grows towards the end of a batch rather than being a flat
+  // doubling.
+  //
+  // Two guards, because they fail differently. `polling` stops the overlap; the
+  // index set makes rendering idempotent, so anything else that re-enters this
+  // -- a retry, a reopened panel -- still cannot draw one image twice.
+  const drawn={};
+  let polling=false;
   prog.innerHTML='<span class="genspin"></span> Generating in background… <span class="cc">you can keep using the app; results appear below as they finish.</span>';
   STUDIO_POLL=setInterval(async ()=>{
+    if(polling) return;          // the last tick has not answered yet
+    polling=true;
     try{
       const st=await (await fetch("/genimage/job_status?job="+encodeURIComponent(jobId))).json();
       if(!st.ok){ return; }
       // render any new results
-      for(let i=shown;i<st.results.length;i++){ _studioRenderResult(kind, st.results[i], grid); }
-      shown=st.results.length;
+      for(let i=0;i<st.results.length;i++){
+        if(drawn[i]) continue;
+        drawn[i]=1;
+        _studioRenderResult(kind, st.results[i], grid);
+      }
       if(st.status!=="running"){
         clearInterval(STUDIO_POLL); STUDIO_POLL=null;
         const okN=st.results.filter(r=>r.ok).length;
@@ -976,6 +1001,11 @@ async function studioRunBackground(kind, jobs, total){
         prog.innerHTML='<span class="genspin"></span> Generating '+st.done+'/'+st.total+' in background… <span class="cc">each finished image is auto-saved to its media library; safe to close or keep working.</span>';
       }
     }catch(e){}
+    // ALWAYS, and in a finally rather than at the end of the try: there is an
+    // early `return` above for a failed status, and a flag left set by that one
+    // path would stop every later tick -- a batch that silently never updates
+    // again is worse than the duplicates this guard exists to prevent.
+    finally{ polling=false; }
   }, 2000);
 }
 

@@ -62,7 +62,79 @@ function pdpRow(){
   if(!PDP_SKU) return null;
   const own = (typeof ROWS !== "undefined" && ROWS)
     ? ROWS.find(x => String(x.sku) === String(PDP_SKU)) : null;
-  return own || pdpCatalogueRow(PDP_SKU);
+  if(!own) return pdpCatalogueRow(PDP_SKU);
+  // A DRAFT NO LONGER HIDES AMAZON. See pdpAmazonCopy.
+  const live = pdpAmazonCopy(PDP_SKU);
+  return live ? Object.assign({}, own, live, {amazon_copy: true}) : own;
+}
+
+/* WHAT AMAZON IS ACTUALLY HOLDING, PUT IN THE BOXES.
+ *
+ *     "i want to see what is actually present in amazon, the app should show
+ *      that"
+ *
+ * This page used to answer `own || pdpCatalogueRow(sku)` -- the app's own draft
+ * whenever it had one, and Amazon's data only for a listing this app never
+ * generated. So the listings the app DID generate, which is most of them, went
+ * on showing the copy the generator wrote however many times the listing was
+ * edited in Seller Central. The app held a copy and presented it as the truth.
+ *
+ * Now Amazon's copy wins for the fields Amazon owns, and the app's stored copy
+ * is drawn underneath wherever the two differ (pdpAppCopyLine) -- so nothing is
+ * hidden in either direction.
+ *
+ * WHAT IS **NOT** TAKEN, and why each one matters:
+ *   asin             the COMPETITOR slot (CLAUDE.md Rule 1). Amazon's answer is
+ *                    OUR listing's ASIN and belongs in own_asin; writing it here
+ *                    would make the app think a competitor had been researched.
+ *   status, row      the app's own bookkeeping, not a fact about the product.
+ *   warnings,        our verdicts about our copy. They are recomputed against
+ *   compliance       what is stored, and pairing them with Amazon's text would
+ *                    label Amazon's words with our draft's warnings.
+ *   attributes       already handled, and better: drawer_attributes.js draws
+ *                    Amazon's live value under every attribute box that differs,
+ *                    with a "use this" button. A second mechanism here would be
+ *                    two answers to one question (Rule 12).
+ *
+ * NOTHING IS WRITTEN. This is what the page DISPLAYS. The boxes still save to
+ * the app's own row, and only when their text is actually changed (dwBlurSave
+ * compares against data-orig, which is now Amazon's value) -- so opening a
+ * listing, reading it and closing it cannot overwrite the draft.
+ *
+ * Returns null when Amazon has not answered for this SKU, which is the normal
+ * case for a draft that was never submitted. The page is then exactly as before.
+ */
+function pdpAmazonCopy(sku){
+  const L = (typeof lvGet === "function") ? lvGet(String(sku)) : null;
+  if(!L || L.state !== "ok" || L.on_amazon === false) return null;
+  const S = L.summary || {}, C = L.content || {};
+  const out = {};
+  // THE CATALOGUE TITLE FIRST -- what a shopper sees. On an ASIN with more than
+  // one seller Amazon merges contributions and picks what to display, so the
+  // title submitted and the title shown can differ, and the shown one is the
+  // one "what is actually present in amazon" means.
+  const title = String(S.itemName || (C.item_name || [])[0] || "");
+  if(title.trim()) out.title = title;
+  (C.bullet_point || []).slice(0, 5).forEach(function(b, i){
+    if(String(b || "").trim()) out["bullet_" + (i + 1)] = String(b);
+  });
+  const desc = String((C.product_description || [])[0] || "");
+  if(desc.trim()) out.description_html = desc;
+  const kw = (C.generic_keyword || []).join(" ");
+  if(kw.trim()) out.search_terms = kw;
+  return Object.keys(out).length ? out : null;
+}
+
+/* The app's own stored copy for one field, and Amazon's, as plain text. */
+function pdpCopyText(r, kind){
+  if(!r) return "";
+  if(kind === "title")   return String(r.title || "");
+  if(kind === "bullets") return [1,2,3,4,5]
+      .map(function(i){ return String(r["bullet_" + i] || ""); })
+      .filter(Boolean).join("  •  ");
+  if(kind === "desc")    return String(r.description_html || "");
+  if(kind === "search")  return String(r.search_terms || "");
+  return "";
 }
 
 /* A row shaped like ours, filled from what AMAZON says.
@@ -147,9 +219,22 @@ function pdpOpen(sku){
   // when the answer lands, so opening on a cold cache shows the catalogue's
   // title and picture immediately and fills in the rest a moment later.
   const cat = own ? null : pdpCatalogueRow(sku);
-  if(!own && typeof lvEnsure === "function"){
+  // ...AND FOR A LISTING WE **DO** HOLD A DRAFT OF, WHICH IS THE COMMON CASE.
+  //
+  // This was `if(!own ...)`: Amazon was asked only about listings this app had
+  // no draft for. Every listing the app generated therefore opened showing the
+  // generator's copy with nothing to compare it against, and went on showing it
+  // after the listing was edited in Seller Central -- "i want to see what is
+  // actually present in amazon, the app should show that". The data was one
+  // call away and the call was never made.
+  //
+  // lvWants() is the gate, not this line: a QUEUED or GENERATED draft has never
+  // been sent, so it is skipped and no rate-limited request is spent being told
+  // 404. Nothing is awaited -- the page is already on screen and lvEnsure
+  // re-renders it (pdpRebuild) when the answer lands.
+  if(typeof lvEnsure === "function"){
     try{
-      lvEnsure(cat || {sku: sku, status: "LIVE"});
+      lvEnsure(own || cat || {sku: sku, status: "LIVE"});
     }catch(e){}
   }
   if(!own && !cat){
@@ -834,45 +919,44 @@ function pdpAttrRows(m){
 
 /* ---- what Amazon is showing shoppers ------------------------------------ */
 
-/* THE GREY LINE ABOVE A BOX IS NOT A COPY OF THE BOX.
+/* THE GREY LINE IS WHICHEVER COPY IS **NOT** IN THE BOX.
  *
- * Amazon holds two different things for a live listing and they are easy to
- * confuse:
+ * It used to be the other way round: the box held the app's draft and this line
+ * held Amazon's value. Now that the box holds Amazon's (pdpAmazonCopy), showing
+ * Amazon's again above it would say nothing -- so the line shows the app's own
+ * stored copy instead, and only where the two actually differ.
  *
- *   attributes   what THIS seller submitted, read back. That is what the box
- *                already contains, and repeating it above would say nothing.
- *   summaries    the CATALOGUE record -- what a shopper actually sees. On an
- *                ASIN with more than one seller Amazon merges contributions and
- *                picks what to display, so a title submitted and a title shown
- *                can be different, and nothing in this app could show that.
+ * Both directions matter. Seeing Amazon's text answers "what is live"; seeing
+ * the app's answers "what would I send if I pressed Submit", which is a real
+ * question with a real consequence and is otherwise now invisible on this page.
  *
- * So the line prefers the catalogue value and falls back to the submitted one,
- * and says which it is. It is drawn only for a listing that IS on Amazon: on a
- * draft there is no live value, and an empty grey line above every box would be
+ * Nothing at all is drawn when they match, when Amazon has not answered, or on
+ * a draft that was never submitted -- an empty grey line above every box is
  * furniture that means nothing.
  */
-function pdpLiveLine(sku, kind){
-  const L = (typeof lvGet === "function") ? lvGet(sku) : null;
-  if(!L || L.state !== "ok") return "";
-  const S = L.summary || {}, C = L.content || {};
-  let text = "", from = "on Amazon now";
-  if(kind === "title"){
-    text = String(S.itemName || "");
-    if(!text){ text = String((C.item_name || [])[0] || ""); from = "your last submission"; }
-  }else if(kind === "bullets"){
-    text = (C.bullet_point || []).join("  •  ");
-    from = "your last submission";
-  }else if(kind === "desc"){
-    text = String((C.product_description || [])[0] || "");
-    from = "your last submission";
-  }else if(kind === "search"){
-    text = (C.generic_keyword || []).join(" ");
-    from = "your last submission";
-  }
-  if(!String(text).trim()) return "";
-  return '<div class="pdp-live" title="' + esc(from) + '">'
-       + '<span class="pdp-livetag">' + esc(from) + '</span>'
-       + esc(text) + '</div>';
+function pdpAppCopyLine(sku, kind){
+  const own = (typeof ROWS !== "undefined" && ROWS)
+    ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+  if(!own) return "";                       // nothing of ours to contrast with
+  const live = pdpAmazonCopy(sku);
+  if(!live) return "";                      // the box already IS the app's copy
+  const mine = pdpCopyText(own, kind);
+  const shown = pdpCopyText(Object.assign({}, own, live), kind);
+  if(!mine.trim() || mine.trim() === shown.trim()) return "";
+  return '<div class="pdp-live" title="What this app holds. Amazon’s version '
+       + 'is in the box; this is what Submit would send.">'
+       + '<span class="pdp-livetag">the app’s copy</span>'
+       + esc(mine) + '</div>';
+}
+
+/* Said ONCE, above the fields, rather than implied by a tag on each one. */
+function pdpAmazonCopyNote(r){
+  if(!r || !r.amazon_copy) return "";
+  return '<div class="pdp-note"><i class="ti ti-brand-amazon"></i> '
+       + 'The fields below show <b>what Amazon is holding for this listing now</b>. '
+       + 'Where the app’s own copy differs it is shown underneath, greyed. '
+       + 'Editing a box saves to the app’s copy — nothing reaches Amazon '
+       + 'until you press Submit.</div>';
 }
 
 /* ---- attributes that hold more than one value --------------------------- */
@@ -1740,23 +1824,26 @@ function pdpRender(){
                  // AND WHERE THIS PAGE'S CONTENTS CAME FROM, when they are not
                  // ours. Above everything, because it changes what every field
                  // below it means.
-                 + pdpCatalogueNote(r);
+                 + pdpCatalogueNote(r)
+                 // ...and when they ARE ours but Amazon's are what is drawn.
+                 + pdpAmazonCopyNote(r);
 
   let tab = "";
   if(PDP_TAB === "details"){
-    // The grey line above each box is what Amazon has, not a second copy of
-    // what is in the box -- see pdpLiveLine. Empty for a listing that has never
-    // been on Amazon, which is most of them.
+    // The boxes hold what Amazon is holding (pdpAmazonCopy). The grey line under
+    // each one is the app's own copy, drawn only where the two differ -- see
+    // pdpAppCopyLine. Empty for a listing that has never been on Amazon, which
+    // is most of them.
     tab = '<div class="pdp-field">'
         +   '<div class="pdp-flabel">Item name'
         +     '<span class="pdp-fmeta">' + tp.count + tp.indexTag + '</span></div>'
-        +   pdpLiveLine(sku, "title")
         +   tp.editor + tp.warnNote
+        +   pdpAppCopyLine(sku, "title")
         + '</div>'
         + p.highlights
-        + pdpLiveLine(sku, "bullets") + p.bullets
-        + pdpLiveLine(sku, "desc")    + p.desc
-        + pdpLiveLine(sku, "search")  + p.search
+        + p.bullets + pdpAppCopyLine(sku, "bullets")
+        + p.desc    + pdpAppCopyLine(sku, "desc")
+        + p.search  + pdpAppCopyLine(sku, "search")
         // AND THE ATTRIBUTES, HERE, WHERE SELLER CENTRAL PUTS THEM.
         //
         //     "There is NO 'Attributes' tab. All attributes ... are displayed

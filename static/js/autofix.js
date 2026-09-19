@@ -1647,11 +1647,23 @@ function _fullDataParts(r){
   // a live-only key simply renders with an empty box and a "use this" beside
   // Amazon's value. There is no second grid (Rule 12).
   //
-  // The VALUE still comes from `a`, never from Amazon. What is in the box is
-  // what a submit would send, and that must stay true.
+  // THE VALUE IN THE BOX IS AMAZON'S, WHERE AMAZON HAS ONE.
+  //
+  // This said the opposite -- "the VALUE still comes from `a`, never from
+  // Amazon. What is in the box is what a submit would send, and that must stay
+  // true." The sentence it was protecting is still true and still visible; it
+  // has simply moved out of the box and under it. See lvBoxValue in
+  // static/js/drawer_attributes.js, which owns the whole of this decision, and
+  // lvBelow, which now draws OUR value beneath with "what Submit would send"
+  // written on it.
+  //
+  // _lvT and _lvB are still handed the LOCAL value, deliberately: they compare
+  // the two, and feeding them the box value would have every field agreeing
+  // with itself.
   const _liveKeys=(typeof lvKeys==="function") ? lvKeys(sku) : [];
   const _lvT=(k,v)=>(typeof lvTag==="function")?lvTag(sku,k,v):"";
   const _lvB=(k,v)=>(typeof lvBelow==="function")?lvBelow(sku,k,v):"";
+  const _lvV=(k,v)=>(typeof lvBoxValue==="function")?lvBoxValue(sku,k,v):v;
   // IMGRE as well as HIDEKEYS: HIDEKEYS was built from the image keys present
   // in `a`, so a live-only main_product_image_locator would have slipped past
   // it and drawn a raw URL cell next to the drawer's own image panel.
@@ -1937,7 +1949,7 @@ function _fullDataParts(r){
         // A sub-field Amazon publishes allowed values for stays a picker; free
         // text becomes an inline cell. Same editCell, same saveEdit.
         return dwCell({label: titles[full]||s.label,
-                       ctrl: editCell(sku,"attr",full,val,(sHasEnum?s.enum:null),false,!sHasEnum),
+                       ctrl: editCell(sku,"attr",full,_lvV(full,val),(sHasEnum?s.enum:null),false,!sHasEnum),
                        hint: sHint, prov: _prov&&_prov[full], flagged: !!isMissing,
                        tag: _lvT(full,val), below: _lvB(full,val)});
       }).join("");
@@ -1970,7 +1982,7 @@ function _fullDataParts(r){
     const hasList = !!(enums[k] && enums[k].length);
     return dwCell({
       label: lbl(k),
-      ctrl: editCell(sku,"attr",k,(isMissing?"":a[k]),enums[k]||null,false,!hasList),
+      ctrl: editCell(sku,"attr",k,_lvV(k,(isMissing?"":a[k])),enums[k]||null,false,!hasList),
       hint: isMissing ? missHint : flagged[k],
       prov: _prov && _prov[k],
       req: isMissing || (isReq && !_flatSchemaOnly),
