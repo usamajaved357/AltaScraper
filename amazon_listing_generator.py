@@ -2769,6 +2769,13 @@ def read_input_sheet(ws_in) -> list:
             "item_name":     item.get("item_name",     ""),
             "handling_time": item.get("delivery_time", item.get("handling_time", "")),
             "upc":           item.get("ean",           item.get("upc",            "")),
+            # THE BRAND THE SHEET NAMED. Blank means "use the account's own",
+            # which is what process_row then does -- see the brand selection
+            # there. Without this the column was read by nothing on the way in,
+            # so a sheet that named a brand generated under the account's
+            # instead, silently (the upload path had the same gap: see
+            # listing/queued_input.row_to_product).
+            "brand":         item.get("brand",         ""),
         }
         # A ROW NEEDS A SOURCE, NOT NECESSARILY A COMPETITOR.
         #
@@ -4458,7 +4465,43 @@ async def process_row(row: dict, client, ws_out,
         console.print(f"  using local attribute data (live schema optional) ({t.elapsed()}s)")
 
     # --- Brand selection per product ----------------------------------------
-    if user_brand:
+    #
+    # THE ROW'S OWN BRAND COMES FIRST, and it did not before.
+    #
+    #     "i wrote the brand name as Gregvilo in the template and downloaded it
+    #      back in the app for listing generation but when the listing generated
+    #      it shows my brand name as Nestwell Goods even though i did not put it
+    #      there"
+    #
+    # `user_brand` is the brand for the RUN -- --brand on the command line, and
+    # failing that the account's own first trademark (see the startup block).
+    # For any run under a resolved account it is therefore ALWAYS set, so
+    # `if user_brand: chosen_brand = user_brand` meant the account's brand won
+    # every time and the Brand column could not be used at all. It was then
+    # written onto the finished row, so the value build_api_attributes later
+    # reads back through resolve_account_brand was this one -- the owner's
+    # typed brand had already been replaced before anything could honour it.
+    #
+    # The order that was always intended, and is what every other part of this
+    # file already documents ("Per-row brand from sheet wins; fall back to the
+    # export-level default"):
+    #
+    #   1. the brand on THIS row -- the Brand column of the template
+    #   2. the brand for this run -- --brand, or the account's own
+    #   3. the configured default, or the schema's enforced list
+    #
+    # Through resolve_account_brand, which is the one place that decides whose
+    # brand goes out (Rule 12) and which prints the note when a typed brand is
+    # not on the account's list. It sends what was typed: Amazon refuses with
+    # code 100550 if the account may not use it, and Amazon is the only thing
+    # that actually knows.
+    row_brand = str(row.get("brand", "") or "").strip()
+    if row_brand:
+        chosen_brand, _row_brand_note = resolve_account_brand(row_brand, config)
+        if _row_brand_note:
+            console.print("  [yellow]%s[/yellow]" % _row_brand_note)
+        console.print(f"  Brand (from the row): [bold]{chosen_brand}[/bold]")
+    elif user_brand:
         chosen_brand = user_brand
     else:
         # Prefer the seller's own configured brand; fall back to the schema's
