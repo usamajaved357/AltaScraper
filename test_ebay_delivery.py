@@ -291,5 +291,121 @@ back2 = R.latest_checks(CFG, [sid])[sid]
 check("a reading with no delivery info stores blanks", back2["carrier"], "")
 check("  not None, so no screen has to guard for it", back2["postage_text"], "")
 
+print("\n=== the same postage, offered twice under two names ===")
+# THE REPORTED MISMATCH.
+#
+#     "under the supplier one in repricer, it says free other 48 hour courier
+#      ... on eBay ... the postage is free delivery two to three days. Royal
+#      Mail track 48"
+#
+# THIS FIXTURE IS REAL, captured 19 Sep 2026 from his own supplier
+# housewaresstore-23 while probing fourteen tracked items. One listing, the same
+# free postage twice: once named, once as eBay's placeholder. Identical cost,
+# identical dates -- so the old key (cost, date) ranked them EQUAL, and
+# `key < best_key` is False on equal, which meant the winner was whichever eBay
+# listed first. eBay does not document that order.
+#
+# The placeholder is deliberately FIRST here. Under the old rule it won.
+TWO_FREE = {
+    "price": {"value": "9.99", "currency": "GBP"},
+    "estimatedAvailabilities": [{"estimatedAvailabilityStatus": "IN_STOCK"}],
+    "shippingOptions": [
+        {"shippingServiceCode": "Other 48h courier",
+         "type": "Standard Delivery",
+         "shippingCost": {"value": "0.00", "currency": "GBP"},
+         "shippingCostType": "FIXED",
+         "minEstimatedDeliveryDate": "2026-09-21T10:00:00.000Z",
+         "maxEstimatedDeliveryDate": "2026-09-22T10:00:00.000Z"},
+        {"shippingServiceCode": "Royal Mail Tracked 48",
+         "shippingCarrierCode": "Royal Mail",
+         "type": "Economy Delivery",
+         "shippingCost": {"value": "0.00", "currency": "GBP"},
+         "shippingCostType": "FIXED",
+         "minEstimatedDeliveryDate": "2026-09-21T10:00:00.000Z",
+         "maxEstimatedDeliveryDate": "2026-09-22T10:00:00.000Z"},
+        {"shippingServiceCode": "Royal Mail Tracked 24",
+         "shippingCarrierCode": "Royal Mail",
+         "type": "Standard Delivery",
+         "shippingCost": {"value": "7.99", "currency": "GBP"},
+         "shippingCostType": "FIXED",
+         "minEstimatedDeliveryDate": "2026-09-21T10:00:00.000Z",
+         "maxEstimatedDeliveryDate": "2026-09-22T10:00:00.000Z"},
+    ],
+}
+NOW2 = dt.datetime(2026, 9, 19, 12, 0, 0)
+g = SF.from_ebay_item(TWO_FREE, NOW2)
+check("the named service is the one reported", g["carrier"], "Royal Mail Tracked 48")
+check("  which is the line eBay prints to the buyer",
+      g["postage_text"], "Free Royal Mail Tracked 48")
+# THE POINT OF BREAKING THE TIE **AFTER** COST AND DATE: at an equal price on
+# equal dates it is the same postage either way, so this can move the NAME and
+# nothing else. If it ever moves one of these, it has become a pricing change.
+check("  the postage cost is untouched", g["shipping"], 0.0)
+check("  so is the window", (g["delivery_min"], g["delivery_max"]),
+      ("2026-09-21", "2026-09-22"))
+check("  and so is the dispatch estimate", g["dispatch_days"], 3)
+
+# ORDER MUST NOT DECIDE IT. Same three options, reversed: the same answer.
+REV = dict(TWO_FREE)
+REV["shippingOptions"] = list(reversed(TWO_FREE["shippingOptions"]))
+check("eBay's list order cannot change the answer",
+      SF.from_ebay_item(REV, NOW2)["carrier"], "Royal Mail Tracked 48")
+
+print("\n  ...but a cheaper or faster option still wins, named or not")
+# The tie-break is LAST. A placeholder that is genuinely cheaper is still the one
+# that would be bought, and the repricer's whole job is the landed cost.
+CHEAPER_GENERIC = dict(TWO_FREE)
+CHEAPER_GENERIC["shippingOptions"] = [
+    {"shippingServiceCode": "Royal Mail Tracked 48",
+     "shippingCarrierCode": "Royal Mail", "type": "Economy Delivery",
+     "shippingCost": {"value": "2.99", "currency": "GBP"},
+     "shippingCostType": "FIXED",
+     "maxEstimatedDeliveryDate": "2026-09-22T10:00:00.000Z"},
+    {"shippingServiceCode": "Other 48h courier", "type": "Standard Delivery",
+     "shippingCost": {"value": "0.00", "currency": "GBP"},
+     "shippingCostType": "FIXED",
+     "maxEstimatedDeliveryDate": "2026-09-22T10:00:00.000Z"},
+]
+g2 = SF.from_ebay_item(CHEAPER_GENERIC, NOW2)
+check("a free placeholder beats a named service that costs money",
+      (g2["carrier"], g2["shipping"]), ("Other 48h courier", 0.0))
+FASTER_GENERIC = dict(TWO_FREE)
+FASTER_GENERIC["shippingOptions"] = [
+    {"shippingServiceCode": "Royal Mail Tracked 48",
+     "shippingCarrierCode": "Royal Mail", "type": "Economy Delivery",
+     "shippingCost": {"value": "0.00", "currency": "GBP"},
+     "shippingCostType": "FIXED",
+     "maxEstimatedDeliveryDate": "2026-09-25T10:00:00.000Z"},
+    {"shippingServiceCode": "Other 48h courier", "type": "Standard Delivery",
+     "shippingCost": {"value": "0.00", "currency": "GBP"},
+     "shippingCostType": "FIXED",
+     "maxEstimatedDeliveryDate": "2026-09-22T10:00:00.000Z"},
+]
+g3 = SF.from_ebay_item(FASTER_GENERIC, NOW2)
+check("and an equally free placeholder that ARRIVES SOONER still wins",
+      g3["carrier"], "Other 48h courier")
+
+print("\n  ...and what counts as naming nobody")
+gen = SF._is_generic_service
+check("eBay's 48h placeholder names nobody",
+      gen({"shippingServiceCode": "Other 48h courier"}), True)
+check("  nor does the 24-hour one",
+      gen({"shippingServiceCode": "Other 24 Hour Courier"}), True)
+check("  nor the 3-to-5-day one",
+      gen({"shippingServiceCode": "Other courier (3 to 5 days)"}), True)
+# MEASURED on seller `schallen`: the placeholder wearing the other field's
+# clothes -- a carrierCode of literally "Other".
+check("  nor a carrierCode of 'Other', which is the placeholder again",
+      gen({"shippingServiceCode": "Other Courier 3 days",
+           "shippingCarrierCode": "Other"}), True)
+check("an option with nothing at all names nobody", gen({}), True)
+check("Royal Mail does",
+      gen({"shippingServiceCode": "Royal Mail Tracked 48",
+           "shippingCarrierCode": "Royal Mail"}), False)
+check("  so does Evri", gen({"shippingServiceCode": "Evri Tracked",
+                             "shippingCarrierCode": "Hermes"}), False)
+check("  and so does eBay's own named service",
+      gen({"shippingServiceCode": "eBay SpeedPAK Economy"}), False)
+
 print("\n" + ("FAILURES: %s" % ", ".join(fails) if fails else "FAILURES: 0"))
 sys.exit(1 if fails else 0)

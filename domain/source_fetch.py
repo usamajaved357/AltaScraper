@@ -103,9 +103,11 @@ def _ebay_option(data):
 
     CHEAPEST, because that is what would actually be bought -- the repricer's
     whole job is the landed cost. Ties broken by the earlier delivery, so a free
-    service that arrives sooner wins over an equally free one that does not.
-    eBay tends to return them cheapest-first already, but "tends to" is not a
-    rule to rest a price on.
+    service that arrives sooner wins over an equally free one that does not, and
+    THEN by whether the option names a carrier at all, because a listing can
+    carry the same free postage twice under two names and the loser used to be
+    decided by eBay's list order (see _is_generic_service). eBay tends to return
+    them cheapest-first already, but "tends to" is not a rule to rest a price on.
 
     CALCULATED postage is skipped: it depends on a destination postcode, so the
     figure (if any) is not the figure we would pay. Skipping the option is the
@@ -113,7 +115,7 @@ def _ebay_option(data):
     visible and fixable, rather than costed at zero, which is invisible and wrong.
     """
     best, best_key = None, None
-    for opt in (data.get("shippingOptions") or []):
+    for idx, opt in enumerate(data.get("shippingOptions") or []):
         if not isinstance(opt, dict):
             continue
         if str(opt.get("shippingCostType") or "").upper() == "CALCULATED":
@@ -126,10 +128,59 @@ def _ebay_option(data):
         # dates sort last so an option that gives one beats an option that does
         # not, at the same price.
         when = str(opt.get("maxEstimatedDeliveryDate") or "9999")
-        key = (v, when)
+        # ...AND THEN THE ONE THAT NAMES A CARRIER, which is a NAME-ONLY
+        # tie-break and cannot move a price or a date. See _is_generic_service.
+        # `idx` last, so that two options alike in every one of these is decided
+        # by eBay's order rather than by which happened to be compared first --
+        # the same answer every run, which "first one seen wins" was not.
+        key = (v, when, 1 if _is_generic_service(opt) else 0, idx)
         if best_key is None or key < best_key:
             best, best_key = opt, key
     return best
+
+
+# eBay's placeholder services. A seller who has not nominated a carrier picks one
+# of these, and the API returns the placeholder as the shippingServiceCode.
+_GENERIC_SERVICE_PREFIX = "other"
+
+
+def _is_generic_service(opt):
+    """Does this option name nobody?  "Other 48h courier" -> True.
+
+    WHY A TIE NEEDS BREAKING AT ALL.
+
+        "under the supplier one in repricer, it says free other 48 hour courier
+         ... on eBay ... it shows me that the postage is free delivery two to
+         three days. Royal Mail track 48"
+
+    One listing can carry the same postage twice under two names. Measured on
+    his own supplier housewaresstore-23 (19 Sep 2026, probe over 14 tracked
+    items):
+
+        Royal Mail Tracked 48   carrier "Royal Mail"   free   21-22 Sep
+        Other 48h courier       carrier ""             free   21-22 Sep
+        Royal Mail Tracked 24   carrier "Royal Mail"   7.99   21-22 Sep
+
+    The first two are the same price on the same dates. The key above ranked
+    them equal, `key < best_key` is False on equal, and so the winner was
+    whichever eBay happened to list first -- an order eBay does not document and
+    does not promise. The app printed one name, the page printed the other, and
+    nothing about the listing had changed.
+
+    NAMED WINS, for three reasons and none of them is cosmetic: it is the line
+    eBay prints to the buyer, it is a promise that can be checked against a
+    tracking number, and at an equal price and an equal date it is the same
+    postage either way -- so this cannot move the landed cost the repricer
+    prices from, nor the dispatch estimate the handling time is built on. It
+    decides the NAME and nothing else.
+
+    A carrierCode of "Other" is not a carrier either; it is the placeholder
+    wearing the other field's clothes (measured on seller `schallen`).
+    """
+    name = str(_ebay_carrier(opt) or "").strip().lower()
+    if not name:
+        return True
+    return name.startswith(_GENERIC_SERVICE_PREFIX)
 
 
 def _ebay_shipping(opt):
