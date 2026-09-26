@@ -71,6 +71,10 @@ truthy("  and the reason it used to fail is written down",
 
 console.log("\n== 1.1 what the menu offers ==");
 truthy("Edit listing", /<i class="ti ti-edit"><\/i> Edit listing/.test(DM));
+// ...except on the product page it would open: there it only redrew the page.
+truthy("  left out when the menu is opened from that listing's own page",
+       /onItsOwnPage \? ""\s*: `<button[^`]*Edit listing/.test(DM)
+       && /String\(PDP_SKU \|\| ""\) === String\(sku\)/.test(DM));
 truthy("View on Amazon", /View on Amazon/.test(DM));
 truthy("Copy ASIN", /Copy ASIN/.test(DM));
 truthy("Delete listing (already there)", /Delete listing/.test(DM));

@@ -4047,6 +4047,11 @@ function drawerMore(ev, sku, row, isLive){
     ? ROWS.find(x => String(x.sku) === String(sku)) : null;
   const _a = (_r && typeof rowAsin === "function") ? (rowAsin(_r) || {}) : {};
   const ourAsin = _a.own || "";
+  // OPENED FROM THE PRODUCT PAGE THAT "EDIT LISTING" WOULD OPEN, it does nothing
+  // but redraw the page you are on -- so it is left out there. From a list row
+  // or the drawer it is still the first item, and still the way in.
+  const onItsOwnPage = (typeof PDP_SKU !== "undefined")
+                    && String(PDP_SKU || "") === String(sku);
 
   const m = document.createElement("div");
   m.className = "tilemenu"; m.id = "tilemenu";
@@ -4059,7 +4064,8 @@ function drawerMore(ev, sku, row, isLive){
     // function, no route and no SKU-minting path that takes an existing row.
     // A menu item that opened a listing you did not ask for, or silently did
     // nothing, would be worse than its absence (Rule 4).
-    `<button onclick="closeTileMenu();openListing('${esc(sku)}')" title="Open this listing to edit it"><i class="ti ti-edit"></i> Edit listing</button>`
+    (onItsOwnPage ? ""
+      : `<button onclick="closeTileMenu();openListing('${esc(sku)}')" title="Open this listing to edit it"><i class="ti ti-edit"></i> Edit listing</button>`)
     + (ourAsin
         ? `<button onclick="closeTileMenu();window.open('${esc(_dpUrl(ourAsin))}','_blank','noopener')" title="Open ${esc(ourAsin)} on Amazon in a new tab"><i class="ti ti-external-link"></i> View on Amazon</button>`
           + `<button onclick="uiCopy('${esc(ourAsin)}','ASIN copied');closeTileMenu()" title="Copy ${esc(ourAsin)} to the clipboard"><i class="ti ti-copy"></i> Copy ASIN</button>`
