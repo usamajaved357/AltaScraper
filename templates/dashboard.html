@@ -66,6 +66,10 @@
      --ok/--warn/--red tokens dashboard.css already defines, so it loads after
      it and introduces no colours of its own. -->
 <link rel="stylesheet" href="/static/css/inputupload.css?v={{ ASSET_V }}">
+<!-- The generation flow folded above the drafts table. Loads after
+     dashboard.css and defines no colours of its own -- every value is one of
+     the sixteen tokens that file already sets. -->
+<link rel="stylesheet" href="/static/css/genflow.css?v={{ ASSET_V }}">
 <!-- The listing detail drawer, in full. Must load AFTER dashboard.css: it
      overrides `.drawer` from a single scrolling box into a fixed header, a
      scrolling middle and a fixed footer, and the later file is the one that
@@ -603,8 +607,64 @@
           <button data-view="detailed" onclick="setListView('detailed')" title="Detailed view — Amazon's Manage All Inventory layout: performance, inventory and pricing beside each listing"><i class="ti ti-list-details"></i></button>
           <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
         </span>
+        <!-- UPLOAD TEMPLATE — opens the generation flow (#genflow) above the
+             table. Folded by default; this is the only way it opens, so the
+             drafts table keeps the screen until an upload is actually wanted. -->
+        <button class="ghost" id="genflow_btn" onclick="genflowToggle()"
+                title="Add products to generate: drop a CSV or spreadsheet, or type one in. Opens above the table — the drafts stay in view."><i class="ti ti-upload"></i> Upload template</button>
         <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste</button>
         <button class="ghost" onclick="refreshView()" title="Reload this workspace's listings, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <!-- ===== THE GENERATION FLOW, ON THE PAGE THE DRAFTS ARE ON =====
+           Upload a template, check the queue, press Generate, watch the
+           progress, review the drafts below — without changing screens.
+
+           MOVED here from #sec_generate rather than rewritten (Rule 10). The
+           drop zone is still inputupload.js's, the queue is still
+           inputqueue.js's, and the pre-flight count is still genplan.js's, so
+           every measured behaviour in those three files is untouched. What is
+           new is WHERE they sit and that they start folded.
+
+           Folded by default: the drafts table is what this page is for, and a
+           drop zone above it every time you open Listings would push the table
+           off the screen for the 99 visits out of 100 that are not an upload. -->
+      <div id="genflow" class="genflow" hidden>
+        <!-- The drop zone. inputupload.js owns the dropping, the validation and
+             the error card that names the headers your file actually had. -->
+        <div id="inputupload"></div>
+
+        <!-- THE PRODUCT QUEUE — what Generate will make, added and edited here.
+             UPLOADS ADD, and that is deliberate: a second file joins the first
+             rather than replacing it, so two uploads in a row cannot silently
+             bin the first one's rows. Emptying the queue is therefore its own
+             visible button rather than a side effect of pressing Upload. -->
+        <div id="inputsheetwrap" class="genflow-queue">
+          <div class="genflow-qhead">
+            <b class="genflow-qtitle"><i class="ti ti-list-check"></i> Products to generate</b>
+            <span class="cc genflow-qmeta" id="inputsheet_meta"></span>
+            <!-- WHAT GENERATE WOULD DO, BEFORE IT DOES IT — genplan.js, moved
+                 into this header rather than deleted. The spec called it clutter
+                 and the block it drew was; the numbers are not. They are the
+                 only way to see the duplicate check working WITHOUT pressing
+                 Generate, and by the time the log says "skipped" the AI spend
+                 has already started. It also catches a full queue with nothing
+                 on record, which is what a broken duplicate check looks like
+                 and is otherwise indistinguishable from a genuine first run. -->
+            <div id="genplan" class="genplan genplan-inline"></div>
+            <span class="spacer" style="flex:1"></span>
+            <input id="inputsheet_filter" class="genflow-filter" placeholder="Filter…"
+                   oninput="filterInputSheet()">
+            <button class="ib" onclick="inputQueueLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+            <button class="ib genflow-clear" onclick="genflowClearQueue()"
+                    title="Empty the queue. Asks first, and says how many products it would remove. Nothing that has already been generated is touched.">
+              <i class="ti ti-eraser"></i> Clear queue</button>
+            <button class="ib genflow-go" onclick="genflowGenerate()"
+                    title="Generate every queued product that is not already in the app. This is the step that spends AI credit."><i class="ti ti-player-play"></i> Generate now</button>
+          </div>
+          <div id="inputsheet_body" class="genflow-qbody">
+            <div class="cc" style="padding:16px;opacity:.6">Loading…</div>
+          </div>
+        </div>
       </div>
       <div id="gridhow"></div>
       <div id="ws_datasrc" class="datasrc"></div>
@@ -741,12 +801,10 @@
         <button class="db-chip risk" onclick="submitLive()"><i class="ti ti-cloud-upload"></i> Submit · go live</button>
         <button class="db-chip risk" id="stopbtn" onclick="stopRun()" disabled title="Stops the current run"><i class="ti ti-player-stop"></i> Stop</button>
       </div>
-      <!-- WHAT GENERATE WOULD DO, BEFORE IT DOES IT.
-           The only way to find out what a run would skip was to press Generate
-           and read the log as it scrolled — by which point the money is being
-           spent. This asks the generator's own duplicate rule and reports the
-           answer. It calls nothing and costs nothing. -->
-      <div id="genplan" class="genplan"></div>
+      <!-- #genplan MOVED to the queue's header on the Listings page. It belongs
+           beside the queue whose contents it is counting, and an element id can
+           only exist once -- genplan.js writes to the one node. -->
+
       <!-- Row selector: pick which input-sheet rows to generate -->
       <!-- The card, the title and the sub-line the other screens use, instead of
            a border, a radius and a background typed inline; and `.ed`, which is
@@ -789,34 +847,19 @@
       <div class="reqnote">Runs here only touch <b id="gen_scope">this workspace's</b> sheet/marketplace — nothing else is affected.</div>
       <div id="targetacct" class="acctbanner">Resolving destination account…</div>
 
-      <!-- TWO WAYS IN, AND NEITHER IS A SPREADSHEET WE READ FOR YOU.
-           A file dropped here, or the form inside the queue below. The Google
-           input sheet was a third, and is gone: /input/import is commented out
-           in routes/input_routes.py, as is the auto-import that used to read it
-           inside /run/generate. The queue itself is unchanged -- both ways
-           still write through data/input_import.add_row.
-           Upload zone first, then the queue with its "add a product" form. -->
-      <div id="inputupload" style="margin-top:18px"></div>
-
-      <!-- THE PRODUCT QUEUE: what Generate will make, added and edited here.
-           This was a read-only view of the Google sheet, so changing anything
-           meant leaving the app. The queue already lived in the database; only
-           the way IN was still a spreadsheet. -->
-      <div id="inputsheetwrap" style="margin-top:14px;border:1px solid var(--line,#2a2f3a);border-radius:10px;overflow:hidden">
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel2,rgba(255,255,255,.02));flex-wrap:wrap">
-          <b style="font-size:14px"><i class="ti ti-list-check"></i> Products to generate</b>
-          <span class="cc" id="inputsheet_meta" style="font-size:12px;opacity:.7"></span>
-          <span class="spacer" style="flex:1"></span>
-          <input id="inputsheet_filter" placeholder="Filter…" oninput="filterInputSheet()"
-                 style="padding:6px 9px;border:1px solid var(--line,#2a2f3a);border-radius:7px;background:var(--bg,#0e1116);color:inherit;font-size:12px;min-width:150px">
-          <button class="ib" onclick="inputQueueLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-          <!-- "Import from sheet" and "Open in Google Sheets" stood here. The
-               input no longer comes from Google, so a button that reads a
-               spreadsheet would be the only thing left implying it does. -->
-        </div>
-        <div id="inputsheet_body" style="max-height:560px;overflow:auto">
-          <div class="cc" style="padding:16px;opacity:.6">Loading…</div>
-        </div>
+      <!-- THE DROP ZONE AND THE QUEUE MOVED TO THE LISTINGS PAGE (#genflow).
+           They were here, one screen away from the drafts they produce, so
+           uploading meant Generate → wait → change screens → review. Both are
+           now folded above the drafts table under "Upload template", and they
+           are the SAME elements moved, not copies: #inputupload,
+           #inputsheetwrap and #genplan each exist exactly once in this file, so
+           inputupload.js, inputqueue.js and genplan.js all still find the one
+           node they have always written to. -->
+      <div class="reqnote" style="margin-top:18px">
+        <b>Uploading and the product queue are on the Listings page now.</b>
+        Open <a href="#" onclick="navTo('listings');genflowOpen();return false">Listings
+        → Upload template</a> to add products and generate them beside the drafts
+        they become. The run buttons above still work from here.
       </div>
     </div>
 
@@ -2430,6 +2473,11 @@
 <script src="/static/js/permissions.js?v={{ ASSET_V }}"></script>
 <!-- What Generate would do, shown before you press it. -->
 <script src="/static/js/genplan.js?v={{ ASSET_V }}"></script>
+<!-- The fold that holds the drop zone and the queue above the drafts table.
+     Loads LAST of the five it drives -- inputupload.js, inputqueue.js,
+     genplan.js, submit.js and genui.js -- because it calls into all of them and
+     defines none of their behaviour itself. -->
+<script src="/static/js/genflow.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

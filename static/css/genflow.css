@@ -1,0 +1,106 @@
+/* static/css/genflow.css -- the generation flow folded above the drafts table.
+ *
+ * EVERY COLOUR HERE IS A TOKEN, none is a hex. The mockup this came from
+ * defines its own :root (--bg:#1a1d23, --accent:#2dd4bf, --ink:#c9d1d9), and
+ * pasting that block in would have forked the palette: dashboard.css already
+ * defines all sixteen, --bg is already #1a1d23, and --accent is #2dd4a8 rather
+ * than the mockup's #2dd4bf. Two definitions of one palette drift the first
+ * time either is touched, and the app's values are the deliberate ones.
+ *
+ * The spec's own instruction is "use the existing AltaScraper Orbit design
+ * tokens", which is what this does.
+ */
+
+/* The fold. `hidden` on the element is what opens and closes it (genflow.js),
+ * so there is one source of truth for the state and no class to fall out of
+ * step with it. */
+.genflow{
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+.genflow[hidden]{ display: none; }
+
+/* ---- the queue card ---------------------------------------------------- */
+.genflow-queue{
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.genflow-qhead{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--line);
+}
+.genflow-qtitle{ font-size: 13.5px; white-space: nowrap; }
+.genflow-qtitle .ti{ color: var(--accent); vertical-align: -1px; }
+.genflow-qmeta{ font-size: 11.5px; opacity: .72; white-space: nowrap; }
+.genflow-qbody{ max-height: 560px; overflow: auto; }
+
+.genflow-filter{
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 12px;
+  min-width: 150px;
+  font-family: inherit;
+}
+.genflow-filter:focus{ outline: none; border-color: var(--accent); }
+
+/* GENERATE IS THE ONE FILLED BUTTON on this card, because it is the one that
+ * spends money. Everything beside it reads or tidies; only this one starts a
+ * run. Six buttons of equal weight have no first among them. */
+.genflow-go{
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+.genflow-go:hover{ filter: brightness(1.08); }
+
+/* CLEAR IS DESTRUCTIVE AND LOOKS IT. It is the only way work leaves the queue
+ * (/input/clear), and it is deliberately not something an upload does. */
+.genflow-clear{ color: var(--red); border-color: var(--red-line, var(--line)); }
+.genflow-clear:hover{ border-color: var(--red); }
+
+/* The toolbar button reflects whether the panel is open. */
+#genflow_btn.on{
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---- genplan, inline in the header ------------------------------------
+ * It was a block of its own below the button bar. The numbers earned their
+ * place; the block did not. Inline it reads as a caption on the queue it is
+ * counting, and it keeps genplan.js's own .genplan styling for the parts that
+ * carry meaning (the go/warn colours) rather than restating them here.
+ */
+.genplan-inline{
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.genplan-inline .genplan-n{ white-space: nowrap; }
+
+/* On a narrow window the header stacks rather than scrolling sideways: this
+ * card sits above the table, and a horizontal scrollbar on a header is a
+ * control you have to go looking for. */
+@media (max-width: 860px){
+  .genflow-qhead{ gap: 7px; }
+  .genflow-filter{ min-width: 0; flex: 1 1 120px; }
+  .genplan-inline{ order: 10; flex: 1 1 100%; }
+}
