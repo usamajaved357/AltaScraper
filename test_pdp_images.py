@@ -178,9 +178,13 @@ const first=pdpImagesTab(ROW);
 // Now with slots loaded, as the route would answer for a draft.
 PDPI={sku:"SKU-1", productType:"SQUEEGEE", live:false, checked:true, note:"",
       err:"", loading:false, dragUrl:"",
-      slots:[{key:"main_product_image_locator", name:"MAIN", current:""},
-             {key:"other_product_image_locator_1", name:"PT01", current:""},
-             {key:"other_product_image_locator_2", name:"PT02", current:""}],
+      // THE SHAPE /listing/image_slots REALLY SENDS: `label`, never `name`
+      // (listing/images.py slots_from_schema). This fixture used `name`, which
+      // is why the screen's raw-key slot names never showed up here.
+      slots:[{key:"main_product_image_locator", label:"Main image", current:""},
+             {key:"other_product_image_locator_1", label:"PT1", current:""},
+             {key:"other_product_image_locator_2", label:"PT2", current:""},
+             {key:"image_locator_eeuk", label:"UK Energy Label", current:""}],
       library:[{url:"/media/_acct/a/SKU-1/gen.png", name:"gen.png"}]};
 const full=_pdpiBody(ROW);
 
@@ -203,6 +207,10 @@ console.log(JSON.stringify({
   saysNotLive: /not on Amazon yet/.test(full),
   // A slot holding a draft picture can be cleared; an empty one cannot.
   clears: count(full,/pdpImgClear/g),
+  slotNames: (String(full).match(/pdpi-slotname">([^<]*)</g)||[])
+               .map(s=>s.replace(/^pdpi-slotname">/,"").replace(/<$/,"")),
+  rawKeyShown: />main_product_image_locator</.test(full)
+               || />other_product_image_locator_\d/.test(full),
   noSchemaRefuses: /Nothing is guessed at here|schema could not be read/.test(noSchema)
                    && !/pdpi-slot"/.test(noSchema),
   // A quote in a URL must not break out of the onclick.
@@ -227,7 +235,10 @@ try:
         truthy("the first draw is a loading shell, not a blank tab",
                got["firstIsShell"])
         check("four sections", got["sections"], 4)
-        check("one square per slot the schema named", got["slots"], 3)
+        check("one square per slot the schema named", got["slots"], 4)
+        check("  named the way Seller Central names them", got["slotNames"],
+              ["Main", "PT01", "PT02", "UK Energy Label"])
+        falsy("  never the raw attribute key", got["rawKeyShown"])
         check("  the two the draft has assigned are filled", got["filled"], 2)
         check("  and only those can be cleared", got["clears"], 2)
         check("the row's pictures and the library are offered", got["thumbs"], 3)

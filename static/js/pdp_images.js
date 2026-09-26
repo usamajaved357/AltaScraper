@@ -182,9 +182,22 @@ async function pdpImgAssign(slotKey, url){
 
 function pdpImgClear(slotKey){ pdpImgAssign(slotKey, ""); }
 
+/* WHAT A SLOT IS CALLED ON SCREEN -- the one place (Rule 12).
+ *
+ * The slot picker and the slot cards read `s.name || s.key`, but
+ * /listing/image_slots sends `label`, never `name` (listing/images.py), so
+ * both showed the raw attribute key: "main_product_image_locator". The
+ * families Seller Central names are named its way -- Main, PT01..PTnn,
+ * Swatch; anything else the product type defines keeps the label the server
+ * gave it (its schema title), and the key only when there is none. */
 function _pdpiSlotName(key){
+  key = String(key || "");
+  if(key === "main_product_image_locator") return "Main";
+  if(key === "swatch_product_image_locator") return "Swatch";
+  const m = /^other_product_image_locator_(\d+)$/.exec(key);
+  if(m) return "PT" + (m[1].length < 2 ? "0" + m[1] : m[1]);
   const s = (PDPI.slots || []).find(function(x){ return x.key === key; });
-  return (s && (s.name || s.label)) || key;
+  return (s && (s.label || s.name)) || key;
 }
 
 /* The slot picker on a thumbnail. Only slots this product type HAS, and the
@@ -197,7 +210,7 @@ function _pdpiSlotOptions(url){
   (PDPI.slots || []).forEach(function(s){
     const holder = assigned[s.key];
     const taken = holder && holder !== url;
-    h += '<option value="' + esc(s.key) + '">' + esc(s.name || s.key)
+    h += '<option value="' + esc(s.key) + '">' + esc(_pdpiSlotName(s.key))
        + (taken ? " (replace)" : "") + '</option>';
   });
   return h;
@@ -340,7 +353,7 @@ function _pdpiSlotsHtml(){
       +   (url ? '<img src="' + esc(url) + '" loading="lazy" onerror="this.remove()">'
                : '<i class="ti ti-photo-plus"></i>')
       + '</div>'
-      + '<div class="pdpi-slotname">' + esc(s.name || s.key) + '</div>'
+      + '<div class="pdpi-slotname">' + esc(_pdpiSlotName(s.key)) + '</div>'
       + (onlyLive ? '<div class="pdpi-slotlive">on Amazon</div>' : "")
       + (draft ? '<button class="pdpi-slotx" title="Take this picture out of '
                  + 'the slot" onclick="pdpImgClear(\'' + esc(s.key) + '\')">'
