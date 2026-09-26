@@ -141,6 +141,15 @@ def _attach_identifier(c, r, config_path, workspace_id):
         # The case that already cost him a listing.
         out["blocking"] = True
         out["note"] = out["clash_note"]
+    elif code and clash:
+        # ON ANOTHER DRAFT, NOT YET ON AMAZON. Still reported (CLAUDE.md Rule 1:
+        # a barcode already on another listing must be reported). This branch
+        # used to be missing, so the note stayed empty and the panel fell
+        # through to "not used by any other listing" about a barcode that was.
+        # Not blocking: whichever of the two reaches Amazon first owns the
+        # code, and it is the second one Amazon will refuse -- the same verdict
+        # /barcode/check gives a draft clash ("clash", not "clash_live").
+        out["note"] = out["clash_note"]
     elif not code and not exempt:
         out["blocking"] = True
         out["note"] = ((why or "There is no barcode in the box")

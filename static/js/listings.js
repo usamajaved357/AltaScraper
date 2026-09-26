@@ -3325,26 +3325,32 @@ function identifierPanel(r){
     + 'Tells Amazon this product has no barcode. Only tick it if that is true '
     + '&mdash; it is a declaration, not a workaround.</span></span></label>';
 
+  // Every other listing carrying this barcode -- drafts as well as live ones.
+  // Shown on both banners: a draft clash used to get no list at all.
+  const clashes = (id.clash && id.clash.length) ? id.clash : [];
+  const alsoOn = clashes.length
+    ? '<span class="cc" style="display:block;margin-top:5px">Also on: '
+      + clashes.map(function(c){
+          return '<code>' + esc(c.workspace_id) + ' / ' + esc(c.sku)
+               + '</code>' + (c.live ? ' <b>(live)</b>' : ' (not live yet)');
+        }).join(", ") + '</span>'
+    : '';
+
   if(id.blocking){
     return '<div class="compbanner blocked"><i class="ti ti-barcode-off"></i><div>'
       + '<b>This cannot be created on Amazon yet</b>'
       + '<span class="cc">' + esc(id.note) + '</span>'
-      + (id.clash && id.clash.length
-          ? '<span class="cc" style="display:block;margin-top:5px">Also on: '
-            + id.clash.map(function(c){
-                return '<code>' + esc(c.workspace_id) + ' / ' + esc(c.sku)
-                     + '</code>' + (c.live ? ' <b>(live)</b>' : '');
-              }).join(", ") + '</span>'
-          : '')
-      + box + '</div></div>';
+      + alsoOn + box + '</div></div>';
   }
-  if(id.note){
+  if(id.note || clashes.length){
     return '<div class="compbanner warn"><i class="ti ti-barcode"></i><div>'
-      + '<b>Product identifier</b><span class="cc">' + esc(id.note) + '</span>'
-      + box + '</div></div>';
+      + '<b>Product identifier</b><span class="cc">'
+      + esc(id.note || id.clash_note || "This barcode is on another listing too.")
+      + '</span>' + alsoOn + box + '</div></div>';
   }
   // A usable barcode nobody else has needs no panel -- but the tick box still
-  // has to be reachable to be UNticked, so it is shown quietly.
+  // has to be reachable to be UNticked, so it is shown quietly. Only reached
+  // when `clashes` is empty, so it cannot say this about a shared barcode.
   return '<div class="cc" style="font-size:11.5px;margin:6px 0 2px">'
     + 'Barcode <code>' + esc(id.barcode) + '</code> &mdash; not used by any '
     + 'other listing.' + box + '</div>';
