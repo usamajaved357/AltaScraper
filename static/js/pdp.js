@@ -609,6 +609,37 @@ function pdpSidebar(r){
   const nCompliance = wcount(wt, T_COMPLIANCE);
   const nClaims     = wcount(wt, T_CLAIMS) || claimHit ? (wcount(wt, T_CLAIMS)
                       || (r.claim_flags || []).length) : 0;
+  // AMAZON FEEDBACK WAS A FIXED GREY LIGHT that never changed colour, beside a
+  // banner saying "Amazon refused this listing". It reads what that banner and
+  // the barcode panel read now:
+  //   r.api_issues        Amazon's own reply to the last Preview/Submit
+  //   r.identifier.clash  the barcode is already on another listing
+  //                       (domain/barcode_clash via /row -- Rule 1 says report it)
+  //   r.warnings          amazon_refused, duplicate_barcode, barcode_live_on_amazon
+  // Grey ("info") while Amazon has never been asked and nothing clashes: green
+  // would claim Amazon approved a listing it has never seen.
+  const T_AMAZON = ["amazon_refused", "duplicate_barcode", "barcode_live_on_amazon"];
+  const apiRec   = r.api_issues || null;
+  const apiAll   = (apiRec && apiRec.issues) || [];
+  const apiErrs  = apiAll.filter(function(i){ return i && i.severity === "ERROR"; }).length;
+  const apiNotes = apiAll.length - apiErrs;
+  const clash    = (r.identifier && r.identifier.clash) || [];
+  const clashLive = clash.some(function(x){ return x && x.live; });
+  const amazonTone = (function(){
+    const t = tone(wt, T_AMAZON);
+    if(apiErrs || clashLive || t === "bad") return "bad";
+    if(apiNotes || clash.length || t === "warn") return "warn";
+    return apiRec ? "ok" : "info";
+  })();
+  const amazonLabel = (function(){
+    if(amazonTone === "ok" || amazonTone === "info") return "Amazon feedback";
+    const bits = [];
+    if(apiErrs) bits.push(apiErrs + (apiErrs === 1 ? " error" : " errors"));
+    else if(apiNotes) bits.push(apiNotes + (apiNotes === 1 ? " note" : " notes"));
+    if(clash.length || wt.duplicate_barcode || wt.barcode_live_on_amazon)
+      bits.push("barcode clash");
+    return "Amazon feedback — " + (bits.length ? bits.join(", ") : "see why");
+  })();
   const label = function(base, n, tone_){
     if(tone_ === "ok") return base;
     return n ? (base + " — " + n) : (base + " — see why");
@@ -642,7 +673,9 @@ function pdpSidebar(r){
             (claimsTone === "ok" ? "Claim risks"
              : (nClaims + " claim risk" + (nClaims === 1 ? "" : "s"))),
             "compliance")
-    +   chk("info", "ti-message-dots", "Amazon feedback", "compliance")
+    +   chk(amazonTone, (amazonTone === "bad" || amazonTone === "warn")
+                          ? "ti-alert-triangle" : "ti-message-dots",
+            amazonLabel, "compliance")
     + '</div></div>';
 }
 

@@ -725,5 +725,28 @@ console.log("\nthe page is refreshed after an action, not left stale");
          /pdpClose\(\)[\s\S]*loadRows\(\)/.test(delFn));
 }
 
+console.log("\nthe Amazon feedback light reads Amazon's answer");
+// ---------------------------------------------------------------------------
+// It was chk("info", ...) -- the same grey whatever Amazon had said.
+{
+  const light = r => {
+    const h = ctx.pdpSidebar(Object.assign({sku: SKU, warnings: []}, r));
+    const m = /<div class="pdp-ck (\w+)"[^>]*>(?:(?!<\/div>).)*Amazon feedback([^<]*)<\/div>/.exec(h);
+    return m ? [m[1], m[2].trim()] : null;
+  };
+  check("  never asked: grey, not a false green", light({}), ["info", ""]);
+  check("  asked, nothing wrong: green",
+        light({api_issues: {issues: []}}), ["ok", ""]);
+  check("  Amazon refused it: red, with the count",
+        light({api_issues: {issues: [{severity: "ERROR"}, {severity: "ERROR"}]}}),
+        ["bad", "— 2 errors"]);
+  check("  accepted with notes: amber",
+        light({api_issues: {issues: [{severity: "WARNING"}]}}), ["warn", "— 1 note"]);
+  check("  barcode on a LIVE listing: red",
+        light({identifier: {clash: [{sku: "X", live: true}]}}), ["bad", "— barcode clash"]);
+  check("  barcode on a draft: amber",
+        light({identifier: {clash: [{sku: "X", live: false}]}}), ["warn", "— barcode clash"]);
+}
+
 console.log("\n%d failed", fails);
 process.exit(fails ? 1 : 0);
