@@ -612,6 +612,19 @@
              drafts table keeps the screen until an upload is actually wanted. -->
         <button class="ghost" id="genflow_btn" onclick="genflowToggle()"
                 title="Add products to generate: drop a CSV or spreadsheet, or type one in. Opens above the table — the drafts stay in view."><i class="ti ti-upload"></i> Upload template</button>
+        <!-- GENERATE, on the page the drafts land on. It was one of six equal
+             buttons on a screen you had to navigate to; here it is the one that
+             starts a run, and the only one on this toolbar that spends money. -->
+        <button class="ghost" onclick="genflowGenerate()"
+                title="Generate every queued product that is not already in the app. This is the step that spends AI credit — the queue and the skip count are under Upload template."><i class="ti ti-player-play"></i> Generate</button>
+        <!-- THE FIVE DEMOTED RUN ACTIONS, kept rather than deleted.
+             Retry holds, Export, Preview, Submit and Stop were a permanent bar
+             of six on the generate screen. They are rare — but Preview is the
+             only way to check against Amazon without sending, and Stop is the
+             only way to end a run, so none of them may be dropped. Behind one
+             button, in the same .tilemenu the rows already use. -->
+        <button class="ghost" id="genflow_more" onclick="genflowRunMenu(event)"
+                title="Retry holds, Export, Preview against Amazon, Submit, Stop"><i class="ti ti-dots"></i></button>
         <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste</button>
         <button class="ghost" onclick="refreshView()" title="Reload this workspace's listings, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
       </div>
@@ -672,6 +685,16 @@
       <div id="selbar" class="selbar" style="display:none">
         <span id="selcount">0 selected</span>
         <span class="spacer"></span>
+        <!-- SUBMIT SELECTED — the spec's bulk submit. It calls submitLive(),
+             which ALREADY scopes the run to selectedSkus(), already runs the
+             local-image precheck, and already makes you confirm the destination
+             account by name before anything is sent. So this is a visible way in
+             with a live count, not a second submit path (Rule 12) — inventing
+             one would be inventing a way to publish to Amazon.
+             Styled as the one consequential button in this bar, because it is
+             the only one here that reaches the live catalogue. -->
+        <button id="selsubmit" class="selsubmit" onclick="submitLive()"
+                title="Publish the selected listings to Amazon. Shows the destination account and asks before anything is sent. Listings that are already live are skipped."><i class="ti ti-cloud-upload"></i> Submit selected</button>
         <button onclick="bulkStatus('APPROVED')" title="Approve all selected listings"><i class="ti ti-check"></i> Approve</button>
         <button onclick="bulkStatus('HOLD')" title="Put all selected listings on hold"><i class="ti ti-player-pause"></i> Hold</button>
         <span class="handlingwrap" title="Set the handling time (lead time to ship, in days) on the selected listings — saves it here and pushes the change live to Amazon">

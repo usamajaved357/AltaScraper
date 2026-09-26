@@ -104,6 +104,65 @@ async function genflowClearQueue(){
   }
 }
 
+/* ===== THE DEMOTED RUN ACTIONS =====
+ *
+ * Retry holds, Export, Preview, Submit and Stop were a permanent bar of six on
+ * the generate screen. The spec calls them "rarely used but should not be
+ * deleted", and it is right on both counts -- Preview is the only way to check
+ * a draft against Amazon WITHOUT sending it, and Stop is the only way to end a
+ * run -- so they are behind one button rather than gone.
+ *
+ * It reuses the .tilemenu the listing rows already use: the same element, the
+ * same class, the same dismiss-on-next-click. A second dropdown implementation
+ * would be a second thing to style and a second thing to get wrong (Rule 12).
+ *
+ * EVERY ITEM HERE CALLS THE FUNCTION IT ALWAYS CALLED. Nothing about what these
+ * five DO changes; only where you press them.
+ */
+function genflowRunMenu(ev){
+  ev.stopPropagation();
+  closeRunMenu();
+  if(typeof closeTileMenu === "function") closeTileMenu();
+  const m = document.createElement("div");
+  m.className = "tilemenu";
+  m.id = "runmenu";
+  // Stop is only offered while something is running -- an enabled Stop with
+  // nothing to stop is a button that does nothing, which is worse than absent.
+  const running = !!document.querySelector("#stopbtn:not([disabled])");
+  m.innerHTML =
+      '<button onclick="closeRunMenu();runMode(\'retry\')"'
+    + ' title="Re-run the products that were held or refused last time. Writes into this app only."'
+    + '><i class="ti ti-refresh"></i> Retry holds</button>'
+    + '<button onclick="closeRunMenu();runMode(\'export\')"'
+    + ' title="Download the drafts as an Amazon flat file (.xlsm). Sends nothing."'
+    + '><i class="ti ti-file-spreadsheet"></i> Export .xlsm</button>'
+    + '<button onclick="closeRunMenu();runMode(\'api\')"'
+    + ' title="Check the drafts against Amazon and show what it says. Creates nothing."'
+    + '><i class="ti ti-eye-check"></i> Preview against Amazon</button>'
+    + '<button class="danger" onclick="closeRunMenu();submitLive()"'
+    + ' title="Publish to Amazon. Shows the destination account and asks first."'
+    + '><i class="ti ti-cloud-upload"></i> Submit · go live</button>'
+    + (running
+        ? '<button class="danger" onclick="closeRunMenu();stopRun()"'
+          + '><i class="ti ti-player-stop"></i> Stop the run</button>'
+        : '');
+  document.body.appendChild(m);
+  const btn = ev.target.closest("button");
+  const rect = btn.getBoundingClientRect();
+  m.style.top = (rect.bottom + 4) + "px";
+  // Kept on screen: anchored to the button's RIGHT edge, because this one sits
+  // at the end of the toolbar and a left-anchored menu would hang off the page.
+  m.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - m.offsetWidth - 8)) + "px";
+  setTimeout(function(){
+    document.addEventListener("click", closeRunMenu, {once: true});
+  }, 0);
+}
+
+function closeRunMenu(){
+  const m = document.getElementById("runmenu");
+  if(m) m.remove();
+}
+
 /* GENERATE. runMode('generate') in submit.js is the one place a run is started
  * and the one place the stream is opened; this only refuses to start an empty
  * one, which otherwise spends a request to be told there was nothing to do. */

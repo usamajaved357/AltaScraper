@@ -149,6 +149,20 @@ function updateSelBar(){
          + 'Everything selected is acted on. Press Clear to start again.')
       : '';
   }
+  // THE COUNT ON THE SUBMIT BUTTON, updated here because this is already the one
+  // function that reacts to the selection changing. A second listener would be a
+  // second answer to "how many are selected" (Rule 12), and the two would
+  // disagree the first time either was touched.
+  //
+  // The NUMBER matters on this button and on no other in the bar: it is the one
+  // that publishes to Amazon, and "Submit selected (23)" when you believed you
+  // had ticked three is the moment to notice — a selection survives moving
+  // between tabs, so the number and the screen genuinely can differ.
+  const sub = document.getElementById('selsubmit');
+  if(sub){
+    sub.innerHTML = '<i class="ti ti-cloud-upload"></i> Submit selected ('
+                  + n + ')';
+  }
 }
 function selectedSkus(){ return Array.from(SELECTED); }
 

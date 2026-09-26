@@ -77,6 +77,18 @@
   color: var(--accent);
 }
 
+/* ---- Submit selected, in the selection bar ----------------------------
+ * The one button in that bar that reaches the live catalogue, so it is the one
+ * that looks like it does. Everything else there edits this app's own rows.
+ */
+.selbar .selsubmit{
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+.selbar .selsubmit:hover{ filter: brightness(1.08); }
+
 /* ---- genplan, inline in the header ------------------------------------
  * It was a block of its own below the button bar. The numbers earned their
  * place; the block did not. Inline it reads as a caption on the queue it is

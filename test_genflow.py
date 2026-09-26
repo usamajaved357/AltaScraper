@@ -113,6 +113,45 @@ check("  opening the panel clears nothing",
       "input/clear" in gf.split("function genflowOpen")[1].split("function genflowClose")[0],
       False)
 
+print("\n=== the five demoted run actions are BEHIND a button, not deleted ===")
+# "rarely used but should not be deleted" -- and two of them are the only way to
+# do their job at all: Preview is the only check against Amazon that sends
+# nothing, and Stop is the only way to end a run.
+check("the toolbar has the overflow button", 'id="genflow_more"' in src, True)
+check("  wired to genflowRunMenu", 'onclick="genflowRunMenu(event)"' in src, True)
+check("it reuses the rows' own .tilemenu, not a second dropdown",
+      'className = "tilemenu"' in gf, True)
+# The calls sit inside single-quoted HTML attributes built in JS, so the quotes
+# are backslash-escaped in the source: runMode(\'retry\'). Compare with the
+# backslashes stripped rather than writing the escaping into the expectation.
+gf_flat = gf.replace("\\'", "'")
+for mode, label in (("retry", "Retry holds"), ("export", "Export"),
+                    ("api", "Preview")):
+    check("%s is still reachable" % label, "runMode('" + mode + "')" in gf_flat, True)
+check("Submit is still reachable", "submitLive()" in gf, True)
+check("Stop is still reachable", "stopRun()" in gf, True)
+check("  but only offered while something is running",
+      "#stopbtn:not([disabled])" in gf, True)
+check("Generate is on the toolbar itself, not buried",
+      'onclick="genflowGenerate()"' in src, True)
+
+print("\n=== every function the menu calls is defined somewhere ===")
+for fn in sorted(set(re.findall(r"closeRunMenu\(\);([A-Za-z0-9_]+)\(", gf))):
+    check("%s() is defined" % fn,
+          bool(re.search(r"\bfunction\s+%s\s*\(" % fn, js)), True)
+
+print("\n=== bulk submit is a way IN to submitLive, not a second submit path ===")
+lj = open(r"D:\AltaScraper\static\js\listings.js", encoding="utf-8").read()
+check("the button exists in the selection bar", 'id="selsubmit"' in src, True)
+check("  and calls submitLive", 'onclick="submitLive()"' in src, True)
+# submitLive already scopes to selectedSkus() and confirms the destination
+# account by name. A new /run/api_submit call here would be a second way to
+# publish, with none of that.
+check("  genflow.js does not publish on its own",
+      "api_submit" in _nocomment(gf), False)
+check("the count is updated in updateSelBar, the one selection listener",
+      "selsubmit" in lj.split("function updateSelBar")[1].split("\nfunction ")[0], True)
+
 print("\n=== genflow.css uses the app's tokens and defines no palette ===")
 css_code = re.sub(r"/\*.*?\*/", "", open(CSS, encoding="utf-8").read(), flags=re.S)
 check("no :root block -- dashboard.css owns the palette", ":root" in css_code, False)
