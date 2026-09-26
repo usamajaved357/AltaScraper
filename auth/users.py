@@ -68,6 +68,39 @@ ROLES = {
     "viewer":  [],
 }
 
+# ---- permissions that were added AFTER the user system shipped ------------
+# WHY THIS EXISTS, and why it is not simply "fall back to the role".
+#
+# `permissions` is a stored LIST and has_permission() reads only that list --
+# deliberately, because a permission can be taken away from one person after
+# their role preset filled it in. Consulting the role on every check would hand
+# back anything an admin had removed on purpose, turning a lockout bug into a
+# privilege-escalation bug.
+#
+# But it also means a permission added to the vocabulary LATER is absent from
+# every record written before it, and nothing can tell "never granted" from
+# "did not exist yet". MEASURED on the owner's own account:
+#
+#     537c293  2026-08-13  the user system -- and this account
+#     5e39619  2026-08-14  upload_images
+#
+#     "role": "owner"
+#     "permissions": ["approve_delete", "edit", "manage_accounts",
+#                     "manage_users", "ppc", "publish"]    <- no upload_images
+#
+# So the owner of the app could not upload an image to his own draft, the Users
+# screen drew the box unticked with no hint that his role already granted it,
+# and the three routes gated on it -- /media/upload, /media/delete,
+# /genimage/save_to_media -- refused him with "you do not have permission".
+#
+# THE NARROW RULE: for a permission that did not exist when the record was
+# written, the ROLE decides. For every permission that DID exist then, the
+# stored list decides, exactly as before, so a deliberate removal still holds.
+# PERMS_VERSION stamps a record as soon as it is written by a version that
+# knows all of these, after which nothing is inferred at all.
+PERMS_VERSION = 2
+LATER_PERMISSIONS = {2: {"upload_images"}}
+
 # ---- per-feature access, the way Amazon's child accounts work ------------
 # A permission answers "may they DO this?". It does not answer "may they SEE
 # this?" -- and until now every signed-in user could see everything, including
@@ -319,7 +352,13 @@ def public(user):
         "email": user.get("email", ""),
         "name": user.get("name", ""),
         "role": user.get("role", "viewer"),
-        "permissions": list(user.get("permissions") or []),
+        # RESOLVED, like the features below it and for the same reason: the
+        # screen must show what is ACTUALLY in force. Drawn from the raw list,
+        # an owner saw "Save, upload and delete images" unticked while the app
+        # was refusing him for want of it -- a box that disagrees with the
+        # behaviour is worse than no box. Reporting the resolved set also means
+        # the next save WRITES it, so the inference stops being needed.
+        "permissions": effective_permissions(user),
         # Resolved, not raw: a user with no explicit settings falls back to their
         # role preset, and the UI must show what is ACTUALLY in force rather than
         # an empty box that looks like "no access".
@@ -392,11 +431,38 @@ def bootstrap_user():
     return {
         "id": "shared", "email": "", "name": "Shared password",
         "role": "owner", "permissions": list(ROLES["owner"]),
+        "perms_version": PERMS_VERSION,
         "workspaces": [ALL_WORKSPACES], "active": True, "bootstrap": True,
     }
 
 
 # ---- permission checks ---------------------------------------------------
+
+def effective_permissions(user):
+    """Every permission this user actually holds. The ONE answer (Rule 12).
+
+    The stored list, plus -- for a record written before a permission existed --
+    the ones their ROLE grants. See LATER_PERMISSIONS above for why it is scoped
+    that narrowly rather than falling back to the role for everything.
+    """
+    if not isinstance(user, dict):
+        return []
+    perms = list(user.get("permissions") or [])
+    try:
+        stamped = int(user.get("perms_version") or 1)
+    except (TypeError, ValueError):
+        stamped = 1
+    if stamped >= PERMS_VERSION:
+        return perms                      # written knowing all of them
+    role_grants = set(ROLES.get(user.get("role") or "", []))
+    for ver in sorted(LATER_PERMISSIONS):
+        if ver <= stamped:
+            continue                      # existed already -> the list decides
+        for p in sorted(LATER_PERMISSIONS[ver]):
+            if p in role_grants and p not in perms:
+                perms.append(p)
+    return perms
+
 
 def has_permission(user, perm):
     """Does this user hold `perm`? The ONLY place this question is answered."""
@@ -404,7 +470,7 @@ def has_permission(user, perm):
         return False
     if not perm:
         return True                      # the action needs no permission
-    return perm in (user.get("permissions") or [])
+    return perm in effective_permissions(user)
 
 
 def feature_level(user, feature):
@@ -536,6 +602,9 @@ def create_user(config_path, email, name="", role="lister", permissions=None,
             "name": str(name or "").strip(),
             "role": role,
             "permissions": perms,
+            # Written by a version that knows the whole vocabulary, so this
+            # record never needs a permission inferred from its role.
+            "perms_version": PERMS_VERSION,
             "features": ({f: lvl for f, lvl in (features or {}).items()
                           if f in FEATURES and lvl in LEVELS}
                          or dict(ROLE_FEATURES.get(role, ROLE_FEATURES["lister"]))),
@@ -632,6 +701,10 @@ def update_user(config_path, user_id, **fields):
                 u["role"] = fields["role"]
             if "permissions" in fields and isinstance(fields["permissions"], list):
                 u["permissions"] = [p for p in fields["permissions"] if p in PERMISSIONS]
+                # STAMPED, so nothing is inferred for this record again. Whoever
+                # saved it was looking at the resolved set, so unticking one now
+                # means "remove it" and is honoured from here on.
+                u["perms_version"] = PERMS_VERSION
             if "features" in fields and isinstance(fields["features"], dict):
                 # Unknown feature names and invalid levels are dropped rather
                 # than stored -- a typo must not become a permanent silent

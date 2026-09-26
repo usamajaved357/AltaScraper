@@ -20,9 +20,19 @@ CFG = os.path.join(TMP, "config.json")
 json.dump({"accounts": []}, open(CFG, "w"))
 
 
-def person(perms, features):
-    return {"role": "lister", "permissions": list(perms), "active": True,
-            "features": dict(features), "workspaces": ["*"]}
+def person(perms, features, perms_version=users.PERMS_VERSION):
+    # STAMPED, because every arrangement below is a DELIBERATE one -- "images
+    # only", "hands off the library" -- and that is what a record configured by
+    # the current app carries. Without the stamp these records are treated as
+    # predating part of the vocabulary, and a permission their ROLE grants is
+    # inferred (see LATER_PERMISSIONS in auth/users.py) -- which is right for a
+    # legacy record and wrong for an intended one. The legacy case is asserted
+    # on its own below, so both halves are covered here.
+    u = {"role": "lister", "permissions": list(perms), "active": True,
+         "features": dict(features), "workspaces": ["*"]}
+    if perms_version is not None:
+        u["perms_version"] = perms_version
+    return u
 
 def may(u, path, method="POST"):
     return guard.check(path, method, u, {})[0]
@@ -83,6 +93,27 @@ for role in ("owner", "manager", "lister"):
 check("a viewer may do neither",
       [may(person(users.ROLES["viewer"], users.ROLE_FEATURES["viewer"]), p)
        for p in (GEN, KEEP, UP)], [False, False, False])
+
+print("\n=== a record written BEFORE upload_images existed is not locked out ===")
+# "i am trying to upload the images in the drafts ... it gives me an error that
+#  you do not have the permissions, altough i am on my admin account"
+# His own record, from /users/me: role owner, and a permissions list written on
+# 13 Aug 2026 -- the day before upload_images entered the vocabulary. Nothing
+# had ever added it, so the owner of the app was refused all three routes.
+legacy_owner = person([p for p in users.ROLES["owner"] if p != "upload_images"],
+                      users.ROLE_FEATURES["owner"], perms_version=None)
+legacy_owner["role"] = "owner"
+check("the stored list really lacks it",
+      "upload_images" in legacy_owner["permissions"], False)
+check("  he may upload anyway, because his ROLE grants it",
+      may(legacy_owner, UP), True)
+check("  and save", may(legacy_owner, KEEP), True)
+check("  and delete", may(legacy_owner, DEL), True)
+# The half that must not break: an OLDER permission missing from a legacy record
+# is still a decision, because it existed when the record was written.
+legacy_stripped = person(["edit"], users.ROLE_FEATURES["owner"], perms_version=None)
+legacy_stripped["role"] = "owner"
+check("  but an older permission stays removed", may(legacy_stripped, PUSH), False)
 
 print("\n=== the new permission is offered on the Users screen ===")
 check("it is in the vocabulary", "upload_images" in users.PERMISSIONS, True)
