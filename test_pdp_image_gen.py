@@ -4,10 +4,14 @@
     "do you remember how we had the image generation built inside the pdp?? i
      want that option again"
 
-It had not been deleted: _fullDataParts still built it, but the product page
-drew it only as a fold at the bottom of Safety & Compliance, and nothing on the
-page called initGenPanel -- so its model pickers were empty and its connection
-check never ran. Only the old drawer started it.
+It came back first as the full generator form. The owner's PDP redesign
+(PDP_REDESIGN_SPEC.md, 26 Sep 2026) then chose "Idea 1: Presets" -- four buttons
+that each start a generation in one click, with optional instructions folded
+away -- and said NOT to draw the Image Studio form (reference box, two model
+pickers) on this page. The drawer still carries the full form.
+
+What must stay true: the presets are Image Studio's OWN jobs through its own
+/genimage/start_batch, not a second generator (Rule 12).
 """
 import os
 import re
@@ -33,39 +37,55 @@ def read(p):
 
 PDP = read("static/js/pdp.js")
 AF = read("static/js/autofix.js")
+GEN = read("static/js/pdp_imagegen.js")
+IMGS = read("static/js/pdp_images.js")
+HTML = read("templates/dashboard.html")
 
-print("== the parts ==")
+print("== the drawer keeps the full generator ==")
 check("the generator is handed out on its own", "gen: genBlock" in AF, True)
-check("  and the tools without it", "toolsNoGen: _vf.mirror + _otherTools" in AF, True)
 check("the drawer still gets the generator in its fold run",
       "const toolFolds = _vf.mirror + _genFold + _otherTools;" in AF, True)
 
-print("\n== the product page ==")
+print("\n== the product page: presets, not the form ==")
 images = PDP[PDP.find('PDP_TAB === "images"'):PDP.find('PDP_TAB === "variations"')]
-check("the Images tab draws the generator", "pdpGenSection(p.gen)" in images, True)
-other = PDP[PDP.find('PDP_TAB === "offer"'):]
-other = other[:other.find("host.innerHTML")]
-check("Safety & Compliance no longer carries it",
-      "p.toolsNoGen != null ? p.toolsNoGen : p.tools" in other, True)
-after = PDP[PDP.find("pdpWatchEdits();"):]
-after = after[:after.find("}, 40);")]
-check("the page starts it once drawn (model pickers + connection check)",
-      bool(re.search(r'PDP_TAB === "images".*initGenPanel\(sid\(r\.sku\)\)', after, re.S)), True)
-check("  through the drawer's own starter, not a copy",
-      len(re.findall(r"function initGenPanel\(", read("static/js/listings.js") + PDP + AF)), 1)
+check("the Images tab no longer draws the full form",
+      "pdpGenSection(" in images or "+ p.gen" in images, False)
+check("the tab draws the presets", "pdpImgGenSection(r)" in IMGS, True)
+check("  outside the part that repaints, so a run is not wiped",
+      "'</div>' + gen" in IMGS, True)
+check("the page loads the preset file", "pdp_imagegen.js" in HTML, True)
+check("the rail's Image studio still scrolls to it", 'class="pdp-gen pdpig"' in GEN, True)
+
+print("\n== the presets are Image Studio's own jobs ==")
+check("they start through /genimage/start_batch", '"/genimage/start_batch"' in GEN, True)
+check("  and poll the same job status", '"/genimage/job_status?job="' in GEN, True)
+check("the sets go through the strategist", '"/genimage/strategize"' in GEN, True)
+check("three variations are studioRun's three strategies",
+      '["hero_straight", "hero_angle", "hero_personality"]' in GEN, True)
+check("the reference picture is found Image Studio's way", "_refImgForItem(r)" in GEN, True)
+check("every run says what it costs first", "Each one is a paid call" in GEN, True)
+check("results never replace a chosen picture (empty slots only)",
+      "_pdpiEmptySlots()" in GEN, True)
+check("the model named is the configured one, not a constant",
+      '"/ai/settings"' in GEN and "Seedream" not in GEN, True)
 
 node = shutil.which("node")
 if not node:
     FAILS.append("node")
     print("  FAIL  node not found")
 else:
-    start = PDP.find("function pdpGenSection(")
-    end = PDP.find("\n}\n", start) + 3
-    js = PDP[start:end] + '\nconsole.log(pdpGenSection("<div id=\\"genpanel_x\\">PANEL</div>"));\n'
+    js = ("const esc=s=>String(s==null?'':s);\n" + GEN
+          + '\nconsole.log(pdpImgGenSection({sku:"X",title:"t"}));\n')
+    js = js.replace("setTimeout(_pdpigLoadModel, 0);", "")
     p = subprocess.run([node, "-e", js], capture_output=True, text=True)
     out = p.stdout
-    check("the section wraps the panel it is given", 'id="genpanel_x">PANEL' in out, True)
-    check("  under a heading that says what it is", "Generate an image with AI" in out, True)
+    for label in ("Main image", "3 variations", "Secondary set", "A+ content"):
+        check("the %s button is drawn" % label, label in out, True)
+    check("instructions are folded away until asked for",
+          'id="pdpig_instrbox" style="display:none"' in out, True)
+    check("  and say they apply to the next click",
+          "apply to whichever button you click next" in out, True)
+    check("the model line says where results go", "results fill empty slots above" in out, True)
 
 print()
 if FAILS:

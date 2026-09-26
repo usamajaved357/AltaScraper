@@ -43,10 +43,35 @@
  * a change to reach Amazon, not two.
  */
 
+/* THE OWNER'S REDESIGN (PDP_REDESIGN_SPEC.md, 26 Sep 2026) turned the four
+ * numbered sections into three plain ones:
+ *
+ *   SLOTS        a status line ("X of N slots filled"), Push to Amazon and
+ *                Upload image beside it, and the slots as a 4-column grid with
+ *                a × on each filled one. Upload now goes STRAIGHT into the next
+ *                empty slot -- the numbered "Upload from your computer" section
+ *                and the red "Remove main image" button are gone; the × is how
+ *                a picture comes out.
+ *   PICTURES     one horizontal strip with tabs -- eBay (N), Amazon (N), Library
+ *                (N). Click a picture and it fills the NEXT EMPTY slot; "Fill
+ *                empty slots" does that for every picture in the tab. No
+ *                dropdown, no assign button. Drag onto a slot still works.
+ *   GENERATE     four preset buttons (pdp_imagegen.js).
+ *
+ * THE NUMBER OF SLOTS IS STILL THE SCHEMA'S, not a fixed eight (Rule 4 -- see
+ * below). The spec drew eight (Main, PT01-PT06, Swatch); a product type that
+ * allows PT07 and PT08 gets them, and one that allows fewer is not offered a
+ * slot Amazon would refuse.
+ *
+ * "NEXT EMPTY" is Main, then the numbered slots in order. The swatch is never
+ * filled automatically: it is a colour sample, not a gallery picture, and a
+ * product photo in it would be wrong. It can still be dragged on to.
+ */
+
 /* Per-SKU state. Rebuilt on open; nothing here survives a page load. */
 let PDPI = {sku: "", slots: [], live: false, checked: false, note: "",
             productType: "", library: [], loading: false, err: "",
-            dragUrl: ""};
+            dragUrl: "", comp: null, compTab: "ebay", compLoading: false};
 
 /* ---- reading the row --------------------------------------------------- */
 
@@ -98,13 +123,40 @@ function _pdpiSourceImages(r){
 async function pdpImagesLoad(sku, productType){
   PDPI = {sku: String(sku || ""), slots: [], live: false, checked: false,
           note: "", productType: String(productType || ""), library: [],
-          loading: true, err: "", dragUrl: ""};
+          loading: true, err: "", dragUrl: "", comp: null, compTab: "ebay",
+          compLoading: true};
   _pdpiPaint();
-  // The two calls are independent -- the slot list from Amazon's schema and the
-  // library from disk -- so neither waits on the other.
+  // The calls are independent -- the slot list from Amazon's schema, the
+  // library from disk, the competitor's pictures from eBay and the catalogue --
+  // so none waits on another. The slots are what the tab cannot draw without;
+  // the competitor strip fills in when it arrives.
+  _pdpiLoadCompetitor().then(_pdpiPaint);
   await Promise.all([_pdpiLoadSlots(), _pdpiLoadLibrary()]);
   PDPI.loading = false;
   _pdpiPaint();
+}
+
+/* The competitor's pictures, from /listing/competitor_images: eBay and Amazon
+ * kept apart, each with its own reason when it could not be read. */
+async function _pdpiLoadCompetitor(){
+  const sku = PDPI.sku;
+  PDPI.compLoading = true;
+  try{
+    const url = "/listing/competitor_images?sku=" + encodeURIComponent(sku)
+              + ((typeof acctId === "function" && acctId())
+                  ? "&account=" + encodeURIComponent(acctId()) : "");
+    const j = await (await fetch(url)).json();
+    if(PDPI.sku !== sku) return;             // another listing opened meanwhile
+    PDPI.comp = (j && j.ok) ? j
+      : {ebay: [], amazon: [], ebay_error: (j && j.error) || "could not read",
+         amazon_error: (j && j.error) || "could not read"};
+    // Start on whichever tab has pictures, eBay first as the generator does.
+    if(!(PDPI.comp.ebay || []).length && (PDPI.comp.amazon || []).length) PDPI.compTab = "amazon";
+  }catch(e){
+    if(PDPI.sku === sku) PDPI.comp = {ebay: [], amazon: [], ebay_error: String(e), amazon_error: String(e)};
+  }finally{
+    if(PDPI.sku === sku) PDPI.compLoading = false;
+  }
 }
 
 async function _pdpiLoadSlots(){
@@ -163,9 +215,10 @@ async function pdpImagesLibraryReload(sku){
 
 /* Put one URL in one slot on the DRAFT, through the same /edit every other
  * field uses. Empty url clears the slot. */
-async function pdpImgAssign(slotKey, url){
+async function pdpImgAssign(slotKey, url, opts){
+  opts = opts || {};
   const sku = PDPI.sku;
-  if(!sku || !slotKey) return;
+  if(!sku || !slotKey) return false;
   try{
     const body = (typeof acctBody === "function")
       ? acctBody({sku: sku, target: "attr", key: slotKey, value: url || ""})
@@ -173,7 +226,7 @@ async function pdpImgAssign(slotKey, url){
     const j = await (await fetch("/edit", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)})).json();
-    if(!j || !j.ok){ toast("Could not assign: " + ((j && j.error) || "unknown")); return; }
+    if(!j || !j.ok){ toast("Could not assign: " + ((j && j.error) || "unknown")); return false; }
     // Keep the row in step the way saveEdit does, so the hero and the strip
     // redraw from the same values without a reload.
     const r = (typeof ROWS !== "undefined" && ROWS)
@@ -187,12 +240,81 @@ async function pdpImgAssign(slotKey, url){
         r.attrs = JSON.stringify(a);
       }catch(e){}
     }
-    toast(url ? ("Assigned to " + _pdpiSlotName(slotKey)) : "Slot cleared");
-    if(typeof pdpRender === "function") pdpRender();
-  }catch(e){ toast("Could not assign: " + e); }
+    // `quiet` for a batch (Fill empty slots, a generated set): one toast and
+    // one redraw at the end, not one per slot.
+    if(!opts.quiet){
+      toast(url ? ("Put in " + _pdpiSlotName(slotKey)) : "Slot cleared");
+      if(typeof pdpRender === "function") pdpRender();
+    }
+    return true;
+  }catch(e){ toast("Could not assign: " + e); return false; }
 }
 
 function pdpImgClear(slotKey){ pdpImgAssign(slotKey, ""); }
+
+/* ---- next empty slot ---------------------------------------------------- */
+
+/* The slots a picture may be put into AUTOMATICALLY, in order: Main, then
+ * the numbered slots in order. The swatch is left out (see the note at the
+ * top). The slots themselves are whatever the schema declared. */
+function _pdpiGallerySlots(){
+  const rank = function(k){
+    if(k === "main_product_image_locator") return 0;
+    const m = /^other_product_image_locator_(\d+)$/.exec(k);
+    return m ? Number(m[1]) : 999;
+  };
+  return (PDPI.slots || [])
+    .filter(function(s){ return rank(s.key) < 999; })
+    .sort(function(a, b){ return rank(a.key) - rank(b.key); });
+}
+
+/* Empty means nothing in the draft AND nothing Amazon is showing there: a slot
+ * that says "on Amazon" is not free, and filling it would replace a live
+ * picture without anyone deciding to. */
+function _pdpiEmptySlots(){
+  const assigned = _pdpiAssignedNow();
+  return _pdpiGallerySlots().filter(function(s){ return !assigned[s.key] && !s.current; });
+}
+
+/* Put one picture in the next empty slot. */
+async function pdpImgFillNext(url){
+  const free = _pdpiEmptySlots();
+  if(!free.length){
+    toast("Every slot is full — take a picture out with its × first.");
+    return;
+  }
+  await pdpImgAssign(free[0].key, url);
+}
+
+/* Put every picture in the current tab into the empty slots, in order. A
+ * picture already in a slot is skipped, so pressing it twice does not fill the
+ * listing with copies. */
+async function pdpImgFillAll(){
+  const assigned = _pdpiAssignedNow();
+  const inUse = {};
+  Object.keys(assigned).forEach(function(k){ inUse[assigned[k]] = 1; });
+  const pics = _pdpiStripPictures().filter(function(u){ return !inUse[u]; });
+  const free = _pdpiEmptySlots();
+  if(!free.length){ toast("Every slot is full — nothing to fill."); return; }
+  if(!pics.length){ toast("No pictures here that are not already in a slot."); return; }
+  let n = 0;
+  for(let i = 0; i < free.length && i < pics.length; i++){
+    if(await pdpImgAssign(free[i].key, pics[i], {quiet: true})) n++;
+  }
+  toast(n + " slot" + (n === 1 ? "" : "s") + " filled.");
+  if(typeof pdpRender === "function") pdpRender();
+}
+
+function pdpImgCompTab(t){ PDPI.compTab = t; _pdpiPaint(); }
+
+/* The pictures the strip is showing now. */
+function _pdpiStripPictures(){
+  if(PDPI.compTab === "library"){
+    return (PDPI.library || []).map(function(f){ return f.url; });
+  }
+  const c = PDPI.comp || {};
+  return (PDPI.compTab === "amazon" ? c.amazon : c.ebay) || [];
+}
 
 /* WHAT A SLOT IS CALLED ON SCREEN -- the one place (Rule 12).
  *
@@ -216,29 +338,14 @@ function _pdpiSlotName(key){
  * occupied ones say so rather than being hidden -- replacing a picture is a
  * legitimate thing to want, and a dropdown that silently omits the slot you
  * are looking for is worse than one that warns. */
-function _pdpiSlotOptions(url){
-  const assigned = _pdpiAssignedNow();
-  let h = '<option value="">Assign to slot…</option>';
-  (PDPI.slots || []).forEach(function(s){
-    const holder = assigned[s.key];
-    const taken = holder && holder !== url;
-    h += '<option value="' + esc(s.key) + '">' + esc(_pdpiSlotName(s.key))
-       + (taken ? " (replace)" : "") + '</option>';
-  });
-  return h;
-}
+/* _pdpiSlotOptions() removed with the card view: nothing calls it any more. */
 
 function _pdpiAssignedNow(){
   const r = (typeof pdpRow === "function") ? pdpRow() : null;
   return r ? _pdpiAssigned(r) : {};
 }
 
-function pdpImgPick(sel, url){
-  const slot = sel && sel.value;
-  if(!slot) return;
-  sel.value = "";
-  pdpImgAssign(slot, url);
-}
+/* pdpImgPick() removed with the card view: nothing calls it any more. */
 
 /* ---- drag and drop ----------------------------------------------------- */
 
@@ -280,9 +387,16 @@ async function pdpImgUpload(input){
       if(!j || !j.ok || !j.url){
         toast("Upload failed: " + ((j && j.error) || "unknown")); return;
       }
-      toast("Uploaded — now assign it to a slot.");
+      // STRAIGHT INTO THE NEXT EMPTY SLOT (the redesign merged upload into the
+      // slots). With none free it waits in the Library tab, and says so.
       await _pdpiLoadLibrary();
-      _pdpiPaint();
+      if(_pdpiEmptySlots().length){
+        await pdpImgFillNext(j.url);
+      }else{
+        PDPI.compTab = "library";
+        toast("Uploaded. Every slot is full, so it is in Library — take one out to use it.");
+        _pdpiPaint();
+      }
     }catch(e){ toast("Upload failed: " + e); }
   };
   reader.readAsDataURL(f);
@@ -316,25 +430,44 @@ async function pdpImgLibDelete(url){
 }
 
 /* Take a source picture off the listing entirely: clear every slot holding it. */
-async function pdpImgDropSource(url){
-  const assigned = _pdpiAssignedNow();
-  const keys = Object.keys(assigned).filter(function(k){ return assigned[k] === url; });
-  if(!keys.length){ toast("That picture is not in any slot."); return; }
-  if(!await uiConfirm("Remove this picture from " + keys.length + " slot"
-            + (keys.length === 1 ? "" : "s") + "? The picture stays in the "
-            + "library; only this listing's slots are cleared.",
-            {ok: "Remove"})) return;
-  for(let i = 0; i < keys.length; i++) await pdpImgAssign(keys[i], "");
-}
+/* pdpImgDropSource() removed with the card view: nothing calls it any more. */
 
 /* ---- drawing ----------------------------------------------------------- */
 
-function _pdpiSection(n, title, sub, body){
+function _pdpiSection(title, sub, body, right){
   return '<div class="pdpi-sec"><div class="pdpi-sechead">'
-       + '<span class="pdpi-secn">' + n + '</span>'
        + '<span class="pdpi-sect">' + esc(title) + '</span>'
        + (sub ? '<span class="pdpi-secsub">' + esc(sub) + '</span>' : "")
+       + (right ? '<span class="pdpi-secright">' + right + '</span>' : "")
        + '</div>' + body + '</div>';
+}
+
+/* "X of N slots filled · these go live when you submit", with Push to Amazon
+ * and Upload image beside it.
+ *
+ * PUSH TO AMAZON is pushImageLive (listings.js) -- the existing single-image
+ * push of the MAIN picture to a live listing. It is offered only on a live
+ * listing; on a draft there is nothing to push to, and everything in the slots
+ * goes with Submit. */
+function _pdpiStatusLine(){
+  const all = PDPI.slots || [];
+  const assigned = _pdpiAssignedNow();
+  const filled = all.filter(function(s){ return assigned[s.key] || s.current; }).length;
+  const push = PDPI.live
+    ? '<button class="pdpi-btn" onclick="pushImageLive(\'' + esc(PDPI.sku) + '\',this)"'
+      + ' title="Send the main image to the live Amazon listing now — the image only, no resubmit">'
+      + '<i class="ti ti-cloud-upload"></i> Push to Amazon</button>'
+    : "";
+  return '<div class="pdpi-status" title="Assigning writes to the draft — what Submit '
+    + 'will send. It does not push to Amazon; only Push to Amazon does, for the main image.">'
+    + '<i class="ti ti-photo"></i>'
+    + '<span>' + filled + ' of ' + all.length + ' slots filled · '
+    + (PDPI.live ? 'changes go live when you submit' : 'these go live when you submit')
+    + '</span><span class="pdpi-grow"></span>' + push
+    + '<label class="pdpi-btn" title="Upload a picture from your computer into the next empty slot">'
+    +   '<i class="ti ti-upload"></i> Upload image'
+    +   '<input type="file" accept="image/*" style="display:none" onchange="pdpImgUpload(this)">'
+    + '</label></div>';
 }
 
 function _pdpiSlotsHtml(){
@@ -353,7 +486,7 @@ function _pdpiSlotsHtml(){
          || "This product type declares no image slots at all.") + '</div>';
   }
   const assigned = _pdpiAssignedNow();
-  return '<div class="pdpi-slots">' + PDPI.slots.map(function(s){
+  return _pdpiStatusLine() + '<div class="pdpi-slots">' + PDPI.slots.map(function(s){
     const draft = assigned[s.key] || "";
     const liveUrl = s.current || "";
     const url = draft || liveUrl;
@@ -363,30 +496,17 @@ function _pdpiSlotsHtml(){
       + ' ondrop="pdpImgDrop(event,\'' + esc(s.key) + '\')">'
       + '<div class="pdpi-slotimg">'
       +   (url ? '<img src="' + esc(url) + '" loading="lazy" onerror="this.remove()">'
-               : '<i class="ti ti-photo-plus"></i>')
+               : '<i class="ti ti-plus"></i><span class="pdpi-empty">empty</span>')
       + '</div>'
       + '<div class="pdpi-slotname">' + esc(_pdpiSlotName(s.key)) + '</div>'
-      + (onlyLive ? '<div class="pdpi-slotlive">on Amazon</div>' : "")
-      + (draft ? '<button class="pdpi-slotx" title="Take this picture out of '
-                 + 'the slot" onclick="pdpImgClear(\'' + esc(s.key) + '\')">'
-                 + '<i class="ti ti-x"></i></button>' : "")
+      + (onlyLive ? '<div class="pdpi-slotlive"><i class="ti ti-cloud"></i> on Amazon</div>' : "")
+      // THE × IS HOW A PICTURE COMES OUT (it replaced the red "Remove main
+      // image" button). Only on a draft value: Amazon's own picture is not the
+      // draft's to clear -- a new one in the slot replaces it on Submit.
+      + (draft ? '<button class="pdpi-slotx" title="Take this picture out of the slot"'
+                 + ' onclick="pdpImgClear(\'' + esc(s.key) + '\')"><i class="ti ti-x"></i></button>' : "")
       + '</div>';
-  }).join("") + '</div>'
-  + (PDPI.live ? "" : '<div class="pdpi-note">'
-      + 'This listing is not on Amazon yet, so no slot can show what Amazon '
-      + 'holds — what you assign here is what Submit will send.</div>');
-}
-
-function _pdpiThumb(url, caption, extra){
-  return '<div class="pdpi-thumb" draggable="true"'
-    + ' ondragstart="pdpImgDragStart(event,' + _pdpiArg(url) + ')">'
-    + '<div class="pdpi-thumbimg"><img src="' + esc(url) + '" loading="lazy"'
-    +   ' onerror="this.parentNode.innerHTML=\'<i class=&quot;ti ti-photo-off&quot;></i>\'"></div>'
-    + '<div class="pdpi-thumbcap">' + esc(caption || "") + '</div>'
-    + '<select class="pdpi-pick" onchange="pdpImgPick(this,' + _pdpiArg(url) + ')">'
-    +   _pdpiSlotOptions(url) + '</select>'
-    + (extra || "")
-    + '</div>';
+  }).join("") + '</div>';
 }
 
 /* A URL inside an onclick attribute, quoted safely. */
@@ -395,41 +515,54 @@ function _pdpiArg(s){
                               .replace(/"/g, "&quot;") + "'";
 }
 
-function _pdpiSourceHtml(r){
-  const imgs = _pdpiSourceImages(r);
-  if(!imgs.length){
-    return '<div class="pdpi-note">No source pictures on this row.</div>';
-  }
-  return '<div class="pdpi-row">' + imgs.map(function(im){
-    return _pdpiThumb(im.url, im.why,
-      '<button class="pdpi-del" title="Take this picture out of every slot it '
-      + 'is in" onclick="pdpImgDropSource(' + _pdpiArg(im.url) + ')">'
-      + '<i class="ti ti-trash"></i></button>');
-  }).join("") + '</div>';
+/* One ~72px picture in the strip. Click fills the next empty slot; it can also
+ * be dragged onto a particular slot. No caption -- the long filenames went. */
+function _pdpiThumb(url, extra){
+  return '<div class="pdpi-thumb" draggable="true" title="Click to put it in the next empty slot, or drag it onto one"'
+    + ' ondragstart="pdpImgDragStart(event,' + _pdpiArg(url) + ')"'
+    + ' onclick="pdpImgFillNext(' + _pdpiArg(url) + ')">'
+    + '<img src="' + esc(url) + '" loading="lazy"'
+    +   ' onerror="this.parentNode.classList.add(\'bad\');this.remove()">'
+    + (extra || "")
+    + '</div>';
 }
 
-function _pdpiLibraryHtml(){
-  if(!(PDPI.library || []).length){
-    return '<div class="pdpi-note">Nothing in the library for this SKU yet. '
-         + 'Image Studio saves here, and so does the upload below.</div>';
+function _pdpiStripHtml(){
+  const c = PDPI.comp || {};
+  const tabs = [["ebay", "eBay", (c.ebay || []).length],
+                ["amazon", "Amazon", (c.amazon || []).length],
+                ["library", "Library", (PDPI.library || []).length]];
+  const tabHtml = '<div class="pdpi-tabs">' + tabs.map(function(t){
+    return '<button class="pdpi-tab' + (PDPI.compTab === t[0] ? " on" : "") + '"'
+         + ' onclick="pdpImgCompTab(\'' + t[0] + '\')">' + t[1]
+         + ' <span class="pdpi-tabn">' + (PDPI.compLoading && t[0] !== "library" ? "…" : t[2]) + '</span></button>';
+  }).join("") + '<span class="pdpi-grow"></span>'
+    + '<button class="pdpi-btn" onclick="pdpImgFillAll()" title="Put these pictures into the empty slots, in order">'
+    + '<i class="ti ti-layout-grid-add"></i> Fill empty slots</button></div>';
+
+  const pics = _pdpiStripPictures();
+  let body;
+  if(PDPI.compTab !== "library" && PDPI.compLoading){
+    body = '<div class="pdpi-note">Reading the competitor’s pictures…</div>';
+  } else if(!pics.length){
+    const why = PDPI.compTab === "library"
+      ? "Nothing in the library for this SKU yet. Uploads and generated images land here."
+      : ((PDPI.compTab === "amazon" ? c.amazon_error : c.ebay_error) || "No pictures from this source.");
+    body = '<div class="pdpi-note">' + esc(why) + '</div>';
+  } else {
+    body = '<div class="pdpi-strip">' + pics.map(function(u){
+      // A LIBRARY picture can be deleted from the app; a competitor's cannot.
+      return _pdpiThumb(u, PDPI.compTab === "library"
+        ? '<button class="pdpi-del" title="Delete from the app\'s library"'
+          + ' onclick="event.stopPropagation();pdpImgLibDelete(' + _pdpiArg(u) + ')">'
+          + '<i class="ti ti-trash"></i></button>' : "");
+    }).join("") + '</div>';
   }
-  return '<div class="pdpi-row">' + PDPI.library.map(function(f){
-    return _pdpiThumb(f.url, f.name,
-      '<button class="pdpi-del" title="Delete from the app\'s library" '
-      + 'onclick="pdpImgLibDelete(' + _pdpiArg(f.url) + ')">'
-      + '<i class="ti ti-trash"></i></button>');
-  }).join("") + '</div>';
+  return tabHtml + body
+    + '<div class="pdpi-hint">Click an image → it fills the next empty slot. '
+    + 'Or “Fill empty slots” to assign them all.</div>';
 }
 
-function _pdpiUploadHtml(){
-  return '<label class="pdpi-drop" ondragover="pdpImgDragOver(event)"'
-    + ' ondragleave="pdpImgDragLeave(event)" ondrop="pdpImgDropUpload(event)">'
-    + '<i class="ti ti-cloud-upload"></i>'
-    + '<span>Drop an image here, or click to choose one</span>'
-    + '<input type="file" accept="image/*" style="display:none"'
-    +   ' onchange="pdpImgUpload(this)">'
-    + '</label>';
-}
 
 /* Repaint just this tab, without redrawing the whole page under it. */
 function _pdpiPaint(){
@@ -444,28 +577,27 @@ function _pdpiBody(r){
   if(PDPI.loading){
     return '<div class="pdpi-note">Reading this product type\'s image slots…</div>';
   }
-  return _pdpiSection(1, "Image slots", "what Amazon takes for "
-                      + (PDPI.productType || "this product type"),
-                      _pdpiSlotsHtml())
-       + _pdpiSection(2, "Source pictures", "from the listing this was built from",
-                      _pdpiSourceHtml(r))
-       + _pdpiSection(3, "Image library", "made or saved by this app",
-                      _pdpiLibraryHtml())
-       + _pdpiSection(4, "Upload from your computer", "",
-                      _pdpiUploadHtml());
+  return _pdpiSection("Your slots", "what Amazon takes for "
+                      + (PDPI.productType || "this product type"), _pdpiSlotsHtml())
+       + _pdpiSection("Competitor pictures", "", _pdpiStripHtml());
 }
 
 /* THE ENTRY POINT pdp.js CALLS. Returns the tab's HTML immediately and loads
  * the slots behind it, because the schema call is a live Amazon read and a tab
- * that waits on it is a tab that looks broken for two seconds. */
+ * that waits on it is a tab that looks broken for two seconds.
+ *
+ * The generator (pdp_imagegen.js) sits OUTSIDE #pdpimages, so repainting the
+ * slots after an assignment never wipes instructions being typed or a run in
+ * progress. */
 function pdpImagesTab(r){
   const sku = String((r && r.sku) || "");
   const pt = String((r && (r.product_type || r.productType)) || "");
+  const gen = (typeof pdpImgGenSection === "function") ? pdpImgGenSection(r) : "";
   if(PDPI.sku !== sku){
     setTimeout(function(){ pdpImagesLoad(sku, pt); }, 0);
     return '<div id="pdpimages" class="pdpi">'
          + '<div class="pdpi-note">Reading this product type\'s image slots…</div>'
-         + '</div>';
+         + '</div>' + gen;
   }
-  return '<div id="pdpimages" class="pdpi">' + _pdpiBody(r) + '</div>';
+  return '<div id="pdpimages" class="pdpi">' + _pdpiBody(r) + '</div>' + gen;
 }

@@ -2296,6 +2296,9 @@
 <!-- The Images tab's four sections. Its own file rather than another thousand
      lines in pdp.js; pdp.js calls pdpImagesTab(row) and nothing else. -->
 <script src="/static/js/pdp_images.js?v={{ ASSET_V }}"></script>
+<!-- The Images tab's four preset buttons (Main image, 3 variations, Secondary
+     set, A+ content) -- Image Studio's own jobs, one click each. -->
+<script src="/static/js/pdp_imagegen.js?v={{ ASSET_V }}"></script>
 <!-- The detailed row renderer. It uses listings.js helpers (rowAsin, _dwCost,
      rowSelectBox, rowActions) at DRAW time, not load time, so it may load
      after them; listings.js checks for it at render time rather than on load,

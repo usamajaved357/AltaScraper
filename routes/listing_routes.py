@@ -930,6 +930,93 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                                     "ebay_image": sources["ebay_image"], "ebay_url": ebay_url},
                         "suggestions": suggestions})
 
+    @app.route("/listing/competitor_images")
+    def listing_competitor_images():
+        """The competitor's pictures for one draft, split by where they came from.
+
+        -> {ok, ebay: [url...], amazon: [url...], ebay_error, amazon_error}
+
+        For the PDP Images tab's strip (the owner's redesign, 26 Sep 2026): an
+        "eBay (N)" and an "Amazon (N)" row to fill empty slots from. READ-ONLY --
+        nothing is saved and nothing is sent; a picture reaches the listing only
+        when it is clicked into a slot, through /edit, like any other value.
+
+        NOTHING NEW IS FETCHED A NEW WAY (Rule 12). The eBay source is read with
+        fetch_ebay_supplement, as /suggest reads it; the competitor ASIN through
+        the /catalog/lookup view, as ASIN Studio does. CLAUDE.md Rule 1: the ASIN
+        in the SKU is the COMPETITOR's, used here only as a reference for its
+        photographs -- the listing stays the owner's own new product.
+
+        THE ACCOUNT IS THE ONE THE PAGE NAMES (_store_for), not the server's
+        open one: a SKU can exist on two accounts.
+
+        A FAILED SOURCE IS SAID, NOT SILENT. "No eBay pictures" and "eBay would
+        not answer" need different actions, so each side carries its own error.
+        """
+        sku = str(request.args.get("sku") or "").strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "missing sku"}), 400
+        _bad = _wrong_account(request.args.get("account"))
+        if _bad:
+            return _bad
+        ws = _store_for(request.args.get("account")) or _ws()
+        row = None
+        for rec in _records(ws):
+            if str(rec.get("SKU", "")).strip() == sku:
+                row = rec
+                break
+        if not row:
+            return jsonify({"ok": False, "error": "sku not found"}), 404
+
+        out = {"ok": True, "ebay": [], "amazon": [], "ebay_error": "", "amazon_error": ""}
+
+        ebay_url = (row.get("eBay URL", "") or row.get("Source URL", "")
+                    or row.get("eBay Link", ""))
+        if ebay_url and "ebay." in str(ebay_url).lower():
+            try:
+                from amazon_listing_generator import fetch_ebay_supplement
+                _eb_app, _eb_cert = _ebay_creds()
+                eb = fetch_ebay_supplement(ebay_url, _eb_app, _eb_cert) or {}
+                out["ebay"] = [str(u) for u in (eb.get("images") or eb.get("image_urls") or [])
+                               if str(u).startswith("http")]
+            except Exception as e:
+                out["ebay_error"] = "eBay would not answer: %s" % str(e)[:140]
+        else:
+            out["ebay_error"] = "This listing has no eBay source link."
+
+        comp_asin = str(row.get("Competitor ASIN", "") or row.get("ASIN", "")
+                        or "").strip().upper()
+        if not re.match(r"^B0[A-Z0-9]{8}$", comp_asin):
+            m = re.search(r"(B0[A-Z0-9]{8})", sku.upper())
+            comp_asin = m.group(1) if m else ""
+        if comp_asin:
+            try:
+                from flask import current_app
+                with current_app.test_request_context(
+                        "/catalog/lookup", method="POST",
+                        json={"asin": comp_asin,
+                              "marketplace": _marketplace_for_row(row)}):
+                    fn = current_app.view_functions.get("catalog_lookup")
+                    resp = fn() if fn else None
+                body = resp[0] if isinstance(resp, tuple) else resp
+                j = json.loads(body.get_data(as_text=True)) if body is not None else {}
+                if j.get("ok"):
+                    seen = set()
+                    for im in (j.get("images") or []):
+                        u = im.get("link") if isinstance(im, dict) else im
+                        u = str(u or "")
+                        if u.startswith("http") and u not in seen:
+                            seen.add(u)
+                            out["amazon"].append(u)
+                else:
+                    out["amazon_error"] = ("Amazon would not describe %s: %s"
+                                           % (comp_asin, (j.get("error") or "no reason")[:140]))
+            except Exception as e:
+                out["amazon_error"] = "Amazon lookup failed: %s" % str(e)[:140]
+        else:
+            out["amazon_error"] = "No competitor ASIN on this listing."
+        return jsonify(out)
+
     @app.route("/ask", methods=["POST"])
     def ask():
         b       = request.get_json(force=True) or {}

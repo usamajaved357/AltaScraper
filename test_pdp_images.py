@@ -132,6 +132,17 @@ for route in ("/listing/image_slots", "/edit", "/media/list", "/media/upload",
     truthy("uses the existing %s" % route, '"%s' % route in JS)
 falsy("and invents no endpoint of its own",
       re.search(r'fetch\("/(?!listing/image_slots|edit|media/)', JS) is not None)
+# ONE ROUTE WAS ADDED, on purpose (the owner's redesign, 26 Sep 2026): the
+# competitor strip's eBay / Amazon pictures. It is read-only and fetches them
+# through the two fetchers the app already had -- fetch_ebay_supplement and the
+# /catalog/lookup view -- so it is a door, not a second implementation.
+truthy("the competitor strip reads /listing/competitor_images",
+       '"/listing/competitor_images?sku="' in JS)
+_LR = open(os.path.join(HERE, "routes", "listing_routes.py"), encoding="utf-8").read()
+_ci = _LR.split("def listing_competitor_images(")[1].split("@app.route")[0]
+truthy("  which reuses fetch_ebay_supplement", "fetch_ebay_supplement(" in _ci)
+truthy("  and the /catalog/lookup view", 'view_functions.get("catalog_lookup")' in _ci)
+truthy("  and answers for the account the page names", "_store_for(" in _ci)
 
 # RULE 4: the slots come from the schema, and their absence is said out loud.
 truthy("the slot list comes from the schema route",
@@ -195,8 +206,16 @@ PDPI={sku:"SKU-1", productType:"SQUEEGEE", live:false, checked:true, note:"",
              {key:"other_product_image_locator_1", label:"PT1", current:""},
              {key:"other_product_image_locator_2", label:"PT2", current:""},
              {key:"image_locator_eeuk", label:"UK Energy Label", current:""}],
-      library:[{url:"/media/_acct/a/SKU-1/gen.png", name:"gen.png"}]};
+      library:[{url:"/media/_acct/a/SKU-1/gen.png", name:"gen.png"}],
+      // The strip on its Library tab, and a competitor answer beside it.
+      comp:{ebay:["https://e/1.jpg"], amazon:[], ebay_error:"", amazon_error:"no ASIN"},
+      compTab:"library", compLoading:false};
 const full=_pdpiBody(ROW);
+PDPI.compTab="ebay";
+const ebay=_pdpiBody(ROW);
+PDPI.compTab="amazon";
+const amazon=_pdpiBody(ROW);
+PDPI.compTab="library";
 
 // And the honest refusal when the schema could not be read.
 PDPI.checked=false; PDPI.slots=[];
@@ -208,13 +227,18 @@ console.log(JSON.stringify({
   sections: count(full,/pdpi-sechead/g),
   slots: count(full,/pdpi-slot"/g)+count(full,/pdpi-slot filled"/g),
   filled: count(full,/pdpi-slot filled/g),
-  // One caption per tile: the row's two pictures plus the one in the library.
-  thumbs: count(full,/pdpi-thumbcap/g),
-  // Every tile offers the slots, and every slot the schema named is offered.
+  // The Library tab shows the one library picture; eBay its one; Amazon says
+  // why it has none rather than drawing nothing.
+  thumbs: count(full,/class="pdpi-thumb"/g),
+  ebayThumbs: count(ebay,/class="pdpi-thumb"/g),
+  amazonSaysWhy: /no ASIN/.test(amazon),
+  // Click fills the next empty slot -- no dropdown any more.
+  clickFills: /onclick="pdpImgFillNext\(/.test(full),
   picks: count(full,/class="pdpi-pick"/g),
-  optionsPerPick: count(full,/value="other_product_image_locator_2"/g),
-  hasUpload: /pdpi-drop/.test(full),
-  saysNotLive: /not on Amazon yet/.test(full),
+  fillAll: /pdpImgFillAll\(\)/.test(full),
+  statusLine: /2 of 4 slots filled/.test(full),
+  hasUpload: /onchange="pdpImgUpload\(this\)"/.test(full),
+  saysNotLive: /go live when you submit/.test(full),
   // A slot holding a draft picture can be cleared; an empty one cannot.
   clears: count(full,/pdpImgClear/g),
   slotNames: (String(full).match(/pdpi-slotname">([^<]*)</g)||[])
@@ -226,7 +250,8 @@ console.log(JSON.stringify({
   // A quote in a URL must not break out of the onclick.
   quoted: (function(){
     PDPI.library=[{url:"/media/a'b.png", name:"x"}];
-    const h=_pdpiLibraryHtml();
+    PDPI.compTab="library";
+    const h=_pdpiStripHtml();
     return h.indexOf("a\\'b.png")>=0;
   })()
 }));
@@ -244,18 +269,25 @@ try:
         got = json.loads(out.stdout.strip().splitlines()[-1])
         truthy("the first draw is a loading shell, not a blank tab",
                got["firstIsShell"])
-        check("four sections", got["sections"], 4)
+        # TWO SECTIONS since the owner's redesign (26 Sep 2026): slots, and the
+        # one competitor strip. The generator is its own section outside this
+        # repainted box (pdp_imagegen.js); upload is a button on the status line.
+        check("two sections", got["sections"], 2)
         check("one square per slot the schema named", got["slots"], 4)
         check("  named the way Seller Central names them", got["slotNames"],
               ["Main", "PT01", "PT02", "UK Energy Label"])
         falsy("  never the raw attribute key", got["rawKeyShown"])
         check("  the two the draft has assigned are filled", got["filled"], 2)
         check("  and only those can be cleared", got["clears"], 2)
-        check("the row's pictures and the library are offered", got["thumbs"], 3)
-        check("  each with a slot picker", got["picks"], 3)
-        check("  listing every slot the type has", got["optionsPerPick"], 3)
-        truthy("there is somewhere to drop a file", got["hasUpload"])
-        truthy("a draft says its slots are not what Amazon holds",
+        truthy("  and the status line counts them", got["statusLine"])
+        check("the Library tab shows the library", got["thumbs"], 1)
+        check("the eBay tab shows eBay's pictures", got["ebayThumbs"], 1)
+        truthy("  a source with none says why", got["amazonSaysWhy"])
+        truthy("clicking a picture fills the next empty slot", got["clickFills"])
+        check("  with no slot dropdown any more", got["picks"], 0)
+        truthy("  and one button fills them all", got["fillAll"])
+        truthy("there is an Upload image button", got["hasUpload"])
+        truthy("a draft says its slots go live on Submit, not now",
                got["saysNotLive"])
         truthy("an unreadable schema draws no slots at all",
                got["noSchemaRefuses"])

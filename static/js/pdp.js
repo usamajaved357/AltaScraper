@@ -1927,8 +1927,22 @@ function pdpRender(){
   // listing, or a prohibited product, is drawn above everything -- CLAUDE.md
   // Rule 1 requires a clash to be REPORTED, and a report you have to go
   // looking for has not been made. Same two panels the drawer never folds.
-  const blocking = ((typeof identifierPanel === "function") ? identifierPanel(r) : "")
-                 + ((typeof complianceBanner === "function") ? complianceBanner(r) : "")
+  //
+  // ON THE OTHER TABS, ONLY THE PROBLEMS (the owner's PDP redesign, 26 Sep
+  // 2026: "the barcode/GTIN/compliance blocks belong in Product Details only").
+  // The CLEAN one-liners -- "unique, not used elsewhere", "Clear -- no
+  // restrictions" -- and the "Showing Amazon's live copy" note stay on Product
+  // Details. A barcode that cannot be used or is on another listing, and a
+  // compliance flag, still show on every tab: Rule 1 wants a clash reported,
+  // and a report on one tab of four has only been made a quarter of the time.
+  const onDetails = (PDP_TAB === "details");
+  const _id = r.identifier || null;
+  const idProblem = !!(_id && (_id.blocking || (_id.clash || []).length || _id.note));
+  const _comp = (typeof complianceBanner === "function") ? complianceBanner(r) : "";
+  const compProblem = !!_comp && _comp.indexOf('compline ok') < 0;
+  const blocking = (((onDetails || idProblem) && typeof identifierPanel === "function")
+                     ? identifierPanel(r) : "")
+                 + ((onDetails || compProblem) ? _comp : "")
                  // Amazon's own reply to the last Preview/Submit. Above the tabs
                  // for the same reason as the two panels above it: a rejection
                  // you have to go looking for has not been reported.
@@ -1937,8 +1951,9 @@ function pdpRender(){
                  // ours. Above everything, because it changes what every field
                  // below it means.
                  + pdpCatalogueNote(r)
-                 // ...and when they ARE ours but Amazon's are what is drawn.
-                 + pdpAmazonCopyNote(r);
+                 // ...and when they ARE ours but Amazon's are what is drawn --
+                 // which is about the text fields, so Product Details only.
+                 + (onDetails ? pdpAmazonCopyNote(r) : "");
 
   let tab = "";
   if(PDP_TAB === "details"){
@@ -1979,8 +1994,12 @@ function pdpRender(){
     // Compliance, and nothing on the page filled its model pickers or ran its
     // connection check (only the old drawer called initGenPanel). So it is
     // here, open, and started after the render below.
-    tab = ((typeof pdpImagesTab === "function") ? pdpImagesTab(r) : "") + p.images
-        + (p.gen ? pdpGenSection(p.gen) : "");
+    // THE OWNER'S REDESIGN (26 Sep 2026): slots, one competitor strip, and the
+    // four preset buttons -- all from pdp_images.js / pdp_imagegen.js. The old
+    // thumbnail strip with its "competitor source" warning and red "Remove main
+    // image" button (p.images), and the full generator form (p.gen), are no
+    // longer drawn here; the drawer still shows both, from the same builders.
+    tab = (typeof pdpImagesTab === "function") ? pdpImagesTab(r) : p.images;
   } else if(PDP_TAB === "variations"){
     // The family this listing belongs to. Drawn by the variations screen's own
     // builder where there is one, so the parent/child rules live in one place.
@@ -2009,28 +2028,18 @@ function pdpRender(){
     // Bound once, here rather than in pdpOpen, because the host's contents are
     // what the listener delegates over and they do not exist until a render.
     pdpWatchEdits();
-    // Fill the generator's model pickers and check the connection -- the same
-    // start the drawer gives it (listings.js initGenPanel, Rule 12).
-    if(PDP_TAB === "images" && p.gen && typeof initGenPanel === "function"){
-      try{ initGenPanel(sid(r.sku)); }catch(e){}
-    }
+    // The old full generator form (initGenPanel's model pickers) is no longer
+    // on this page: the Images tab has the four preset buttons instead
+    // (pdp_imagegen.js), which read the configured model themselves.
   }, 40);
 }
 
-/* The AI image generator, as a section of the Images tab. The panel itself is
- * built by _fullDataParts (autofix.js) and driven by doGen -- one generator,
- * shown here and in the drawer. */
-function pdpGenSection(genHtml){
-  return '<div class="pdp-gen" style="margin-top:18px">'
-    + '<div class="pdp-sec-title" style="font-weight:600;margin:0 0 6px">'
-    + '<i class="ti ti-sparkles"></i> Generate an image with AI</div>'
-    + '<div class="cc" style="font-size:12px;margin:0 0 8px">Starts from the reference image and your '
-    + 'instructions. Each result is saved to this listing’s image library; '
-    + '<b>Use as main image</b> puts it on the listing.</div>'
-    + genHtml + '</div>';
-}
+/* pdpGenSection -- the full generator form as a section of the Images tab --
+ * WAS HERE. The owner's redesign (26 Sep 2026) replaced it with the four
+ * preset buttons in pdp_imagegen.js. The drawer keeps the full form. */
 
-/* The rail's "Image studio": the Images tab, scrolled to its AI generator. */
+/* The rail's "Image studio": the Images tab, scrolled to its preset buttons
+ * (class pdp-gen, on pdpImgGenSection's box). */
 function pdpOpenGenerator(){
   if(PDP_TAB !== "images"){ PDP_TAB = "images"; pdpRender(); }
   // After pdpRender's own 40ms start-up, so the generator's pickers exist.
