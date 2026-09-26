@@ -1351,6 +1351,40 @@ function pdpRefreshChecks(sku){
     .catch(function(){});
 }
 
+/* AFTER AN ACTION FINISHES, THE PAGE SHOWS WHAT IT DID.
+ *
+ * Preview, Submit, Auto-fix, the GTIN tick and Pull live images all changed the
+ * listing and then refreshed only the grid or the drawer, so this page went on
+ * showing the old status, badges and Amazon's last answer until it was
+ * reopened. Worse, a loadRows() replaced ROWS with list rows, which carry no
+ * r.identifier, and the next render dropped the barcode/exemption panel.
+ *
+ * The one call every such action makes when it is done. It re-reads the row
+ * through pdpRefreshChecks -- /row, the endpoint that attaches the checks --
+ * and redraws, but only when this page is showing that SKU.
+ *
+ * NOT WHILE SOMEBODY IS TYPING. A redraw replaces every box on the page, and a
+ * Preview can land half a minute after it was pressed, in the middle of an
+ * edit. Fields save when they lose focus, so the refresh waits for that, plus a
+ * moment for the save's own request, and then runs.
+ */
+function pdpAfterAction(sku){
+  if(!PDP_SKU || String(PDP_SKU) !== String(sku)) return;
+  const host = document.getElementById("pdp");
+  const el = document.activeElement;
+  const tag = el ? String(el.tagName || "").toLowerCase() : "";
+  const typing = !!(el && host && host.contains(el)
+                    && (el.isContentEditable === true
+                        || tag === "input" || tag === "textarea" || tag === "select"));
+  if(typing){
+    el.addEventListener("blur", function(){
+      setTimeout(function(){ pdpAfterAction(sku); }, 800);
+    }, {once: true});
+    return;
+  }
+  pdpRefreshChecks(String(sku));
+}
+
 /* THE BARCODE, CHECKED WHILE IT IS BEING TYPED.
  *
  *     "if that new barcode is also used somewhere else, flag it immediately in

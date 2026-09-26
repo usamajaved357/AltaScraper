@@ -48,8 +48,13 @@ async function setGtinExemption(sku, on){
     if(!j || !j.ok){ toast((j && j.error) || "Could not save that"); return; }
     toast(on ? "GTIN exemption will be claimed for this listing"
              : "GTIN exemption is off for this listing");
-    if(typeof refreshRow === "function") refreshRow(sku);
-    else if(typeof loadRows === "function") loadRows();
+    // refreshRow() was called here and exists nowhere, so this always fell
+    // through to loadRows() -- which replaces ROWS with list rows that carry no
+    // r.identifier, and the product page's next render dropped the very panel
+    // this tick box lives in. The grid still reloads; the product page, if it
+    // is showing this listing, then re-reads the row with its checks attached.
+    if(typeof loadRows === "function"){ try{ await loadRows(); }catch(e){} }
+    if(typeof pdpAfterAction === "function") pdpAfterAction(sku);
   }catch(e){ toast(String(e)); }
 }
 

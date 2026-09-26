@@ -680,5 +680,34 @@ console.log("\nAmazon's copy lands under the names the editors read");
   globalThis.__live = saved;
 }
 
+console.log("\nthe page is refreshed after an action, not left stale");
+// ---------------------------------------------------------------------------
+// gtin.js called refreshRow(), which exists nowhere, so the GTIN tick fell
+// through to loadRows() and the next render dropped the identifier panel.
+{
+  const GT = fs.readFileSync("static/js/gtin.js", "utf8").replace(/\/\/.*$/gm, "");
+  check("gtin.js no longer calls the missing refreshRow", /refreshRow\(/.test(GT), false);
+  truthy("  and hands the product page the listing to re-read",
+         /pdpAfterAction\(sku\)/.test(GT));
+  // pdpAfterAction: only for the SKU on screen, and never mid-edit.
+  const calls = [];
+  const savedRC = ctx.pdpRefreshChecks;
+  G("pdpRefreshChecks = function(s){ __rc.push(s); }");
+  globalThis.__rc = calls;
+  G("PDP_SKU = " + JSON.stringify(SKU));
+  const savedAE = Object.getOwnPropertyDescriptor(globalThis.document, "activeElement");
+  Object.defineProperty(globalThis.document, "activeElement", {value: null, configurable: true});
+  ctx.pdpAfterAction("SOME_OTHER_SKU");
+  check("  another listing's action does not redraw this one", calls.length, 0);
+  ctx.pdpAfterAction(SKU);
+  check("  this listing's action re-reads it", calls, [SKU]);
+  G("PDP_SKU = ''");
+  ctx.pdpAfterAction(SKU);
+  check("  and nothing happens with the page closed", calls.length, 1);
+  if(savedAE) Object.defineProperty(globalThis.document, "activeElement", savedAE);
+  else delete globalThis.document.activeElement;
+  ctx.pdpRefreshChecks = savedRC;
+}
+
 console.log("\n%d failed", fails);
 process.exit(fails ? 1 : 0);
