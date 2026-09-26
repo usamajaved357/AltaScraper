@@ -53,18 +53,45 @@ check("the map is a literal that can be read", bool(m), True)
 pairs = dict(re.findall(r"([A-Z_]+)\s*:\s*[\"']([A-Z]+)[\"']", m.group(1) if m else ""))
 check("SUBMITTED becomes WAITING", pairs.get("SUBMITTED"), "WAITING")
 check("API_ERROR becomes ISSUE", pairs.get("API_ERROR"), "ISSUE")
+# GENERATED reads as DRAFT, which is what it plainly is: written by this app and
+# not yet sent. The stored word names the STEP that produced it, which is of no
+# interest to anyone reading a row.
+check("GENERATED becomes DRAFT", pairs.get("GENERATED"), "DRAFT")
 
-print("\n=== nothing else is renamed ===")
-# The spec asked for four badges. QUEUED must stay QUEUED: it is the one status
-# where Submit genuinely cannot do anything yet, and calling it DRAFT would make
-# it identical on screen to a row that is ready to send.
-for word in ("LIVE", "QUEUED", "GENERATED", "PARENT", "API_READY", "APPROVED"):
+print("\n=== QUEUED is still NOT draft -- the line that must hold ===")
+# A queued row has a SKU and almost nothing else: the generator has not run, so
+# there is no copy, no images, and nothing Submit could send. Badging it DRAFT
+# makes "nothing made yet" identical to "made, ready to go" -- the two states on
+# this screen it is most expensive to confuse.
+check("QUEUED keeps its own word", "QUEUED" in pairs, False)
+# APPROVED/API_READY are the step between generated and sent, and the Approved
+# tile counts them separately (listings.js: c.APPROVED + c.API_READY).
+for word in ("LIVE", "PARENT", "API_READY", "APPROVED"):
     check("%s is left alone" % word, word in pairs, False)
-check("exactly two words are remapped", len(pairs), 2)
+check("exactly three words are remapped", len(pairs), 3)
 
-print("\n=== both renderers use it, so the two views cannot disagree ===")
+print("\n=== ALL THREE renderers use it, so no view can disagree ===")
+# There are three places a status word is drawn, and the third was missed when
+# the first two were changed -- so a row badged DRAFT opened a drawer headed
+# GENERATED for the same listing. That is the exact drift the header of
+# liststatus.js was written about, and it is why this counts them.
 check("the detailed row's badge uses it", "lsBadgeWord(st)" in lr, True)
 check("the table's pill uses it", "lsBadgeWord(s)" in li, True)
+check("the drawer's bar uses it", "lsBadgeWord(_shown)" in li, True)
+# EVERY badge built from badgeClass() must take its TEXT from the map. Rather
+# than count (the definition and the comments match too), find each call and
+# check the variable it classes is NOT the variable it prints -- printing the
+# same variable means the raw status reached the screen.
+_code = "\n".join(l.split("//")[0] for l in li.splitlines())
+_sites = [m for m in re.finditer(r"badgeClass\((\w+)\)", _code)
+          if not _code[max(0, m.start() - 9):m.start()].endswith("function ")]
+check("there are exactly two badge call sites", len(_sites), 2)
+for m in _sites:
+    var = m.group(1)
+    after = _code[m.end():m.end() + 260]
+    ln = _code[:m.start()].count("\n") + 1
+    check("line %d classes on %s but prints a mapped word" % (ln, var),
+          ("esc(%s" % var) in after, False)
 # Guarded calls, because liststatus.js load order is a real thing in this app.
 for name, src in (("listrow_detailed.js", lr), ("listings.js", li)):
     check("%s calls it defensively" % name,

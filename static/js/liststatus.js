@@ -75,11 +75,18 @@ function lsStatusOf(r){ return lsNorm(r && r.status); }
  *                listing and said why. ISSUE is about the listing, which is
  *                what the row is about.
  *
- * NOTHING ELSE IS RENAMED, and that is deliberate. The spec asks for exactly
- * four badges (DRAFT/WAITING/ISSUE/LIVE), which would mean every pre-submit row
- * reading DRAFT -- so QUEUED, the one status where Submit genuinely cannot do
- * anything yet because the listing has not been generated, would look identical
- * to one that is ready to go.
+ * GENERATED reads as DRAFT too, which is what the spec and the mockup call it
+ * and what it plainly is: a listing this app has written and not yet sent. The
+ * stored word describes which STEP produced it, which is of no interest to
+ * anyone reading a row.
+ *
+ * QUEUED IS STILL NOT DRAFT, and that is the line worth holding. A queued row
+ * has a SKU and almost nothing else -- the generator has not run on it, so
+ * there is no copy, no images and nothing Submit could send. Badging it DRAFT
+ * would make "nothing has been made yet" look identical to "made, ready to go",
+ * which are the two states on this screen it is most expensive to confuse.
+ * APPROVED and API_READY keep their own words for the same reason: they are the
+ * step between generated and sent, and the Approved tile counts them separately.
  *
  * WAITING CANNOT APPEAR ON A PUBLISHED ROW, by construction rather than by a
  * check here: both callers pass _shownStatus(), which already returns LIVE for
@@ -93,7 +100,8 @@ function lsStatusOf(r){ return lsNorm(r && r.status); }
  * a word and the sentence explaining it drift apart the moment they live in
  * different files (Rule 12). lrAmazonSaid() writes the line underneath.
  */
-const LS_BADGE_WORDS = {SUBMITTED: "WAITING", API_ERROR: "ISSUE"};
+const LS_BADGE_WORDS = {GENERATED: "DRAFT", SUBMITTED: "WAITING",
+                        API_ERROR: "ISSUE"};
 
 function lsBadgeWord(status){
   const s = lsNorm(status);

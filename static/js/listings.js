@@ -2380,11 +2380,18 @@ function _dwShell(r, urls, priceStr, risks){
   const _shown = (typeof _shownStatus === "function")
     ? String(_shownStatus(r) || "").toUpperCase()
     : String(r.status || "").toUpperCase();
+  // AND THE SAME WORD THE ROW SHOWS. The badge text goes through liststatus.js
+  // like the table's pill and the detailed row's badge do, so opening a row
+  // badged DRAFT cannot show a drawer headed GENERATED for the same listing.
+  // That drift is the exact fault the header of liststatus.js was written about,
+  // and this was the third renderer -- missed when the first two were changed.
+  // Colour still from badgeClass(_shown): only the word is mapped.
+  const _word = (typeof lsBadgeWord === "function") ? lsBadgeWord(_shown) : _shown;
   const bar = `<div class="dw2-bar">
       <span class="badge ${badgeClass(_shown)}"${
         _shown !== String(r.status||"").toUpperCase()
           ? ` title="Amazon is showing this listing, so it is live. Its stored status still says ${esc(r.status||'')} from an earlier attempt."`
-          : ""}>${esc(_shown||'\u2014')}</span>
+          : ""}>${esc(_word||'\u2014')}</span>
       ${risks.join("")}
       ${asinBit}
       <span class="dw2-spacer"></span>
