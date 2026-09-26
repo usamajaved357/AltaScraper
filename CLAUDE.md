@@ -1,6 +1,11 @@
-﻿# CLAUDE.md — Standing Rules for Every Session
+﻿# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+# Standing Rules for Every Session
 # This file is version-controlled. Every branch inherits these rules.
 # Read this entire file before touching any code, any session, no exceptions.
+# Commands, deploy and architecture are in section 13 at the end.
 
 ---
 
@@ -73,12 +78,21 @@ An Amazon error message is never sufficient justification to change this.
 
 ## 2. GIT WORKFLOW — EVERY PIECE OF WORK IS A BRANCH
 
+git is NOT on PATH on this machine — see section 13 for the command that finds
+GitHub Desktop's bundled git.exe. `git` below means that binary.
+
 Before starting any work in a session, check which branch is active:
   git branch
 
-If on main, create a branch before touching anything:
-  git checkout -b short-description-of-work
+Create the branch from ORIGIN/main, never local main (local main goes stale and
+gives no sign of it):
+  git fetch origin
+  git checkout -b short-description-of-work origin/main
   (examples: fix/barcode-validation, feature/miles-drive-scan, refactor/phase-1-templates)
+
+The main folder may be in use by another Claude session with uncommitted work.
+If `git status` shows changes you did not make, do not touch them — do your work
+in a separate `git worktree add` directory instead.
 
 After completing and verifying work in a branch:
   git add .
@@ -105,6 +119,14 @@ Never leave a broken branch without telling the user.
 Only merge a branch to main after the user has confirmed it works in production
 for at least a short period. Never auto-merge.
 
+Pushing a feature branch is safe. Pushing to origin/main IS the deploy (Render
+builds origin/main within a minute or two). When the user explicitly says
+"merge", fast-forward (`git push origin <branch>:main`) after checking that
+origin/main is an ancestor of the branch, and say out loud that the
+"confirm in production first" step is being waived on their instruction.
+Confirm the deploy by polling a file the release adds or changes on
+app.altascraper.com — /healthz only says the process is up.
+
 ---
 
 ## 3. BUG CHECK — MANDATORY AFTER EVERY CODE EDIT
@@ -112,10 +134,14 @@ for at least a short period. Never auto-merge.
 This is non-negotiable. After every single edit to any Python file,
 run this full sequence before saying anything else or moving to the next step.
 
+The shell is Windows PowerShell 5.1: no `cp`, no heredocs, no `&&`. The
+commands below are in PowerShell form.
+
 ### Step 1 — Baseline (once per session, before first edit)
-  cp amazon_listing_generator.py amazon_listing_generator.baseline.py
-  cp dashboard.py dashboard.baseline.py
-Keep these for the entire session. Never overwrite them.
+  Copy-Item amazon_listing_generator.py amazon_listing_generator.baseline.py
+  Copy-Item dashboard.py dashboard.baseline.py
+Keep these for the entire session. Never overwrite them. (*.baseline.py files
+are git-ignored.)
 
 ### Step 2 — Compile check (after every edit)
   python -m py_compile amazon_listing_generator.py
@@ -126,16 +152,18 @@ Never deliver a file that fails py_compile.
 ### Step 3 — Scope check (after every edit)
 Run this to confirm no functions were accidentally deleted or renamed:
 
-  python - << 'EOF'
+  @'
   import ast
-  b = ast.parse(open('amazon_listing_generator.baseline.py').read())
-  n = ast.parse(open('amazon_listing_generator.py').read())
-  def fns(t): return {x.name for x in ast.walk(t) if isinstance(x, ast.FunctionDef)}
-  removed = sorted(fns(b) - fns(n))
-  added   = sorted(fns(n) - fns(b))
-  print("REMOVED:", removed)
-  print("ADDED:  ", added)
-  EOF
+  for base, new in (("amazon_listing_generator.baseline.py", "amazon_listing_generator.py"),
+                    ("dashboard.baseline.py", "dashboard.py")):
+      b = ast.parse(open(base, encoding="utf-8").read())
+      n = ast.parse(open(new, encoding="utf-8").read())
+      fns = lambda t: {x.name for x in ast.walk(t) if isinstance(x, ast.FunctionDef)}
+      print(new, "REMOVED:", sorted(fns(b) - fns(n)), "ADDED:", sorted(fns(n) - fns(b)))
+  '@ | python -
+
+For JavaScript edits, also run `node --check static/js/<file>.js`. For any
+other Python file you edit, `python -m py_compile <file>`.
 
 If REMOVED is not empty: STOP. A function was accidentally deleted.
 Do not continue until the missing function is restored or the deletion
@@ -256,14 +284,16 @@ New features go in their own dedicated file from day one.
 If it does not fit in an existing module, create a new one.
 
 ### File responsibilities (strictly enforced):
-- api/amazon_sp.py — SP-API calls only. No UI, no business logic.
-- api/google_sheets.py — Sheets read/write only. No listing logic.
-- api/google_drive.py — Drive operations only. No business logic.
+- api/ — external API clients only (amazon_listings.py, amazon_catalog.py,
+  amazon_ads.py, sp_reports.py, ebay.py, track17.py…). No UI, no business logic.
+- routes/*_routes.py — HTTP endpoints only; logic they need lives in domain/ or listing/.
+- domain/ — business logic (costs, barcode clashes, catalogue lookup, mirrors…).
+- data/ — storage: db.py (SQLite schema), store.py (listings), scheduler.py.
+- config/settings.py — the one reader/writer of config.json.
+- auth/guard.py — which permission each route needs.
 - listing/shaper.py — shape_by_schema and field shaping only.
 - listing/builder.py — build_api_attributes only.
 - listing/compliance.py — IP rules, hazmat, compliance_rules.json only.
-- listing/auto_fix.py — the suggest/apply/preview loop only.
-- listing/miles.py — Miles Lubricants specific logic only.
 - templates/ — HTML files only. No Python logic inside templates.
 - static/js/ — JavaScript files only. Never embed JS in Python strings.
 - static/css/ — CSS files only. Never embed CSS in Python strings.
@@ -306,10 +336,12 @@ If bid/budget changes are needed, flag them separately and wait for instruction.
 **Agency role:** Manager at Full Circle Agency (Houston)
 
 **Tech stack:**
-- Local Flask app running at 127.0.0.1:5000 (auto-fallback port if taken)
+- Local Flask app running at 127.0.0.1:5000 (auto-fallback port if taken);
+  production at app.altascraper.com (Render, Docker, from origin/main)
 - Python 3.11 on Windows
-- Google Sheets as the primary data store (input + output)
-- Google Drive for file/image storage
+- SQLite as the data store (altascraper.db beside config.json). Google Sheets
+  is unlinked — only a legacy import source
+- Google Drive for optional image storage
 - SP-API for Amazon listing validation and submission
 - Anthropic Claude API for listing copy generation
 
@@ -334,7 +366,14 @@ combine phases. Each phase must be stable in production before the next begins.
 - Phase 5: Extract eBay, PPC, TikTok into domain folders
 - Phase 6: Clean routing — dashboard.py becomes routes only
 
-### Current phase: NOT STARTED (Git setup must come first)
+### Current state (updated 27 Sep 2026)
+Largely done: HTML/CSS/JS live in templates/ and static/ (one dashboard.html,
+~117 JS files); route groups are extracted into routes/ (80 modules); the listing
+engine is partly in listing/; business logic in domain/; config access goes
+through config/settings.py. Still large and still holding core helpers:
+dashboard.py (app wiring, shared helpers such as _card, _records, the image-job
+runner) and amazon_listing_generator.py (generation, build and submit). The
+"never add new logic" rule for those two files still applies.
 
 ### Rule during restructuring:
 Move code, do not rewrite it. The app must behave identically
@@ -346,10 +385,11 @@ stop and investigate — a move should never change what the app does.
 ## 11. HOW TO START EVERY SESSION
 
 Read this file. Then:
-1. Run: git branch (confirm which branch you are on)
-2. If on main and doing real work: git checkout -b branch-name
-3. Take baselines: cp the two main Python files to .baseline.py
-4. Read ARCHITECTURE.md if it exists (it will after Phase 1)
+1. Run: git branch and git status (confirm which branch you are on, and that
+   nobody else's uncommitted work is in the folder)
+2. If doing real work: git fetch origin; git checkout -b branch-name origin/main
+3. Take baselines: copy the two main Python files to .baseline.py (section 3)
+4. Read section 13 for commands and the architecture
 5. Then and only then, start the work the user asked for
 
 If the user's request is unclear, ask one specific clarifying question
@@ -372,3 +412,52 @@ across all files, list every location that touches it, confirm
 they all call the same shared function. Include this audit in 
 your response so I can verify.
 
+---
+
+## 13. COMMANDS, DEPLOY AND ARCHITECTURE
+
+### Commands (Windows PowerShell 5.1 — no bash, no `&&`)
+- git is NOT on PATH. Use GitHub Desktop's bundled git (newest app-* dir):
+  $g=(Get-ChildItem "$env:LOCALAPPDATA\GitHubDesktop" -Directory -Filter "app-*" | Sort-Object Name -Descending | Select-Object -First 1).FullName + "\resources\app\git\cmd\git.exe"; & $g status
+- Use FULL paths with .NET file calls ([IO.File]::...): they resolve relative
+  paths against the shell's startup folder, not the current location.
+- Run the app locally: `python dashboard.py` (needs config.json beside it, or CONFIG_PATH).
+- Tests are standalone scripts in the repo ROOT — not pytest, and not tests/:
+  `python test_<name>.py` or `node test_<name>.js`. Exit code 0 = pass; each
+  prints OK / FAIL per check. Run one by running its file.
+- About 29 test files fail without the owner's real config.json and
+  altascraper.db (anything that builds the app or reads real rows, e.g.
+  test_barcode_and_exemption.py, test_cogs_one_reader.py). Before calling a
+  failure a regression, `git stash`, rerun, and compare.
+- Behaviour tests for server code: set `ALTASCRAPER_DB` to a temp file, pass a
+  temp config path, and register the route module on a bare `Flask(...)` with
+  stub kwargs rather than importing dashboard.py.
+
+### Deploy
+render.yaml: Docker service built from origin/main, persistent disk at /data,
+CONFIG_PATH=/data/config.json. A push to main is the deploy (section 2).
+
+### Architecture
+- dashboard.py builds the Flask app and wires everything. Each group of routes
+  is a routes/*_routes.py module exposing `register(app, **injected)`: shared
+  helpers (_cfg, _state, _ws, _records, _card, CONFIG_PATH…) are passed in by
+  dashboard.py, not imported.
+- amazon_listing_generator.py generates, builds and submits listings. It runs as
+  a subprocess started by `/run/<mode>` and streamed to the browser as an
+  EventSource; listing/* holds the pieces extracted from it.
+- Storage is SQLite: data/db.py SCHEMA plus `_migrate` for columns added later.
+  data/store.py `ListingStore` is one workspace (= one account); `SheetLikeStore`
+  gives it the old gspread-shaped API that older routes still call.
+- The front end is one page, templates/dashboard.html, with sections toggled,
+  plus plain scripts in static/js/ that share globals (ROWS, LIVE_ITEMS,
+  LIVE_MIRROR, CUR_ACCOUNT, WS_MARKET). Listings: listings.js and
+  miles_template.js (render, live catalogue, card/table), listrow_detailed.js
+  (detailed view), liststatus.js (status words and the four check verdicts).
+  Product page (PDP): pdp.js, pdp_images.js, pdp_imagegen.js, built from
+  `_fullDataParts` in autofix.js, which the older side drawer also uses.
+- WHICH ACCOUNT: every request that writes must name its account (`acctBody` /
+  `acctUrl` in static/js/reqscope.js). `_state["active_account_id"]` is one
+  value for the whole server process, moved by whichever browser tab switched
+  last, so never rely on it for a write. The same SKU can exist on two accounts.
+- WHICH ASIN: a row's `asin`, and the ASIN inside the SKU, is the COMPETITOR's
+  (Rule 1). Use `rowAsin(r)` / `ownLiveAsin(r)` for the owner's own.
