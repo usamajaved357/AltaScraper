@@ -147,6 +147,18 @@ async function _pdpiLoadLibrary(){
   }catch(e){ PDPI.library = []; }
 }
 
+/* RE-READ THE LIBRARY FROM OUTSIDE THIS FILE -- for the AI generator (doGen in
+ * autofix.js), which saves each result into this SKU's media folder. Only the
+ * tab's own upload and delete re-read it, so a generated picture did not appear
+ * in "Image library" until a different listing was opened. A no-op unless this
+ * tab is showing that SKU; repaints #pdpimages only, which does not contain the
+ * generator, so a preview still being looked at is left alone. */
+async function pdpImagesLibraryReload(sku){
+  if(!PDPI.sku || PDPI.sku !== String(sku || "")) return;
+  await _pdpiLoadLibrary();
+  _pdpiPaint();
+}
+
 /* ---- assigning --------------------------------------------------------- */
 
 /* Put one URL in one slot on the DRAFT, through the same /edit every other

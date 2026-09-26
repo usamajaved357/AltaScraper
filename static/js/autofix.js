@@ -2378,6 +2378,11 @@ async function doGen(sku, sidv){
       var sv=await fetch('/media/upload',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({sku:sku,data:j.data_url,kind:'generated'})});
       var svj=await sv.json();
+      // Saved into the library -- so the product page's Images tab shows it now,
+      // not after another listing has been opened (pdp_images.js).
+      if(svj.ok && typeof pdpImagesLibraryReload==='function'){
+        try{ pdpImagesLibraryReload(sku); }catch(e){}
+      }
       if(svj.ok && out){
         out.dataset.savedurl=svj.url;
         var dr=document.getElementById('gendrive_'+sidv);

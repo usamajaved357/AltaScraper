@@ -147,6 +147,16 @@ truthy("assigning writes the draft attribute Submit reads",
 truthy("  and says so rather than implying it reached Amazon",
        "does not push to Amazon" in JS or "what Submit will send" in JS)
 
+# A generated picture is saved into this SKU's library, so the tab re-reads it
+# then -- it used to appear only after a DIFFERENT listing had been opened.
+_AF = open(os.path.join(HERE, "static", "js", "autofix.js"), encoding="utf-8").read()
+_dogen = _AF[_AF.index("function doGen("):]
+_dogen = _dogen[:_dogen.index("\nfunction ")]
+truthy("the library can be re-read from outside the tab",
+       "async function pdpImagesLibraryReload(sku)" in JS)
+truthy("  and the generator does so once its result is saved",
+       re.search(r"/media/upload[\s\S]*pdpImagesLibraryReload\(sku\)", _dogen) is not None)
+
 print("\n=== the renderer actually runs ===")
 probe = r"""
 const fs=require("fs"), vm=require("vm");
