@@ -188,7 +188,32 @@ def warnings(slot_key, url, current_value="", is_variation_child=False):
 
 
 def build_patch(slot_key, url, marketplace_id):
-    """The patch operation for one slot. media_location is what Amazon requires."""
-    return {"op": "replace", "path": "/attributes/" + slot_key,
-            "value": [{"media_location": str(url).strip(),
-                       "marketplace_id": marketplace_id}]}
+    """The patch operation for one slot. THE ONE image-patch builder (Rule 12).
+
+    WHY marketplace_id IS NOT OPTIONAL DECORATION -- it is the whole reason
+    images pushed from the app never appeared on Amazon. The raw schema, read
+    from Amazon on 26 Sep 2026 for CHAIR/UK:
+
+        "selectors": ["marketplace_id"],
+        "items": {"required": ["media_location"], ...}
+
+    So media_location ALONE passes validation: Amazon answers ACCEPTED and
+    reports no issues. But marketplace_id is the SELECTOR -- it is how Amazon
+    decides which marketplace's value is being set -- and with no selector the
+    value is filed against no marketplace. The image never appears, and nothing
+    anywhere says why. dashboard.py's _build_patches composed the patch itself,
+    without it, which is exactly the fault; it now calls this.
+
+    Omitted only when it is genuinely unknown, because an EMPTY selector is
+    rejected outright and a refusal we can explain beats a silent no-op.
+
+    `url` may be one address or a list of them (a slot set in one go).
+    """
+    urls = list(url) if isinstance(url, (list, tuple)) else [url]
+    vals = []
+    for u in urls:
+        v = {"media_location": str(u).strip()}
+        if marketplace_id:
+            v["marketplace_id"] = str(marketplace_id)
+        vals.append(v)
+    return {"op": "replace", "path": "/attributes/" + slot_key, "value": vals}

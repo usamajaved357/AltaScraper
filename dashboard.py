@@ -2739,8 +2739,21 @@ def _estimate_profit(price, cogs, referral_rate=0.15):
 
 
 
-def _build_patches(changes):
-    """Translate approved {field:value} into SP-API JSON-Patch attribute ops."""
+def _build_patches(changes, marketplace_id=""):
+    """Translate approved {field:value} into SP-API JSON-Patch attribute ops.
+
+    marketplace_id is the SELECTOR Amazon files each value under, and for IMAGES
+    leaving it out was a silent no-op: the schema requires only media_location,
+    so Amazon answered ACCEPTED, reported no issues, and filed the image against
+    no marketplace. Images pushed from the app never arrived and nothing said
+    why. Every *_image_locator patch is now built by listing/images.build_patch,
+    which is the same builder /listing/image_push and the new-listing submit
+    already use -- one shape, three callers (Rule 12), instead of three shapes.
+
+    It defaults to "" so an old caller still works, but a caller that wants an
+    image to actually land must pass it.
+    """
+    from listing import images as _img
     patches = []
     if "title" in changes:
         patches.append({"op": "replace", "path": "/attributes/item_name",
@@ -2758,8 +2771,8 @@ def _build_patches(changes):
         patches.append({"op": "replace", "path": "/attributes/purchasable_offer",
                         "value": [{"our_price": [{"schedule": [{"value_with_tax": float(changes["price"])}]}]}]})
     if "main_image" in changes and changes["main_image"]:
-        patches.append({"op": "replace", "path": "/attributes/main_product_image_locator",
-                        "value": [{"media_location": changes["main_image"]}]})
+        patches.append(_img.build_patch(_img.MAIN, changes["main_image"],
+                                        marketplace_id))
     # generic attributes from the full editable list (keys like "attr:<name>")
     for k, v in changes.items():
         if not k.startswith("attr:"):
@@ -2770,15 +2783,13 @@ def _build_patches(changes):
             # multi-value attribute -> split back into list of {value}
             parts = [p.strip() for p in val.split(" | ") if p.strip()]
             if "image_locator" in name:
-                patches.append({"op": "replace", "path": f"/attributes/{name}",
-                                "value": [{"media_location": p} for p in parts]})
+                patches.append(_img.build_patch(name, parts, marketplace_id))
             else:
                 patches.append({"op": "replace", "path": f"/attributes/{name}",
                                 "value": [{"value": p} for p in parts]})
         else:
             if "image_locator" in name:
-                patches.append({"op": "replace", "path": f"/attributes/{name}",
-                                "value": [{"media_location": val}]})
+                patches.append(_img.build_patch(name, val, marketplace_id))
             else:
                 patches.append({"op": "replace", "path": f"/attributes/{name}",
                                 "value": [{"value": val}]})

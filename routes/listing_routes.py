@@ -747,29 +747,51 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             return jsonify({"ok": False, "error": "connect this account first"}), 400
         creds = _acc.account_creds(acc)
         seller = acc.get("seller_id", "")
-        mid = _acc.marketplace_id(mkt) if hasattr(_acc, "marketplace_id") else ""
-        patches = _build_patches({"main_image": public_url})
+        # WHICH MARKETPLACE, decided before anything is sent.
+        #
+        # The browser sends WS_MARKET, which is "__all__" in the all-marketplaces
+        # view and "" when the screen has none. Both fell through to
+        # `Marketplaces.US` below -- a US-region call for a UK listing -- and to
+        # an EMPTY marketplace id, which is the selector Amazon files the image
+        # under. The account's own default is the answer every other route uses.
+        if mkt in ("", "__ALL__"):
+            mkt = str(acc.get("default_marketplace") or "UK").upper()
+        mid = _acc.marketplace_id(mkt)
+        if not mid:
+            return jsonify({"ok": False, "error": (
+                "could not work out which Amazon marketplace to send this to "
+                "(%s), and an image sent without one is accepted by Amazon and "
+                "then filed against nothing. Open the listing in a single "
+                "marketplace view and try again." % (mkt or "none"))}), 400
+        # ONE BUILDER (listing/images.py) via _build_patches. This used to compose
+        # {"media_location": url} with no marketplace_id: schema-valid, so Amazon
+        # answered ACCEPTED with no issues, and the image was filed against no
+        # marketplace and never appeared.
+        patches = _build_patches({"main_image": public_url}, marketplace_id=mid)
         if not patches:
             return jsonify({"ok": False, "error": "could not build image patch"}), 400
+        # ONE TRANSPORT (api/amazon_listings.py) -- the same call /listing/image_push
+        # makes. It reports Amazon's own verdict; this route used to read
+        # `ok = status in (...) or not issues`, so a reply it could not parse came
+        # back as a green tick.
         try:
-            from sp_api.api import ListingsItemsV20210801 as LI
-            from sp_api.base import Marketplaces
+            from api import amazon_listings as _al
         except Exception as e:
             return jsonify({"ok": False, "error": f"sp_api Listings not available: {e}"}), 500
-        mkt_enum = getattr(Marketplaces, mkt, None) or Marketplaces.US
-        body = {"productType": ptype or "PRODUCT", "patches": patches}
-        try:
-            li = LI(credentials=creds, marketplace=mkt_enum)
-            resp = li.patch_listings_item(seller, sku,
-                                          marketplaceIds=[mid] if mid else None, body=body)
-            pay = resp.payload if hasattr(resp, "payload") else resp
-        except Exception as e:
-            return jsonify({"ok": False, "error": f"patchListingsItem failed: {str(e)[:240]}"}), 502
-        status = (pay or {}).get("status", "") if isinstance(pay, dict) else ""
-        issues = (pay or {}).get("issues", []) if isinstance(pay, dict) else []
-        ok = status.upper() in ("ACCEPTED", "VALID") or not issues
-        return jsonify({"ok": ok, "status": status, "issues": issues,
-                        "public_url": public_url, "raw": pay})
+        res = _al.patch(creds, mkt, seller, sku, mid, ptype or "PRODUCT", patches,
+                        issue_locale=("en_US" if mkt == "US" else "en_GB"))
+        if res["status"] != _al.OK:
+            why = res["error"] or "Amazon rejected it"
+            if res["issues"]:
+                why += " -- " + "; ".join(str(i.get("message") or "")[:140]
+                                          for i in res["issues"][:3])
+            return jsonify({"ok": False, "error": why,
+                            "status": res["amazon_status"], "issues": res["issues"],
+                            "public_url": public_url}), 502
+        return jsonify({"ok": True, "status": res["amazon_status"],
+                        "issues": res["issues"], "public_url": public_url,
+                        "submission_id": res["submission_id"],
+                        "note": "Amazon usually shows a new image within a few minutes."})
 
     @app.route("/suggest", methods=["POST"])
     def suggest():

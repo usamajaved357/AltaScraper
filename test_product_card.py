@@ -288,7 +288,12 @@ print("\n== Optimize does not report a success it did not verify ==")
 # Amazon (accepted)", supplying the word "accepted" itself.
 truthy("the push is still gated on an explicit confirm", 'b.get("confirmed")' in OPT)
 truthy("  and refuses read-only workspaces",             "_require_publish()" in OPT)
-truthy("  and sends only approved fields",               "_build_patches(changes)" in OPT)
+truthy("  and sends only approved fields",               "_build_patches(changes," in OPT)
+# The marketplace id travels WITH the patch, because for an image slot it is the
+# selector Amazon files the value under -- without it the push is accepted and
+# lands nowhere. See listing/images.build_patch.
+truthy("  marketplace-scoped, so an image actually lands",
+       "marketplace_id=mid" in OPT)
 # Line-based, because the old expression is quoted in the comment that explains
 # why it went. A comment recording the defect is not the defect.
 _code = [l.split("#")[0].strip() for l in OPT.splitlines()]

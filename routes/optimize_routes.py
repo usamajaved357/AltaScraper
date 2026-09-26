@@ -298,9 +298,21 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             return jsonify({"ok": False, "error": "connect this account first"}), 400
         creds = _acc.account_creds(acc)
         seller = acc.get("seller_id", "")
-        mid = _acc.marketplace_id(mkt) if hasattr(_acc, "marketplace_id") else ""
-        # build JSON Patch operations for only the approved fields
-        patches = _build_patches(changes)
+        # WHICH MARKETPLACE. "__all__" and "" both used to fall through to
+        # Marketplaces.US below, and to an empty marketplace id -- which for an
+        # IMAGE is the selector Amazon files it under, so the push was accepted
+        # and did nothing. The account's own default is the answer.
+        if mkt in ("", "__ALL__"):
+            mkt = str(acc.get("default_marketplace") or "UK").upper()
+        mid = _acc.marketplace_id(mkt)
+        if not mid:
+            return jsonify({"ok": False, "error": (
+                "could not work out which Amazon marketplace to send this to "
+                "(%s). Open the listing in a single marketplace view and try "
+                "again." % (mkt or "none"))}), 400
+        # build JSON Patch operations for only the approved fields. mid is passed
+        # because it is the SELECTOR for every image slot in `changes`.
+        patches = _build_patches(changes, marketplace_id=mid)
         if not patches:
             return jsonify({"ok": False, "error": "no patchable fields in approved changes"}), 400
         try:
@@ -308,7 +320,10 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             from sp_api.base import Marketplaces
         except Exception as e:
             return jsonify({"ok": False, "error": f"sp_api Listings not available: {e}"}), 500
-        mkt_enum = getattr(Marketplaces, mkt, None) or Marketplaces.US
+        # UK, not US, when the code is one sp-api does not know: this account's
+        # listings are the ones being patched, and mkt has already been resolved
+        # to the account's own marketplace above.
+        mkt_enum = getattr(Marketplaces, mkt, None) or Marketplaces.UK
         body = {"productType": ptype or "PRODUCT", "patches": patches}
         try:
             li = LI(credentials=creds, marketplace=mkt_enum)
