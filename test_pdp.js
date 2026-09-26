@@ -655,5 +655,30 @@ const DA = fs.readFileSync("static/js/drawer_attributes.js", "utf8");
 truthy("and so does the live-attributes answer when it lands",
        /PDP_SKU[\s\S]{0,200}pdpRebuild\(sku\)/.test(DA));
 
+console.log("\nAmazon's copy lands under the names the editors read");
+// ---------------------------------------------------------------------------
+// _fullDataParts draws the bullets from r.bullets (a list) and the description
+// from r.description. Amazon's copy was stored as bullet_1..5 and
+// description_html, so those two boxes showed the app's copy under a note
+// saying it was Amazon's.
+{
+  const saved = globalThis.__live;
+  globalThis.__live = {state:"ok", values:{}, multi:{},
+    summary:{itemName:"Amazon title"},
+    content:{bullet_point:["Amazon one", "", "Amazon two"],
+             product_description:["<p>Amazon desc</p>"], generic_keyword:["kw"]}};
+  const ac = ctx.pdpAmazonCopy(SKU);
+  check("  bullets come back as a list, blanks dropped",
+        JSON.stringify(ac.bullets), JSON.stringify(["Amazon one", "Amazon two"]));
+  check("  the description comes back as r.description", ac.description, "<p>Amazon desc</p>");
+  check("  and the unread names are gone",
+        ("bullet_1" in ac) || ("description_html" in ac), false);
+  const mine = {bullets:["App one", "App two"], description:"App desc"};
+  check("  the app's-copy line reads the app's bullets",
+        ctx.pdpCopyText(mine, "bullets"), "App one  •  App two");
+  check("  and its description", ctx.pdpCopyText(mine, "desc"), "App desc");
+  globalThis.__live = saved;
+}
+
 console.log("\n%d failed", fails);
 process.exit(fails ? 1 : 0);

@@ -115,11 +115,17 @@ function pdpAmazonCopy(sku){
   // one "what is actually present in amazon" means.
   const title = String(S.itemName || (C.item_name || [])[0] || "");
   if(title.trim()) out.title = title;
-  (C.bullet_point || []).slice(0, 5).forEach(function(b, i){
-    if(String(b || "").trim()) out["bullet_" + (i + 1)] = String(b);
-  });
+  // UNDER THE NAMES THE EDITORS READ: r.bullets (a list) and r.description --
+  // dashboard.py's row shape, which _fullDataParts draws from. These were
+  // written as bullet_1..bullet_5 and description_html, which no editor reads,
+  // so the bullets and description boxes went on showing the app's own copy
+  // under a note saying it was Amazon's.
+  const bl = (C.bullet_point || []).map(function(b){ return String(b || ""); })
+                                   .filter(function(b){ return b.trim(); })
+                                   .slice(0, 5);
+  if(bl.length) out.bullets = bl;
   const desc = String((C.product_description || [])[0] || "");
-  if(desc.trim()) out.description_html = desc;
+  if(desc.trim()) out.description = desc;
   const kw = (C.generic_keyword || []).join(" ");
   if(kw.trim()) out.search_terms = kw;
   return Object.keys(out).length ? out : null;
@@ -129,10 +135,10 @@ function pdpAmazonCopy(sku){
 function pdpCopyText(r, kind){
   if(!r) return "";
   if(kind === "title")   return String(r.title || "");
-  if(kind === "bullets") return [1,2,3,4,5]
-      .map(function(i){ return String(r["bullet_" + i] || ""); })
+  if(kind === "bullets") return (r.bullets || [])
+      .map(function(b){ return String(b || ""); })
       .filter(Boolean).join("  •  ");
-  if(kind === "desc")    return String(r.description_html || "");
+  if(kind === "desc")    return String(r.description || "");
   if(kind === "search")  return String(r.search_terms || "");
   return "";
 }
@@ -181,16 +187,15 @@ function pdpCatalogueRow(sku){
     our_price: String((it && it.price) || "").replace(/[^0-9.]/g, ""),
     handling_days: String(V["fulfillment_availability.lead_time_to_ship_max_days"]
                           || V.lead_time_to_ship_max_days || ""),
-    description_html: first("product_description"),
+    // bullets / description: the row shape the editors read (see pdpAmazonCopy).
+    description: first("product_description"),
+    bullets: (C.bullet_point || []).slice(0, 5).map(function(b){ return String(b || ""); }),
     search_terms: (C.generic_keyword || []).join(" "),
     attributes: V,
     attrs: JSON.stringify(V),
     warnings: [],
     row: 0,
   };
-  (C.bullet_point || []).slice(0, 5).forEach(function(b, i){
-    row["bullet_" + (i + 1)] = b;
-  });
   return row;
 }
 
