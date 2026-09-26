@@ -3093,7 +3093,12 @@ function _compCell(r){
 }
 
 function _statusPill(s){
-  return `<span class="badge ${badgeClass(s)}">${esc(s||"—")}</span>`;
+  // Same split as the detailed view's badge: the WORD comes from liststatus.js
+  // (SUBMITTED -> WAITING, API_ERROR -> ISSUE) and the COLOUR still comes from
+  // the stored status, so the two views cannot show one listing as two different
+  // things (Rule 12) and nothing changes about which rows look urgent.
+  const word = (typeof lsBadgeWord === "function") ? lsBadgeWord(s) : s;
+  return `<span class="badge ${badgeClass(s)}">${esc(word||"—")}</span>`;
 }
 
 // THE STATUS AS IT IS TODAY, not as it was stored.

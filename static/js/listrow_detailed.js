@@ -401,12 +401,18 @@ function lrStatus(r){
   // generator stamps; updated_at is the row's own. Neither is invented here.
   const d = r.date_processed || r.updated_at || r.created_at || "";
   const made = (r.created_at && r.created_at !== d) ? r.created_at : "";
+  // THE WORD from liststatus.js, the CLASS from the stored status. SUBMITTED
+  // reads as "done" when it means "Amazon has not shown it yet", and API_ERROR
+  // reads as "the app broke" when Amazon rejected the listing and said why --
+  // so those two are renamed for the reader and nothing else is. The class still
+  // keys off `st`, so which rows look urgent is unchanged.
+  const word = (typeof lsBadgeWord === "function") ? lsBadgeWord(st) : st;
   const badge = (st === "LIVE")
-    ? '<span class="status-live">' + esc(st) + '</span>'
+    ? '<span class="status-live">' + esc(word) + '</span>'
     : '<span class="status-badge'
       + (st === "SUBMITTED" ? " sent" : st === "QUEUED" ? " queued"
          : st === "PARENT" ? " parent" : "")
-      + '">' + esc(st || "—") + '</span>';
+      + '">' + esc(word || "—") + '</span>';
   // ON AMAZON, BUT THIS APP HOLDS NO DRAFT OF IT. The fact that explains why
   // this row has read-only figures and empty compliance columns while the one
   // above it does not -- the same badge, and the same words, the table view has

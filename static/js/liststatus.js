@@ -60,6 +60,46 @@ const LS_SENT_STATES = new Set([LS_LIVE, LS_SUBMITTED]);
 function lsNorm(v){ return String(v == null ? "" : v).trim().toUpperCase(); }
 function lsStatusOf(r){ return lsNorm(r && r.status); }
 
+/* THE WORD ON THE BADGE, which is not always the word in the database.
+ *
+ *     LISTING_GENERATOR_REDESIGN_SPEC.md §3: "Instead of raw text paragraphs
+ *     showing submission status, use compact badges on each row."
+ *
+ * Two of the stored words describe the MECHANISM rather than the situation, and
+ * they are the two that get read wrong:
+ *
+ *     SUBMITTED  reads as "done" -- it is not. Amazon publishes asynchronously,
+ *                so this is the gap between accepting and showing. WAITING says
+ *                which side of that gap the listing is on.
+ *     API_ERROR  reads as "the app broke". It did not: Amazon rejected the
+ *                listing and said why. ISSUE is about the listing, which is
+ *                what the row is about.
+ *
+ * NOTHING ELSE IS RENAMED, and that is deliberate. The spec asks for exactly
+ * four badges (DRAFT/WAITING/ISSUE/LIVE), which would mean every pre-submit row
+ * reading DRAFT -- so QUEUED, the one status where Submit genuinely cannot do
+ * anything yet because the listing has not been generated, would look identical
+ * to one that is ready to go.
+ *
+ * WAITING CANNOT APPEAR ON A PUBLISHED ROW, by construction rather than by a
+ * check here: both callers pass _shownStatus(), which already returns LIVE for
+ * anything Amazon's catalogue confirms. A SUBMITTED word reaching this function
+ * is therefore a listing Amazon has NOT published, which is what WAITING means.
+ *
+ * It maps the WORD only. The badge's colour stays keyed on the stored status in
+ * each caller, so nothing about which rows look urgent changes.
+ *
+ * Here rather than in the two renderers, for the reason at the top of this file:
+ * a word and the sentence explaining it drift apart the moment they live in
+ * different files (Rule 12). lrAmazonSaid() writes the line underneath.
+ */
+const LS_BADGE_WORDS = {SUBMITTED: "WAITING", API_ERROR: "ISSUE"};
+
+function lsBadgeWord(status){
+  const s = lsNorm(status);
+  return LS_BADGE_WORDS[s] || s;
+}
+
 // Did we send it? (LIVE or SUBMITTED)
 function lsWasSentToAmazon(r){ return LS_SENT_STATES.has(lsStatusOf(r)); }
 
