@@ -303,6 +303,12 @@
   font-size:14px; color:var(--ink4); margin-left:6px; cursor:help;
   vertical-align:middle;
 }
+/* The lock's reason in words beside it -- "(read-only -- cannot change after
+   submit)", "(edit in hero)" -- the owner's PDP redesign. */
+.dw2-ronote{ font-size:11px; color:var(--ink4); margin-left:6px; vertical-align:middle; }
+/* "app only" beside a price box: it saves to the app's copy, not to Amazon. */
+.dw2-apponly{ font-size:10px; color:var(--ink4); margin-left:6px; white-space:nowrap; }
+.dw2-offernote{ display:flex; align-items:center; gap:5px; margin-top:10px; font-size:11px; }
 
 .dw2-idwrap{ display:block; }
 .dw2-idwrap.bad .ed{

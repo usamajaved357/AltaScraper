@@ -1527,7 +1527,7 @@ function _fullDataParts(r){
     '<span class="dw2-ro" title="' + esc(why) + '">' + esc(String(val || "") || "—")
     + '</span><i class="ti ti-lock dw2-rolock" title="' + esc(why) + '"></i>';
 
-  const idRows=[
+  let idRows=[
     dwFieldRow("Product type", productTypeCell(sku, r), {hint:"Search Amazon's product types below. A different type asks for different details."}),
     dwFieldRow("SKU", dwRo(r.sku)),
     // The brand gets a SECONDARY note, not the alarm: "The brand field can show
@@ -1560,8 +1560,13 @@ function _fullDataParts(r){
                       : 'No brand will be sent to Amazon.')
            + '</b> ' + esc(bs.note || "") + '</div>'
          : "";
+       // A LIVE LISTING'S BRAND SAYS SO IN WORDS (the owner's PDP redesign):
+       // the lock's reason was on hover only, so a box that could not be
+       // changed read as one that would not save.
+       const liveNote = (why && _live && _roList.indexOf("brand") < 0)
+         ? '<span class="dw2-ronote">(read-only — cannot change after submit)</span>' : "";
        return dwFieldRow("Brand",
-         (why ? _roCell(r.brand, why)
+         (why ? _roCell(r.brand, why) + liveNote
               : editCell(sku,"col","Brand",r.brand,null,false,true))
          + swap
          + ((_idc && _idc.brand)
@@ -1576,18 +1581,32 @@ function _fullDataParts(r){
                               ? lrCondition(r) : dwRo("—")),
     dwFieldRow("Category", dwRo((r.category||r.amazon_category||"")+(r.subcategory?(" › "+r.subcategory):""))),
     dwFieldRow("Browse node(s)", dwRo((r.attributes||{}).recommended_browse_nodes||(r.attributes||{}).browse_node||"")),
-    (function(){
-       const why = _lockOn("UPC");
-       return dwFieldRow("Barcode / GTIN",
-         '<div class="dw2-idwrap' + (_idc ? " bad" : "") + '">'
-         + (why ? _roCell(r.barcode, why) : editCell(sku,"col","UPC",r.barcode))
-         + (_idcLine
-             ? '<div class="dw2-idclash"><i class="ti ti-alert-triangle"></i>'
-               + '<span>' + _idcLine + '</span></div>'
-             : "")
-         + '</div>');
-    })(),
-  ].join("");
+  ];
+  /* THE BARCODE ROW, two ways.
+   *
+   * The drawer edits the barcode here. The product page edits it in its HERO,
+   * which checks it against every other listing as it is typed -- so on the
+   * page this row is the value, read-only, "(edit in hero)": two boxes for one
+   * field is how they come to disagree about what was typed (Rule 12), and the
+   * spec's complaint was exactly that the two behaved differently. */
+  const _barcodeRow = function(pdp){
+    const why = _lockOn("UPC");
+    const cell = pdp
+      ? _roCell(r.barcode, why || "Edit the barcode in the box at the top of this page — "
+                              + "it is checked against your other listings as you type.")
+        + '<span class="dw2-ronote">(' + (why ? "read-only" : "edit in hero") + ')</span>'
+      : (why ? _roCell(r.barcode, why) : editCell(sku,"col","UPC",r.barcode));
+    return dwFieldRow("Barcode / GTIN",
+      '<div class="dw2-idwrap' + (_idc ? " bad" : "") + '">'
+      + cell
+      + (_idcLine
+          ? '<div class="dw2-idclash"><i class="ti ti-alert-triangle"></i>'
+            + '<span>' + _idcLine + '</span></div>'
+          : "")
+      + '</div>');
+  };
+  const idRowsPdp = idRows.concat([_barcodeRow(true)]).join("");
+  idRows = idRows.concat([_barcodeRow(false)]).join("");
   const offerRows=[
     (function(){
        // Currency follows the ACTIVE workspace marketplace (reliable), with a
@@ -1598,17 +1617,29 @@ function _fullDataParts(r){
                : (mkt==="EU"||["DE","FR","IT","ES","NL"].indexOf(mkt)>=0) ? "\u20ac" : "\u00a3";
        var raw=String(r.price==null?"":r.price);
        var num=raw.replace(/[^0-9.\-]/g,"");            // strip any currency -> number only
-       return dwFieldRow("Price ("+cur+")", '<span class="dw2-curlbl">'+cur+'</span>'+editCell(sku,"col","Our Price (GBP)",num));
+       // "app only": the box saves to this app's copy (/edit); the price
+       // reaches Amazon on Submit. Same words as the listings row's box.
+       return dwFieldRow("Price ("+cur+")", '<span class="dw2-curlbl">'+cur+'</span>'
+         + editCell(sku,"col","Our Price (GBP)",num)
+         + '<span class="dw2-apponly" title="Saves to this app’s copy. Submit sends it to Amazon.">app only</span>');
     })(),
     dwFieldRow("List price", dwRo((function(){var lp=(r.attributes||{}).list_price; return lp?String(lp).replace(/[^0-9.\-]/g,""):"";})())),
-    dwFieldRow("Quantity — blank = default 10", editCell(sku,"attr","fulfillment_quantity",(r.attributes||{}).fulfillment_quantity||"")),
+    // WHAT A BLANK BECOMES, AS THE BUILD WILL READ IT. It said "default 10";
+    // the build reads config["default_quantity"], which /row now sends.
+    dwFieldRow("Quantity — blank = your default"
+               + (r.default_quantity != null ? ": " + r.default_quantity : ""),
+               editCell(sku,"attr","fulfillment_quantity",(r.attributes||{}).fulfillment_quantity||"")),
     (function(){
        var rowMkt = String(r._marketplace||(r.attributes||{}).marketplace||"").toUpperCase();
        var mkt = rowMkt || String(WS_MARKET||"").toUpperCase() || "UK";
        var cur = (mkt==="US"||mkt==="CA"||mkt==="MX") ? "$"
                : (mkt==="EU"||["DE","FR","IT","ES","NL"].indexOf(mkt)>=0) ? "\u20ac" : "\u00a3";
        var pnum=String(r.profit==null?"":r.profit).replace(/[^0-9.\-]/g,"");
-       return dwFieldRow("Profit ("+cur+")", dwRo(pnum?(cur+pnum):"", "green"));
+       // Marked so profit.js can repaint it the moment a new price is saved,
+       // instead of on the next tab switch (the owner's PDP redesign).
+       return dwFieldRow("Profit ("+cur+")",
+         '<span class="dw2-profit" data-sku="'+esc(sku)+'" data-cur="'+esc(cur)+'">'
+         + dwRo(pnum?(cur+pnum):"", "green") + '</span>');
     })(),
     // HANDLING TIME IS EDITABLE ON EVERY LISTING, and on a listing this app
     // holds no draft of it cannot be edited the usual way.
@@ -1641,7 +1672,9 @@ function _fullDataParts(r){
                 + "here to record a handling time — the change goes straight to "
                 + "Amazon."});
     })(),
-    dwFieldRow("Shipping group", dwRo(SHIP)),
+    // Only when the account HAS one: an empty row on every listing said
+    // nothing (the owner's PDP redesign).
+    (SHIP ? dwFieldRow("Shipping group", dwRo(SHIP)) : ""),
   ].join("");
   const a=r.attributes||{};
   const IMGRE=/^(main_product_image_locator|other_product_image_locator_\d+)$/;
@@ -2187,8 +2220,12 @@ function _fullDataParts(r){
   // product page shows the two halves as separate tabs, so they are also
   // handed back apart -- built once either way.
   const secIdentity = dwSection("Identity and offer", _ptTag, idRows + offerRows);
-  const secIdentityOnly = dwSection("Identity", _ptTag, idRows);
-  const secOfferOnly = dwSection("Offer", "", offerRows);
+  // The product page's two halves. Its barcode row is the read-only one (the
+  // hero edits it), and the Offer section ends by saying where a price goes.
+  const secIdentityOnly = dwSection("Identity", _ptTag, idRowsPdp);
+  const secOfferOnly = dwSection("Offer", "", offerRows
+    + '<div class="dw2-note dw2-offernote"><i class="ti ti-info-circle"></i> '
+    + 'Price saves to your draft only. Submit pushes it to Amazon.</div>');
   const secAttrs = dwSection("Attributes",
       (nFix ? '<span class="dw2-tag danger"><i class="ti ti-alert-triangle"></i> '+nFix+' flagged by Amazon</span>' : "")
       + '<span class="dw2-count">'+(aKeys.length+missing.length)+' field(s)</span>',

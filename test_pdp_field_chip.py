@@ -49,8 +49,11 @@ CSS = read("static", "css", "pdp.css")
 print("== the product type control really is on the Offer tab ==")
 check("the Offer tab draws the Identity section",
       bool(re.search(r'PDP_TAB === "offer"\)\{\s*tab = p\.offerOnly \+ p\.identityOnly', PDP)))
+# idRowsPdp since 26 Sep 2026: the same rows, with the barcode read-only
+# "(edit in hero)" -- the product page edits it in its hero (owner's redesign).
 check("  the Identity section is built from idRows",
-      'secIdentityOnly = dwSection("Identity", _ptTag, idRows)' in AF)
+      'secIdentityOnly = dwSection("Identity", _ptTag, idRowsPdp)' in AF
+      and "const idRowsPdp = idRows.concat(" in AF)
 check("  and idRows carries the product type control",
       'dwFieldRow("Product type", productTypeCell(sku, r)' in AF)
 check("  whose dropdown id is pt_ + sid(sku)", 'const wid="pt_"+sid(sku);' in AF)

@@ -1141,6 +1141,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     # And whose brand the submit will actually carry, which is
                     # not always the one in the box.
                     _attach_brand_send(c, _account_brands(_cfg(), _who, CONFIG_PATH), _cfg())
+                    # WHAT A BLANK QUANTITY BECOMES. The Offer tab said "blank =
+                    # default 10" while the build reads config["default_quantity"]
+                    # (amazon_listing_generator.py, where the stock is shaped), so
+                    # a different setting made the label wrong. The same read,
+                    # the same default, sent to the page.
+                    try:
+                        c["default_quantity"] = int(_cfg().get("default_quantity", 10))
+                    except (TypeError, ValueError):
+                        c["default_quantity"] = 10
                     return jsonify({"ok": True, "row": c})
             return jsonify({"ok": False, "error": "sku not found"}), 404
         except Exception as e:

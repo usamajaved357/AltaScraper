@@ -112,12 +112,35 @@ async function profitRefresh(sku, price){
   _profitRepaint(sku);
 }
 
+/* Every marked profit cell for this SKU (autofix.js's Offer row), redrawn from
+ * the row with the same dwRo it was built with. */
+function _profitRepaintCells(sku){
+  const r = (typeof ROWS !== "undefined" && ROWS.find)
+    ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+  if(!r) return;
+  const pnum = String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, "");
+  document.querySelectorAll(".dw2-profit").forEach(function(el){
+    if(el.getAttribute("data-sku") !== String(sku)) return;
+    const cur = el.getAttribute("data-cur") || "";
+    el.innerHTML = (typeof dwRo === "function")
+      ? dwRo(pnum ? (cur + pnum) : "", "green") : (pnum ? cur + pnum : "");
+  });
+}
+
 function _profitRepaint(sku){
   // Whichever of the three places is showing this listing. Each already knows
   // how to draw a row from ROWS, so none of them needs telling what changed.
   try{
     if(typeof PDP_SKU !== "undefined" && String(PDP_SKU) === String(sku)
-       && typeof pdpHeroRefresh === "function"){ pdpHeroRefresh(sku); return; }
+       && typeof pdpHeroRefresh === "function"){
+      pdpHeroRefresh(sku);
+      // AND THE OFFER TAB'S PROFIT ROW, which the hero refresh does not reach:
+      // it showed the old figure until the tab was switched (the owner's PDP
+      // redesign). Only the marked cell is replaced -- the price box beside it
+      // may still have the focus.
+      _profitRepaintCells(sku);
+      return;
+    }
     if(typeof DRAWER_SKU !== "undefined" && String(DRAWER_SKU) === String(sku)
        && typeof _rebuildDrawerData === "function"){ _rebuildDrawerData(sku); return; }
     if(typeof render === "function") render();
