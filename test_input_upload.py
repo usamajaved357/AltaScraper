@@ -264,7 +264,19 @@ check("  and so is its handler",
       bool(re.search(r'^async function inputQueueImport\(', _queue_js, re.M)), False)
 truthy("the upload panel has a place to render",
        'id="inputupload"' in _html)
-truthy("  and something renders it", "inputUploadPanel()" in read("static", "js", "shell.js"))
+# RENDERED BY genflow.js NOW, not by shell.js. The zone moved onto the Listings
+# page with the rest of the generation flow, and the shell's sec==="generate"
+# branch that used to draw it went with the screen it keyed off.
+#
+# This assertion earned its keep: it failed the moment the branch was deleted,
+# which is the one failure mode that leaves NO trace at runtime -- an unfilled
+# container is an empty div, not an error, so the panel opens with the queue
+# under it and simply nowhere to drop a file.
+truthy("  and something renders it",
+       "inputUploadPanel()" in read("static", "js", "genflow.js"))
+truthy("  from the code that OPENS the panel, so it cannot miss",
+       "inputUploadPanel()" in read("static", "js", "genflow.js")
+       .split("function genflowOpen")[1].split("function genflowClose")[0])
 
 
 print("\n=== the blank template names the columns it accepts ===")

@@ -215,7 +215,12 @@ async function batchGenerate(kind){
   // Batch COPY regeneration runs through the generator with a --skus filter.
   // If your generator build doesn't have --skus yet, it will report that.
   if(!await uiConfirm("Regenerate listing copy for "+skus.length+" selected SKU(s)?\nThis reruns the generator scoped to just these SKUs.")) return;
-  navTo("generate");
+  // THE navTo("generate") THAT WAS HERE IS GONE, and it was wrong before the
+  // screen was retired: #log and #genui both live on the LISTINGS page, so
+  // jumping to Generate hid the very output this function then wrote into. You
+  // pressed Regenerate on selected rows and were taken to a screen showing
+  // nothing. Staying put is both the fix and what the retirement requires --
+  // there is no "generate" section to navigate to any more.
   const log=document.getElementById("log"); if(log){ log.style.display="block"; log.textContent="Starting regeneration for "+skus.length+" SKU(s)…\n"; }
   try{
     const es=new EventSource("/run/regen?skus="+encodeURIComponent(skus.join(",")));

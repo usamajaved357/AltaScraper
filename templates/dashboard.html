@@ -336,7 +336,13 @@
         <a class="navitem" data-sec="catalog" href="#" onclick="return navGo(event,'catalog')" title="Every product ranked by revenue, with concentration, dead stock and the tail"><i class="ti ti-package-import"></i> Product Catalog</a>
         <a class="navitem" data-sec="categories" href="#" onclick="return navGo(event,'categories')" title="Which Amazon categories your products are ranked in"><i class="ti ti-sitemap"></i> Category Explorer</a>
         <a class="navitem" data-sec="variations" href="#" onclick="return navGo(event,'variations')"><i class="ti ti-binary-tree"></i> Variations</a>
-        <a class="navitem" data-sec="generate" href="#" onclick="return navGo(event,'generate')"><i class="ti ti-upload"></i> Generate &amp; submit</a>
+        <!-- "Generate & submit" STOOD HERE and is gone with its page. Everything
+             it held is on Listings now: Upload template opens the drop zone and
+             the queue, Generate is on the toolbar beside them, and Retry /
+             Export / Preview / Submit / Stop are under the ⋯ next to it. A nav
+             item leading to a screen whose contents have moved is a second place
+             to look for one thing. -->
+
         <a class="navitem" data-sec="uploads" href="#" onclick="return navGo(event,'uploads')" title="Every file uploaded to create or change listings, costs, suppliers, floors or tracking -- kept, with what each one did"><i class="ti ti-file-upload"></i> Upload history</a>
         <a class="navitem" data-sec="sync" href="#" onclick="return navGo(event,'sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</a>
         <a class="navitem" data-sec="sellerimport" href="#" onclick="return navGo(event,'sellerimport')"><i class="ti ti-download"></i> Import seller</a>
@@ -793,98 +799,29 @@
       <div id="brandpanel"></div>
     </div>
 
-    <!-- GENERATE & SUBMIT section -->
-    <div id="sec_generate" class="wspanel">
-      <!-- Same shape as Sales, Traffic, Returns and AI spend: an icon, a title,
-           and one line saying what the screen is for. This heading had no icon
-           and no caveat, which is the whole difference between "a screen" and
-           "the sixth screen somebody bolted on". -->
-      <div class="pagehead">
-        <div class="pagetitle"><i class="ti ti-rocket"></i> Generate &amp; submit
-          <!-- A guide, not the admin "how this works" panel: what the screen is
-               for and in what order to press things. Asked for as "i am also not
-               able to understand how the generate and submit works, there is no
-               user guide there". -->
-          <button class="db-chip" style="margin-left:10px;font-size:11.5px;vertical-align:middle"
-                  onclick="openGuide('generate')"><i class="ti ti-book"></i> How this page works</button>
-        </div>
-        <div class="panelsub">Draft listings from the queue, check them against Amazon,
-          and publish them — scoped to this workspace<span class="infodot"
-          title="Generate and Retry write listings into this app only. Preview validates against Amazon and creates nothing. Submit is the one step that reaches your live catalogue.">i</span></div>
-      </div>
-      <!-- CHIPS, and the intent in the border rather than a fill. Six solid
-           buttons have no first among them; here Generate is the one thing this
-           screen exists to do, Submit is the one that reaches Amazon, and the
-           rest are the ordinary way round. -->
-      <div class="db-actions" style="margin-bottom:14px">
-        <button class="db-chip primary" onclick="runMode('generate')"><i class="ti ti-player-play"></i> Generate</button>
-        <button class="db-chip" onclick="runMode('retry')"><i class="ti ti-refresh"></i> Retry holds</button>
-        <button class="db-chip" onclick="runMode('export')"><i class="ti ti-file-spreadsheet"></i> Export .xlsm</button>
-        <button class="db-chip go" onclick="runMode('api')"><i class="ti ti-eye-check"></i> Preview (API)</button>
-        <button class="db-chip risk" onclick="submitLive()"><i class="ti ti-cloud-upload"></i> Submit · go live</button>
-        <button class="db-chip risk" id="stopbtn" onclick="stopRun()" disabled title="Stops the current run"><i class="ti ti-player-stop"></i> Stop</button>
-      </div>
-      <!-- #genplan MOVED to the queue's header on the Listings page. It belongs
-           beside the queue whose contents it is counting, and an element id can
-           only exist once -- genplan.js writes to the one node. -->
+    <!-- THE 'GENERATE & SUBMIT' SECTION STOOD HERE, and is gone.
 
-      <!-- Row selector: pick which input-sheet rows to generate -->
-      <!-- The card, the title and the sub-line the other screens use, instead of
-           a border, a radius and a background typed inline; and `.ed`, which is
-           the app's own field styling with its focus ring and placeholder
-           colour, instead of three more inline declarations per input. -->
-      <div id="genselectwrap" class="panelcard roomy" style="margin:-4px 0 14px">
-        <div class="panelhead">
-          <div>
-            <p class="paneltitle" style="font-size:14px;line-height:20px">Which listings</p>
-            <p class="panelsub"><b>Generate</b> creates every queued product that
-              isn't in the app yet. To create only specific ones, name them here.</p>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
-          <input id="gensel_value" class="ed" type="text"
-                 placeholder="Paste an eBay / Amazon URL, or type a value…"
-                 oninput="genSelOnInput()" style="flex:1;min-width:240px">
-          <!-- "Row number" WAS THE DEFAULT AND IT IS GONE.
-               It is a Google Sheets idea: pick the product on line 5 of the
-               spreadsheet. The queue below is a database table and shows no row
-               number anywhere, so it asked for a number that is on no screen in
-               this app -- and the ordinal it counts is not the id the queue
-               uses internally either, so a guess would have selected the wrong
-               product rather than failing.
-               ASIN, eBay item and a pasted URL all still work, and all three
-               are things you can actually read off the queue. -->
-          <select id="gensel_type" class="ed" style="width:auto;min-width:150px"
-                  title="What you're entering (ignored when a URL is pasted)">
-            <option value="asin" selected>ASIN</option>
-            <option value="ebay_item">eBay item number</option>
-          </select>
-        </div>
-        <div id="gensel_hint" class="cc" style="font-size:12px;margin-top:8px">
-          Leave this empty to generate everything queued below. To pick one,
-          paste its Amazon or eBay link — the dropdown is ignored then — or type
-          its ASIN or eBay item number.
-        </div>
-      </div>
-      <div id="genhow"></div>
-      <div class="reqnote">Runs here only touch <b id="gen_scope">this workspace's</b> sheet/marketplace — nothing else is affected.</div>
-      <div id="targetacct" class="acctbanner">Resolving destination account…</div>
+         Everything it held now lives on the Listings page, beside the drafts
+         it produces: the drop zone and the queue folded under "Upload
+         template" (#genflow), Generate on the toolbar, and Retry / Export /
+         Preview / Submit / Stop under the ⋯ next to it.
 
-      <!-- THE DROP ZONE AND THE QUEUE MOVED TO THE LISTINGS PAGE (#genflow).
-           They were here, one screen away from the drafts they produce, so
-           uploading meant Generate → wait → change screens → review. Both are
-           now folded above the drafts table under "Upload template", and they
-           are the SAME elements moved, not copies: #inputupload,
-           #inputsheetwrap and #genplan each exist exactly once in this file, so
-           inputupload.js, inputqueue.js and genplan.js all still find the one
-           node they have always written to. -->
-      <div class="reqnote" style="margin-top:18px">
-        <b>Uploading and the product queue are on the Listings page now.</b>
-        Open <a href="#" onclick="navTo('listings');genflowOpen();return false">Listings
-        → Upload template</a> to add products and generate them beside the drafts
-        they become. The run buttons above still work from here.
-      </div>
-    </div>
+         WHAT WENT WITH IT, deliberately:
+           #gensel_value/_type/_hint  the "Which listings" selector. Generate
+                  now always makes everything queued, which was already this
+                  box's documented default -- runMode() reads it defensively
+                  and treats absent as empty, so nothing had to change there.
+           #stopbtn  Stop is in the ⋯ menu and calls the same stopRun().
+                  showStop() and stopRun() both guard on the element, so they
+                  no-op rather than throw.
+           #targetacct  the "Resolving destination account" banner. Which
+                  account a submit goes to is still stated, at the moment it
+                  matters: submitLive() names the account and seller id in the
+                  confirmation you have to accept before anything is sent.
+           #gen_scope / #genhow  the scope sentence and the how-it-works panel.
+                  refreshStaticHowPanels() already guards on the element;
+                  shell.js's unguarded write to #gen_scope is guarded now.
+    -->
 
     <!-- SALES section. One filter row above everything it scopes, then the stat
          cards, then the metrics x dates grid. The grid prints every value as

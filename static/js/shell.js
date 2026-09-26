@@ -1030,8 +1030,17 @@ async function enterWorkspace(key){
   // marketplace showed euro amounts with a pound sign in front of them.
   CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js
   SELECTED.clear(); updateSelBar();
-  document.getElementById("gen_scope").textContent =
-    (v.label? "\u201c"+v.label+"\u201d" : "this workspace\u2019s");
+  // #gen_scope was the "Runs here only touch <workspace>" sentence on the
+  // Generate screen, which has gone. GUARDED rather than deleted with it,
+  // because this write is on the WORKSPACE SWITCH path: unguarded, a missing
+  // element throws here and navTo/loadRows below it never run, so switching
+  // account would leave the old account's rows on screen with the new account's
+  // name in the header. Failing to fill a sentence that no longer exists must
+  // not be able to do that.
+  const _gs = document.getElementById("gen_scope");
+  if(_gs){
+    _gs.textContent = (v.label? "\u201c"+v.label+"\u201d" : "this workspace\u2019s");
+  }
   navTo("listings");
   altaSyncUrl();
   loadRows();
@@ -1143,16 +1152,17 @@ function navTo(sec){
   if(_fresh){
     if(sec==="setup")     loadBrandPanel();
     if(sec==="imagerefs") loadImageRefs();
-    if(sec==="generate"){ loadTargetAccount(); loadInputSheet();
-      // The drop zone above the queue. Drawn once per open, before the queue
-      // loads, so the screen never shows a list with no way to add to it.
-      if(typeof inputUploadPanel === "function"){
-        const _iu = document.getElementById("inputupload");
-        if(_iu && !_iu.innerHTML.trim()) _iu.innerHTML = inputUploadPanel();
-      }
-      // What a run WOULD do, before it does it. Costs nothing -- it asks
-      // the generator's own duplicate rule and reports the answer.
-      if(typeof genplanLoad==="function") genplanLoad(); }
+    // The "generate" branch stood here. Its screen is gone and the three things
+    // it set up -- the drop zone, the queue and the pre-flight count -- are now
+    // drawn by genflowOpen() (static/js/genflow.js), which runs when the panel
+    // they live in is actually opened rather than when a section is entered.
+    //
+    // THIS IS ALSO A BUG FIX, not only a move. The markup moved to the Listings
+    // page in the first redesign commit while the code that FILLS the drop zone
+    // still only ran for sec==="generate" -- a section nothing navigates to any
+    // more. So #inputupload was an empty div on the page it had just moved to:
+    // the panel opened, the queue loaded underneath it, and there was no zone to
+    // drop a file on. Nothing threw, which is why it survived a green test run.
     if(sec==="miles"){    milesLoadResults(); milesLoadPref(); }
     if(sec==="sales"){    if(typeof salesOpen==="function") salesOpen(); }
     if(sec==="traffic"){  if(typeof trafficOnOpen==="function") trafficOnOpen(); }
@@ -1291,7 +1301,11 @@ function enterWorkspaceBlank(){
 //
 // It is also what makes right-click "open in a new tab" work: a nav item can
 // only be a real link if there is an address for it to point at.
-const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
+// "generate" WAS HERE and is gone with its screen. Leaving it would keep
+// /w/<ws>/generate resolving to a section that no longer exists in the markup,
+// which shows as a blank page rather than as a wrong address -- and an old
+// bookmark to it now falls through to the default section instead.
+const ALTA_SECTIONS = ["listings","imagerefs","setup",
                        "sales","traffic","hourly","ppc","inventory","sync","monitor","miles",
                        "weekly","daily","orders","returns","variations","sellerimport",
                        "sourcing","finance","aiusage","imagestudio","imagelib",

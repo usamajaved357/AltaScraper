@@ -561,8 +561,15 @@ async function stopRun(){
        toast(j.ok?"Stopping the run\u2026":("Stop: "+(j.error||"nothing running"))); }
   catch(e){ toast("Stop failed"); if(b) b.disabled=false; }
 }
+/* The "Which listings" selector's oninput handler. Its three elements went with
+ * the Generate screen, so nothing calls this now -- but it is left GUARDED
+ * rather than deleted, because the unguarded `.value` on line one was a null
+ * dereference waiting for whoever re-adds an input named gensel_value. Dead code
+ * that cannot throw is a smaller problem than live code that can. */
 function genSelOnInput(){
-  const v=(document.getElementById("gensel_value").value||"").toLowerCase();
+  const src=document.getElementById("gensel_value");
+  if(!src) return;
+  const v=(src.value||"").toLowerCase();
   const dd=document.getElementById("gensel_type");
   const hint=document.getElementById("gensel_hint");
   const isUrl = v.includes("http://")||v.includes("https://")||v.includes("amazon.")||v.includes("ebay.");

@@ -43,21 +43,73 @@ dupes = sorted(k for k, v in collections.Counter(
     re.findall(r'\bid="([A-Za-z0-9_\-]+)"', src)).items() if v > 1)
 check("every id is unique", dupes, [])
 
+# Read once, up front, because most sections below need more than one of them.
+sh = open(r"D:\AltaScraper\static\js\shell.js", encoding="utf-8").read()
+hw = open(r"D:\AltaScraper\static\js\howworks.js", encoding="utf-8").read()
+gf = open(r"D:\AltaScraper\static\js\genflow.js", encoding="utf-8").read()
+lj = open(r"D:\AltaScraper\static\js\listings.js", encoding="utf-8").read()
+
+
+def _nocomment(s):
+    """Code only. Several checks below assert what a file DOES, and its comments
+    name the very things they explain are no longer used -- matching those would
+    fail a file for documenting itself."""
+    s = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
+    return "\n".join(re.sub(r"//.*$", "", ln) for ln in s.splitlines())
+
+
 print("\n=== the moved nodes are on the LISTINGS page, exactly once ===")
+# The Generate section is gone, so "inside sec_listings" is now bounded by the
+# section that FOLLOWS it rather than by sec_generate.
 li = src.index('<div id="sec_listings">')
-gi = src.index('<div id="sec_generate"')
+nxt = src.index('<div id="sec_imagerefs"')
 MOVED = ("genflow", "inputupload", "inputsheetwrap", "inputsheet_body",
          "inputsheet_meta", "inputsheet_filter", "genplan")
 for nid in MOVED:
     check("#%s appears once" % nid, len(re.findall(r'\bid="%s"' % nid, src)), 1)
-    check("  and inside sec_listings", li < src.index('id="%s"' % nid) < gi, True)
+    check("  and inside sec_listings", li < src.index('id="%s"' % nid) < nxt, True)
 
-print("\n=== nothing was left behind on the generate page ===")
-gblk = src[gi:src.index('<div id="sec_sales"')]
-check("no drop zone", 'id="inputupload"' in gblk, False)
-check("no queue", 'id="inputsheetwrap"' in gblk, False)
-check("no pre-flight count", 'id="genplan"' in gblk, False)
-check("and it says where they went", "Listings page now" in gblk, True)
+print("\n=== the Generate screen is RETIRED, not just unlinked ===")
+check("the section markup is gone", 'id="sec_generate"' in src, False)
+check("the sidebar entry is gone", 'data-sec="generate"' in src, False)
+# Left in ALTA_SECTIONS it would keep /w/<ws>/generate resolving to a section
+# that is no longer in the markup -- a blank page rather than a wrong address.
+secs = re.search(r"ALTA_SECTIONS\s*=\s*\[(.*?)\]", sh, re.S).group(1)
+check("and it is not a routable section", '"generate"' in secs, False)
+check("  while listings still is", '"listings"' in secs, True)
+check("nothing navigates to it any more",
+      bool(re.search(r"navTo\(\s*[\"']generate[\"']", _nocomment(lj + sh + gf))),
+      False)
+
+print("\n=== the drop zone is actually DRAWN where it now lives ===")
+# The bug this caught: the markup moved to the Listings page while the code that
+# FILLS it still only ran for sec==="generate". #inputupload was an empty div --
+# the panel opened, the queue loaded under it, and there was nowhere to drop a
+# file. An empty container throws nothing, so only looking finds it.
+check("genflowOpen renders the upload panel",
+      "inputUploadPanel()" in gf, True)
+check("  only when the container is empty, so an upload report survives a reopen",
+      "!iu.innerHTML.trim()" in gf, True)
+check("shell.js no longer has a generate branch to do it instead",
+      'sec==="generate"' in _nocomment(sh), False)
+
+print("\n=== what the retired screen owned is guarded, not left to throw ===")
+# #gen_scope is written on the WORKSPACE SWITCH path. Unguarded, a missing
+# element throws there and navTo/loadRows below never run -- switching account
+# would leave the previous account's rows under the new account's name.
+check("the gen_scope write is guarded",
+      'const _gs = document.getElementById("gen_scope")' in sh, True)
+check("  and only writes when it exists", "if(_gs){" in sh, True)
+check("genSelOnInput cannot null-deref now", "if(!src) return;" in hw, True)
+check("showStop still guards on its button", 'if(b) b.disabled' in hw, True)
+
+print("\n=== Stop asks the STREAM, not a button that no longer exists ===")
+# #stopbtn lived on the retired screen. A check against it would be permanently
+# false, so Stop would never appear in the overflow menu again.
+check("the run test does not depend on #stopbtn", "#stopbtn" in _nocomment(gf), False)
+check("  it asks ES, the EventSource itself",
+      'typeof ES !== "undefined"' in gf, True)
+check("Stop still calls the same stopRun()", "stopRun()" in gf, True)
 
 print("\n=== the five files that own the behaviour are still loaded ===")
 OWNERS = ("inputupload.js", "inputqueue.js", "genplan.js", "submit.js", "genui.js")
@@ -130,8 +182,11 @@ for mode, label in (("retry", "Retry holds"), ("export", "Export"),
     check("%s is still reachable" % label, "runMode('" + mode + "')" in gf_flat, True)
 check("Submit is still reachable", "submitLive()" in gf, True)
 check("Stop is still reachable", "stopRun()" in gf, True)
+# Asked of the STREAM now, not of #stopbtn -- that button lived on the retired
+# Generate screen, so a check against it would be permanently false and Stop
+# would never appear again. Asserted in full in its own section below.
 check("  but only offered while something is running",
-      "#stopbtn:not([disabled])" in gf, True)
+      'typeof ES !== "undefined"' in gf, True)
 check("Generate is on the toolbar itself, not buried",
       'onclick="genflowGenerate()"' in src, True)
 

@@ -46,6 +46,24 @@ function genflowOpen(){
   el.hidden = false;
   GENFLOW.open = true;
   _gfSyncBtn();
+  // THE DROP ZONE ITSELF, drawn here.
+  //
+  // inputupload.js renders into whatever container it is given, and the only
+  // thing that ever gave it one was shell.js's sec==="generate" branch. When the
+  // markup moved to this page that branch stopped running, so #inputupload was
+  // an EMPTY DIV: the panel opened, the queue loaded under it, and there was
+  // nowhere to drop a file. Nothing threw -- an empty container is not an error
+  // -- which is exactly why it needs drawing from the code that opens the panel
+  // rather than from a section hook that may or may not fire.
+  //
+  // Once, not on every open: the zone holds the last upload's result card, and
+  // redrawing would wipe the report saying what a file just did.
+  try{
+    if(typeof inputUploadPanel === "function"){
+      const iu = document.getElementById("inputupload");
+      if(iu && !iu.innerHTML.trim()) iu.innerHTML = inputUploadPanel();
+    }
+  }catch(e){}
   // The queue and the pre-flight count are both read fresh on open. Neither
   // costs an Amazon or an AI call -- /input/rows reads this app's own table and
   // /run/plan runs the generator's duplicate rule -- and a stale count is
@@ -128,7 +146,14 @@ function genflowRunMenu(ev){
   m.id = "runmenu";
   // Stop is only offered while something is running -- an enabled Stop with
   // nothing to stop is a button that does nothing, which is worse than absent.
-  const running = !!document.querySelector("#stopbtn:not([disabled])");
+  //
+  // ASKED OF THE STREAM, not of a button. This read #stopbtn's disabled state,
+  // and #stopbtn lived on the Generate screen -- which has now gone, so that
+  // test would have been permanently false and Stop would never have appeared
+  // again. ES is the EventSource itself (declared in howworks.js, shared scope):
+  // non-null exactly while a run is streaming, which is the thing being asked
+  // about rather than a button that happens to reflect it.
+  const running = (typeof ES !== "undefined") && !!ES;
   m.innerHTML =
       '<button onclick="closeRunMenu();runMode(\'retry\')"'
     + ' title="Re-run the products that were held or refused last time. Writes into this app only."'
