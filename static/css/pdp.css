@@ -236,6 +236,12 @@
 /* Nothing behind it should scroll while it is open -- the panel has its own. */
 body.pdp-on{ overflow:hidden; }
 
+/* "Ask Claude" on the rail opens the chat panel, which sits at z-index 60 --
+   BELOW this overlay's 78. It opened behind the page, and a click towards it
+   landed on the backdrop and closed the page. While the page is open the chat
+   comes up to 79: above the overlay, still below toasts and menus (80+). */
+body.pdp-on .chatwrap{ z-index:79; }
+
 @media (prefers-reduced-motion:reduce){
   #pdp, .pdp{ transition:none; }
   .pdp{ transform:none; }
