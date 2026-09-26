@@ -1430,6 +1430,7 @@ async function loadLiveCatalog(force, opts){
       render(); updateSyncLabel(); startAutoSync();
       loadAplus(!!force);            // fire-and-forget: re-renders when the A+ map lands
       reconcileAmazonState();        // deleted vs inactive, straight from Amazon
+      loadSavedMirror();             // what the last Sync read, from disk -- no Amazon call
     }
   }catch(e){
     clearTimeout(tmo);
@@ -1575,6 +1576,33 @@ async function syncLive(){
 // Pull the REAL full data (images, A+, bullets, description, item-type-keyword,
 // variations/theme) for every live listing into the read-only mirror (LIVE_MIRROR).
 // Additive: a failure here never breaks the catalog view. A+ arrives separately via loadAplus.
+/* WHAT THE LAST SYNC READ, BACK FROM DISK.
+ *
+ * LIVE_MIRROR was filled only by a Sync, and lived in the page and in server
+ * memory -- so after a reload (or a server restart) the PDP's "Actual on
+ * Amazon" and every row's condition were blank until the next Sync. /live/mirror
+ * answers from domain/live_mirror_store.py when memory has nothing: one
+ * database read, NO Amazon call, each entry stamped with when it was read.
+ * Only SKUs the page does not already hold are asked for. */
+async function loadSavedMirror(){
+  if(!CUR_ACCOUNT || !WS_MARKET || WS_MARKET==="__all__") return;
+  const reqAccount=CUR_ACCOUNT.id, reqMkt=WS_MARKET;
+  const skus=(LIVE_ITEMS||[]).map(it=>String(it.sku||"").trim())
+                             .filter(s=>s && !LIVE_MIRROR[s]);
+  if(!skus.length) return;
+  try{
+    const j=await (await fetch("/live/mirror",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:reqAccount, marketplace:reqMkt, skus})})).json();
+    if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt)) return;
+    if(j && j.ok && Object.keys(j.mirror||{}).length){
+      Object.assign(LIVE_MIRROR, j.mirror);
+      try{ render(); }catch(e){}
+      if(typeof PDP_SKU!=="undefined" && PDP_SKU && typeof pdpRender==="function"){
+        try{ pdpRender(); }catch(e){}
+      }
+    }
+  }catch(e){ /* additive: a missing saved copy just leaves the dashes */ }
+}
 async function fullPullLive(force){
   if(!CUR_ACCOUNT || !WS_MARKET || WS_MARKET==="__all__") return;
   const reqAccount=CUR_ACCOUNT.id, reqMkt=WS_MARKET;

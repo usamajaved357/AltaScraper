@@ -679,6 +679,18 @@ body.pdp-on .chatwrap{ z-index:79; }
   border:1px solid var(--pdp-line, #2a2f3a); border-radius:4px; }
 .pdp-amznote .ti{ font-size:13px; }
 
+/* SAFETY & COMPLIANCE: the four verdicts as badges, then the two groups
+   (pdpSafetyTab). The colours are the rail's -- the same lsCheckStates. */
+.pdp-sbadges{ display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 12px; }
+.pdp-sbadge{ font-size:11px; font-weight:600; padding:3px 9px; border-radius:4px;
+  border:1px solid var(--pdp-line, #2a2f3a); color:var(--pdp-dim); }
+.pdp-sbadge.ok{ color:var(--pdp-ok, #2dd4a8); border-color:#2dd4a840; background:#2dd4a810; }
+.pdp-sbadge.warn{ color:var(--gold, #e3b768); border-color:#e3b76840; background:#e3b76810; }
+.pdp-sbadge.bad{ color:var(--pdp-bad, #f87171); border-color:#f8717140; background:#f8717110; }
+.pdp-grp{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--pdp-dim); margin:10px 0 6px; }
+.pdp-grp.ref{ margin-top:18px; padding-top:12px; border-top:1px solid var(--pdp-line, #2a2f3a); }
+
 .pdp-badges{ display:flex; gap:5px; margin-top:10px; flex-wrap:wrap; }
 .pdp-hb{
   font-size:9px; padding:2px 6px; border-radius:3px; font-weight:600;

@@ -2051,13 +2051,23 @@ function aplusUnknownNote(){
     // missing, and this screen cannot know which. The app already has a
     // diagnostic that lists them one by one, so it points there instead of
     // guessing which single permission to blame.
+    //
+    // THE BUTTON IS HERE, not "at the top of this page". It sent people to a
+    // Diagnose button on the listings toolbar -- which, inside the product page,
+    // is BEHIND the overlay, and has since moved into the ⋯ menu. runSpDiagnose
+    // opens its own dialog above everything, so it works from right here (the
+    // owner's PDP redesign).
     + (denied
-        ? ' Amazon is refusing this app’s requests for this account. Press '
-          + '<b>Diagnose SP-API</b> at the top of this page — it checks each '
-          + 'permission in turn and names the ones that are missing.'
+        ? ' Amazon is refusing this app’s requests for this account. Run '
+          + 'Diagnose SP-API (the button below) — it checks each permission in '
+          + 'turn and names the ones that are missing.'
         : '')
     + '<div class="cc" style="margin-top:6px">Amazon said: '
-    + esc(APLUS_ERROR) + '</div></div>';
+    + esc(APLUS_ERROR) + '</div>'
+    + (typeof runSpDiagnose === "function"
+        ? '<button class="pdp-tb" style="margin-top:8px" onclick="event.stopPropagation();runSpDiagnose()">'
+          + '<i class="ti ti-stethoscope"></i> Run diagnostics</button>' : '')
+    + '</div>';
 }
 
 // "Inactive" chip carrying Amazon's own reason (out of stock, policy issue, no offer).
@@ -2154,6 +2164,16 @@ function formatFindings(findings, row){
 // (images, item-type-keyword, variations/theme, bullets, description). Kept apart from
 // the editable draft fields — this is a mirror of what's live, never your draft copy.
 // Returns "" when nothing has been synced for this SKU.
+/* "2 hours ago" for when Sync read this listing from Amazon, or "" when the
+ * entry carries no time. lrAgo (listrow_detailed.js) is the app's one "ago"
+ * formatter. The time is stored with the entry (domain/live_mirror_store.py),
+ * so it survives a reload -- which is when saying it matters most. */
+function _mirrorAgo(m){
+  const t = m && Number(m._synced_at);
+  if(!t || typeof lrAgo !== "function") return "";
+  return lrAgo(t);
+}
+
 function liveMirrorPanel(r){
   const m = LIVE_MIRROR[String(r&&r.sku||"").trim()];
   if(!m) return "";
@@ -2173,7 +2193,7 @@ function liveMirrorPanel(r){
   const kw = m.item_type_keyword ? `<div class="mirrow"><span class="mirk">Item type keyword</span><span>${esc(m.item_type_keyword)}</span></div>` : "";
   const desc = m.description ? `<div class="mirrow"><span class="mirk">Description</span><span class="mirdesc">${esc(m.description)}</span></div>` : "";
   return `<details class="mirbox" open>
-    <summary class="mirsum"><i class="ti ti-brand-amazon"></i> Actual on Amazon <span class="cc">(read-only — pulled by Sync, ${imgs.length} image(s))</span></summary>
+    <summary class="mirsum"><i class="ti ti-brand-amazon"></i> Actual on Amazon <span class="cc">(read-only — pulled by Sync${_mirrorAgo(m) ? ", synced " + esc(_mirrorAgo(m)) : ""}, ${imgs.length} image(s))</span></summary>
     <div class="mirbody">
       ${imgHtml}
       ${kw}${varHtml}
@@ -2616,7 +2636,10 @@ function _dwVerdictFoldParts(r){
       + dwFold("Claim risks", (r.claim_flags||[]).length ? `<span class="dw2-tag warn">${(r.claim_flags||[]).length}</span>` : "", claimBox(r))
       + dwFold("Amazon feedback", statusBlock ? '<span class="dw2-tag warn">see inside</span>' : "", statusBlock),
     mirror:
-        dwFold("Actual on Amazon", '<span class="dw2-tag info">read-only mirror</span>', liveMirrorPanel(r))
+        dwFold("Actual on Amazon", '<span class="dw2-tag info">read-only mirror'
+               + (_mirrorAgo(LIVE_MIRROR[String(r && r.sku || "").trim()])
+                   ? " · synced " + esc(_mirrorAgo(LIVE_MIRROR[String(r.sku).trim()])) : "")
+               + '</span>', liveMirrorPanel(r))
       + dwFold("A+ content", '<span class="dw2-tag info">live on Amazon</span>', _dwAplus(r))
       // WHERE THIS LISTING IS BOUGHT FROM.
       //
@@ -3921,6 +3944,22 @@ function closeTileMenu(){ const m=document.getElementById("tilemenu"); if(m) m.r
  *   Upload main image   pushing first.
  *   Delete              destructive, and it sat between Ask Claude and the edge.
  */
+/* The Miles template panel in a dialog, for the ⋯ menu. The same panel and the
+ * same start-up the drawer gives it (milesTemplatePanel / initMilesPanel), so
+ * nothing about how it works changed -- only where it opens. */
+async function openMilesTemplate(sku){
+  if(typeof milesTemplatePanel !== "function") return;
+  const sidv = sid(sku);
+  const done = _dlgOpen({title: "Miles template — " + sku,
+                         html: milesTemplatePanel(sku, sidv),
+                         buttons: [{label: "Close", value: true, primary: true}],
+                         cancelValue: null});
+  setTimeout(function(){
+    if(typeof initMilesPanel === "function"){ try{ initMilesPanel(sidv); }catch(e){} }
+  }, 60);
+  await done;
+}
+
 function drawerMore(ev, sku, row, isLive){
   ev.stopPropagation();
   closeTileMenu();
@@ -3992,6 +4031,13 @@ function drawerMore(ev, sku, row, isLive){
     // in a dialog (lrRuleDialog, listrow_detailed.js).
     + ((typeof lrRuleDialog === "function")
         ? `<button onclick="closeTileMenu();lrRuleDialog('${esc(sku)}')" title="The lowest and highest price the repricer may set for this SKU"><i class="ti ti-arrows-vertical"></i> Min / max price…</button>`
+        : "")
+    // THE MILES TEMPLATE, moved off the product page's Safety & Compliance tab
+    // on the owner's redesign (niche, rarely used). Only where the workspace
+    // has the harvest feature -- the same gate the fold had.
+    + ((window.WS_FEATURES && window.WS_FEATURES.indexOf("harvest") >= 0
+        && typeof milesTemplatePanel === "function")
+        ? `<button onclick="closeTileMenu();openMilesTemplate('${esc(sku)}')" title="The Miles Lubricants template for this listing"><i class="ti ti-template"></i> Miles template</button>`
         : "")
     // ONE DUPLICATE COPY. It lived only on the card, which the redesign
     // retired; offered here on a duplicate row and nowhere else. delDuplicate

@@ -2276,13 +2276,16 @@ function _fullDataParts(r){
   // put it on its Images tab; the drawer still gets all of them, in this order.
   const _genFold = dwFold("AI image generation",
         '<span class="dw2-tag info"><i class="ti ti-sparkles"></i> generate</span>', genBlock);
-  const _otherTools =
-      (milesBlock ? dwFold("Miles template", "", milesBlock) : "")
-    + dwFold("Submission data",
+  // Named on its own so the product page can put it under "Reference data" and
+  // open it from the rail's "Raw data" (the owner's PDP redesign).
+  const _subFold = dwFold("Submission data",
         '<span class="dw2-count">'+allSubKeys.length+' fields · read-only</span>',
         fullSubBlock
         + `<span class="rawtoggle" onclick="var e=document.getElementById('${rid}');e.style.display=(e.style.display==='block'?'none':'block')">show / hide raw JSON</span>`
-        + `<pre class="raw" id="${rid}">${esc(JSON.stringify(a,null,2))}</pre>`)
+        + `<pre class="raw" id="${rid}">${esc(JSON.stringify(a,null,2))}</pre>`);
+  const _otherTools =
+      (milesBlock ? dwFold("Miles template", "", milesBlock) : "")
+    + _subFold
     + ( (window.SHOW_PAYLOAD_VIEWER===true && r.api_payload && String(r.api_payload).trim())
        ? dwFold("Exact payload sent to Amazon",
             '<span class="dw2-count">literal API body \u00b7 read-only</span>',
@@ -2295,11 +2298,18 @@ function _fullDataParts(r){
   return {highlights: secHighlights, bullets: secBullets, search: secSearch,
           desc: secDesc, images: secImages, identity: secIdentity,
           attrs: secAttrs, folds: folds,
-          compliance: _vf.compliance, tools: toolFolds,
-          // THE IMAGE GENERATOR ON ITS OWN, and the tools without it, for the
-          // product page: generation belongs on its Images tab, not folded at
-          // the bottom of Safety & Compliance where nobody looks for it.
-          gen: genBlock, toolsNoGen: _vf.mirror + _otherTools,
+          compliance: _vf.compliance,
+          // `tools`, `gen` and `toolsNoGen` WERE HANDED OUT HERE for the product
+          // page's old Images and Safety tabs. The owner's redesign (26 Sep 2026)
+          // replaced the generator form with preset buttons and regrouped the
+          // Safety tab, so no view read them any more -- and a part nobody
+          // shows is how two copies of a block start to drift. The drawer
+          // composes `folds`, which still contains all of it.
+          // THE SAFETY & COMPLIANCE TAB'S "REFERENCE DATA" PIECES, by name (the
+          // owner's PDP redesign): Actual on Amazon, A+ and Suppliers, then the
+          // submission data. The Miles template (niche) is reached from the ⋯
+          // menu instead, and the exact payload (debug) is not on the page.
+          mirrorFolds: _vf.mirror, submission: _subFold,
           // The same two halves of "Identity and offer", apart, for the product
           // page's tabs. Not extra content -- the same rows, grouped.
           identityOnly: secIdentityOnly, offerOnly: secOfferOnly,

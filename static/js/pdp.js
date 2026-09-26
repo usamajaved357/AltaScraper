@@ -608,70 +608,22 @@ function pdpSidebar(r){
    *
    * high -> red, medium -> amber, none or low -> green.
    */
-  const wt = (typeof lsWarnTypes === "function") ? lsWarnTypes(r) : {};
-  const tone = (typeof lsCheckTone === "function")
-             ? lsCheckTone : function(){ return "ok"; };
-  const wcount = (typeof lsCheckCount === "function")
-               ? lsCheckCount : function(){ return 0; };
-  // Which warning types belong under which light. Named here rather than
-  // guessed at in three places.
-  const T_RESTRICTED = ["restricted", "restricted_product", "prohibited"];
-  const T_COMPLIANCE = ["compliance_risk", "hazmat", "documents_required"];
-  const T_CLAIMS     = ["ip_risk", "claim_risk", "unsupported_claim"];
-  // The row's OWN verdicts still count, because they are not all mirrored into
-  // warnings: listing/restricted.py writes r.restricted and never a warning
-  // row, so ignoring it would swap one lie for another.
-  const restrictedHit = !!(r.restricted && r.restricted.matched
-                           && r.restricted.matched.length);
-  const viabilityHit  = !!(r.viability && r.viability.matched
-                           && r.viability.matched.length);
-  const claimHit      = ((r.claim_flags || []).length > 0);
-  const restrictedTone = restrictedHit ? "bad" : tone(wt, T_RESTRICTED);
-  // A verdict on the row is a warning nobody wrote down: it colours amber, and
-  // an actual HIGH warning of that type still overrides it to red.
-  const complianceTone = (function(){
-    const t = tone(wt, T_COMPLIANCE);
-    return (t === "ok" && viabilityHit) ? "warn" : t;
-  })();
-  const claimsTone = (function(){
-    const t = tone(wt, T_CLAIMS);
-    return (t === "ok" && claimHit) ? "warn" : t;
-  })();
-  const nRestricted = wcount(wt, T_RESTRICTED);
-  const nCompliance = wcount(wt, T_COMPLIANCE);
-  const nClaims     = wcount(wt, T_CLAIMS) || claimHit ? (wcount(wt, T_CLAIMS)
-                      || (r.claim_flags || []).length) : 0;
-  // AMAZON FEEDBACK WAS A FIXED GREY LIGHT that never changed colour, beside a
-  // banner saying "Amazon refused this listing". It reads what that banner and
-  // the barcode panel read now:
-  //   r.api_issues        Amazon's own reply to the last Preview/Submit
-  //   r.identifier.clash  the barcode is already on another listing
-  //                       (domain/barcode_clash via /row -- Rule 1 says report it)
-  //   r.warnings          amazon_refused, duplicate_barcode, barcode_live_on_amazon
-  // Grey ("info") while Amazon has never been asked and nothing clashes: green
-  // would claim Amazon approved a listing it has never seen.
-  const T_AMAZON = ["amazon_refused", "duplicate_barcode", "barcode_live_on_amazon"];
-  const apiRec   = r.api_issues || null;
-  const apiAll   = (apiRec && apiRec.issues) || [];
-  const apiErrs  = apiAll.filter(function(i){ return i && i.severity === "ERROR"; }).length;
-  const apiNotes = apiAll.length - apiErrs;
-  const clash    = (r.identifier && r.identifier.clash) || [];
-  const clashLive = clash.some(function(x){ return x && x.live; });
-  const amazonTone = (function(){
-    const t = tone(wt, T_AMAZON);
-    if(apiErrs || clashLive || t === "bad") return "bad";
-    if(apiNotes || clash.length || t === "warn") return "warn";
-    return apiRec ? "ok" : "info";
-  })();
-  const amazonLabel = (function(){
-    if(amazonTone === "ok" || amazonTone === "info") return "Amazon feedback";
-    const bits = [];
-    if(apiErrs) bits.push(apiErrs + (apiErrs === 1 ? " error" : " errors"));
-    else if(apiNotes) bits.push(apiNotes + (apiNotes === 1 ? " note" : " notes"));
-    if(clash.length || wt.duplicate_barcode || wt.barcode_live_on_amazon)
-      bits.push("barcode clash");
-    return "Amazon feedback — " + (bits.length ? bits.join(", ") : "see why");
-  })();
+  // The four verdicts come from lsCheckStates (liststatus.js) -- the same
+  // function the Safety & Compliance tab's badges read, so the rail and the tab
+  // cannot disagree. It moved there from here on 26 Sep 2026, and fixed the
+  // Restricted count that was always 0 (see its note).
+  // Guarded like the calls it replaced: a page where liststatus.js did not
+  // load draws grey "not checked" lights rather than throwing.
+  const _unk = {tone: "info", n: 0};
+  const cs = (typeof lsCheckStates === "function") ? lsCheckStates(r)
+    : {restricted: _unk, compliance: _unk, claims: _unk,
+       amazon: {tone: "info", n: 0, errors: 0, asked: false, detail: ""}};
+  const restrictedTone = cs.restricted.tone, nRestricted = cs.restricted.n;
+  const complianceTone = cs.compliance.tone, nCompliance = cs.compliance.n;
+  const claimsTone     = cs.claims.tone,     nClaims     = cs.claims.n;
+  const amazonTone     = cs.amazon.tone;
+  const amazonLabel = (amazonTone === "ok" || amazonTone === "info") ? "Amazon feedback"
+    : "Amazon feedback — " + (cs.amazon.detail || "see why");
   const label = function(base, n, tone_){
     if(tone_ === "ok") return base;
     return n ? (base + " — " + n) : (base + " — see why");
@@ -692,7 +644,8 @@ function pdpSidebar(r){
     // rail takes you there instead.
     +   '<div class="pdp-sbitem" onclick="pdpOpenGenerator()"><i class="ti ti-photo-edit"></i> Image studio</div>'
     +   '<div class="pdp-sbitem" onclick="askAbout(\'' + esc(sku) + '\')"><i class="ti ti-message-circle"></i> Ask Claude</div>'
-    +   '<div class="pdp-sbitem" onclick="pdpTab(\'compliance\')"><i class="ti ti-code"></i> Raw data</div>'
+    // RAW DATA OPENS THE SUBMISSION DATA, not just the tab it is on.
+    +   '<div class="pdp-sbitem" onclick="pdpOpenRaw()"><i class="ti ti-code"></i> Raw data</div>'
     + '</div>'
     + '<div class="pdp-sbsec"><div class="pdp-sblabel">Checks</div>'
     +   chk(restrictedTone, icon(restrictedTone, "ti-shield-check"),
@@ -1695,11 +1648,14 @@ function pdpCatalogueNote(r){
       + 'below the title had to come from Amazon — and that read failed'
       + (L.error ? ': ' + esc(String(L.error).slice(0, 140)) : '')
       + '. The empty fields mean <b>nobody could look</b>, not that the listing '
-      + 'has none. Press "Diagnose SP-API" on the listings page if this keeps '
-      + 'happening.'
+      + 'has none. If it keeps happening, run the diagnostics.'
       + '</div>'
       + '<button class="pdp-tb" onclick="lvRefresh(\'' + esc(r.sku) + '\')">'
       + '<i class="ti ti-refresh"></i> Try again</button>'
+      // Here, not "on the listings page" -- that button is behind this overlay
+      // (and in the ⋯ menu now). Its dialog opens above the page.
+      + '<button class="pdp-tb" onclick="runSpDiagnose()">'
+      + '<i class="ti ti-stethoscope"></i> Run diagnostics</button>'
       + '</div>';
   }
   if(state === "gone"){
@@ -1997,8 +1953,9 @@ function pdpRender(){
     // THE OWNER'S REDESIGN (26 Sep 2026): slots, one competitor strip, and the
     // four preset buttons -- all from pdp_images.js / pdp_imagegen.js. The old
     // thumbnail strip with its "competitor source" warning and red "Remove main
-    // image" button (p.images), and the full generator form (p.gen), are no
-    // longer drawn here; the drawer still shows both, from the same builders.
+    // image" button, and the full generator form, are no longer drawn here
+    // (the strip only as the fallback when pdp_images.js is missing); the
+    // drawer still shows both, from the same builders.
     tab = (typeof pdpImagesTab === "function") ? pdpImagesTab(r) : p.images;
   } else if(PDP_TAB === "variations"){
     // The family this listing belongs to. Drawn by the variations screen's own
@@ -2010,8 +1967,7 @@ function pdpRender(){
   } else if(PDP_TAB === "offer"){
     tab = p.offerOnly + p.identityOnly;
   } else {
-    tab = ((typeof _dwWarnings === "function") ? _dwWarnings(r) : "")
-        + p.compliance + (p.toolsNoGen != null ? p.toolsNoGen : p.tools);
+    tab = pdpSafetyTab(r, p);
   }
 
   host.innerHTML = '<div class="pdp">' + top + pdpHero(r) + pdpTabBar(r)
@@ -2032,6 +1988,65 @@ function pdpRender(){
     // on this page: the Images tab has the four preset buttons instead
     // (pdp_imagegen.js), which read the configured model themselves.
   }, 40);
+}
+
+/* THE SAFETY & COMPLIANCE TAB (the owner's PDP redesign, 26 Sep 2026).
+ *
+ *   [Restricted: clear] [Compliance: clear] [Claims: clear] [Amazon: no issues]
+ *   CHECKS            warnings, restricted products, compliance requirements,
+ *                     claim risks, Amazon feedback
+ *   ─────────
+ *   REFERENCE DATA    Actual on Amazon (with when it was synced), A+ content,
+ *                     suppliers, submission data
+ *
+ * The badges are lsCheckStates (liststatus.js) -- the rail's four lights, read
+ * from the same function, so the tab and the rail cannot disagree. Every panel
+ * is the one the drawer shows, unchanged; only the grouping is new.
+ *
+ * NOT ON THIS TAB ANY MORE: the Miles template (niche -- it is in the ⋯ menu,
+ * see drawerMore) and the exact API payload (a debug view behind a setting;
+ * the drawer still has it). */
+function pdpSafetyTab(r, p){
+  const cs = (typeof lsCheckStates === "function") ? lsCheckStates(r) : null;
+  const badge = function(tone, text){
+    return '<span class="pdp-sbadge ' + (tone || "info") + '">' + text + '</span>';
+  };
+  const badges = cs
+    ? '<div class="pdp-sbadges">'
+      + badge(cs.restricted.tone, "Restricted: " + (cs.restricted.tone === "ok" ? "clear"
+          : cs.restricted.n + " flag" + (cs.restricted.n === 1 ? "" : "s")))
+      + badge(cs.compliance.tone, "Compliance: " + (cs.compliance.tone === "ok" ? "clear"
+          : (cs.compliance.n ? cs.compliance.n + " issue" + (cs.compliance.n === 1 ? "" : "s") : "issues")))
+      + badge(cs.claims.tone, "Claims: " + (cs.claims.tone === "ok" ? "clear" : "flagged"))
+      // "not asked yet" rather than a green "no issues": Amazon has not seen a
+      // listing that was never previewed or submitted.
+      + badge(cs.amazon.tone, "Amazon: " + (cs.amazon.tone === "ok" ? "no issues"
+          : cs.amazon.tone === "info" ? "not asked yet"
+          : (cs.amazon.errors ? cs.amazon.errors + " error" + (cs.amazon.errors === 1 ? "" : "s")
+                              : (cs.amazon.detail || "see below"))))
+      + '</div>'
+    : "";
+  return badges
+    + '<div class="pdp-grp">Checks</div>'
+    + ((typeof _dwWarnings === "function") ? _dwWarnings(r) : "")
+    + (p.compliance || "")
+    + '<div class="pdp-grp ref">Reference data</div>'
+    + (p.mirrorFolds || "")
+    // Wrapped so the rail's "Raw data" can open this fold and scroll to it.
+    + '<div id="pdp_rawdata">' + (p.submission || "") + '</div>';
+}
+
+/* The rail's "Raw data": the Safety & Compliance tab, with the Submission data
+ * fold OPENED and scrolled to. It only switched tabs before, leaving the fold
+ * closed somewhere down the page. */
+function pdpOpenRaw(){
+  if(PDP_TAB !== "compliance"){ PDP_TAB = "compliance"; pdpRender(); }
+  setTimeout(function(){
+    const box = document.getElementById("pdp_rawdata");
+    const fold = box && box.querySelector("details");
+    if(fold) fold.open = true;
+    if(box) box.scrollIntoView({block: "start", behavior: "smooth"});
+  }, 60);
 }
 
 /* pdpGenSection -- the full generator form as a section of the Images tab --

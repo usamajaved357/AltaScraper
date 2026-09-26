@@ -42,7 +42,8 @@ IMGS = read("static/js/pdp_images.js")
 HTML = read("templates/dashboard.html")
 
 print("== the drawer keeps the full generator ==")
-check("the generator is handed out on its own", "gen: genBlock" in AF, True)
+# No longer handed out separately: no view but the drawer reads it now.
+check("the generator is no longer handed to the page", "gen: genBlock" in AF, False)
 check("the drawer still gets the generator in its fold run",
       "const toolFolds = _vf.mirror + _genFold + _otherTools;" in AF, True)
 

@@ -198,6 +198,93 @@ function lsCheckCount(types, keys){
   return n;
 }
 
+/* THE FOUR CHECKS -- Restricted, Compliance, Claims, Amazon -- WORKED OUT ONCE.
+ *
+ * Moved here from the product page's rail (pdp.js pdpSidebar) on 26 Sep 2026,
+ * when the owner's redesign put the same four as badges at the top of the
+ * Safety & Compliance tab. Two screens working out the same four verdicts is
+ * the pair that drifts (Rule 12), so both read this, and so does the listings
+ * row's risk symbols (lrRisks) for its "is there a verdict" half.
+ *
+ * AND IT FIXES WHY THE RESTRICTED COUNT WAS ALWAYS 0. The rail tested the
+ * LENGTH of r.restricted's `matched` field -- but `matched` is a BOOLEAN
+ * (listing/restricted.py: "matched": bool(matches);
+ * sourcing_viability.py the same for r.viability). A boolean has no length, so
+ * the row's own verdict never counted: a restricted product's light stayed on
+ * whatever r.warnings said -- and listing/warnings.py never writes a
+ * "restricted" type at all. The lists are `matches` and `risks`, and those are
+ * what is counted now.
+ *
+ * -> {restricted, compliance, claims, amazon}, each {tone, n, label} where tone
+ *    is "ok" | "warn" | "bad" | "info" ("info": Amazon has never been asked).
+ */
+const LS_T_RESTRICTED = ["restricted", "restricted_product", "prohibited"];
+const LS_T_COMPLIANCE = ["compliance_risk", "hazmat", "documents_required"];
+const LS_T_CLAIMS     = ["ip_risk", "claim_risk", "unsupported_claim"];
+const LS_T_AMAZON     = ["amazon_refused", "duplicate_barcode", "barcode_live_on_amazon"];
+
+/* How many restricted-products matches / compliance risks the row's OWN
+ * verdicts carry. 0 when the check did not run or found nothing. */
+function lsRestrictedHits(r){
+  const x = r && r.restricted;
+  return (x && x.matched) ? ((x.matches || []).length || 1) : 0;
+}
+function lsViabilityHits(r){
+  const x = r && r.viability;
+  return (x && x.matched) ? ((x.risks || []).length || 1) : 0;
+}
+
+function lsCheckStates(r){
+  const wt = lsWarnTypes(r);
+  const nRestr = lsRestrictedHits(r), nViab = lsViabilityHits(r);
+  const nClaimFlags = ((r && r.claim_flags) || []).length;
+
+  // A verdict on the row is a warning nobody wrote down. A restricted MATCH is
+  // red (it can stop the listing); a document demand or a claim flag is amber;
+  // an actual HIGH warning of the type still overrides to red.
+  const restrictedTone = nRestr ? "bad" : lsCheckTone(wt, LS_T_RESTRICTED);
+  const complianceTone = (function(){
+    const t = lsCheckTone(wt, LS_T_COMPLIANCE);
+    return (t === "ok" && nViab) ? "warn" : t;
+  })();
+  const claimsTone = (function(){
+    const t = lsCheckTone(wt, LS_T_CLAIMS);
+    return (t === "ok" && nClaimFlags) ? "warn" : t;
+  })();
+  const nRestricted = Math.max(nRestr, lsCheckCount(wt, LS_T_RESTRICTED));
+  const nCompliance = Math.max(nViab, lsCheckCount(wt, LS_T_COMPLIANCE));
+  const nClaims     = Math.max(nClaimFlags, lsCheckCount(wt, LS_T_CLAIMS));
+
+  // AMAZON FEEDBACK reads what the refusal banner and the barcode panel read:
+  //   r.api_issues        Amazon's own reply to the last Preview/Submit
+  //   r.identifier.clash  the barcode is already on another listing (Rule 1)
+  //   r.warnings          amazon_refused, duplicate_barcode, barcode_live_on_amazon
+  // "info" while Amazon has never been asked and nothing clashes: green would
+  // claim Amazon approved a listing it has never seen.
+  const apiRec   = (r && r.api_issues) || null;
+  const apiAll   = (apiRec && apiRec.issues) || [];
+  const apiErrs  = apiAll.filter(function(i){ return i && i.severity === "ERROR"; }).length;
+  const apiNotes = apiAll.length - apiErrs;
+  const clash    = (r && r.identifier && r.identifier.clash) || [];
+  const clashLive = clash.some(function(x){ return x && x.live; });
+  const tA = lsCheckTone(wt, LS_T_AMAZON);
+  const amazonTone = (apiErrs || clashLive || tA === "bad") ? "bad"
+                   : ((apiNotes || clash.length || tA === "warn") ? "warn"
+                   : (apiRec ? "ok" : "info"));
+  const amzBits = [];
+  if(apiErrs) amzBits.push(apiErrs + (apiErrs === 1 ? " error" : " errors"));
+  else if(apiNotes) amzBits.push(apiNotes + (apiNotes === 1 ? " note" : " notes"));
+  if(clash.length || wt.duplicate_barcode || wt.barcode_live_on_amazon) amzBits.push("barcode clash");
+
+  return {
+    restricted: {tone: restrictedTone, n: nRestricted},
+    compliance: {tone: complianceTone, n: nCompliance},
+    claims:     {tone: claimsTone,     n: nClaims},
+    amazon:     {tone: amazonTone, n: apiErrs || apiNotes, errors: apiErrs,
+                 asked: !!apiRec, detail: amzBits.join(", ")},
+  };
+}
+
 // Does AMAZON'S OWN fetched catalogue list this row?
 //
 // Uses _matchableAsin (listings.js), never r.asin: on an app row that field is the

@@ -1485,7 +1485,18 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                         includedData=["attributes", "summaries", "relationships", "issues", "fulfillmentAvailability"])
                     p = r.payload if hasattr(r, "payload") else (r or {})
                     entry = _build_mirror_entry(p)
-                    _MIRROR_CACHE[f"{aid}::{mkt}::{sku}"] = {"ts": _t.time(), "data": entry}
+                    _now = _t.time()
+                    # WHEN AMAZON WAS READ travels with the entry, so the PDP can
+                    # say "synced 2h ago" instead of implying it is live.
+                    entry["_synced_at"] = _now
+                    _MIRROR_CACHE[f"{aid}::{mkt}::{sku}"] = {"ts": _now, "data": entry}
+                    # AND ON DISK, so a restart or a deploy does not empty it
+                    # (domain/live_mirror_store.py; the owner's PDP redesign).
+                    try:
+                        from domain import live_mirror_store as _lms
+                        _lms.save(CONFIG_PATH, aid, mkt, sku, entry, _now)
+                    except Exception:
+                        pass
                     mirror[sku] = entry
                     pulled += 1
                     if pulled % 5 == 0:
@@ -1507,9 +1518,21 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
         out = {}
+        missing = []
         for sku in skus:
             c = _MIRROR_CACHE.get(f"{aid}::{mkt}::{sku}")
             if c:
                 out[sku] = c["data"]
+            else:
+                missing.append(sku)
+        # WHAT THE LAST SYNC SAVED, for anything memory no longer holds -- the
+        # state after every restart. Still no network: a stored read, carrying
+        # its own _synced_at (domain/live_mirror_store.py).
+        if missing:
+            try:
+                from domain import live_mirror_store as _lms
+                out.update(_lms.load(CONFIG_PATH, aid, mkt, missing))
+            except Exception:
+                pass
         return jsonify({"ok": True, "mirror": out})
 

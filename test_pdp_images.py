@@ -99,7 +99,11 @@ print("\n=== 2. the checks rail reads the same warnings as the tab ===")
 truthy("there is one warnings-by-type reader", "function lsWarnTypes(" in LS)
 truthy("  and one place that turns a type into a colour",
        "function lsCheckTone(" in LS)
-truthy("the rail uses them", "lsWarnTypes(r)" in PDP and "lsCheckTone" in PDP)
+# The rail's four verdicts moved into liststatus.js as lsCheckStates on 26 Sep
+# 2026 -- the Safety tab's badges read the same function -- and it is built on
+# lsWarnTypes / lsCheckTone there.
+truthy("the rail uses them", "lsCheckStates(r)" in PDP
+       and "lsWarnTypes(r)" in LS and "lsCheckTone(wt," in LS)
 truthy("  and a HIGH warning is red, not amber",
        'worst === "high" ? "bad"' in LS)
 truthy("  a medium one is amber", '"medium" ? "warn"' in LS)
@@ -107,8 +111,13 @@ truthy("  and low or none stays green", 'return worst === "high"' in LS)
 truthy("the red state exists in the stylesheet", ".pdp-ck.bad{" in CSS)
 # The row's own verdicts are not all mirrored into warnings, so ignoring them
 # would swap one lie for another.
+# And COUNTED from the lists: `matched` is a boolean, so the old
+# `matched.length` test never fired (lsRestrictedHits / lsViabilityHits).
 truthy("a row verdict with no warning row still colours the light",
-       "restrictedHit" in PDP and "viabilityHit" in PDP)
+       "function lsRestrictedHits(" in LS and "function lsViabilityHits(" in LS
+       and "(x.matches || []).length" in LS and "(x.risks || []).length" in LS)
+falsy("  never by .matched.length, which a boolean does not have",
+      ".matched.length" in LS or ".matched.length" in PDP)
 
 print("\n=== 3. the buttons sit next to Back, the overflow menu on the right ===")
 _top = PDP.split("const top = ")[1].split("// A BLOCKING PROBLEM")[0]

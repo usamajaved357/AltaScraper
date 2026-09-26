@@ -61,11 +61,13 @@ const pdpUses = [...new Set((PDPJS.match(/\bp\.(\w+)/g) || []).map(s => s.slice(
 // `attrs` (the drawer's cell grid) is deliberately absent: this page draws the
 // same attributes as a table from attrModel instead.
 check("and the product page places the rest", pdpUses,
-      // gen + toolsNoGen: the AI image generator is on the Images tab, and the
-      // Safety & Compliance tab takes the other tools ("tools" stays as the
-      // fallback when a part is missing).
-      ["addCtrl","attrModel","bullets","compliance","desc","gen","highlights",
-       "identityOnly","images","offerOnly","search","tools","toolsNoGen"]);
+      // THE OWNER'S PDP REDESIGN (26 Sep 2026): the Images tab draws slots and
+      // preset buttons (pdp_images.js / pdp_imagegen.js, `images` only as the
+      // fallback when that file is missing), and Safety & Compliance takes the
+      // compliance folds, then the reference data -- mirrorFolds and
+      // submission. gen / tools / toolsNoGen are no longer produced.
+      ["addCtrl","attrModel","bullets","compliance","desc","highlights",
+       "identityOnly","images","mirrorFolds","offerOnly","search","submission"]);
 // Nothing may be produced that NO view shows. Only TOP-LEVEL keys count --
 // everything after `attrModel: {` is that model's own contents, not a block.
 const topLevel = retM ? retM[0].slice(0, retM[0].indexOf("attrModel: {")) : "";
@@ -259,6 +261,22 @@ globalThis.lsWarnings = r => ({n:(r.warnings||[]).length, high:1, list:r.warning
   const LS = fs.readFileSync("static/js/liststatus.js", "utf8");
   const i = LS.indexOf("function lsWarnTip(");
   globalThis.lsWarnTip = new Function("return " + LS.slice(i, LS.indexOf("\n}", i) + 2))();
+  // AND THE REAL FOUR CHECKS. The rail's lights moved into liststatus.js as
+  // lsCheckStates on 26 Sep 2026 (the Safety tab's badges read it too), so the
+  // light cases below exercise that code, not a copy. Taken with the helpers it
+  // is built on; the rest of this file's stubs are left alone.
+  const fnSrc = function(name){
+    const a = LS.indexOf("function " + name + "(");
+    return LS.slice(a, LS.indexOf("\n}", a) + 2);
+  };
+  const consts = LS.slice(LS.indexOf("const LS_T_RESTRICTED"),
+                          LS.indexOf("/* How many restricted-products matches"));
+  const api = new Function(consts
+    + ["lsWarnTypes", "lsCheckTone", "lsCheckCount", "lsRestrictedHits",
+       "lsViabilityHits", "lsCheckStates"].map(fnSrc).join("\n")
+    + "\nreturn {lsCheckStates: lsCheckStates, lsRestrictedHits: lsRestrictedHits,"
+    + " lsViabilityHits: lsViabilityHits};")();
+  Object.assign(globalThis, api);
 }
 globalThis.rowAsin = r => ({own: r.asin || "", source: ""});
 globalThis.rowMkt = () => "UK";
@@ -285,7 +303,8 @@ globalThis._fullDataParts = () => ({
   highlights:"<HI>", bullets:"<BUL>", search:"<SRCH>", desc:"<DESC>", images:"<IMG>",
   identity:"<IDENT>", attrs:"<ATTRSGRID>", folds:"<FOLDS>",
   identityOnly:"<IDENTONLY>", offerOnly:"<OFFERONLY>",
-  compliance:"<COMPLIANCE>", tools:"<TOOLS>", addCtrl:"<ADDCTRL>",
+  compliance:"<COMPLIANCE>", mirrorFolds:"<MIRROR>", submission:"<SUBMISSION>",
+  addCtrl:"<ADDCTRL>",
   attrModel:{sku:SKU, a:{colour:"black", size:"small"},
              aKeys:["colour","size"], missing:["material"],
              enums:{colour:["black","white"]}, reqList:["material"], allAttrs:[],
@@ -395,8 +414,34 @@ truthy("images: the image block", tabHas.images.indexOf("<IMG>") >= 0);
 truthy("offer: the offer rows, then identity",
        tabHas.offer.indexOf("<OFFERONLY>") >= 0
        && tabHas.offer.indexOf("<IDENTONLY>") > tabHas.offer.indexOf("<OFFERONLY>"));
-truthy("compliance: warnings, the verdicts, then the tools",
-       ["<WARNINGS>","<COMPLIANCE>","<TOOLS>"].every(m => tabHas.compliance.indexOf(m) >= 0));
+// THE OWNER'S REDESIGN (26 Sep 2026): the four verdicts as badges, then CHECKS
+// (warnings, the verdict folds), then REFERENCE DATA (the mirror group, then
+// the submission data), in that order.
+(function(){
+  const h = tabHas.compliance;
+  const at = m => h.indexOf(m);
+  truthy("compliance: badges, warnings, verdicts, then the reference data, in order",
+         at('class="pdp-sbadges"') >= 0 && at('class="pdp-sbadges"') < at("<WARNINGS>")
+         && at("<WARNINGS>") < at("<COMPLIANCE>") && at("<COMPLIANCE>") < at("<MIRROR>")
+         && at("<MIRROR>") < at("<SUBMISSION>"));
+  truthy("  under a Checks heading and a Reference data heading",
+         at(">Checks<") >= 0 && at(">Reference data<") > at(">Checks<"));
+  truthy("  the badges are the rail's verdicts (a claim flag is flagged)",
+         h.indexOf("Claims: flagged") >= 0);
+  truthy("  Raw data opens the submission data, wrapped so it can be found",
+         at('id="pdp_rawdata"') >= 0 && /pdpOpenRaw\(/.test(tabHas.details));
+})();
+
+console.log("\n  ...the clean barcode line is Product Details only; a clash is everywhere");
+check("a clean identifier is not repeated on the Images tab",
+      tabHas.images.indexOf("<IDPANEL>") >= 0, false);
+ROW.identifier = {barcode: "4553334465572", clash: [{workspace_id: "x", sku: "y", live: true}],
+                  blocking: true, note: "on another listing"};
+ctx.pdpTab("images");
+truthy("  but a barcode on another listing is reported there too (Rule 1)",
+       el("pdp").innerHTML.indexOf("<IDPANEL>") >= 0);
+delete ROW.identifier;
+ctx.pdpTab("details");
 
 console.log("\n  ...the attributes, on Product Details under the description");
 const at = tabHas.details;

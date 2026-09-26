@@ -1391,6 +1391,21 @@ CREATE TABLE IF NOT EXISTS schema_cache (
     fetched_at    TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (product_type, marketplace)
 );
+
+-- WHAT AMAZON HOLDS FOR ONE LIVE LISTING, as Sync last read it with
+-- getListingsItem: title, brand, bullets, description, images, variations,
+-- condition. The PDP's "Actual on Amazon" panel and the listings row's
+-- condition read it. It was a dict in server memory, so a restart -- or a
+-- deploy -- emptied it until the next Sync. domain/live_mirror_store.py is the
+-- only writer and reader.
+CREATE TABLE IF NOT EXISTS live_mirror (
+    workspace_id  TEXT NOT NULL,
+    marketplace   TEXT NOT NULL,
+    sku           TEXT NOT NULL,
+    payload       TEXT NOT NULL,          -- the mirror entry, as JSON
+    synced_at     REAL NOT NULL,          -- epoch seconds of the Amazon read
+    PRIMARY KEY (workspace_id, marketplace, sku)
+);
 """
 
 

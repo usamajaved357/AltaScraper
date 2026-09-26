@@ -578,11 +578,15 @@ function lrRisks(r){
              : function(){ return "ok"; };
   const bits = [
     {keys: ["restricted", "restricted_product", "prohibited"],
-     hit: !!(r.restricted && r.restricted.matched && r.restricted.matched.length),
+     // lsRestrictedHits: `matched` is a boolean, so testing its length -- what
+     // this did -- was never true (see lsCheckStates in liststatus.js).
+     hit: (typeof lsRestrictedHits === "function") ? lsRestrictedHits(r) > 0
+          : !!(r.restricted && r.restricted.matched),
      icon: "ti-ban", name: "Restricted product",
      none: "Not a restricted product"},
     {keys: ["compliance_risk", "hazmat", "documents_required"],
-     hit: !!(r.viability && r.viability.matched && r.viability.matched.length),
+     hit: (typeof lsViabilityHits === "function") ? lsViabilityHits(r) > 0
+          : !!(r.viability && r.viability.matched),
      icon: "ti-file-description", name: "Compliance requirements",
      none: "No compliance requirements found"},
     {keys: ["ip_risk", "claim_risk", "unsupported_claim"],
