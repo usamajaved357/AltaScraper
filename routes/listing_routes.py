@@ -2197,6 +2197,61 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             out["was_live"] = True               # unknown -> keep the row
         return out
 
+    def _delete_one_copy(ws, sku):
+        """Remove ONE duplicate copy of a SKU from this app. Never touches Amazon.
+
+        The duplicate card's "Delete this copy" promised "only this copy is
+        removed -- the other copies stay", and went through the ordinary delete,
+        which asks Amazon about the SKU and deletes the LIVE LISTING if Amazon
+        has it. But a duplicate is, by definition, a SKU the app still holds
+        another copy of -- and copies that differ only in case are very likely
+        the SAME Amazon listing (Amazon spells one SKU both ways; see
+        domain/cogs_store.norm). Tidying the app's rows was taking the product
+        off sale.
+
+        So this is the app half and nothing else, with two refusals that keep it
+        to the one row that was clicked:
+
+          * EXACT SPELLING ONLY. The store's delete falls back to a
+            case-insensitive match when the exact one misses; for a duplicate
+            that fallback would remove the OTHER copy -- the one being kept.
+          * ANOTHER COPY MUST STAY. If this is the last one it is not a
+            duplicate any more, and removing it is an ordinary delete, which
+            has its own Amazon handling. Refused, not quietly downgraded.
+        """
+        if not sku:
+            return jsonify({"ok": False,
+                            "error": "Name the SKU of the copy to remove."}), 400
+        store = getattr(ws, "store", None)
+        if store is None or not hasattr(store, "get_row_by_sku"):
+            return jsonify({"ok": False,
+                            "error": "Removing a single copy only works on the "
+                                     "app's database, not on a Google Sheet. "
+                                     "Nothing was deleted."}), 409
+        from domain.cogs_store import norm as _fold
+        if store.get_row_by_sku(sku) is None:
+            return jsonify({"ok": False,
+                            "error": "No copy spelled exactly %s is here any more "
+                                     "-- it may have been removed already. "
+                                     "Nothing was deleted." % sku}), 404
+        others = [str(r.get(SKU_HEADER) or "") for r in store.get_all_rows()
+                  if _fold(r.get(SKU_HEADER)) == _fold(sku)
+                  and str(r.get(SKU_HEADER) or "") != sku]
+        if not others:
+            return jsonify({"ok": False,
+                            "error": "%s is the only copy left, so it is not a "
+                                     "duplicate any more. Nothing was deleted -- "
+                                     "use the listing's own Delete if you want "
+                                     "it gone." % sku}), 409
+        gone = int(store.delete_row(sku) or 0)   # exact spelling hits first
+        _bust_records_cache()
+        if not gone:
+            return jsonify({"ok": False,
+                            "error": "Nothing was deleted -- %s could not be "
+                                     "removed." % sku}), 404
+        return jsonify({"ok": True, "deleted": gone, "kept": others,
+                        "amazon": {"attempted": False}})
+
     @app.route("/delete", methods=["POST"])
     def delete_row():
         b   = request.get_json(force=True) or {}
@@ -2214,6 +2269,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             # measurement that made this safe has been withdrawn by the owner,
             # who deliberately reuses a SKU across accounts for me-too listings.
             ws     = _store_for(b.get("account")) or _ws()
+            # ONE DUPLICATE COPY: the app's row only, never Amazon. Before
+            # anything below, because everything below may delete from Amazon.
+            if b.get("app_only"):
+                return _delete_one_copy(ws, sku)
             target = None
             if sku:                                   # prefer matching by SKU (stable)
                 # A miss stays silent here on purpose: this route falls back to the

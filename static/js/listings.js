@@ -1055,19 +1055,27 @@ function dupOtherTabs(r){                     // distinct OTHER tabs the SKU als
 }
 function countDuplicateSkus(){ let n=0; DUP_INDEX.forEach(v=>{ if(v.length>1) n++; }); return n; }
 function toggleDupOnly(){ DUP_ONLY=!DUP_ONLY; render(); }
-// Delete ONE duplicate copy from its own tab (leaving the other copies untouched).
-// ensureCardTab syncs the active tab first, so /delete removes the right row on the
-// right tab -- never a same-numbered row on another tab.
+// Delete ONE duplicate copy from this app (leaving the other copies untouched).
+//
+// app_only IS THE WHOLE FIX. Without it /delete asks Amazon about the SKU and
+// deletes the LIVE LISTING if Amazon has it -- while this dialog promised that
+// only a copy was going. The server removes only the copy spelled exactly like
+// this one, and refuses if it is the last copy (see _delete_one_copy in
+// routes/listing_routes.py).
 async function delDuplicate(sku, row, tab, btn){
-  if(!await uiConfirm("Delete this DUPLICATE copy of "+sku+" from the '"+tab+"' tab?\n\n"
-             +"Only this copy is removed — copies on other tabs stay. This cannot be undone.")) return;
+  const _others=dupCopies({sku:sku}).map(c=>String(c.sku)).filter(s=>s!==String(sku));
+  if(!await uiConfirm("Delete this DUPLICATE copy of "+sku+" from this app?\n\n"
+             +"Only this copy is removed"
+             +(_others.length?" — "+_others.join(", ")+" stays":" — the other copy stays")
+             +". Nothing is sent to Amazon, and the listing on Amazon is not touched."
+             +"\n\nThis cannot be undone.")) return;
   if(btn) btn.disabled=true;
   try{
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
     const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-                body:JSON.stringify(acctBody({sku:sku, row:row}))});
+                body:JSON.stringify(acctBody({sku:sku, row:row, app_only:true}))});
     const j=await res.json();
-    if(j.ok){ toast("Duplicate removed from "+tab); loadRows(); }
+    if(j.ok){ toast("Duplicate copy removed from this app. Amazon was not touched."); loadRows(); }
     else{ toast("Delete failed: "+(j.error||"")); if(btn) btn.disabled=false; }
   }catch(e){ toast("Delete failed"); if(btn) btn.disabled=false; }
 }
@@ -2125,7 +2133,7 @@ function card(r){
 
       ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">
         <span class="tiledup-lbl"><i class="ti ti-copy"></i> Duplicate SKU${_dupOther.length?` — also on ${esc(_dupOther.join(', '))}`:` — appears ${dupCopies(r).length}×`}</span>
-        <button class="tiledup-del" title="Delete this copy from ${esc(r.tab||'this tab')} (other copies stay)" onclick="event.stopPropagation();delDuplicate('${esc(String(r.sku))}',${r.row||0},'${esc(String(r.tab||''))}',this)"><i class="ti ti-trash"></i> Delete this copy</button>
+        <button class="tiledup-del" title="Delete this copy from this app only (other copies stay, and nothing is sent to Amazon)" onclick="event.stopPropagation();delDuplicate('${esc(String(r.sku))}',${r.row||0},'${esc(String(r.tab||''))}',this)"><i class="ti ti-trash"></i> Delete this copy</button>
       </div>`:''}
       ${ownAsin?`<div class="tileasin" title="Your own live ASIN on Amazon (from the live catalogue)"><i class="ti ti-brand-amazon"></i> <a href="${_dpUrl(ownAsin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(ownAsin)}</a></div>`:''}
     </div>
