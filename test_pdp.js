@@ -349,7 +349,11 @@ truthy("back, Preview, Auto-fix, Submit and More",
        /pdpClose\(\)/.test(html) && /previewOne\(/.test(html) && /autoFixLoop\(/.test(html)
        && /submitOne\(/.test(html) && /drawerMore\(/.test(html));
 truthy("Image studio and Ask Claude on the rail",
-       /openStudioSingle\(/.test(html) && /askAbout\(/.test(html));
+       /pdpOpenGenerator\(/.test(html) && /askAbout\(/.test(html));
+// Image studio stays on this page: the Images tab's generator, never the
+// Image Studio section underneath the overlay.
+check("  and Image studio does not leave the page",
+      /openStudioSingle\(/.test(html), false);
 truthy("the four checks",
        /pdp-ck/.test(html) && html.indexOf("Restricted") >= 0
        && html.indexOf("Amazon feedback") >= 0);

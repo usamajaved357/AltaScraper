@@ -617,7 +617,12 @@ function pdpSidebar(r){
           + '<i class="ti ti-sparkles"></i> Optimize live copy</button>'
         : "")
     + '<div class="pdp-sbsec"><div class="pdp-sblabel">Quick actions</div>'
-    +   '<div class="pdp-sbitem" onclick="openStudioSingle(\'' + esc(sku) + '\')"><i class="ti ti-photo-edit"></i> Image studio</div>'
+    // IMAGE STUDIO STAYS ON THIS PAGE. openStudioSingle() switches the page
+    // UNDERNEATH to the Image Studio section, which this overlay then covers --
+    // the studio opened invisibly and "Back to listings" landed on it. The
+    // Images tab already carries the same generator (pdpGenSection), so the
+    // rail takes you there instead.
+    +   '<div class="pdp-sbitem" onclick="pdpOpenGenerator()"><i class="ti ti-photo-edit"></i> Image studio</div>'
     +   '<div class="pdp-sbitem" onclick="askAbout(\'' + esc(sku) + '\')"><i class="ti ti-message-circle"></i> Ask Claude</div>'
     +   '<div class="pdp-sbitem" onclick="pdpTab(\'compliance\')"><i class="ti ti-code"></i> Raw data</div>'
     + '</div>'
@@ -1916,6 +1921,16 @@ function pdpGenSection(genHtml){
     + 'instructions. Each result is saved to this listing’s image library; '
     + '<b>Use as main image</b> puts it on the listing.</div>'
     + genHtml + '</div>';
+}
+
+/* The rail's "Image studio": the Images tab, scrolled to its AI generator. */
+function pdpOpenGenerator(){
+  if(PDP_TAB !== "images"){ PDP_TAB = "images"; pdpRender(); }
+  // After pdpRender's own 40ms start-up, so the generator's pickers exist.
+  setTimeout(function(){
+    const gen = document.querySelector("#pdp .pdp-gen");
+    if(gen) gen.scrollIntoView({block: "start", behavior: "smooth"});
+  }, 80);
 }
 
 /* Redraw after a structural edit (a field deleted, an optional one added, a
