@@ -270,18 +270,13 @@ truthy("  without erasing the stored preference",
        !/localStorage\.setItem[^\n]*\n?[^\n]*listViewNow/.test(LISTINGS));
 truthy("both dispatchers ask it rather than reading LIST_VIEW directly",
        (LISTINGS.match(/listViewNow\(\)/g) || []).length >= 3);
-// TWO VIEWS since the owner's redesign (26 Sep 2026): detailed is the main
-// one, table the compact one, and the card grid is retired -- a remembered
-// "grid" opens on the detailed view, where the card's features went.
+// The other two views must still be reachable and unchanged.
 truthy("the table view is still there", /=== "table"/.test(LISTINGS));
-truthy("the card view is gone",  !/=== "grid"\) \? "grid"/.test(LISTINGS)
-                                 && !/function card\(r\)/.test(LISTINGS));
-truthy("  and a remembered card view opens on the detailed one",
-       /let LIST_VIEW = "detailed"/.test(LISTINGS));
+truthy("the card view is still there",  /=== "grid"\) \? "grid"/.test(LISTINGS));
 const TPL = fs.readFileSync("templates/dashboard.html", "utf8");
-check("two toggle buttons now",
+check("three toggle buttons now",
       (TPL.match(/data-view="(table|detailed|grid)"/g) || []).sort(),
-      ['data-view="detailed"', 'data-view="table"']);
+      ['data-view="detailed"', 'data-view="grid"', 'data-view="table"']);
 truthy("the detailed stylesheet is loaded", TPL.indexOf("listrow_detailed.css") >= 0);
 truthy("and the renderer",                  TPL.indexOf("listrow_detailed.js") >= 0);
 truthy("the card grid's layout is switched off for it",

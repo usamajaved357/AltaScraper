@@ -603,12 +603,13 @@
             <option value="live_oos">Out of stock</option>
           </optgroup>
         </select>
-        <!-- TWO VIEWS. The card view was retired on the owner's redesign, after
-             what only a card showed (margin/ROI, ad spend, A+, delete-this-copy)
-             moved into the detailed row and its menu. -->
-        <span class="viewtoggle" id="viewtoggle" title="Compact table or detailed view — remembered on this browser">
-          <button data-view="table" onclick="setListView('table')" title="Table view — compact, one line per listing"><i class="ti ti-list"></i></button>
-          <button data-view="detailed" class="on" onclick="setListView('detailed')" title="Detailed view — Amazon's Manage All Inventory layout: performance, inventory and pricing beside each listing"><i class="ti ti-list-details"></i></button>
+        <!-- THREE VIEWS, as before the 26 Sep redesign: the owner asked for the
+             card view back ("Keep Card view as its own toggle with its own
+             features"), and for the detailed row as it was. -->
+        <span class="viewtoggle" id="viewtoggle" title="Table or card view — remembered on this browser">
+          <button data-view="table" class="on" onclick="setListView('table')" title="Table view"><i class="ti ti-list"></i></button>
+          <button data-view="detailed" onclick="setListView('detailed')" title="Detailed view — Amazon's Manage All Inventory layout: performance, inventory and pricing beside each listing"><i class="ti ti-list-details"></i></button>
+          <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
         </span>
         <!-- UPLOAD TEMPLATE — opens the generation flow (#genflow) above the
              table. Folded by default; this is the only way it opens, so the

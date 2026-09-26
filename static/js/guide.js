@@ -320,18 +320,20 @@ const GUIDES = {
         + "the last one touches Amazon.",
     steps: [
       {n: "1", h: "Put the product in the queue",
-       b: "The queue is the list at the bottom of this page — it is what "
-        + "Generate works from. Two ways to fill it:<br><br>"
-        + "<b>Add a product</b> (the form above the list) — paste the "
-        + "<b>source link</b>, which is the page you would actually BUY from, "
-        + "normally an eBay item. Then the <b>Amazon / ASIN</b> of a competitor "
+       // ONE WAY IN NOW. The "Add a product" form was removed on the owner's
+       // instruction (27 Sep 2026), and "Import from sheet" before that; a
+       // guide that names either sends somebody looking for something gone.
+       b: "The queue is what Generate works from. Press <b>Upload template</b> on "
+        + "the toolbar and drop a spreadsheet (.csv or .xlsx) on the line that "
+        + "opens — <b>Download template</b> gives you the columns. Each row needs "
+        + "the <b>source link</b>, which is the page you would actually BUY from "
+        + "(normally an eBay item), or the <b>Amazon / ASIN</b> of a competitor "
         + "selling something similar: the app reads that listing for its product "
         + "type, its category and the exact Amazon fees, and for nothing else. "
         + "Cost is what you pay the supplier. Leave <b>Sell at</b> empty and the "
         + "app prices it from your cost and Amazon's fees.<br><br>"
-        + "<b>Import from sheet</b> — reads a spreadsheet once and adds its rows "
-        + "to the queue. It never deletes from the queue, and nothing is read "
-        + "from that sheet again afterwards."},
+        + "Rows are <b>added</b> to the queue — a second file joins the first, "
+        + "and nothing is replaced."},
       {n: "2", h: "Generate the drafts",
        b: "<b>Generate</b> creates a listing for every queued product that is not "
         + "in the app yet — title, five bullets, description, search terms and "

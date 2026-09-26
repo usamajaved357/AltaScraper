@@ -160,18 +160,19 @@ except FileNotFoundError:
     print("  (node is not on this machine -- not exercised)")
 
 
-print("\n=== an Amazon catalogue row can be found and ticked like every other row ===")
+print("\n=== the live tile can be found and ticked like every other card ===")
 MT = read("static", "js", "miles_template.js")
 LJ = read("static", "js", "listings.js")
-# THIS WAS ASKED OF THE LIVE TILE (liveTile), which went with the card view on
-# the owner's redesign of 26 Sep 2026. The requirement did not go with it:
-# WITHOUT data-sku A CATALOGUE ROW IS INVISIBLE TWICE OVER -- to Select all, and
-# to toggleSelect's tick-sync -- so it is asked of the row that draws those
-# listings now. The whole function, not a guessed window.
-_row = LJ.split("function liveTableRow(")[1].split("\nfunction ")[0]
-truthy("the catalogue row carries data-sku", 'data-sku="${esc(it.sku' in _row)
-truthy("  and uses the one shared checkbox", "rowSelectBox({sku:" in _row)
-truthy("the retired live tile is gone", "function liveTile(" not in MT)
+# The whole function, not a guessed window: liveTile runs to about 5,000
+# characters and a 4,000-char slice stopped just short of its return, so this
+# asserted against text it had not read.
+_tile = MT.split("function liveTile(")[1].split("\nfunction ")[0]
+# WITHOUT data-sku THIS TILE IS INVISIBLE TWICE OVER: to Select all, and to
+# toggleSelect's tick-sync. The draft tile and the table row have carried it all
+# along; this was the copy that drifted.
+truthy("the catalogue tile carries data-sku", 'data-sku="${esc(it.sku' in _tile)
+truthy("  and uses the one shared checkbox", "rowSelectBox({sku:" in _tile)
+truthy("  rather than spelling its own", 'class="tilesel" ${SELECTED' not in _tile)
 truthy("select-all reads the grid, not ROWS",
        "'#grid [data-sku]'" in LJ)
 _sel = LJ.split("function selectAllVisible(")[1][:700]

@@ -227,7 +227,7 @@ function genflowGenerate(){
   const n = (typeof IQ !== "undefined" && IQ && IQ.rows) ? IQ.rows.length : 0;
   if(!n){
     if(typeof toast === "function"){
-      toast("Nothing queued — drop a template above, or add a product, first.");
+      toast("Nothing queued — press Upload template and drop a spreadsheet first.");
     }
     return;
   }

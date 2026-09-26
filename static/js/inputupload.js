@@ -49,23 +49,27 @@ function _iupLabel(k){ return IUP_LABELS[k] || String(k || ""); }
 /* The drop zone. Rendered into whatever container the Generate screen gives it. */
 function inputUploadPanel(){
   return ''
+  // ONE HORIZONTAL LINE (the owner's instruction, 27 Sep 2026): icon, "Drop a
+  // spreadsheet here", and the template link, on one row at half the height.
+  // The two explanations that had lines of their own -- which files, and that
+  // rows are ADDED -- are on hover; they are still true, just not three lines
+  // tall. The template link stops the click reaching the zone, so it downloads
+  // instead of opening the file picker.
   + '<div class="iup-wrap">'
-  +   '<div class="iup-zone" id="iup_zone"'
+  +   '<div class="iup-zone iup-line" id="iup_zone"'
+  +     ' title=".csv, .tsv or .xlsx — or click to browse. Rows are ADDED to the'
+  +       ' queue; nothing is replaced. Only a source link or an Amazon link is'
+  +       ' needed per row — not both."'
   +     ' ondragover="iupDragOver(event)" ondragleave="iupDragLeave(event)"'
   +     ' ondrop="iupDrop(event)" onclick="iupBrowse()">'
   +     '<input type="file" id="iup_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm"'
   +       ' style="display:none" onchange="iupPicked(this)">'
-  +     '<div class="iup-ico"><i class="ti ti-file-spreadsheet"></i></div>'
-  +     '<div class="iup-big">Drop a spreadsheet here</div>'
-  +     '<div class="iup-sub">.csv, .tsv or .xlsx — or click to browse.'
-  +       ' Rows are <b>added</b> to the queue; nothing is replaced.</div>'
-  +   '</div>'
-  +   '<div class="iup-foot">'
-  +     '<a href="/input/upload/template" class="iup-link"'
+  +     '<i class="ti ti-file-spreadsheet iup-lico"></i>'
+  +     '<span class="iup-big">Drop a spreadsheet here</span>'
+  +     '<span class="iup-grow"></span>'
+  +     '<a href="/input/upload/template" class="iup-link" onclick="event.stopPropagation()"'
   +       ' title="A blank CSV with the column names this understands, and one example row">'
-  +       '<i class="ti ti-download"></i> Download blank template</a>'
-  +     '<span class="iup-hint">Only a source link <b>or</b> an Amazon link is'
-  +       ' needed — not both.</span>'
+  +       '<i class="ti ti-download"></i> Download template</a>'
   +   '</div>'
   +   '<div id="iup_result"></div>'
   + '</div>';

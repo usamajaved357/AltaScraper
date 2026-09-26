@@ -179,11 +179,8 @@ truthy("  with a smaller select", "font-size:10px" in rule(LR, ".lr-sortbar sele
 print("\n=== 7. the product column takes what is left ===")
 falsy("the minimum that caused the gap is gone", ".col-product{ min-width" in LR)
 for sel, w in ((".col-cb{", "28px"), (".col-status{", "100px"),
-               # Owner's redesign, 26 Sep 2026: the fees column was folded into
-               # Pricing, which grew to 165px; Performance to 130px for the
-               # margin/ROI and ad-spend chips moved in from the retired card.
-               (".col-perf{", "130px"), (".col-inv{", "110px"),
-               (".col-price{", "165px"),
+               (".col-perf{", "120px"), (".col-inv{", "110px"),
+               (".col-price{", "145px"), (".col-fees{", "105px"),
                (".col-actions{", "24px")):
     truthy("%s is %s" % (sel.strip("{"), w), "width:" + w in rule(LR, sel))
 truthy("the data columns do not wrap", "white-space:nowrap" in rule(LR, ".col-perf{"))

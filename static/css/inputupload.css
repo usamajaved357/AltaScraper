@@ -39,6 +39,18 @@
 .iup-ico{ font-size:26px; color:var(--ink3,#949aa5); line-height:1; margin-bottom:7px; }
 .iup-zone.iup-over .iup-ico{ color:var(--ok,#4ade80); }
 .iup-big{ font-size:14px; font-weight:600; color:var(--ink,#e8eaed); }
+
+/* ONE HORIZONTAL LINE (the owner's instruction, 27 Sep 2026): icon, words and
+   the template link in a row, at half the old vertical padding (22px -> 11px). */
+.iup-zone.iup-line{
+  display:flex; align-items:center; gap:9px; text-align:left;
+  padding:11px 14px;
+}
+.iup-line .iup-lico{ font-size:18px; color:var(--ink3,#949aa5); }
+.iup-zone.iup-over .iup-lico{ color:var(--ok,#4ade80); }
+.iup-line .iup-big{ font-size:13px; }
+.iup-grow{ flex:1; }
+.iup-line .iup-link{ white-space:nowrap; }
 .iup-sub{ font-size:12px; color:var(--ink2,#9aa3b2); margin-top:4px; line-height:1.6; }
 
 .iup-foot{

@@ -72,43 +72,25 @@ function inputQueueRender(){
       + (IQ.rows.length ? " · " + byHand + " added here, " + bySheet + " from a sheet" : "");
   }
 
-  let h = '<div style="padding:10px 12px">';
+  // THE "ADD A PRODUCT" FORM WAS HERE, and was removed on the owner's
+  // instruction (27 Sep 2026: "Remove the entire form at the bottom ... Delete
+  // the whole section"). Products reach the queue by the spreadsheet drop zone
+  // above. The /input/add route is left in place; nothing on this screen calls
+  // it any more.
 
-  // ---- add a product -------------------------------------------------
-  // The brand card, not a full accent outline. A bright border says "this is
-  // the important thing on the page", and on a screen whose important thing is
-  // Generate, an add-form outlined in the accent colour outshouts it. The
-  // emphasis belongs on the button, which already has it.
-  h += '<div class="panelcard" style="margin-bottom:12px">'
-    +  '<p class="paneltitle" style="font-size:12.5px;line-height:18px;margin-bottom:7px">'
-    +  '<i class="ti ti-plus"></i> Add a product</p>'
-    +  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px">';
-  IQ_COLS.forEach(function(c){
-    h += '<div'+(c.wide?' style="grid-column:span 2"':'')+'>'
-      +  '<div class="cc" style="font-size:10px;margin-bottom:2px">'+_iqEsc(c.t)+'</div>'
-      +  '<input id="iq_new_'+c.k+'" placeholder="'+_iqEsc(c.ph||"")+'" '
-      +  'onkeydown="if(event.key===\'Enter\')inputQueueAdd()" '
-      +  'style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:12px;'
-      +  'border:1px solid var(--line,var(--line2));border-radius:6px;'
-      +  'background:var(--bg,var(--panel2));color:inherit'+(c.num?';text-align:right':'')+'">'
-      +  '</div>';
-  });
-  h += '</div>'
-    +  '<div style="display:flex;gap:8px;align-items:center;margin-top:9px;flex-wrap:wrap">'
-    +  '<button class="db-chip primary" onclick="inputQueueAdd()">'
-    +  '<i class="ti ti-plus"></i> Add to the queue</button>'
-    +  '<span class="cc" style="font-size:11px">Then press <b>Generate</b> above. '
-    +  'Leave <b>Sell at</b> empty and the app prices it from the cost and Amazon’s fees.</span>'
-    +  '</div></div>';
-
-  // ---- what is queued -------------------------------------------------
+  // EMPTY: ONE LINE, and the header's controls (filter, refresh, clear,
+  // generate now, the pre-flight "Check again") are hidden -- they act on a
+  // queue, and there is none. The .iq-empty class does the hiding
+  // (dashboard.css), so they come back the moment something is queued.
+  const wrap = document.getElementById("inputsheetwrap");
+  if(wrap) wrap.classList.toggle("iq-empty", !IQ.rows.length);
   if(!IQ.rows.length){
-    h += '<div class="cc" style="padding:18px;border:1px dashed var(--line2);border-radius:8px;'
-      +  'font-size:12.5px">Nothing queued yet. Add a product above, or bring in a '
-      +  'spreadsheet with <b>Import from sheet</b> — both fill the same queue.</div>';
-    body.innerHTML = h + '</div>';
+    body.innerHTML = '<div class="iq-emptyline"><i class="ti ti-inbox"></i> '
+      + 'No products queued · drop a spreadsheet or click <b>Upload template</b></div>';
     return;
   }
+
+  let h = '<div style="padding:10px 12px">';
 
   h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:760px">'
     +  '<thead><tr>';
@@ -135,25 +117,8 @@ function inputQueueRender(){
   body.innerHTML = h + '</div>';
 }
 
-async function inputQueueAdd(){
-  const p = {};
-  IQ_COLS.forEach(function(c){
-    const el = document.getElementById("iq_new_"+c.k);
-    p[c.k] = (el && el.value || "").trim();
-  });
-  try{
-    const j = await (await fetch("/input/add",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(p)})).json();
-    if(!j.ok){ toast(j.error||"Could not add it"); return; }
-    IQ_COLS.forEach(function(c){
-      const el = document.getElementById("iq_new_"+c.k);
-      if(el) el.value = "";
-    });
-    toast("Added — "+(j.count||0)+" queued");
-    inputQueueLoad();
-  }catch(e){ toast(String(e)); }
-}
+/* inputQueueAdd() -- the "Add a product" form's submit -- went with the form
+ * (the owner's instruction, 27 Sep 2026). */
 
 async function inputQueueSave(id, el){
   if(!el) return;

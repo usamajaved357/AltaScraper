@@ -113,9 +113,7 @@ yes("  and skips a listing with no price", "a fee is a share OF a price" in MR)
 
 print("\n== the resolver answers first, the frozen column second ==")
 _f = LRD[LRD.index("function lrFees(r)"):]
-# Up to its return: since 26 Sep 2026 lrFees draws ONE line inside Pricing
-# rather than a column of rows, but works the figure out exactly as before.
-_f = _f[:_f.index("  return '<div class=\"fee-line\"")]
+_f = _f[:_f.index("return lrDataRow")]
 yes("m.fees_total is preferred", "(m.fees_total != null) ? m.fees_total" in _f)
 yes("  with the stored column as the fallback", "rowFee !== \"\" ? rowFee : null" in _f)
 

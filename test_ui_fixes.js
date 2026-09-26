@@ -27,15 +27,26 @@ function check(label, got, want) {
 function truthy(label, got) { check(label, !!got, true); }
 function falsy(label, got) { check(label, !!got, false); }
 
-console.log("=== the card's status dot went with the card ===");
-// The dot (_statusDot, with _rowHasFlag behind it) was drawn ONLY on the card
-// tile. The card view was retired on the owner's redesign of 26 Sep 2026, so
-// both went with it -- nothing else drew or called them. What the dot had to
-// get right -- ask Amazon rather than trust the stored word -- the status pill
-// below still does, through _shownStatus.
-falsy("the dot is gone with the card", L.includes("function _statusDot"));
-falsy("  and so is its flag helper", L.includes("function _rowHasFlag"));
-truthy("claim risks still reach the row", L.includes("r.claim_flags || []"));
+console.log("=== the dot reports a PROBLEM, not a stored word ===");
+// It coloured straight off r.status, so a listing that went live months ago but
+// whose row still says API_ERROR from a failed attempt before that showed red
+// for ever. The counts along the top already reclassify those as LIVE; the dot
+// did not, so the tiles and the counts disagreed.
+truthy("the dot asks Amazon whether the listing is live",
+       L.includes("live = isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown)"));
+truthy("  a live listing with nothing against it is quiet",
+       L.includes('if(_rowHasFlag(r)) return "var(--warn)";') &&
+       L.includes('return "var(--ink3)";              // quiet'));
+truthy("  and a real flag still shows", L.includes("function _rowHasFlag"));
+truthy("an API error still gets its dot",
+       L.includes('if(isHold(s) || s === "API_ERROR" || s === "ERROR") return "var(--red)";'));
+
+console.log("\n--- and a flag means one of the checks that already run ---");
+// Compliance, restricted types, IP and claim risks -- not a status word.
+truthy("IP risk", L.includes('r.ip_risk || ""'));
+truthy("claim risks", L.includes("r.claim_flags || []"));
+truthy("compliance document demands", L.includes("v.matched && (v.risks || []).length"));
+truthy("restricted product types", L.includes("rs.matched &&"));
 
 console.log("\n--- the status pill agrees with the dot ---");
 truthy("the pill shows what is true today", L.includes("_statusPill(_shownStatus(r))"));

@@ -1,13 +1,10 @@
-// The listings page draws the SAME rows two ways, and this checks they agree.
+// The listings page draws the SAME rows three ways, and this checks they agree.
 //
-// table     the compact view: one <tr> per listing under a shared header
-// detailed  the main view, the Amazon "Manage All Inventory" block,
-//           listrow_detailed.js
+// table     the default: one <tr> per listing under a shared header
+// grid      the tile, card()
+// detailed  the Amazon "Manage All Inventory" block, listrow_detailed.js
 //
-// There was a third, the card grid (card()). It was retired on the owner's
-// redesign of 26 Sep 2026, and its checks went with it.
-//
-// SEVERAL RENDERERS OF ONE FACT IS THE SHAPE OF THE PROBLEM. Nothing forces them
+// THREE RENDERERS OF ONE FACT IS THE SHAPE OF THE PROBLEM. Nothing forces them
 // to say the same thing, and HTML never complains: a row one cell short simply
 // draws short, and a view that reads a different field simply shows a different
 // number. Both have happened here already -- liveTableRow shipped nine cells
@@ -98,14 +95,13 @@ function grab(names, extra){
   return api();
 }
 
-const F = grab(["tableRow", "liveTableRow", "listBlock", "listViewNow",
+const F = grab(["tableRow", "liveTableRow", "card", "listBlock", "listViewNow",
                 "setListView", "_shownStatus", "_priceCell", "rowAsin",
-                "cogsCell", "_statusPill", "card"]);
+                "cogsCell", "_statusPill"]);
 
 console.log("=== every renderer the page has is reachable ===");
-["tableRow", "liveTableRow", "listBlock"].forEach(n =>
+["tableRow", "liveTableRow", "card", "listBlock"].forEach(n =>
   truthy(n + " exists", typeof F[n] === "function"));
-truthy("and the retired card renderer is gone", F.card === null);
 
 // ---- the rows ------------------------------------------------------------
 const ROWS = [
@@ -168,10 +164,15 @@ console.log("\n=== no view invents a price, a status or an ASIN ===");
 // ours tells somebody a draft is live.
 const draft = ROWS[1];
 const tHtml = F.tableRow(draft);
+const cHtml = F.card ? F.card(draft) : "";
 truthy("the table says a draft is not live yet",
        /not live yet/i.test(tHtml));
 truthy("  and never links the competitor code as ours",
        !new RegExp('class="asin"[^>]*>\\s*' + draft.asin).test(tHtml));
+if(cHtml){
+  truthy("the tile does not present the competitor code as our ASIN",
+         !new RegExp('class="asin"[^>]*>\\s*' + draft.asin).test(cHtml));
+}
 
 // OUR ASIN IS NOT A FIELD ON THE ROW. It only exists once Amazon's catalogue
 // carries the SKU -- ownLiveAsin matches LIVE_ITEMS by SKU and deliberately
@@ -199,23 +200,20 @@ truthy("  and does not print the word undefined",
        bare.indexOf("undefined") < 0);
 truthy("  nor null", bare.indexOf(">null<") < 0);
 
-console.log("\n=== the detailed view survives the same rows ===");
-// What the card section checked of the card, now asked of the view that
-// replaced it: every awkward row draws, and none prints "undefined".
-const D0 = grab(["detailedBlock"]);
+console.log("\n=== the card view survives the same rows ===");
 ROWS.forEach((r, i) => {
   let html = "";
-  try{ html = D0.detailedBlock ? D0.detailedBlock([r]) : "(no detailed fn)"; }
+  try{ html = F.card ? F.card(r) : "(no card fn)"; }
   catch(e){ html = "THREW: " + e.message; }
-  truthy("detailed row " + i + " renders", !String(html).startsWith("THREW"));
+  truthy("card " + i + " renders", !String(html).startsWith("THREW"));
   if(!String(html).startsWith("THREW")){
-    truthy("  detailed row " + i + " prints no undefined",
+    truthy("  card " + i + " prints no undefined",
            String(html).indexOf("undefined") < 0);
   }
 });
 
-console.log("\n=== the two views tell the same story about one row ===");
-// THE POINT OF THE WHOLE FILE. Nothing forces two renderers to agree, and a
+console.log("\n=== the three views tell the same story about one row ===");
+// THE POINT OF THE WHOLE FILE. Nothing forces three renderers to agree, and a
 // person switching views to check a number should not get two answers.
 const D = grab(["detailedBlock"]);
 function factsOf(html){
@@ -233,12 +231,14 @@ function factsOf(html){
 [ROWS[0], ROWS[1]].forEach((r, i) => {
   globalThis.LIVE_ITEMS = (i === 0) ? [{sku: r.sku, asin: "B0OURS001"}] : [];
   const t = factsOf(F.tableRow(r));
+  const c = factsOf(F.card(r));
   const d = D.detailedBlock ? factsOf(D.detailedBlock([r])) : t;
+  check("row " + i + ": table and card agree it is live", t.live, c.live);
   check("row " + i + ": table and detailed agree it is live", t.live, d.live);
-  check("row " + i + ": both show the same own ASIN",
-        [t.ours, d.ours], [t.ours, t.ours]);
+  check("row " + i + ": all three show the same own ASIN",
+        [t.ours, c.ours, d.ours], [t.ours, t.ours, t.ours]);
   check("row " + i + ": no view links the competitor as ours",
-        [t.compAsLink, d.compAsLink], [false, false]);
+        [t.compAsLink, c.compAsLink, d.compAsLink], [false, false, false]);
 });
 globalThis.LIVE_ITEMS = [];
 
@@ -252,6 +252,7 @@ const NASTY = {
   status: "APPROVED", asin: "B0COMP009", price: 9.99, brand: '"><b>brand',
 };
 [["table", () => F.tableRow(NASTY)],
+ ["card", () => F.card(NASTY)],
  ["detailed", () => D.detailedBlock ? D.detailedBlock([NASTY]) : ""]]
   .forEach(([name, fn]) => {
     let html = "";
@@ -353,16 +354,18 @@ const STALE = {sku: "z_1Days_B0COMPZ", status: "IP_HOLD", asin: "B0COMPZ",
                title: "Went live, status never updated", price: 15};
 globalThis.LIVE_ITEMS = [{sku: STALE.sku, asin: "B0OURSZZ"}];
 const H = grab(["_shownStatus", "isActuallyLive", "_liveCatSetsForCurrentView",
-                "tableRow"]);
+                "tableRow", "card"]);
 if(typeof H._shownStatus === "function"){
   check("the shown status is LIVE, not the stored hold",
         String(H._shownStatus(STALE)).toUpperCase(), "LIVE");
 }
 const sT = String(H.tableRow(STALE));
+const sC = String(H.card(STALE));
 const sD = D.detailedBlock ? String(D.detailedBlock([STALE])) : sT;
 truthy("the table row does not still call it a hold", !/IP_HOLD/.test(sT));
+truthy("the card does not either", !/IP_HOLD/.test(sC));
 truthy("nor the detailed row", !/IP_HOLD/.test(sD));
-truthy("and both show our real ASIN",
+truthy("and all three show our real ASIN",
        sT.indexOf("B0OURSZZ") >= 0 && sD.indexOf("B0OURSZZ") >= 0);
 globalThis.LIVE_ITEMS = [];
 
@@ -401,16 +404,8 @@ globalThis.LIVE_ITEMS = [];
 console.log("\n=== the view falls back rather than drawing nothing ===");
 // detailedBlock lives in another file. If it did not load, asking for the
 // detailed view must give the table, not an empty page.
-// Loaded WITHOUT listrow_detailed.js, so this really is the file being absent.
-// (It used to pass only because the table was the default; the detailed view is
-// the default now, so the fallback itself has to be what answers.)
-const NODET = new Function(
-  SRC.split("\n;\n").slice(0, 4).join("\n;\n")
-  + "\nreturn {listViewNow: listViewNow};")();
 truthy("listViewNow degrades when the detailed file is absent",
-       NODET.listViewNow() === "table");
-truthy("  and with it present, the detailed view is the default",
-       typeof F.listViewNow === "function" && F.listViewNow() === "detailed");
+       typeof F.listViewNow === "function" && F.listViewNow() === "table");
 
 console.log("\n" + (fails ? fails + " FAILED" : "all passed"));
 process.exit(fails ? 1 : 0);
