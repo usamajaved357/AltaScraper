@@ -167,8 +167,13 @@ truthy("  and our own checks to theirs", "metricFilter('blocked')" in LJ)
 # exists to protect is intact; only the union tile went.
 truthy("there is no 'blocked' tile, because nothing blocks",
        '"Blocked or errored", "holds"' not in LJ)
+# The middle tile is LABELLED "Drafts" now, to match the word the row badge
+# shows (liststatus.js maps GENERATED -> DRAFT). Its FILTER KEY is still
+# "generated", which is what this assertion actually cares about: the key is
+# what metricFilter() sends and what passFilter() matches, so a relabel must not
+# reach it. Asserted as the (label, key) pair so a change to either is visible.
 truthy("  the four statuses are what the tiles count now",
-       '"Queued", "queued"' in LJ and '"Generated", "generated"' in LJ
+       '"Queued", "queued"' in LJ and '"Drafts", "generated"' in LJ
        and '"Submitted", "submitted"' in LJ)
 truthy("and the difference is explained where it is decided",
        "Nothing has reached Amazon" in LJ)

@@ -1428,8 +1428,25 @@ function summary(){
     // in two tiles above one list.
     const _gen = c.GENERATED + c.NEEDS_REVIEW + c.HOLD + c.ERROR;
     const _approved = c.APPROVED + c.API_READY;
+    // "Drafts", not "Generated" -- the same word the row badge uses now
+    // (liststatus.js maps GENERATED -> DRAFT), so the tile and the rows it
+    // counts say the same thing. GENERATED named the step that produced the
+    // row, which is of no interest to anyone reading the screen.
+    //
+    // THE LABEL ONLY. The third argument is the filter key and stays
+    // "generated": it is what metricFilter() sends and what passFilter() and
+    // the status dropdown's <option value> both match on, so renaming it would
+    // break the click rather than relabel it.
+    //
+    // NOTE THE AMBIGUITY THIS CREATES, since it is deliberate and chosen: the
+    // TAB is also called Drafts and is wider -- it holds queued, generated and
+    // submitted rows together -- while this tile counts only the generated
+    // ones (plus the three unmigrated words folded in above). So "Drafts 12"
+    // can sit inside a Drafts tab showing 30 rows. The owner asked for the
+    // tile to match the badge, and matching the badge is the more useful of
+    // the two consistencies: the badge is on every row you read.
     tiles = tile(_n(c.QUEUED), "Queued", "queued", "var(--ink3)")
-          + tile(_n(_gen), "Generated", "generated", "var(--gold)")
+          + tile(_n(_gen), "Drafts", "generated", "var(--gold)")
           + tile(_n(_approved), "Approved", "approved", "var(--ok)")
           + tile(_n(c.SUBMITTED), "Submitted", "submitted", "var(--ok)");
   }else{

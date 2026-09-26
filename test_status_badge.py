@@ -117,6 +117,20 @@ check("the table passes the SHOWN status", "_statusPill(_shownStatus(r))" in li,
 check("_shownStatus returns LIVE when Amazon confirms it",
       'return "LIVE"' in li.split("function _shownStatus")[1].split("\n}")[0], True)
 
+print("\n=== the tile that counts those rows says the same word ===")
+# A tile reading "Generated" above rows badged DRAFT is the same drift as the
+# drawer's, one level up. The LABEL changes; the filter key must not.
+tiles = li.split("tiles = tile(")[1].split("}else{")[0]
+check("the tile is labelled Drafts", '"Drafts", "generated"' in tiles, True)
+check("  and no tile still says Generated", '"Generated"' in tiles, False)
+check("the filter key is untouched, so the click still works",
+      '"generated"' in tiles, True)
+check("  metricFilter still receives a key, not a label",
+      "metricFilter('\" + filter + \"')" in li, True)
+# QUEUED keeps its own tile and its own word, for the same reason it keeps its
+# own badge: nothing has been generated yet, so it is not a draft.
+check("Queued is still its own tile", '"Queued", "queued"' in tiles, True)
+
 print("\n=== the detail line underneath is still accurate ===")
 # The spec wanted "Amazon reviewing -- may need action within 48h" for the error
 # state. API_ERROR means Amazon REJECTED it synchronously with reasons: nothing
