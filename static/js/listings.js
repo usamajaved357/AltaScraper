@@ -221,13 +221,19 @@ async function batchGenerate(kind){
   // pressed Regenerate on selected rows and were taken to a screen showing
   // nothing. Staying put is both the fix and what the retirement requires --
   // there is no "generate" section to navigate to any more.
-  const log=document.getElementById("log"); if(log){ log.style.display="block"; log.textContent="Starting regeneration for "+skus.length+" SKU(s)…\n"; }
-  try{
-    const es=new EventSource("/run/regen?skus="+encodeURIComponent(skus.join(",")));
-    es.onmessage=e=>{ if(log){ log.textContent+=e.data+"\n"; log.scrollTop=log.scrollHeight; } };
-    es.addEventListener("end",()=>{ es.close(); showStop(false); loadRows(); toast("Regeneration finished"); });
-    showStop(true);
-  }catch(e){ toast("Could not start: "+e); }
+  //
+  // THROUGH runMode, THE ONE PLACE A RUN IS STARTED. This opened its own
+  // EventSource, and so missed everything runMode does:
+  //   * it sent no account, so /run/regen rebuilt the copy on whichever account
+  //     the server last had open -- the bug runMode was fixed for;
+  //   * it never set ES, so the Stop entry in the run menu (genflow.js asks ES)
+  //     never appeared while it ran;
+  //   * and a second press while one was streaming started a second run,
+  //     because runMode's "a run is already streaming" refusal is keyed on ES.
+  // Not genflowGenerate(): that generates the upload QUEUE and ignores the
+  // selection. It is itself a thin wrapper over runMode, which is what matters.
+  if(typeof runMode === "function") runMode("regen", skus);
+  else toast("Could not start: the run controls did not load — reload the page.");
 }
 
 async function batchAutoGenerate(kind){
