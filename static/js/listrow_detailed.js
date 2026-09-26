@@ -10,7 +10,7 @@
  *
  *     rowAsin(r)      OUR asin vs the competitor's -- never confused, see below
  *     _rowImages(r)   the picture
- *     _dwCost(r)      cost: the typed COGS, else the SKU's own price prefix
+ *     _dwCost(r)      cost: what cogsOf() resolves (no SKU-prefix fallback)
  *     lsStatusOf(r)   the status word, in the four-status vocabulary
  *     lsWarnings(r)   the warning count and its severity
  *     rowSelectBox(r) the batch-actions checkbox, with its existing wiring

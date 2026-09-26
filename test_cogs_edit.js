@@ -124,5 +124,23 @@ truthy("bulk goes through /cogs/upload_sheet", /"\/cogs\/upload_sheet"/.test(src
 check("  and nothing here writes to the listings store directly",
       /\/edit"/.test(src), false);
 
+console.log("\n=== the product page's Cost badge asks the same resolver ===");
+// _dwCost (listings.js) draws the Cost badge on the product page and the
+// drawer. It kept the SKU-prefix fallback after cogsOf dropped it, so the
+// badge printed a cost on rows the profit beside it treated as having none.
+{
+  const LS = fs.readFileSync(path.join(__dirname, "static/js/listings.js"), "utf8");
+  const m = /function _dwCost\(r\)\{[\s\S]*?\n\}/.exec(LS);
+  truthy("_dwCost is found in listings.js", m);
+  const dwCost = m ? new Function("cogsOf", "CUR_SYMBOL", m[0] + "; return _dwCost;")(
+                       api.cogsOf, "£") : () => "?";
+  check("  a generated SKU with no set cost shows no cost",
+        dwCost({sku: "8.00_3Days_B0G1K5B7QS"}), "");
+  check("  a stored cost is shown", dwCost({sku: "8.00_3Days_B0G1K5B7QS", cogs: 5.5}), "£5.50");
+  api.LOCAL["X_SKU"] = 3;
+  check("  a cost typed this session wins", dwCost({sku: "X_SKU", cogs: 9}), "£3.00");
+  delete api.LOCAL["X_SKU"];
+}
+
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

@@ -2521,15 +2521,20 @@ function _dwTld(r){
            AE:"ae", SA:"sa", IN:"in", JP:"co.jp", BR:"com.br"})[m] || "co.uk";
 }
 
-/* WHAT THE STOCK COST, IF WE ACTUALLY KNOW.
- * The SKU carries it in the price_days_ASIN form (8.00_3Days_B0...), and the
- * row may carry a typed COGS that overrides it. Returns "" when neither is
- * there -- a made-up cost would make the profit beside it a lie. */
+/* WHAT THE STOCK COST, IF WE ACTUALLY KNOW -- as cogsOf() says (cogs.js).
+ *
+ * This used to fall back to the number at the front of the SKU
+ * (8.00_3Days_B0...), after cogsOf() had stopped doing exactly that on the
+ * owner's word ("lets remove the cogs from sku things entirely"). So the
+ * product page's and drawer's Cost badge printed a figure on rows the rest of
+ * the app, and the profit beside it, treat as having no cost at all. One
+ * resolver now (Rule 12): a cost typed this session (COGS_LOCAL), else the
+ * row's resolved cogs, else "" -- a made-up cost would make the profit beside
+ * it a lie. */
 function _dwCost(r){
-  const typed = String(r.cogs == null ? "" : r.cogs).replace(/[^0-9.]/g, "");
-  if(typed) return CUR_SYMBOL + typed;
-  const m = /^([0-9]+(?:\.[0-9]+)?)_/.exec(String(r.sku || ""));
-  return m ? (CUR_SYMBOL + m[1]) : "";
+  const c = (typeof cogsOf === "function") ? cogsOf(r) : {cost: null};
+  if(c.cost === null || c.cost === undefined || !isFinite(Number(c.cost))) return "";
+  return CUR_SYMBOL + Number(c.cost).toFixed(2);
 }
 
 /* THE THREE NUMBERS AT THE TOP, AND WHERE EACH ONE COMES FROM.
