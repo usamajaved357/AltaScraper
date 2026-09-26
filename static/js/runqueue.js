@@ -150,6 +150,10 @@ function _rqRefreshRow(sku){
         }
       }
     }catch(e){}
+    // AND THE PRODUCT PAGE, which was left showing the status and "Amazon would
+    // refuse this listing" from before the run. pdpAfterAction does nothing
+    // unless the page is showing this SKU (pdp.js).
+    if(typeof pdpAfterAction === "function") pdpAfterAction(sku);
   }, 800);
 }
 

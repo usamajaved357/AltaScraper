@@ -887,6 +887,10 @@ async function delRow(sku, row, btn){
       toast(a.ok ? ("Deleted from Amazon and removed here" + stopped)
                  : (a.error ? ("Removed here — Amazon: " + a.error)
                             : "Draft removed (it was not on Amazon)"));
+      // A PRODUCT PAGE LEFT OPEN ON A DELETED LISTING is showing something that
+      // no longer exists. Close it, back to the list, before the list reloads.
+      if(typeof PDP_SKU !== "undefined" && String(PDP_SKU) === String(sku)
+         && typeof pdpClose === "function"){ try{ pdpClose(); }catch(e){} }
       loadRows();
     }
     // AND SAY WHY. "Delete failed:" with an empty reason after it is what a

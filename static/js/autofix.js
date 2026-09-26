@@ -205,7 +205,14 @@ async function _afTick(){
   _afRender(job);
   if(job.status !== "running"){
     if(AF_POLL){ clearInterval(AF_POLL); AF_POLL = null; }
-    try{ loadRows(); }catch(e){}
+    // Then the product page, if it is showing one of the fixed listings: after
+    // the reload lands, or its list rows (no r.identifier) would overwrite the
+    // re-read (pdp.js pdpAfterAction).
+    Promise.resolve().then(function(){ return loadRows(); }).catch(function(){})
+      .then(function(){
+        if(typeof pdpAfterAction === "function")
+          (job.skus || []).forEach(function(s){ pdpAfterAction(s); });
+      });
     try{ _autoFixSaveLog("server", _afTraceText(job), (job.skus||[]).length + " skus"); }catch(e){}
   }
 }

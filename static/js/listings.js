@@ -1522,6 +1522,8 @@ async function pullLiveRow(sku, btn){
     }catch(e){}
     try{ render(); }catch(e){}
     if(typeof DRAWER_SKU!=="undefined" && String(DRAWER_SKU)===String(sku)){ try{ openDrawer(sku); }catch(e){} }
+    // The product page too -- the "..." menu there is where this is pressed.
+    if(typeof pdpAfterAction === "function") pdpAfterAction(sku);
   }catch(e){
     toast("Pull failed: "+((e&&e.message)||e));
   }finally{

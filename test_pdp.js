@@ -707,6 +707,22 @@ console.log("\nthe page is refreshed after an action, not left stale");
   if(savedAE) Object.defineProperty(globalThis.document, "activeElement", savedAE);
   else delete globalThis.document.activeElement;
   ctx.pdpRefreshChecks = savedRC;
+
+  // Every action that changes a listing tells the product page when it is done.
+  const strip = s => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const RQS = strip(fs.readFileSync("static/js/runqueue.js", "utf8"));
+  const rqFn = (/function _rqRefreshRow\(sku\)\{[\s\S]*?\n\}/.exec(RQS) || [""])[0];
+  truthy("  Preview and Submit: the finished run re-reads the page",
+         /pdpAfterAction\(sku\)/.test(rqFn));
+  const afFn = (/async function _afTick\(\)\{[\s\S]*?\n\}/.exec(strip(AUTOFIX)) || [""])[0];
+  truthy("  Auto-fix: after the reload, each fixed listing",
+         /loadRows\(\)[\s\S]*pdpAfterAction\(s\)/.test(afFn));
+  const plFn = (/async function pullLiveRow\([\s\S]*?\n\}/.exec(strip(LISTINGS)) || [""])[0];
+  truthy("  Pull live images", /pdpAfterAction\(sku\)/.test(plFn));
+  const MT = strip(fs.readFileSync("static/js/miles_template.js", "utf8"));
+  const delFn = (/async function delRow\([\s\S]*?\n\}/.exec(MT) || [""])[0];
+  truthy("  Delete closes the page on the deleted listing, before the reload",
+         /pdpClose\(\)[\s\S]*loadRows\(\)/.test(delFn));
 }
 
 console.log("\n%d failed", fails);
