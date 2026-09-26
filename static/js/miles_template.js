@@ -1,4 +1,4 @@
-﻿// ===== Miles template main-image builder (overlay text on blank template) =====
+// ===== Miles template main-image builder (overlay text on blank template) =====
 let MILES_TPLS = null;
 async function _loadMilesTpls(){
   if(MILES_TPLS) return MILES_TPLS;
@@ -693,8 +693,11 @@ function render(){
   // listings?", measured at 40 rows in the first and 7 in the second. The
   // captions between them went when the separation was rejected; the cards did
   // not. listBlocks() draws the groups under one header.
+  // Amazon's catalogue rows name their own row builder, liveTableRow. They used
+  // to name liveTile, the card, which the table then swapped for liveTableRow;
+  // the card is gone, so the row builder is named directly.
   let liveHtml  = listBlocks([{rows: liveRows},
-                              {rows: liveCatalog, fn: liveTile}]);
+                              {rows: liveCatalog, fn: liveTableRow}]);
   const claimedHtml = claimedRows.length
     ? ('<details class="foldgroup"><summary>'
        + '<i class="ti ti-alert-triangle"></i> ' + claimedRows.length
@@ -1707,184 +1710,12 @@ async function loadAllMarketplaces(force, opts){
 // the patio heater was live and selling for months before Amazon asked for its
 // BS EN 60335 report. The chip states the count on the tile; clicking it lists the
 // documents. Server attaches it.compliance in /live/catalog.
-function liveComplianceChip(it){
-  const c = it.compliance; if(!c || !(c.risks||[]).length) return "";
-  const high = (c.risks||[]).some(x=>x.risk==="HIGH");
-  const tone = high ? "tone-bad" : "tone-warn";
-  const names = (c.risks||[]).map(x=>x.label).join(", ");
-  return `<span class="profchip ${tone}" style="cursor:pointer"
-    title="${esc(names)} — ${c.doc_count} document(s) Amazon can request for this live listing. Click for the list."
-    onclick="event.stopPropagation();showLiveCompliance('${esc(it.sku||'')}')"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`;
-}
-window.showLiveCompliance = function(sku){
-  const it = (LIVE_ITEMS||[]).find(x=>String(x.sku)===String(sku));
-  const c = it && it.compliance;
-  if(!c){ toast("No compliance requirements recorded for this listing."); return; }
-  const body = (c.risks||[]).map(function(x){
-    const docs = (x.docs||[]).map(d=>`<li>${esc(d)}</li>`).join("");
-    return `<div class="restrow ${x.risk==="HIGH"?'red':'amber'}">
-      <div><span class="risk ${x.risk==="HIGH"?'hi':'med'}">${esc(x.risk)} RISK</span> <b>${esc(x.label)}</b></div>
-      <div class="cc" style="margin-top:3px">${esc([x.reason,x.regulator].filter(Boolean).join(" · "))}</div>
-      <div class="cc" style="margin-top:4px"><b>Docs Amazon can request:</b><ul style="margin:4px 0 0 16px;padding:0">${docs}</ul></div>
-    </div>`;
-  }).join("");
-  // Uses the app's existing modal convention: .modalwrap (fixed overlay) toggled
-  // with .open, containing a .modal box with an .x close button.
-  let m = document.getElementById("livecompmodal");
-  if(!m){
-    m = document.createElement("div"); m.id="livecompmodal"; m.className="modalwrap";
-    m.addEventListener("click", function(ev){ if(ev.target===m) m.classList.remove("open"); });
-    document.body.appendChild(m);
-  }
-  m.innerHTML = `<div class="modal" style="max-width:640px">
-    <button class="x" onclick="document.getElementById('livecompmodal').classList.remove('open')">×</button>
-    <h3>Compliance requirements</h3>
-    <div class="cc" style="margin-bottom:10px">${esc(it.title||sku)}</div>
-    <div class="cc" style="margin-bottom:10px">This listing is already live. These are the documents Amazon can ask for at any time — being live is not evidence that nothing is owed.</div>
-    <div class="restlist">${body}</div></div>`;
-  m.classList.add("open");
-};
-function liveTile(it){
-  // real status from the report (Active/Inactive/Incomplete), not a hardcoded LIVE
-  var st=(it.status||"Active").trim();
-  var stl=st.toLowerCase();
-  // check inactive/suppressed/incomplete BEFORE active ("inactive" contains "active")
-  var tone = (stl.indexOf("inactive")>=0||stl.indexOf("suppress")>=0)?"tone-bad"
-          : stl.indexOf("incomplete")>=0?"tone-warn"
-          : stl.indexOf("active")>=0?"tone-ok"
-          : "";
-  var price = it.price ? (CUR_SYMBOL+esc(String(it.price).replace(/^[A-Z]{3}\s?/,''))) : '';
-  // image slot — filled from the real getListingsItem image (fetched in batch after render)
-  var sidv = sid(it.sku||it.asin||'');
-  var imgHtml = it.img
-    ? `<img src="${esc(thumbUrl(it.img,120))}" loading="lazy" decoding="async">`
-    : (it._noImg
-        ? `<div class="noimgmsg"><i class="ti ti-photo-off"></i><span>No image uploaded</span></div>`
-        : `<i class="ti ti-cloud-check" id="liveimg_${sidv}"></i>`);
-  // qty: show value, or FBA/— when the report omits it
-  var qtyHtml = (it.qty!==undefined && it.qty!=='' && it.qty!==null) ? ('qty '+esc(it.qty)) : '<span class="cc">qty —</span>';
-  // profit margin chip
-  var profHtml = '';
-  if(it.profit){
-    // Traffic light on margin health, NOT gold: gold says "this is money", this
-    // chip says whether the money is any good. The colours used to be inline hex
-    // with alpha suffixes appended (mcol+"55"), which forced them to be literal
-    // and locked them out of the theme; as classes they follow the Orbit tokens.
-    var mcls = it.profit.margin>=25?'tone-ok':(it.profit.margin>=10?'tone-warn':'tone-bad');
-    // The chip said "14.6%" and never said of WHAT. Margin is the share of the
-    // sale price you keep; ROI is what the cash returned. They are different
-    // numbers answering different questions -- margin says whether the price is
-    // healthy, ROI says what to buy more of -- so both are shown and both are
-    // labelled, rather than one bare percentage that could be either.
-    var roiHtml = (it.profit.roi === null || it.profit.roi === undefined) ? ''
-      : ` · <span title="Return on the cash: profit ÷ what the stock cost">ROI ${it.profit.roi}%</span>`;
-    profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}
-Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale price you keep">margin ${it.profit.margin}%</span>${roiHtml} · ${CUR_SYMBOL}${it.profit.net}</span>`;
-  } else {
-    profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs('${esc(it.sku||'')}','${esc(String(it.price||''))}')">+ COGS</span>`;
-  }
-  // fulfillment (FBA/FBM) + handling time + delivery estimate
-  var fch = it.fulfillment||"";
-  var fmode = /FBA|AMAZON/i.test(fch) ? "FBA" : (fch ? "FBM" : "");
-  var ftone = fmode==="FBA" ? "tone-info" : "tone-alt";
-  var shipHtml = "";
-  if(fmode){
-    var fmt = (d)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
-    var hd, transit;
-    if(it.handling!==undefined && it.handling!==null && it.handling!=="" && !isNaN(parseInt(it.handling))){
-      hd = parseInt(it.handling);
-      transit = fmode==="FBA" ? 2 : 5;
-    } else if(fmode==="FBA"){
-      hd = 0; transit = 2;   // FBA: typically same/next-day handling + ~2d transit
-    } else {
-      hd = null;             // FBM with unknown handling
-    }
-    if(hd!==null){
-      var shipBy = new Date(Date.now()+hd*864e5);
-      var delBy  = new Date(Date.now()+(hd+transit)*864e5);
-      // SAY THE NUMBER, not only the date it implies.
-      //     "reflect true handling time in front of the listings"
-      // This line showed "ships by Tue 25 Aug" and left the reader to work
-      // backwards to the handling time -- and for FBA the 0 days was an
-      // ASSUMPTION this code makes, not something Amazon reported, which the
-      // date hid completely. Both are stated now.
-      var _handTxt = (it.handling!==undefined && it.handling!==null && it.handling!=="" && !isNaN(parseInt(it.handling)))
-        ? `<span class="handlive" title="Amazon's own handling time for this listing — what buyers are promised.">⏱ ${hd}d handling</span> · `
-        : `<span class="cc" title="Amazon did not report a handling time for this listing. FBA usually ships same or next day, so ${hd} days is assumed here — it is not Amazon's figure.">⏱ ~${hd}d handling (assumed)</span> · `;
-      shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="fmode ${ftone}">${fmode}</span> `+
-                 _handTxt +
-                 `<span title="When it leaves the warehouse if ordered today">📦 ships by ${fmt(shipBy)}</span> · `+
-                 `<span title="Estimated arrival for the customer">🚚 delivery ~${fmt(delBy)}</span>`+
-                 `${it.ship_group?(' · <span class="cc" title="Shipping template">'+esc(it.ship_group)+'</span>'):''}</div>`;
-    } else {
-      shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="fmode ${ftone}">${fmode}</span> <span class="cc">handling time not set</span>${it.ship_group?(' · '+esc(it.ship_group)):''}</div>`;
-    }
-  } else {
-    shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="cc">fulfillment loading…</span></div>`;
-  }
-  // data-sku, WHICH THIS TILE ALONE DID NOT CARRY. Two things depend on it and
-  // both were quietly broken for Amazon's catalogue tiles:
-  //   * toggleSelect syncs every element for a SKU by data-sku, so ticking one
-  //     of these never applied the selected styling;
-  //   * "Select all" reads the grid back through it, and these tiles are MOST
-  //     of the Live on Amazon view -- which is why only the two listings that
-  //     also exist as app rows could ever be selected there.
-  // The draft tile and the table row have carried it all along; this is the
-  // copy that drifted. The checkbox itself is rowSelectBox now, for the same
-  // reason its buttons became rowActions: one definition, not three.
-  // The `sel` class the same way the draft tile does it, so a redraw does not
-  // un-highlight a tile that is still ticked -- toggleSelect sets it live, but
-  // render() rebuilds the HTML from scratch and would drop it.
-  return `<div class="tile live ${SELECTED.has(String(it.sku||'')) ? 'sel' : ''}" data-sku="${esc(it.sku||'')}" title="On Amazon — status: ${esc(st)}">
-    ${rowSelectBox({sku: it.sku||''}, 'tilesel')}
-    <!-- CLICKING THE CARD OPENS THE LISTING.
-         "we can directly edit the listing by clicking on the product card"
-         openLiveListing (listings.js) decides where: the full-screen product
-         page when this app holds a row for the SKU, exactly as a draft card
-         does, and optimizeLive when it does not -- some catalogue rows were
-         never made here and have nothing local to open. Same gesture, whichever
-         kind of card is under the cursor. -->
-    <div class="tileimg ${it.asin?'':'noimg'}" style="cursor:pointer"
-         onclick="openLiveListing('${esc(it.asin||'')}','${esc(it.sku||'')}')">${imgHtml}</div>
-    <div class="tilebody" style="cursor:pointer"
-         onclick="openLiveListing('${esc(it.asin||'')}','${esc(it.sku||'')}')">
-      <div class="tiletitle">${esc(it.title)||'<span class="cc">(no title in report)</span>'}</div>
-      <div class="tilemeta">${_priceCell(
-          {sku: it.sku, title: it.title,
-           price: String(it.price || "").replace(/^[A-Z]{3}\s?/, "")},
-          "tileprice", true)}<span class="tilesku">${esc(it.sku||'')}</span></div>
-      <!-- The brand, on every card, from the one helper the draft cards use. -->
-      <div class="tilefacts">${_brandCell(it)}</div>
-      <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> <span
-        class="livestatus" style="opacity:.75"
-        title="Amazon has this listing and this app holds no draft of it. Price, images and optimisation all still work from here; Sync brings the full listing in so it can be edited like the rest."
-        >no draft</span> ${
-        it.asin
-          ? `<a href="${esc(_dpUrl(it.asin))}" target="_blank" rel="noopener"
-                title="Open this listing on Amazon" onclick="event.stopPropagation()"
-                style="color:var(--accent2)">${esc(it.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></a>`
-          : ''
-      } · ${qtyHtml}</div>
-      ${shipHtml}
-      <div style="margin-top:5px">${profHtml}${liveComplianceChip(it)}</div>
-    </div>
-    <!-- ONE ACTION ROW FOR BOTH KINDS OF CARD.
-         "i see two types of cards style dont make them different make them
-          same and also remove the unnecessary buttons from the cards".
-         These buttons were written out here by hand with text labels while the
-         drafts cards used rowActions() with icons, so the same grid showed two
-         designs side by side (his screenshot 84). rowActions is the one
-         definition now (Rule 12); adding a button to the app adds it to both
-         kinds of card or to neither, and the "pull live images" button it used
-         to carry is gone because Sync already does that for the whole account.
-         live:true is passed because a tile FROM Amazon's catalogue is live by
-         definition -- there is no app row for isAmazonLive() to read. -->
-    <div class="tileacts">${rowActions(
-        {sku: it.sku, asin: it.asin, title: it.title,
-         price: String(it.price || "").replace(/^[A-Z]{3}\s?/, ""), row: 0},
-        "ib", {live: true})}</div>
-  </div>`;
-}
+/* liveComplianceChip() removed with the card view: nothing calls it any more. */
+/* showLiveCompliance() removed with the card view: nothing calls it any more. */
+/* liveTile() -- THE CARD FOR A LISTING AMAZON HAS AND THIS APP HOLDS NO DRAFT OF
+ * -- WAS HERE, and went with the card view on the owner's redesign. Those rows
+ * are drawn by liveTableRow (listings.js) in the table and by the detailed row
+ * builder in the detailed view, as they already were in both. */
 // THE FILE GOES TO THE SERVER, WHICH KNOWS HOW TO READ IT.
 //
 // This used to split every line on commas, which is not what a CSV is. A product
@@ -1989,20 +1820,7 @@ async function fetchLiveImages(){
   }
   _imgFetchBusy=false;
 }
-async function setCogs(sku, price){
-  const cur=await uiPrompt("Enter your cost (COGS) for SKU "+sku+"\n\nThis is your total cost including shipping. Margin = (price − COGS − ~15% Amazon referral) / price.","");
-  if(cur===null) return;
-  try{
-    const j=await (await fetch("/cogs/set",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({id:CUR_ACCOUNT.id,sku:sku,cost:cur,price:price})})).json();
-    if(!j.ok){ toast("Could not set COGS: "+(j.error||"")); return; }
-    // update the cached item and re-render
-    const key=_liveKey();
-    (LIVE_ITEMS||[]).forEach(it=>{ if(it.sku===sku){ it.profit=j.profit; it.cogs=parseFloat(cur); } });
-    if(LIVE_STORE[key]) LIVE_STORE[key].items=LIVE_ITEMS;
-    render();
-  }catch(e){ toast("Error: "+e); }
-}
+/* setCogs() removed with the card view: nothing calls it any more. */
 let OPT_CURRENT = null;   // {sku, asin, product_type, marketplace, marketplace_id, fields}
 async function optimizeLive(asin, sku){
   if(!sku){ toast("This listing has no SKU in the report — can't optimize it directly."); return; }

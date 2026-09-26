@@ -59,12 +59,13 @@ ok("  and only falls through when there is no product page to use",
      < LIST.indexOf("DRAWER_SKU=sku;"));
 
 console.log("\n== no opener goes to the drawer any more ==");
-ok("the compliance chip opens the Compliance tab",
-   /tiledocs[\s\S]{0,400}openListingAt\('\$\{esc\(r\.sku\)\}','compliance'\)/.test(LIST));
-ok("the claim chip does too",
-   /tileclaim[\s\S]{0,200}openListingAt\('\$\{esc\(r\.sku\)\}','compliance'\)/.test(LIST));
-ok("the 'no copy yet' chip opens the details tab",
-   /tilecopy[\s\S]{0,500}openListingAt\('\$\{esc\(r\.sku\)\}','details'\)/.test(LIST));
+// The compliance, claim and "no copy yet" chips were drawn only on the card
+// tile, and went with the card view on the owner's redesign (26 Sep 2026). They
+// opened the product page, never the drawer; with them gone there is nothing
+// of theirs left that could open either.
+ok("the tile's compliance chip went with the card", !/tiledocs/.test(LIST));
+ok("  the claim chip too", !/tileclaim/.test(LIST));
+ok("  and the 'no copy yet' chip", !/tilecopy/.test(LIST));
 ok("'Edit details' in the tile menu goes through openListing",
    /onclick="openListing\('\$\{esc\(sku\)\}'\);closeTileMenu\(\)"/.test(LIST));
 ok("clicking a run in the queue goes through openListing",

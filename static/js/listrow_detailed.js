@@ -475,6 +475,7 @@ function lrStatus(r){
               + "needs before it will show it.",
   };
   return badge
+       + lrAplusBadge(r)
        + (_notShowing
            ? '<span class="badge b-COMPLIANCE_HOLD" title="'
              + esc(WHY[_notShowing] || "") + '">'
@@ -498,6 +499,17 @@ function lrStatus(r){
        + '<div class="status-date">' + (d ? esc(lrDate(d)) : "")
        +   (made ? "<br>" + esc(lrDate(made)) : "") + '</div>'
        + lrAmazonSaid(r);
+}
+
+/* A+ CONTENT ON AMAZON, as the card showed it. Moved here when the card view
+ * was retired. aplusImages() (listings.js) is the one lookup, keyed on OUR
+ * ASIN -- never the competitor's -- so this cannot show somebody else's A+. */
+function lrAplusBadge(r){
+  const n = (typeof aplusImages === "function") ? aplusImages(r).length : 0;
+  if(!n) return "";
+  return '<div class="lr-aplus" title="A+ content live on Amazon — ' + n
+       + ' image' + (n === 1 ? "" : "s") + '. Open the listing to see them.">'
+       + '<i class="ti ti-photo"></i> A+</div>';
 }
 
 /* WHAT AMAZON SAID ABOUT THE LAST SUBMIT, on the row.
@@ -663,6 +675,38 @@ function lrImage(r){
   return own.length ? own[0] : "";
 }
 
+/* THE CONDITION AMAZON HOLDS FOR THIS LISTING -- not a constant.
+ *
+ * This printed "Condition New" on every row, hard-coded, including listings
+ * Amazon may hold as used or refurbished. It is now read from what Sync pulled
+ * with getListingsItem (LIVE_MIRROR[sku].condition, routes/live_routes.py), and
+ * a dash when that has not been fetched: before the first Sync, for a draft
+ * that is not on Amazon, and after a server restart, since the mirror is held
+ * in memory.
+ *
+ * Amazon's value ("new_new", "used_like_new") is shown in words, with the raw
+ * value on hover -- the words are only a reading of it, never a replacement.
+ */
+function lrCondition(r){
+  let raw = "";
+  try{
+    const mir = (typeof LIVE_MIRROR !== "undefined" && LIVE_MIRROR)
+      ? LIVE_MIRROR[String(r.sku)] : null;
+    raw = String((mir && mir.condition) || "").trim();
+  }catch(e){ raw = ""; }
+  if(!raw){
+    return '<span class="prod-dim" title="Not read from Amazon yet. Sync pulls '
+         + 'each live listing’s condition; a draft that is not on Amazon has '
+         + 'none to read.">—</span>';
+  }
+  const parts = raw.toLowerCase().split("_").filter(Boolean);
+  const cap = function(s){ return s.charAt(0).toUpperCase() + s.slice(1); };
+  // "new_new" is New; "used_like_new" is Used – like new.
+  const words = (parts.length === 2 && parts[0] === parts[1]) ? cap(parts[0])
+    : cap(parts[0] || raw) + (parts.length > 1 ? " – " + parts.slice(1).join(" ") : "");
+  return '<strong title="Amazon’s value: ' + esc(raw) + '">' + esc(words) + '</strong>';
+}
+
 function lrProduct(r){
   const urls = (typeof _rowImages === "function") ? _rowImages(r) : [];
   const a = (typeof rowAsin === "function") ? (rowAsin(r) || {}) : {};
@@ -737,8 +781,14 @@ function lrProduct(r){
                 : '<br>EAN <span class="prod-dim" title="No barcode on this '
                   + 'listing. Amazon will not create a product without one '
                   + 'unless the GTIN exemption is ticked.">none</span>'))
-    +     '<br>Condition <strong>New</strong>'
+    +     '<br>Condition ' + lrCondition(r)
     +   '</div>'
+    // THE COMPLIANCE VERDICT IN WORDS -- clear, gated, needs docs, prohibited --
+    // from the table view's own _compCell, so the two views cannot word the
+    // same listing differently (Rule 12). The three symbols below stay: they
+    // say WHICH check it is; this says what it adds up to.
+    +   ((typeof _compCell === "function")
+          ? '<div class="lr-compwords">' + _compCell(r) + '</div>' : "")
     +   clash
     // lrRisks IS THE ONE THAT STAYS. It names the restriction, the compliance
     // demand and the claim risk -- the three symbols that say WHAT is wrong.
@@ -777,7 +827,11 @@ function lrPerf(r){
   // Once past this gate every figure is a dash when unknown -- see lrVal. A
   // dash says "we have not been told"; "Not yet live" says "there is nothing to
   // tell", and only one of those was ever true here.
-  if(!lrOnAmazon(r)) return '<div class="d-none">Not yet live</div>';
+  // MARGIN AND ROI SHOW ON A DRAFT TOO. They come from the stored profit, not
+  // from Amazon, and the card they were moved from showed them on drafts -- so
+  // "Not yet live" is followed by the chip rather than ending the cell.
+  const econ = (typeof _econLine === "function") ? _econLine(r) : "";
+  if(!lrOnAmazon(r)) return '<div class="d-none">Not yet live</div>' + econ;
   const m = lrMetrics(r.sku) || {};
   // THE RANK'S OWN CATEGORY FIRST, the row's second.
   //
@@ -793,10 +847,23 @@ function lrPerf(r){
   // listings.amazon_category is the fallback, and it is worth having: it is
   // known for drafts that have never had a rank at all.
   const cat = String(m.category || r.amazon_category || r.subcategory || "").trim();
+  // PAGE VIEWS AND SALES RANK ON ONE LINE (the owner's redesign), each through
+  // lrVal like every other figure, so an unknown one is still a dash and never
+  // a zero. The rank's category stays under it, as it was asked for.
+  const views = '<span class="lr-cv">' + lrVal(m.views, {comma:true}) + '</span>';
+  const rank = (m.rank === null || m.rank === undefined || m.rank === "")
+    ? lrVal(null) : '<span class="lr-cv">#' + lrVal(m.rank, {comma:true}) + '</span>';
   return lrDataRow("Sales", lrVal(m.sales, {money:true}))
     + lrDataRow("Units sold", lrVal(m.units))
-    + lrDataRow("Page views", lrVal(m.views, {comma:true}))
-    + lrDataRow("Sales rank",  lrVal(m.rank,  {comma:true}))
+    // MARGIN AND ROI, AND THE ADVERTISING -- the card's two chips, moved here
+    // when the card view was retired. The card's own functions (listings.js),
+    // so the figures and their colour bands are the ones the card showed
+    // (Rule 12). Each draws nothing when there is nothing to say: no stored
+    // profit, or no ad spend in the last 30 days.
+    + econ
+    + ((typeof _ppcLine === "function") ? _ppcLine(r) : "")
+    + '<div class="lr-compact" title="Page views · Sales rank, last 30 days">'
+    +   '<i class="ti ti-chart-dots"></i> ' + views + ' views · ' + rank + '</div>'
     + (cat ? '<div class="d-cat">(' + esc(cat) + ')</div>' : "");
 }
 
@@ -1062,12 +1129,13 @@ function lrCur(r){
  * screen saves or discards every held change at once. The endpoint is
  * unchanged -- see listrow_edit.js, which still posts to /edit.
  */
-function lrPriceBox(r, key, value, title){
+function lrPriceBox(r, key, value, title, note){
   const v = String(value == null ? "" : value).replace(/[^0-9.\-]/g, "");
   return '<div class="price-input-wrap" title="' + esc(title || "") + '">'
        + '<span class="cur">' + esc(lrCur(r)) + '</span>'
        + lrEditBox({sku: r.sku, field: "price", value: v,
                     title: title || "The price on the listing"})
+       + (note ? '<span class="lr-apponly">' + esc(note) + '</span>' : "")
        + '</div>';
 }
 
@@ -1242,35 +1310,83 @@ function lrPricing(r){
   const pnum  = String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, "");
   const pneg  = pnum !== "" && parseFloat(pnum) < 0;
 
-  return lrPriceBox(r, "Our Price (GBP)", r.price, "The price on the listing")
-    + lrFloorCeiling(r)
+  // "APP ONLY" ON THE BOX. This box is staged and saved through /edit
+  // (listrow_edit.js), which changes this app's copy and sends nothing to
+  // Amazon -- the price reaches Amazon on the next Submit. Unlabelled, it read
+  // as the live price, which it is not.
+  return lrPriceBox(r, "Our Price (GBP)", r.price,
+                    "The price in this app. Changing it does not change the price on Amazon.",
+                    "app only")
+    // MIN AND MAX moved to the row's ⋮ menu (lrRuleDialog below): almost every
+    // row showed "—" for both, since the repricer tracks a handful of SKUs.
     + lrCostRow(r)
     + lrDataRow("Profit", pnum ? lrMoney(pnum) : lrVal(null), pneg ? "red" : "green")
+    // THE FEES, AS ONE LINE UNDER THE PROFIT they are taken out of. They were
+    // a column of their own; lrFees still works them out, unchanged.
+    + lrFees(r)
     + lrBuyBox(m, cur)
-    // BUSINESS PRICE. IT IS NOT A MISSING FEATURE -- IT IS NOT AVAILABLE.
+    // BUSINESS PRICE: THE LINE IS GONE, THE FINDING IS KEPT HERE.
     //
-    //     "i am not able to set the business price of the item through the all
-    //      listing page screen"
-    //
-    // MEASURED, against Amazon's own schemas rather than guessed (Rule 4):
-    // across all 98 product-type schemas this app has cached for these
-    // accounts, there is no business_price attribute, and
-    // purchasable_offer.audience has exactly one allowed value -- "ALL". There
-    // is no B2B audience to price for, so a box here would collect a number
-    // Amazon would refuse.
-    //
-    // That is an enrolment, not a bug: B2B pricing needs Amazon Business, in
-    // Seller Central. This line used to offer a "Set" link that opened the
-    // product page, which cannot set one either -- a control that promised
-    // something nothing in the app could do.
-    + '<div class="bb biz" title="A separate price for Amazon Business buyers. '
-    + 'Amazon’s own schema for this account offers no business audience — every '
-    + 'product type this app has read allows only the standard one — so there is '
-    + 'nowhere to put one. It becomes available once the account is enrolled in '
-    + 'Amazon Business in Seller Central.">'
-    + '<i class="ti ti-info-circle"></i> Business price: account not enrolled</div>'
+    // It said "account not enrolled" on every row -- the same sentence on
+    // every listing, so it told nobody anything about theirs, and the owner's
+    // redesign removed it. What it recorded is still true: MEASURED against
+    // Amazon's own schemas (Rule 4), across all 98 product-type schemas this
+    // app has cached, there is no business_price attribute and
+    // purchasable_offer.audience has exactly one allowed value -- "ALL". So no
+    // box can go here until the account is enrolled in Amazon Business in
+    // Seller Central.
     + (m.offer_count != null
-        ? lrDataRow("Offers", lrVal(m.offer_count)) : "");
+        ? lrDataRow("Offers", lrVal(m.offer_count)) : "")
+    + lrRevLink(r);
+}
+
+/* THE REVENUE CALCULATOR, IN THE PRICING CELL.
+ *
+ * IT OPENS A PANEL, NOT A PAGE.
+ *
+ *     "Currently clicking 'Calculate revenue' navigates to the product
+ *      detail page. Amazon opens a side drawer."
+ *
+ * Navigating away is the wrong answer to "what does this one make?" -- you lose
+ * the list, the filter and the scroll to read four numbers. The price is passed
+ * so the panel opens on the price you were looking at. It sat under the fees
+ * column; the fees are now a line in this cell, so this came with them.
+ */
+function lrRevLink(r){
+  return '<span class="fee-link" onclick="event.stopPropagation();revOpen(\''
+    + esc(r.sku) + '\',\'' + esc(String(r.price == null ? "" : r.price)
+                                   .replace(/[^0-9.]/g, "")) + '\')"'
+    + ' title="What this unit earns at a given price — Amazon’s cut and the '
+    + 'stock cost, without leaving the list">'
+    + '<i class="ti ti-calculator"></i> Revenue calculator</span>';
+}
+
+/* MIN AND MAX, FROM THE ROW'S ⋮ MENU.
+ *
+ * They were two boxes on every row, and on almost every row both said "—":
+ * the repricer tracks a handful of SKUs. Moved behind the menu on the owner's
+ * redesign. The boxes are lrFloorCeiling's own, saving through lrSaveRule and
+ * /sourcing/rules exactly as they did on the row -- only where they appear
+ * changed (Rule 12).
+ */
+async function lrRuleDialog(sku){
+  // The rule is keyed on the SKU alone, so a listing this app holds no draft
+  // of -- one that is only in Amazon's catalogue -- can still have one; it is
+  // not refused for having no row here.
+  const r = ((typeof ROWS !== "undefined")
+             && ROWS.find(function(x){ return String(x.sku) === String(sku); }))
+         || {sku: sku};
+  await lrLoadRules();
+  await _dlgOpen({
+    title: "Repricer floor and ceiling — " + sku,
+    html: '<div class="lr-ruledlg" onclick="event.stopPropagation()">'
+        + lrFloorCeiling(r)
+        + '<p class="cc" style="font-size:11.5px;margin:10px 0 0">The lowest and '
+        + 'highest price the repricer may set. Each box saves when you leave it.</p>'
+        + '</div>',
+    buttons: [{label: "Done", value: true, primary: true}],
+    cancelValue: null
+  });
 }
 
 /* ESTIMATED FEES -- what Amazon takes out of this price.
@@ -1336,28 +1452,22 @@ function lrFees(r){
         ? "Amazon has not been asked about this product, so this is the rate "
           + "measured across everything this account HAS sold — not a default."
         : "";
-  return lrDataRow("Total fees", lrMoney(total))
-    + (m.fba_fee != null ? lrDataRow("FBA fee", lrMoney(m.fba_fee))
-       : (m.referral_fee != null ? lrDataRow("Referral", lrMoney(m.referral_fee)) : ""))
+  // ONE LINE, UNDER THE PROFIT (the owner's redesign merged the fees column
+  // into Pricing): "Fees £6.16 (18% your own measured rate)". The FBA or
+  // referral part that had a row of its own is on hover, so nothing that was
+  // shown is lost -- only folded.
+  const part = m.fba_fee != null ? ("FBA fee " + lrMoney(m.fba_fee))
+             : (m.referral_fee != null ? ("Referral " + lrMoney(m.referral_fee)) : "");
+  const hover = [part.replace(/<[^>]+>/g, ""), m.fee_detail || why]
+                  .filter(Boolean).join("\n");
+  return '<div class="fee-line"' + (hover ? ' title="' + esc(hover) + '"' : "") + '>'
+    + '<span class="d-label">Fees</span> ' + lrMoney(total)
     + (rate != null
-        ? '<div class="fee-basis" title="' + esc(m.fee_detail || why) + '">'
+        ? ' <span class="fee-basis" title="' + esc(m.fee_detail || why) + '">('
           + rate.toFixed(2).replace(/\.00$/, "") + '% '
-          + esc(word) + '</div>'
+          + esc(word) + ')</span>'
         : "")
-    // IT OPENS A PANEL, NOT A PAGE.
-    //
-    //     "Currently clicking 'Calculate revenue' navigates to the product
-    //      detail page. Amazon opens a side drawer."
-    //
-    // Navigating away is the wrong answer to "what does this one make?" -- you
-    // lose the list, the filter and the scroll to read four numbers, then have
-    // to find your way back to compare it with the row beneath. The price is
-    // passed so the panel opens on the price you were looking at.
-    + '<span class="fee-link" onclick="event.stopPropagation();revOpen(\''
-    + esc(r.sku) + '\',\'' + esc(String(r.price == null ? "" : r.price)
-                                   .replace(/[^0-9.]/g, "")) + '\')"'
-    + ' title="What this unit earns at a given price — Amazon’s cut and the '
-    + 'stock cost, without leaving the list">Calculate revenue</span>';
+    + '</div>';
 }
 
 /* ONE LISTING, AS A DETAILED ROW.
@@ -1375,8 +1485,9 @@ function detailedRow(r, isChild){
     + '<td class="col-product">' + lrProduct(r) + '</td>'
     + '<td class="col-perf">' + lrPerf(r) + '</td>'
     + '<td class="col-inv">' + lrInv(r) + '</td>'
+    // No fees column: the fees are a line inside Pricing (lrFees), on the
+    // owner's redesign.
     + '<td class="col-price" onclick="event.stopPropagation()">' + lrPricing(r) + '</td>'
-    + '<td class="col-fees">' + lrFees(r) + '</td>'
         // EVERYTHING ELSE LIVES BEHIND THE THREE DOTS.
         //
         //     "There are too many buttons visible on each row -- Image Library,
@@ -1417,11 +1528,10 @@ function detailedHead(rows){
     + '<th class="col-cb"><input type="checkbox" class="rowsel"' + (allSel ? " checked" : "")
     +   ' title="Select every row shown" onchange="event.stopPropagation();selectAllVisible(this.checked)"></th>'
     + th("col-status", "Listing status", "and what Amazon said")
-    + th("col-product", "Product details", "brand, identifiers, risks")
+    + th("col-product", "Product details", "brand, identifiers, compliance")
     + th("col-perf", "Performance", "last 30 days")
     + th("col-inv", "Inventory", "and handling time")
-    + th("col-price", "Pricing", "editable")
-    + th("col-fees", "Estimated fees", "per unit")
+    + th("col-price", "Pricing", "app only · not sent to Amazon")
     + '<th class="col-actions"></th>'
     + '</tr></thead>';
 }
@@ -1586,7 +1696,9 @@ function lrFamilyRow(g){
     +     '<i class="ti ti-chevron-right"></i></span> '
     +   '<span class="var-count">Variations (' + g.children.length + ')</span>'
     + '</td>'
-    + '<td colspan="6">'
+    // 5 = product, performance, inventory, pricing, actions. It was 6 while the
+    // fees had a column of their own.
+    + '<td colspan="5">'
     +   '<div class="prod-wrap">'
     +     '<span class="var-img">'
           // 40px, the size .var-img actually draws -- see the note on the row's

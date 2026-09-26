@@ -100,10 +100,18 @@ function cogsCell(row){
  * figure without a reload, whichever editor did the setting.
  */
 async function cogsSet(sku, cost){
+  // THE ACCOUNT ON SCREEN GOES WITH THE COST. This sent only {sku, cost}, and
+  // the server filled the gap with whichever account IT last had open -- one
+  // variable for the whole process, so another browser tab could have moved
+  // it. The owner reuses SKUs across accounts, so the cost landed on the other
+  // company's copy of the SKU with nothing on screen to say so. The server now
+  // refuses a cost that does not name its account.
+  const id = (typeof acctId === "function") ? acctId() : "";
+  if(!id) return {ok: false, error: "open an account first — a cost is saved against one account"};
   try{
     const j = await (await fetch("/cogs/set", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({sku: sku, cost: cost})})).json();
+      body: JSON.stringify({id: id, sku: sku, cost: cost})})).json();
     if(!j || !j.ok) return {ok: false, error: (j && j.error) || "could not save that cost"};
     if(cost === null) delete COGS_LOCAL[sku]; else COGS_LOCAL[sku] = cost;
     // The row object too, so a re-render built from ROWS agrees with the cell.

@@ -1971,6 +1971,7 @@
   .tilemenu button:hover{background:var(--panel2)}
   .tilemenu button.danger{color:var(--red)}
   .tilemenu .ti{font-size:15px}
+  .tilemenu .tmsep{height:1px;background:var(--line);margin:4px 2px}
   /* ---- SIDE DRAWER ---- */
   .drawerscrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:70;opacity:0;
                pointer-events:none;transition:opacity .18s}

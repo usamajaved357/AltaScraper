@@ -541,34 +541,29 @@
                the tooltip now names them instead of saying "sync". -->
           <button class="mktbtn" onclick="syncLive()" title="Not a repeat of the automatic refresh — four things happen only when you press this:&#10;&#10;• Amazon builds a BRAND NEW listings report. Opening this tab reuses the last one, so the list can be right about which listings exist and still be behind on price, stock and status.&#10;• Each listing's actual CONTENTS are pulled — images, A+, bullets, description, variations, and Amazon's own handling time. Nothing else on this screen ever fetches these.&#10;• Drafts you have submitted are checked against Amazon and marked live where Amazon has published them.&#10;• Listings deleted or deactivated on Amazon are settled against what this app holds.&#10;&#10;It takes a few minutes on a large catalogue. The label beside this button says when Amazon was last actually read."><i class="ti ti-refresh"></i> Sync</button>
           <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
-          <button class="mktbtn" title="Checks every unsent draft against its competitor ASIN's product type in Amazon's catalogue, shows what would change, and asks before saving anything. Submitted and live listings are not touched." onclick="ptFixDrafts()"><i class="ti ti-category"></i> Fix product types</button>
-          <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose</button>
-          <!-- THE SHEET TO FILL IN, before the button that uploads it. There
-               was an upload and no template, so the columns had to be guessed
-               and every SKU typed by hand -- and a hand-typed SKU is one that
-               silently matches nothing. -->
-          <a class="mktbtn" href="/cogs/template.csv" style="text-decoration:none"
-             title="Downloads a sheet listing every SKU on this account, with its ASIN, product name, the cost the app uses now and where that came from. Fill in the 'cost' column for the ones you want to set, and upload it back. Rows you leave blank are not changed."><i class="ti ti-file-download"></i> Cost sheet</a>
-          <!-- ONE UPLOAD, HERE, beside the sheet it takes back.
-               There were two. This one called uploadCogsCsv and wrote
-               IMMEDIATELY, no confirmation; the other lived in the selection bar
-               and dry-ran the file first, showed what it would do and asked. Two
-               buttons doing the same job with different safety is worse than
-               either, and the always-visible one was the unsafe one. Asked as
-               "uploading the cogs sheet should be in the one place, not
-               scattered everywhere".
-               A whole-account cost list also has nothing to do with which rows
-               are ticked, which is why the selection bar was the wrong home. -->
-          <button class="mktbtn" title="Upload the cost sheet back — or any CSV or spreadsheet with a sku (or asin) column and a cost column. Shows what it would change and asks before writing. Only rows with a cost filled in are applied." onclick="cogsUploadOpen()"><i class="ti ti-upload"></i> Upload costs</button>
+          <!-- COSTS ▾ -- the sheet, the upload and the explainer behind one
+               button. They were three of seventeen toolbar buttons. Clear COGS
+               is NOT here: on the owner's redesign it moved to the ⋯ menu,
+               with the other rarely-pressed and destructive actions. -->
+          <button class="mktbtn" id="costs_btn" onclick="toolbarMenu(event, 'tpl_costs')"
+                  title="The cost sheet, uploading it back, and how costs work"><i class="ti ti-coins"></i> Costs <i class="ti ti-chevron-down" style="font-size:10px"></i></button>
           <input type="file" id="cogs_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls" style="display:none" onchange="cogsUploadFile(this)">
-          <button class="mktbtn" title="Where every cost comes from, which one wins, and how profit is worked out" onclick="cogsExplain()"><i class="ti ti-help-circle"></i> How costs</button>
-          <!-- THE WAY BACK OUT. Costs could be set one at a time and by the
-               sheetful, and never removed except one SKU at a time by clearing
-               its box - so a cost sheet uploaded against the wrong account had
-               no undo at all. Kept beside the two buttons that PUT costs in,
-               because that is where somebody looking to take them out will
-               look, and styled as the destructive thing it is. -->
-          <button class="mktbtn cogswipe" title="Delete every cost you have typed or uploaded for this account. Asks first, and says how many. Listings whose SKU carries a price keep showing that price." onclick="cogsClearAll()"><i class="ti ti-eraser"></i> Clear COGS</button>
+          <!-- THE COSTS ▾ MENU. A <template> is inert until toolbarMenu()
+               (genflow.js) copies it into the shared .tilemenu, so the buttons
+               stay HTML here -- not strings built in JavaScript -- and each
+               still calls exactly the function it always called. The menu
+               closes itself on the click that presses an item.
+               THE SHEET TO FILL IN comes before the upload that takes it back:
+               there was an upload and no template once, so every SKU was typed by
+               hand, and a hand-typed SKU silently matches nothing. ONE UPLOAD,
+               the one that dry-runs the file and asks first ("uploading the cogs
+               sheet should be in the one place, not scattered everywhere"). -->
+          <template id="tpl_costs">
+            <button onclick="location.href='/cogs/template.csv'"
+               title="Downloads a sheet listing every SKU on this account, with its ASIN, product name, the cost the app uses now and where that came from. Fill in the 'cost' column for the ones you want to set, and upload it back. Rows you leave blank are not changed."><i class="ti ti-file-download"></i> Cost sheet</button>
+            <button onclick="cogsUploadOpen()" title="Upload the cost sheet back — or any CSV or spreadsheet with a sku (or asin) column and a cost column. Shows what it would change and asks before writing. Only rows with a cost filled in are applied."><i class="ti ti-upload"></i> Upload costs</button>
+            <button onclick="cogsExplain()" title="Where every cost comes from, which one wins, and how profit is worked out"><i class="ti ti-help-circle"></i> How costs</button>
+          </template>
         </div>
         <!-- The marketplace strip used to sit here as well as in the sidebar.
              Two controls for one setting, and the toolbar one was the wider of
@@ -608,10 +603,12 @@
             <option value="live_oos">Out of stock</option>
           </optgroup>
         </select>
-        <span class="viewtoggle" id="viewtoggle" title="Table or card view — remembered on this browser">
-          <button data-view="table" class="on" onclick="setListView('table')" title="Table view"><i class="ti ti-list"></i></button>
-          <button data-view="detailed" onclick="setListView('detailed')" title="Detailed view — Amazon's Manage All Inventory layout: performance, inventory and pricing beside each listing"><i class="ti ti-list-details"></i></button>
-          <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
+        <!-- TWO VIEWS. The card view was retired on the owner's redesign, after
+             what only a card showed (margin/ROI, ad spend, A+, delete-this-copy)
+             moved into the detailed row and its menu. -->
+        <span class="viewtoggle" id="viewtoggle" title="Compact table or detailed view — remembered on this browser">
+          <button data-view="table" onclick="setListView('table')" title="Table view — compact, one line per listing"><i class="ti ti-list"></i></button>
+          <button data-view="detailed" class="on" onclick="setListView('detailed')" title="Detailed view — Amazon's Manage All Inventory layout: performance, inventory and pricing beside each listing"><i class="ti ti-list-details"></i></button>
         </span>
         <!-- UPLOAD TEMPLATE — opens the generation flow (#genflow) above the
              table. Folded by default; this is the only way it opens, so the
@@ -630,9 +627,26 @@
              only way to end a run, so none of them may be dropped. Behind one
              button, in the same .tilemenu the rows already use. -->
         <button class="ghost" id="genflow_more" onclick="genflowRunMenu(event)"
-                title="Retry holds, Export, Preview against Amazon, Submit, Stop"><i class="ti ti-dots"></i></button>
-        <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste</button>
-        <button class="ghost" onclick="refreshView()" title="Reload this workspace's listings, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
+                title="Fix product types, Diagnose, Paste, Reload list, the run actions (Retry holds, Export, Preview, Submit, Stop) and Clear COGS"><i class="ti ti-dots"></i></button>
+        <!-- WHAT THE ⋯ MENU ADDS TO THE RUN ACTIONS. Moved off the toolbar on
+             the owner's redesign: occasional tools above the run actions, the
+             one destructive action below them. genflowRunMenu() copies these in;
+             every button calls the function it called on the toolbar. -->
+        <template id="tpl_more_tools">
+          <button title="Checks every unsent draft against its competitor ASIN's product type in Amazon's catalogue, shows what would change, and asks before saving anything. Submitted and live listings are not touched." onclick="ptFixDrafts()"><i class="ti ti-category"></i> Fix product types</button>
+          <button title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose</button>
+          <button onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste</button>
+          <!-- REFRESH, KEPT HERE rather than deleted. Sync does everything this
+               does, but also pulls every listing's full contents from Amazon --
+               minutes, and up to 300 calls. This is the light reload: the
+               drafts again, and on Live/All a fresh list from Amazon. -->
+          <button onclick="refreshView()" title="Reload this workspace's listings, and re-check the live catalog against Amazon when the live view is shown. Lighter than Sync: it does not pull every listing's full contents."><i class="ti ti-refresh"></i> Reload list</button>
+        </template>
+        <template id="tpl_more_danger">
+          <!-- THE WAY BACK OUT of a cost sheet uploaded against the wrong
+               account. Destructive, so it is last and red, and it asks first. -->
+          <button class="danger cogswipe" title="Delete every cost you have typed or uploaded for this account. Asks first, and says how many. Those products are then left with no cost, so their profit, margin and ROI show blank until a cost is set again." onclick="cogsClearAll()"><i class="ti ti-eraser"></i> Clear COGS</button>
+        </template>
       </div>
       <!-- ===== THE GENERATION FLOW, ON THE PAGE THE DRAFTS ARE ON =====
            Upload a template, check the queue, press Generate, watch the

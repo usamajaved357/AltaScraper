@@ -137,13 +137,50 @@ async function genflowClearQueue(){
  * EVERY ITEM HERE CALLS THE FUNCTION IT ALWAYS CALLED. Nothing about what these
  * five DO changes; only where you press them.
  */
-function genflowRunMenu(ev){
+/* ONE TOOLBAR DROPDOWN, used by the ⋯ menu and by Costs ▾.
+ *
+ * Opening, placing and dismissing a menu was written out inside
+ * genflowRunMenu. The redesign added a second toolbar dropdown (Costs ▾), and a
+ * second copy of this would be a second thing to get wrong (Rule 12) -- so the
+ * mechanics live here and both menus pass in only their buttons.
+ *
+ * Same element id as before, so only one toolbar menu is ever open and
+ * closeRunMenu() closes whichever it is.
+ */
+function openToolbarMenu(ev, html){
   ev.stopPropagation();
   closeRunMenu();
   if(typeof closeTileMenu === "function") closeTileMenu();
   const m = document.createElement("div");
   m.className = "tilemenu";
   m.id = "runmenu";
+  m.innerHTML = html;
+  document.body.appendChild(m);
+  const btn = ev.target.closest("button");
+  const rect = btn.getBoundingClientRect();
+  m.style.top = (rect.bottom + 4) + "px";
+  // Kept on screen: a menu at the end of the toolbar would otherwise hang off
+  // the right edge of the page.
+  m.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - m.offsetWidth - 8)) + "px";
+  setTimeout(function(){
+    document.addEventListener("click", closeRunMenu, {once: true});
+  }, 0);
+}
+
+/* The buttons of a <template> in dashboard.html, as HTML. The markup stays in
+ * the template (HTML belongs in templates/), and "" if it is missing, so a menu
+ * never throws over one absent group. */
+function _tplHtml(id){
+  const t = document.getElementById(id);
+  return t ? t.innerHTML : "";
+}
+
+/* A toolbar dropdown whose buttons are entirely one template (Costs ▾). */
+function toolbarMenu(ev, tplId){
+  openToolbarMenu(ev, _tplHtml(tplId));
+}
+
+function genflowRunMenu(ev){
   // Stop is only offered while something is running -- an enabled Stop with
   // nothing to stop is a button that does nothing, which is worse than absent.
   //
@@ -154,8 +191,12 @@ function genflowRunMenu(ev){
   // non-null exactly while a run is streaming, which is the thing being asked
   // about rather than a button that happens to reflect it.
   const running = (typeof ES !== "undefined") && !!ES;
-  m.innerHTML =
-      '<button onclick="closeRunMenu();runMode(\'retry\')"'
+  // The tools moved off the toolbar first, the run actions in the middle, and
+  // the one destructive action last (templates in dashboard.html).
+  const tools = _tplHtml("tpl_more_tools"), danger = _tplHtml("tpl_more_danger");
+  openToolbarMenu(ev,
+      (tools ? tools + '<div class="tmsep"></div>' : '')
+    + '<button onclick="closeRunMenu();runMode(\'retry\')"'
     + ' title="Re-run the products that were held or refused last time. Writes into this app only."'
     + '><i class="ti ti-refresh"></i> Retry holds</button>'
     + '<button onclick="closeRunMenu();runMode(\'export\')"'
@@ -170,17 +211,8 @@ function genflowRunMenu(ev){
     + (running
         ? '<button class="danger" onclick="closeRunMenu();stopRun()"'
           + '><i class="ti ti-player-stop"></i> Stop the run</button>'
-        : '');
-  document.body.appendChild(m);
-  const btn = ev.target.closest("button");
-  const rect = btn.getBoundingClientRect();
-  m.style.top = (rect.bottom + 4) + "px";
-  // Kept on screen: anchored to the button's RIGHT edge, because this one sits
-  // at the end of the toolbar and a left-anchored menu would hang off the page.
-  m.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - m.offsetWidth - 8)) + "px";
-  setTimeout(function(){
-    document.addEventListener("click", closeRunMenu, {once: true});
-  }, 0);
+        : '')
+    + (danger ? '<div class="tmsep"></div>' + danger : ''));
 }
 
 function closeRunMenu(){

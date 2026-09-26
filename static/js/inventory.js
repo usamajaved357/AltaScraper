@@ -264,7 +264,9 @@ function runMode(mode, skus){
   }
   // Preview/Submit: if specific SKUs are passed (the user's SELECTION), scope the
   // run to exactly those. Empty -> the server's default (all approved/ready rows).
-  if((mode==="api"||mode==="api_submit") && skus && skus.length){
+  // Regenerate too: it is ONLY ever a selection (listing/regen.py does nothing
+  // without SKUs), and /run/regen keys its run lock on them.
+  if((mode==="api"||mode==="api_submit"||mode==="regen") && skus && skus.length){
     _runParams.set("skus", skus.join(","));
   }
   const _qs=_runParams.toString();

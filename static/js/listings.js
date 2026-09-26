@@ -221,13 +221,19 @@ async function batchGenerate(kind){
   // pressed Regenerate on selected rows and were taken to a screen showing
   // nothing. Staying put is both the fix and what the retirement requires --
   // there is no "generate" section to navigate to any more.
-  const log=document.getElementById("log"); if(log){ log.style.display="block"; log.textContent="Starting regeneration for "+skus.length+" SKU(s)…\n"; }
-  try{
-    const es=new EventSource("/run/regen?skus="+encodeURIComponent(skus.join(",")));
-    es.onmessage=e=>{ if(log){ log.textContent+=e.data+"\n"; log.scrollTop=log.scrollHeight; } };
-    es.addEventListener("end",()=>{ es.close(); showStop(false); loadRows(); toast("Regeneration finished"); });
-    showStop(true);
-  }catch(e){ toast("Could not start: "+e); }
+  //
+  // THROUGH runMode, THE ONE PLACE A RUN IS STARTED. This opened its own
+  // EventSource, and so missed everything runMode does:
+  //   * it sent no account, so /run/regen rebuilt the copy on whichever account
+  //     the server last had open -- the bug runMode was fixed for;
+  //   * it never set ES, so the Stop entry in the run menu (genflow.js asks ES)
+  //     never appeared while it ran;
+  //   * and a second press while one was streaming started a second run,
+  //     because runMode's "a run is already streaming" refusal is keyed on ES.
+  // Not genflowGenerate(): that generates the upload QUEUE and ignores the
+  // selection. It is itself a thin wrapper over runMode, which is what matters.
+  if(typeof runMode === "function") runMode("regen", skus);
+  else toast("Could not start: the run controls did not load — reload the page.");
 }
 
 async function batchAutoGenerate(kind){
@@ -1048,26 +1054,30 @@ function dupCopies(r){                       // every copy of this SKU (incl. it
   return DUP_INDEX.get(k) || [];
 }
 function isDuplicate(r){ return dupCopies(r).length>1; }
-function dupOtherTabs(r){                     // distinct OTHER tabs the SKU also lives on
-  const mine=String(r.tab_gid||""), seen=new Set(), out=[];
-  dupCopies(r).forEach(c=>{ if(String(c.tab_gid)!==mine && c.tab && !seen.has(c.tab)){ seen.add(c.tab); out.push(c.tab); } });
-  return out;
-}
+/* dupOtherTabs() removed with the card view: nothing calls it any more. */
 function countDuplicateSkus(){ let n=0; DUP_INDEX.forEach(v=>{ if(v.length>1) n++; }); return n; }
 function toggleDupOnly(){ DUP_ONLY=!DUP_ONLY; render(); }
-// Delete ONE duplicate copy from its own tab (leaving the other copies untouched).
-// ensureCardTab syncs the active tab first, so /delete removes the right row on the
-// right tab -- never a same-numbered row on another tab.
+// Delete ONE duplicate copy from this app (leaving the other copies untouched).
+//
+// app_only IS THE WHOLE FIX. Without it /delete asks Amazon about the SKU and
+// deletes the LIVE LISTING if Amazon has it -- while this dialog promised that
+// only a copy was going. The server removes only the copy spelled exactly like
+// this one, and refuses if it is the last copy (see _delete_one_copy in
+// routes/listing_routes.py).
 async function delDuplicate(sku, row, tab, btn){
-  if(!await uiConfirm("Delete this DUPLICATE copy of "+sku+" from the '"+tab+"' tab?\n\n"
-             +"Only this copy is removed — copies on other tabs stay. This cannot be undone.")) return;
+  const _others=dupCopies({sku:sku}).map(c=>String(c.sku)).filter(s=>s!==String(sku));
+  if(!await uiConfirm("Delete this DUPLICATE copy of "+sku+" from this app?\n\n"
+             +"Only this copy is removed"
+             +(_others.length?" — "+_others.join(", ")+" stays":" — the other copy stays")
+             +". Nothing is sent to Amazon, and the listing on Amazon is not touched."
+             +"\n\nThis cannot be undone.")) return;
   if(btn) btn.disabled=true;
   try{
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
     const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-                body:JSON.stringify(acctBody({sku:sku, row:row}))});
+                body:JSON.stringify(acctBody({sku:sku, row:row, app_only:true}))});
     const j=await res.json();
-    if(j.ok){ toast("Duplicate removed from "+tab); loadRows(); }
+    if(j.ok){ toast("Duplicate copy removed from this app. Amazon was not touched."); loadRows(); }
     else{ toast("Delete failed: "+(j.error||"")); if(btn) btn.disabled=false; }
   }catch(e){ toast("Delete failed"); if(btn) btn.disabled=false; }
 }
@@ -1311,6 +1321,10 @@ function summary(){
       on: _cur === filter,
       onclick: "metricFilter('" + filter + "')",
       title: "Show only these",
+      // SAY THAT IT IS A BUTTON (the owner's redesign). A number in a box does
+      // not look pressable. The lit card says what pressing it again does,
+      // because that is different: it clears the filter.
+      note: (_cur === filter) ? "Click to clear" : "Click to filter",
       share: (sub && !_pending && whole > 0 && isFinite(cnt))
         ? Math.min(1, cnt / whole) : null,
       barColor: tone,
@@ -1899,6 +1913,27 @@ function _ppcLine(r){
 }
 
 function _econLine(r){
+  // A LISTING FROM AMAZON'S CATALOGUE CARRIES ITS PROFIT AS AN OBJECT --
+  // {net, margin, roi, price, cogs, referral}, worked out by /live/catalog --
+  // not as the number a draft stores. String() of it is "[object Object]",
+  // which the digit-strip below turns into 0: a confident "£0.00" on every
+  // such row. So it is read the way the live card read it, figures and all.
+  if(r.profit && typeof r.profit === "object"){
+    const o = r.profit, cur0 = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
+    const net = Number(o.net);
+    if(!isFinite(net)) return "";
+    const mg = Number(o.margin);
+    const b0 = [];
+    if(isFinite(mg)) b0.push("margin " + mg + "%");
+    if(o.roi !== null && o.roi !== undefined && isFinite(Number(o.roi))) b0.push("ROI " + o.roi + "%");
+    b0.push(cur0 + net.toFixed(2));
+    const t0 = !isFinite(mg) ? "" : (mg >= 25 ? "tone-ok" : (mg >= 10 ? "tone-warn" : "tone-bad"));
+    return `<div style="margin-top:5px"><span class="profchip ${t0}"`
+         + ` title="${esc("Price " + cur0 + o.price + " − cost " + cur0 + o.cogs
+                         + " − ~15% referral " + cur0 + o.referral + " = " + cur0 + o.net
+                         + "\nMargin = profit ÷ price · ROI = profit ÷ cost")}">`
+         + esc(b0.join(" · ")) + `</span></div>`;
+  }
   const p = Number(String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, ""));
   if(!isFinite(p) || String(r.profit || "").trim() === "") return "";
   const price = Number(String(r.price == null ? "" : r.price).replace(/[^0-9.\-]/g, ""));
@@ -1939,46 +1974,14 @@ function _econLine(r){
 
 /* WAITING TO GENERATE. A queued row has a SKU and almost nothing else -- no
  * title yet, no bullets, no images -- so it needs to say why it looks empty. */
-function _queuedChip(r){
-  if(typeof lsIsQueued !== "function" || !lsIsQueued(r)) return "";
-  return '<span class="tilefact cc" title="Uploaded or added by hand. Press '
-       + 'Generate to fill it in."><i class="ti ti-clock"></i> '
-       + 'Waiting to generate</span>';
-}
+/* _queuedChip() removed with the card view: nothing calls it any more. */
 
-function _statusDot(r){
-  var s = r.status || "";
-  // Amazon's own answer beats the stored word, exactly as the counts do.
-  var live = false;
-  try{
-    var sets = _liveCatSetsForCurrentView();
-    live = isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown);
-  }catch(e){ live = (s === "LIVE"); }
-  if(live || s === "LIVE"){
-    // A REAL flag still shows. Nothing else does.
-    if(_rowHasFlag(r)) return "var(--warn)";
-    return "var(--ink3)";              // quiet: live and nothing against it
-  }
-  if(isHold(s) || s === "API_ERROR" || s === "ERROR") return "var(--red)";
-  if(s === "NEEDS_REVIEW") return "var(--warn)";
-  if(s === "APPROVED") return "var(--ok)";
-  return "var(--ink3)";
-}
+/* _statusDot() removed with the card view: nothing calls it any more. */
 
 // Is there anything actually WRONG with this row? The checks that already run --
 // restricted product types, compliance document demands, IP and claim risks --
 // rather than the status word.
-function _rowHasFlag(r){
-  if(!r) return false;
-  if(String(r.ip_risk || "").toUpperCase() === "HIGH") return true;
-  if((r.claim_flags || []).length) return true;
-  var v = r.viability;
-  if(v && v.matched && (v.risks || []).length) return true;
-  var rs = r.restricted;
-  if(rs && rs.matched && String(rs.overall_action || "").toUpperCase() !== "NONE")
-    return true;
-  return false;
-}
+/* _rowHasFlag() removed with the card view: nothing calls it any more. */
 // ---- GALLERY TILE ----
 // Is this row confirmed live by AMAZON right now? Used to gate the live-only
 // actions (Optimize, Pull live data). These used to key off r.status === "LIVE",
@@ -2059,101 +2062,15 @@ function aplusUnknownNote(){
 
 // "Inactive" chip carrying Amazon's own reason (out of stock, policy issue, no offer).
 // Only rendered once /live/reconcile has actually asked Amazon about this SKU.
-function _inactiveChip(r){
-  if(typeof amzState !== "function") return "";
-  const st = amzState(r);
-  if(st.state !== "inactive") return "";
-  const why = st.reason || "Amazon reports this listing is not buyable";
-  return `<span class="tileinactive" title="${esc(why)}"><i class="ti ti-alert-circle"></i> Inactive</span>`;
-}
+/* _inactiveChip() removed with the card view: nothing calls it any more. */
 
-function card(r){
-  const findings = [];
-  if(r.notes && r.notes.trim()) findings.push(r.notes);
-  if(r.comp_notes && r.comp_notes.trim()) findings.push(r.comp_notes);
-  // CARD ⚠️ ICON = a genuine RESTRICTED-PRODUCTS flag (prohibited/gated) OR a real hard
-  // blocker ONLY. Deliberately EXCLUDED so they never raise the icon:
-  //   - API_ERROR  -> that's Amazon's preview/submit attribute feedback (item_type_keyword,
-  //                   color, is_fragile, catalogue mismatches). Informational; lives in the
-  //                   "Amazon feedback" panel, NEVER the card icon. (This was the bug.)
-  //   - COMPLIANCE_HOLD -> legacy category-matcher noise (the restricted check replaces it).
-  //   - stored notes / old comp_risk / claims-risk -> never the icon.
-  // Genuine blockers that DO raise it: IP_HOLD (trademark) and ERROR (generation failure).
-  const _rest = r.restricted;
-  const _restProhibited = !!(_rest && _rest.matches && _rest.matches.some(m=>m.tier==="PROHIBITED"));
-  const _restFlag = !!(_rest && _rest.matched);
-  // THE STATUS THIS ROW IS ACTUALLY IN, not the word left in the database.
-  //
-  // This read r.status raw, and the dot two lines below already does not: it
-  // asks Amazon's catalogue through isActuallyLive(). So a listing that went
-  // live months ago, whose stored status still says IP_HOLD from a failed
-  // attempt before that, showed a quiet dot AND a red blocker icon on the same
-  // tile -- and the table and detailed views showed it as LIVE.
-  //
-  // Exactly the disagreement this page has had before, fixed in the tiles and
-  // in the table and missed here. _shownStatus is the one answer (Rule 12).
-  const _st = (typeof _shownStatus === "function")
-    ? String(_shownStatus(r) || "").toUpperCase()
-    : String(r.status || "").toUpperCase();
-  const _blocker = (_st==="IP_HOLD" || _st==="ERROR");
-  const realIssue = _restFlag || _blocker;
-  const flagRed = _restProhibited || _blocker;   // gated-only -> amber
-  const urls=_cardImages(r);
-  // The STRUCK-THROUGH camera, not the plain one. A plain camera glyph on a
-  // grey square reads as an image that has not loaded yet; the struck-through
-  // one says there is none. Both are in the font subset -- checked, because an
-  // icon class that is not renders as an empty box with no error anywhere.
-  // (test_http_perf.py scans this file for icon names and reads comments too,
-  // so neither is written here as a partial name.)
-  //
-  // The onerror path adds .noimg to the CONTAINER, which is what draws the
-  // "No image" caption underneath (see .tileimg.noimg::after) -- so a picture
-  // that fails to load and one that was never there end up saying the same
-  // thing, in the same place, instead of one of them leaving a blank square.
-  const thumb = (urls&&urls.length)
-    ? `<img src="${esc(thumbUrl(urls[0],120))}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo-off\\'></i>'">`
-    : `<i class="ti ti-photo-off"></i>`;
-  const selected = SELECTED.has(String(r.sku));
-  const skuId=sid(r.sku);
-  const ownAsin=ownLiveAsin(r);   // your OWN live ASIN (from the live catalogue), or "" if not live/not loaded
-  const _isDup=(typeof isDuplicate==="function") && isDuplicate(r);   // same SKU on another card/tab
-  const _dupOther=_isDup?dupOtherTabs(r):[];
-  return `<div class="tile ${selected?'sel':''} ${_isDup?'dup':''} ${flagRed?'flag':(realIssue?'flagamber':'')}" data-sku="${esc(r.sku)}">
-    <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openListing('${esc(r.sku)}')">
-      ${thumb}
-      <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(_st||r.status||'')}"></span>
-      ${rowSelectBox(r, "tilesel")}
-      ${realIssue?`<span class="tileflag ${flagRed?'red':'amber'}" title="${flagRed?'Restricted / blocked — open to see why':'Restricted — docs required'}"><i class="ti ti-alert-triangle"></i></span>`:''}
-      ${claimBadge(r)}
-      ${viabilityBadge(r)}
-      ${needsCopyBadge(r)}
-      ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
-      ${_inactiveChip(r)}
-      <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
-    </div>
-    <div class="tilebody" onclick="openListing('${esc(r.sku)}')">
-      <div class="tiletitle pii">${esc(r.title)||'<span class="cc">(no title)</span>'}</div>
-      <div class="tilemeta">
-        ${_priceCell(r, "tileprice pii")}
-        <span class="tilesku pii">${esc(r.sku)||''}</span>
-      </div>
-      <div class="tilefacts">${_brandCell(r)}${_handCell(r)}${_queuedChip(r)}</div>
-      ${_econLine(r)}
-      ${_ppcLine(r)}
-      <!-- the "lives on the X tab" badge went with the spreadsheet -->
-
-      ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">
-        <span class="tiledup-lbl"><i class="ti ti-copy"></i> Duplicate SKU${_dupOther.length?` — also on ${esc(_dupOther.join(', '))}`:` — appears ${dupCopies(r).length}×`}</span>
-        <button class="tiledup-del" title="Delete this copy from ${esc(r.tab||'this tab')} (other copies stay)" onclick="event.stopPropagation();delDuplicate('${esc(String(r.sku))}',${r.row||0},'${esc(String(r.tab||''))}',this)"><i class="ti ti-trash"></i> Delete this copy</button>
-      </div>`:''}
-      ${ownAsin?`<div class="tileasin" title="Your own live ASIN on Amazon (from the live catalogue)"><i class="ti ti-brand-amazon"></i> <a href="${_dpUrl(ownAsin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(ownAsin)}</a></div>`:''}
-    </div>
-    <!-- Built by rowActions so the table row offers exactly the same set. The
-         two used to be written out separately and had drifted: the table had
-         no Approve, no Auto-fix and no More menu, and no checkbox at all. -->
-    <div class="tileacts">${rowActions(r, "ib")}</div>
-  </div>`;
-}
+/* card() -- THE CARD VIEW'S TILE -- WAS HERE, and went with the card view.
+ *
+ * The owner's redesign kept Table as the compact mode and Detailed as the main
+ * one, and retired the grid of cards. What only a card showed was moved first:
+ * the margin/ROI and ad-spend chips and the A+ badge into the detailed row
+ * (lrPerf, lrAplusBadge), and "Delete this copy" for a duplicate SKU into the
+ * row's menu (drawerMore). */
 
 // ---- DRAWER: full editor for one listing ----
 function _marketIsUS(){
@@ -2796,15 +2713,22 @@ function metricFilter(v){
   if(typeof setFilterVal === "function") setFilterVal(next);
 }
 
-// ===================== TABLE VIEW =====================================
-// Orbit shows listings as a data table, not a card grid. Both exist: table is
-// the default, the tile grid is one click away, and card() is untouched.
+// ===================== TABLE AND DETAILED VIEWS =========================
+// TWO VIEWS NOW. On the owner's redesign the detailed view is the main one and
+// the table is the compact mode; the grid of cards was retired once what only a
+// card showed had moved into the detailed row.
 //
 // The preference is per-browser (localStorage), not per-account: it is a
 // preference about how YOU read a list, not a property of the workspace.
+//
+// A browser that remembered the CARD view ("grid") opens on the detailed view,
+// the one those features went to -- not on the table, which has none of them.
 
-let LIST_VIEW = "table";
-try{ LIST_VIEW = localStorage.getItem("alta_list_view") || "table"; }catch(e){}
+let LIST_VIEW = "detailed";
+try{
+  const _v = localStorage.getItem("alta_list_view");
+  LIST_VIEW = (_v === "table") ? "table" : "detailed";
+}catch(e){}
 
 /* WHICH VIEW IS ACTUALLY DRAWABLE RIGHT NOW.
  *
@@ -2838,16 +2762,13 @@ function applyListView(){
   }
 }
 
-// THREE VIEWS NOW. "detailed" is the Amazon Manage-All-Inventory row
-// (static/js/listrow_detailed.js) -- an ADDITIONAL view, not a replacement:
-// table stays the default and the card grid is untouched.
-//
-// An unknown value falls back to "table" rather than being stored, so a
-// localStorage entry left by an older build (or a typo in a link) cannot
-// strand somebody on a view that does not draw.
+// "detailed" is the Amazon Manage-All-Inventory row (listrow_detailed.js), the
+// main view; "table" is the compact one. Anything else -- including "grid",
+// the retired card view, from an old bookmark or an older build -- is the
+// detailed view, so nobody is stranded on a view that no longer draws.
 function setListView(v){
-  LIST_VIEW = (v === "grid") ? "grid"
-            : (v === "detailed" && typeof detailedBlock === "function") ? "detailed"
+  LIST_VIEW = (v === "table") ? "table"
+            : (typeof detailedBlock === "function") ? "detailed"
             : "table";
   try{ localStorage.setItem("alta_list_view", LIST_VIEW); }catch(e){}
   applyListView();
@@ -3022,16 +2943,17 @@ function rowActions(r, cls, opts){
 // One block of listings, drawn the way the user has chosen. Every place that
 // used to say rows.map(card).join("") calls this instead, so the two views can
 // never drift apart into "the table forgot about claimed rows".
+// `fn` is the TABLE row builder for these rows: tableRow for the app's own rows
+// (the default), liveTableRow for rows from Amazon's catalogue. It used to be
+// the card builder, which the table then swapped for its row builder; the card
+// view is retired, so there is nothing to swap.
 function listBlock(rows, fn){
-  fn = fn || card;
   if(!rows || !rows.length) return "";
   const view = listViewNow();
   // The detailed view brings its own header and its own row builder, so it
   // does not go through the table's <th>/<td> path at all.
   if(view === "detailed") return detailedBlock(rows);
-  if(view !== "table") return rows.map(fn).join("");
-  const rowFn = (fn === (typeof liveTile === "function" ? liveTile : null))
-                ? liveTableRow : tableRow;
+  const rowFn = (fn === liveTableRow) ? liveTableRow : tableRow;
   // COGS gets its own column, and it is EDITABLE. What a thing cost is the one
   // number every profit figure on every other screen is built from, and it was
   // only visible by opening a listing. Click the cell, type, done.
@@ -3095,18 +3017,13 @@ function listBlocks(groups){
   if(view === "detailed"){
     return detailedBlock(use.reduce((a, g) => a.concat(g.rows), []));
   }
-  // Tiles have no header and no table, so there is nothing to merge -- each
-  // group is already just a run of cards.
-  if(view !== "table"){
-    return use.map(g => listBlock(g.rows, g.fn)).join("");
-  }
   // One header, built from every row that will be under it, so "select all"
   // means all of them and not just the first group's.
   const all = use.reduce((a, g) => a.concat(g.rows), []);
   const head = listBlock(all, use[0].fn);
   const open = head.slice(0, head.indexOf("<tbody>") + 7);
   const body = use.map(g => (g.rows || []).map(
-                 g.fn === liveTile ? liveTableRow : (g.fn || tableRow)).join("")).join("");
+                 g.fn === liveTableRow ? liveTableRow : tableRow).join("")).join("");
   return open + body + `</tbody></table></div>`;
 }
 
@@ -3348,26 +3265,32 @@ function identifierPanel(r){
     + 'Tells Amazon this product has no barcode. Only tick it if that is true '
     + '&mdash; it is a declaration, not a workaround.</span></span></label>';
 
+  // Every other listing carrying this barcode -- drafts as well as live ones.
+  // Shown on both banners: a draft clash used to get no list at all.
+  const clashes = (id.clash && id.clash.length) ? id.clash : [];
+  const alsoOn = clashes.length
+    ? '<span class="cc" style="display:block;margin-top:5px">Also on: '
+      + clashes.map(function(c){
+          return '<code>' + esc(c.workspace_id) + ' / ' + esc(c.sku)
+               + '</code>' + (c.live ? ' <b>(live)</b>' : ' (not live yet)');
+        }).join(", ") + '</span>'
+    : '';
+
   if(id.blocking){
     return '<div class="compbanner blocked"><i class="ti ti-barcode-off"></i><div>'
       + '<b>This cannot be created on Amazon yet</b>'
       + '<span class="cc">' + esc(id.note) + '</span>'
-      + (id.clash && id.clash.length
-          ? '<span class="cc" style="display:block;margin-top:5px">Also on: '
-            + id.clash.map(function(c){
-                return '<code>' + esc(c.workspace_id) + ' / ' + esc(c.sku)
-                     + '</code>' + (c.live ? ' <b>(live)</b>' : '');
-              }).join(", ") + '</span>'
-          : '')
-      + box + '</div></div>';
+      + alsoOn + box + '</div></div>';
   }
-  if(id.note){
+  if(id.note || clashes.length){
     return '<div class="compbanner warn"><i class="ti ti-barcode"></i><div>'
-      + '<b>Product identifier</b><span class="cc">' + esc(id.note) + '</span>'
-      + box + '</div></div>';
+      + '<b>Product identifier</b><span class="cc">'
+      + esc(id.note || id.clash_note || "This barcode is on another listing too.")
+      + '</span>' + alsoOn + box + '</div></div>';
   }
   // A usable barcode nobody else has needs no panel -- but the tick box still
-  // has to be reachable to be UNticked, so it is shown quietly.
+  // has to be reachable to be UNticked, so it is shown quietly. Only reached
+  // when `clashes` is empty, so it cannot say this about a shared barcode.
   return '<div class="cc" style="font-size:11.5px;margin:6px 0 2px">'
     + 'Barcode <code>' + esc(id.barcode) + '</code> &mdash; not used by any '
     + 'other listing.' + box + '</div>';
@@ -3470,15 +3393,7 @@ function restrictedPanel(r){
 function _viabRiskClass(lvl){ return lvl==="HIGH" ? "hi" : "med"; }
 // Tile badge: the document count, visible WITHOUT opening the listing. The whole
 // failure this fixes was a requirement nobody saw until Amazon asked.
-function viabilityBadge(r){
-  const v=r.viability; if(!v || !v.matched || !(v.risks||[]).length) return "";
-  const high=(v.risks||[]).some(x=>x.risk==="HIGH");
-  const docs=(v.risks||[]).reduce((n,x)=>n+((x.docs||[]).length),0);
-  const names=(v.risks||[]).map(x=>x.label).join(", ");
-  // Own class/position: .tileflag sits bottom-RIGHT (restricted) and .tileclaim
-  // bottom-LEFT (claims), so a third badge reusing either would land on top of it.
-  return `<span class="tiledocs ${high?'red':'amber'}" title="Compliance: ${esc(names)} — ${docs} document(s) Amazon can request. Click to see the list." onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','compliance')"><i class="ti ti-file-text"></i>${docs}</span>`;
-}
+/* viabilityBadge() removed with the card view: nothing calls it any more. */
 function viabilityPanel(r){
   const v = r.viability;
   if(!v) return "";
@@ -3579,10 +3494,7 @@ function needsCopy(r){
   const hasBody = !!(r.description_html || r.description);
   return !hasBullets && !hasBody;
 }
-function needsCopyBadge(r){
-  if(!needsCopy(r)) return "";
-  return `<span class="tilecopy" title="This draft has its source title and link but no copy yet — no bullets, no description, no product type. That is how Import Seller leaves things, so you can pick what is worth generating. Select it and press Regenerate copy, or open it and use Suggest." onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','details')"><i class="ti ti-pencil-off"></i></span>`;
-}
+/* needsCopyBadge() removed with the card view: nothing calls it any more. */
 // The same fact, as a sentence with the action attached, inside the drawer.
 function needsCopyPanel(r){
   if(!needsCopy(r)) return "";
@@ -3602,13 +3514,7 @@ function batchGenerateOne(sku){
   batchGenerate("copy");
 }
 
-function claimBadge(r){
-  const f=r.claim_flags||[]; if(!f.length) return "";
-  const red=f.some(x=>x.severity==="RED"); const lvl=red?"red":"amber";
-  const rules=[...new Set(f.map(x=>x.rule+" ("+x.category+" category)"))].join("; ");
-  const tip=f.length+" claim risk"+(f.length>1?"s":"")+": "+rules+" — click to review";
-  return `<span class="tileclaim ${lvl}" title="${esc(tip)}" onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','compliance')"><i class="ti ti-alert-hexagon"></i>${f.length}</span>`;
-}
+/* claimBadge() removed with the card view: nothing calls it any more. */
 function claimBox(r){
   const f=r.claim_flags||[]; if(!f.length) return "";
   const red=f.some(x=>x.severity==="RED");
@@ -4077,6 +3983,18 @@ function drawerMore(ev, sku, row, isLive){
     + (isLive
         ? `<button onclick="pullLiveRow('${esc(sku)}',this);closeTileMenu()" title="Fetch this listing's real images from Amazon and replace the generation-time ones. Sync does this for every listing at once."><i class="ti ti-cloud-download"></i> Pull live images</button>`
         + `<button onclick="pushImageLive('${esc(sku)}',this);closeTileMenu()" title="Send the current main image to the live Amazon listing — the image only, no resubmit"><i class="ti ti-cloud-upload"></i> Push main image live</button>`
+        : "")
+    // THE REPRICER'S FLOOR AND CEILING, moved off the detailed row on the
+    // owner's redesign -- nearly every row showed "—" for both. The same boxes,
+    // in a dialog (lrRuleDialog, listrow_detailed.js).
+    + ((typeof lrRuleDialog === "function")
+        ? `<button onclick="closeTileMenu();lrRuleDialog('${esc(sku)}')" title="The lowest and highest price the repricer may set for this SKU"><i class="ti ti-arrows-vertical"></i> Min / max price…</button>`
+        : "")
+    // ONE DUPLICATE COPY. It lived only on the card, which the redesign
+    // retired; offered here on a duplicate row and nowhere else. delDuplicate
+    // removes this copy from the app and never touches Amazon.
+    + ((_r && typeof isDuplicate === "function" && isDuplicate(_r))
+        ? `<button class="danger" onclick="closeTileMenu();delDuplicate('${esc(String(sku))}',${row||0},'${esc(String(_r.tab||""))}',this)" title="Delete this copy from this app only (other copies stay, and nothing is sent to Amazon)"><i class="ti ti-copy-off"></i> Delete this copy</button>`
         : "")
     + `<button class="danger" onclick="delRow('${esc(sku)}',${row||0},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete listing</button>`;
   document.body.appendChild(m);

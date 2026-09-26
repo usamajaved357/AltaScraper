@@ -1421,6 +1421,13 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             "asin": s0.get("asin", ""),
             "product_type": s0.get("productType", ""),
             "status": s0.get("status", []),
+            # THE CONDITION AMAZON HOLDS, as its own value ("new_new",
+            # "used_like_new", ...). The detailed row printed a hard-coded
+            # "Condition New" for every listing; this is the real answer, read
+            # the same way as every attribute above -- condition_type is the
+            # [{"value": ..., "marketplace_id": ...}] shape the generator itself
+            # sends (_shape_simple). "" when Amazon returns none.
+            "condition": _attr_one(attrs, "condition_type"),
         }
 
     @app.route("/live/full_pull", methods=["POST"])
