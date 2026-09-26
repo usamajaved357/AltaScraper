@@ -901,6 +901,25 @@
   .compbanner.clear  {background:var(--ok-bg);  border-color:var(--ok-line);  color:var(--ok)}
   .compbanner.warn   {background:var(--gold-bg);border-color:var(--gold-line);color:var(--gold)}
   .compbanner.blocked{background:var(--red-bg); border-color:var(--red-line); color:var(--red)}
+  /* THE ONE-LINE VERSIONS (the owner's PDP redesign, 26 Sep 2026): the clean
+     barcode and the compliance verdict, each one row. What the second line of
+     the old banners said is on hover. Clashes and "cannot be created" keep the
+     full .compbanner above -- CLAUDE.md Rule 1 wants those reported, not
+     shrunk. */
+  .compline,.idline{display:flex;align-items:center;gap:8px;padding:6px 10px;
+              border-radius:var(--radius);border:1px solid var(--line);
+              background:var(--panel2);font-size:12px;line-height:1.4;margin:8px 0}
+  .compline .ti,.idline .ti{font-size:15px;flex:0 0 auto}
+  .compline b{font-weight:600}
+  .compline.ok  {color:var(--ok);  border-color:var(--ok-line)}
+  .compline.warn{color:var(--gold);border-color:var(--gold-line);background:var(--gold-bg)}
+  .compline.bad {color:var(--red); border-color:var(--red-line); background:var(--red-bg)}
+  .idline .ti{color:var(--ink3)}
+  .idline .idunique{color:var(--ok)}
+  .idline-sp{flex:1}
+  .idexempt{display:inline-flex;align-items:center;gap:4px;font-size:11px;
+            color:var(--ink3);cursor:pointer;white-space:nowrap}
+  .compbanner .idexempt{margin-top:7px}
   textarea.ed{min-height:42px}
   .reqrow .ed{border-color:#9a6b00}
   .fixhint{color:var(--red);font-size:11px;font-weight:600;display:block;margin-top:2px;white-space:normal;overflow-wrap:anywhere}

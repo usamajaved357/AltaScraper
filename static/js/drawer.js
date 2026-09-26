@@ -92,7 +92,7 @@ function dwBlurSave(el, sku, target, key){
  *   claimMarkField   the <mark> highlights over risky claims
  *   dwBlurSave       saves to the Title COLUMN, only when the text changed
  *   textContent      so the <mark> markup can never reach Amazon
- *   TITLE_OPTS       200 system max, the 75-char hard cap landing 27 Jul 2026
+ *   TITLE_OPTS       Amazon's 75-char cap, warning past 70 (autofix.js)
  *
  * A second title box saving to the same cell is how two editors end up
  * disagreeing about what you typed -- which is the exact reason the attribute
@@ -223,7 +223,11 @@ function dwBulletCards(sku, bullets){
       +   '<span class="dw2-bdot ix"></span>'
       + '</div>'
       + '<div class="dw2-bedit" onclick="event.stopPropagation()">'
-      +   '<textarea data-bkt="bullet' + n + '" data-bytes="0" data-warn="0" data-lim="500"'
+          // data-bytes="1": the counter under the box reads "42 / 500 bytes",
+          // the unit Amazon counts in and the one the budget bar above uses.
+          // It showed characters here and bytes on the bar -- two numbers for
+          // one bullet (the owner's PDP redesign, 26 Sep 2026).
+      +   '<textarea data-bkt="bullet' + n + '" data-bytes="1" data-warn="0" data-lim="500"'
       +   ' oninput="ccount(this,\'' + cid + '\',500);bulletMeter()"'
       +   ' onchange="saveEdit(this,\'' + esc(sku) + '\',\'col\',\'Bullet ' + n + '\')">' + esc(val) + '</textarea>'
       +   '<div class="dw2-bfoot"><div class="dw2-bfl">'
@@ -303,7 +307,7 @@ function bulletMeter(){
     if(stat){
       stat.className = "dw2-bstat" + (s.indexed ? "" : " nix");
       stat.textContent = (s.indexed ? "Indexed" : "Not indexed")
-                       + " · " + s.bytes + " / 500";
+                       + " · " + s.bytes + " / 500 bytes";
     }
   });
 

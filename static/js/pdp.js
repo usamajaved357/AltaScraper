@@ -430,6 +430,22 @@ function pdpStatusBadge(r){
   return '<span class="pdp-hb ' + cls + '"' + tip + '>' + esc(word || "—") + esc(amz) + '</span>';
 }
 
+/* "✓ unique" or "on another listing" beside the hero's barcode box. Nothing
+ * when the identifier check has not run for this row, or there is no usable
+ * barcode -- the barcode panel below says why in that case. */
+function pdpBarcodeVerdict(r){
+  const id = r && r.identifier;
+  if(!id || !id.barcode) return "";
+  const clash = (id.clash || []).length;
+  if(clash){
+    const live = (id.clash || []).some(function(c){ return c.live; });
+    return '<span class="' + (live ? "bad" : "warn") + '" title="'
+         + esc(id.clash_note || "") + '"><i class="ti ti-alert-triangle"></i> on another listing</span>';
+  }
+  return '<span class="ok" title="Not used by any other listing in this app.">'
+       + '<i class="ti ti-check"></i> unique</span>';
+}
+
 function pdpHero(r){
   const urls = (typeof _rowImages === "function") ? _rowImages(r) : [];
   const asin = (typeof rowAsin === "function") ? (rowAsin(r)||{}) : {};
@@ -481,7 +497,10 @@ function pdpHero(r){
     // declared in shell.js and is not in scope here.
     +       'oninput="pdpBarcodeTyped(\'' + esc(r.sku) + '\', this.value)" '
     +       'onchange="pdpBarcodeSave(\'' + esc(r.sku) + '\', this.value)">'
-    +       '<span id="pdp_barcode_say" class="pdp-barcode-say"></span></div>'
+    // THE STARTING VERDICT, from what the row already knows (r.identifier,
+    // routes/listing_routes._attach_identifier) -- the mockup's "✓ unique".
+    // Typing replaces it with /barcode/check's live answer, as before.
+    +       '<span id="pdp_barcode_say" class="pdp-barcode-say">' + pdpBarcodeVerdict(r) + '</span></div>'
     +     '<div><span class="pdp-mlabel">Brand</span>'
     +       (r.brand ? '<b>' + esc(r.brand) + '</b>' : '<span class="pdp-dim">not set</span>') + '</div>'
     +   '</div>'
@@ -1006,13 +1025,16 @@ function pdpAppCopyLine(sku, kind){
 }
 
 /* Said ONCE, above the fields, rather than implied by a tag on each one. */
+/* ONE SUBTLE LINE (the owner's PDP redesign, 26 Sep 2026). The rest of what the
+ * paragraph said -- that the app's own copy is shown greyed under a box where
+ * it differs -- is on hover; the grey line itself says "the app's copy". */
 function pdpAmazonCopyNote(r){
   if(!r || !r.amazon_copy) return "";
-  return '<div class="pdp-note"><i class="ti ti-brand-amazon"></i> '
-       + 'The fields below show <b>what Amazon is holding for this listing now</b>. '
-       + 'Where the app’s own copy differs it is shown underneath, greyed. '
-       + 'Editing a box saves to the app’s copy — nothing reaches Amazon '
-       + 'until you press Submit.</div>';
+  return '<div class="pdp-amznote" title="The boxes hold what Amazon is holding for '
+       + 'this listing now. Where the app’s own copy differs it is shown underneath, '
+       + 'greyed. Nothing reaches Amazon until you press Submit.">'
+       + '<i class="ti ti-cloud-download"></i> Showing Amazon’s live copy. Edits save '
+       + 'to your draft — press Submit to push to Amazon.</div>';
 }
 
 /* ---- attributes that hold more than one value --------------------------- */

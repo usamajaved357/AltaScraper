@@ -1418,9 +1418,14 @@ function fullData(r){
  * hero (listings.js) while the rest of the content limits are applied here.
  * Two copies of a date-stamped Amazon rule is exactly the kind of pair that
  * gets updated once and then disagrees. */
+// THE COUNTER READS "/ 75" SINCE 26 SEP 2026 (the owner's PDP redesign). It
+// said "/ 200", Amazon's old system maximum, while the 75 cap was already in
+// force and the generator already cuts every title to 75 (TITLE_MAX_CHARS in
+// amazon_listing_generator.py) -- so "68 / 200" looked roomy for a title with
+// seven characters left. It warns past 70, where mobile truncates.
 const TITLE_OPTS = {
-  limit: 200, warnAt: 75,
-  warnMsg: "Amazon's 75-char hard cap applies from 27 Jul 2026 (all categories except media). Front-load the first ~70 chars — mobile truncates there.",
+  limit: 75, warnAt: 70,
+  warnMsg: "Near limit — Amazon caps titles at 75 characters (all categories except media), and mobile truncates at about 70. Front-load the key words.",
   indexNote: "fully indexed · highest weight",
   indexTip: "Title carries the most A10 search weight. Mobile shows ~70-80 chars, so put the most important words first."
 };
@@ -1564,7 +1569,11 @@ function _fullDataParts(r){
                + '</b> for this barcode. Change the barcode, not this.</div>' : ""),
          {prov:(rowProvenance(r)||{}).brand});
     })(),
-    dwFieldRow("Condition", dwRo("New")),
+    // AMAZON'S CONDITION, not a hard-coded "New" -- read by lrCondition
+    // (listrow_detailed.js), the same reader the listings row uses, from what
+    // Sync stored. "—" until it has been read (the owner's redesign).
+    dwFieldRow("Condition", (typeof lrCondition === "function")
+                              ? lrCondition(r) : dwRo("—")),
     dwFieldRow("Category", dwRo((r.category||r.amazon_category||"")+(r.subcategory?(" › "+r.subcategory):""))),
     dwFieldRow("Browse node(s)", dwRo((r.attributes||{}).recommended_browse_nodes||(r.attributes||{}).browse_node||"")),
     (function(){

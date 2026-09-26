@@ -277,8 +277,12 @@ print("\n== item 6: THE COMPLIANCE BANNER ==")
 #     "Orbit shows a full-width banner in the detail view ... Clear: green bg,
 #      green border, green text, shield-check icon, 'Compliance clear -- no
 #      restricted-product or claim flags'"
+# ONE LINE SINCE 26 SEP 2026 (the owner's PDP redesign): "Clear -- no
+# restrictions or claims". Still "no ... flags" in substance and never "safe";
+# the keyword-check caveat moved to its hover text.
 yes("the exact wording is in the app",
-    "Compliance clear \u2014 no restricted-product or claim flags" in L)
+    "<b>Clear</b> \u2014 no restrictions or claims" in L)
+yes("  and the caveat is kept, on hover", "A clean result is not a guarantee" in L)
 yes("  with the shield-check icon", "shield-check" in L)
 # SECOND DEPARTURE, and the reason is in listings.js:
 #     "It returns NOTHING when the checks did not run. Showing 'compliance

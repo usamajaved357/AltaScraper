@@ -3255,15 +3255,17 @@ function liveTableRow(it){
 function identifierPanel(r){
   const id = r.identifier;
   if(!id) return "";
+  // ONE SMALL TICK BOX, the owner's PDP redesign (26 Sep 2026): the three-line
+  // explanation under it became its hover text. The words did not go -- ticking
+  // it is still a DECLARATION to Amazon (CLAUDE.md Rule 1), and the tooltip says
+  // so in full; they just stopped taking three lines on every listing.
   const box =
-    '<label class="idexempt" style="display:flex;gap:8px;align-items:flex-start;'
-    + 'margin-top:9px;font-size:12px;cursor:pointer">'
+    '<label class="idexempt" title="Apply for GTIN exemption. Tells Amazon this '
+    + 'product has no barcode. Only tick it if that is true &mdash; '
+    + 'it is a declaration, not a workaround.">'
     + '<input type="checkbox" ' + (id.exemption ? "checked" : "")
     + ' onchange="setGtinExemption(' + _sarg2(r.sku) + ', this.checked)">'
-    + '<span>Apply for GTIN exemption'
-    + '<span class="cc" style="display:block;font-size:11px;margin-top:2px">'
-    + 'Tells Amazon this product has no barcode. Only tick it if that is true '
-    + '&mdash; it is a declaration, not a workaround.</span></span></label>';
+    + ' GTIN exempt</label>';
 
   // Every other listing carrying this barcode -- drafts as well as live ones.
   // Shown on both banners: a draft clash used to get no list at all.
@@ -3288,12 +3290,15 @@ function identifierPanel(r){
       + esc(id.note || id.clash_note || "This barcode is on another listing too.")
       + '</span>' + alsoOn + box + '</div></div>';
   }
-  // A usable barcode nobody else has needs no panel -- but the tick box still
-  // has to be reachable to be UNticked, so it is shown quietly. Only reached
-  // when `clashes` is empty, so it cannot say this about a shared barcode.
-  return '<div class="cc" style="font-size:11.5px;margin:6px 0 2px">'
-    + 'Barcode <code>' + esc(id.barcode) + '</code> &mdash; not used by any '
-    + 'other listing.' + box + '</div>';
+  // A usable barcode nobody else has: ONE LINE, as the redesign drew it --
+  // "[barcode] 4545383792648 — unique, not used elsewhere  ☐ GTIN exempt". The
+  // tick box stays reachable so it can be UNticked. Only reached when `clashes`
+  // is empty, so it cannot say this about a shared barcode.
+  return '<div class="idline"><i class="ti ti-barcode"></i>'
+    + '<span><b>' + esc(id.barcode) + '</b> &mdash; '
+    + '<span class="idunique" title="Not used by any other listing in this app.">'
+    + 'unique, not used elsewhere</span></span>'
+    + '<span class="idline-sp"></span>' + box + '</div>';
 }
 
 // The SKU as a JS string argument. listings.js has no _sarg of its own; the
@@ -3318,32 +3323,30 @@ function complianceBanner(r){
   const docs       = !!(v && v.matched);
   const redClaim   = claims.some(x=>x.severity==="RED");
 
+  // ONE LINE EACH, the owner's PDP redesign (26 Sep 2026). What the second
+  // line used to say is on hover, not deleted -- in particular that a clear
+  // result is a KEYWORD check and not a clearance.
   if(prohibited){
-    return `<div class="compbanner blocked"><i class="ti ti-shield-x"></i><div>
-      <b>Blocked — prohibited on this marketplace</b>
-      <span class="cc">There is no compliance path for this product type. See the
-      restricted-products panel below.</span></div></div>`;
+    return `<div class="compline bad" title="There is no compliance path for this product type. See the restricted-products panel in Safety &amp; Compliance.">
+      <i class="ti ti-shield-x"></i><span><b>Prohibited</b> — blocked on this marketplace</span></div>`;
   }
 
   if(gated || docs || redClaim){
     const parts = [];
-    if(gated)    parts.push("restricted — documents required to list");
-    if(docs)     parts.push(v.risks && v.risks.length === 1
-                            ? "1 document demand Amazon can make later"
-                            : `${(v.risks||[]).length} document demands Amazon can make later`);
+    if(gated)    parts.push("restricted");
+    if(docs)     parts.push((v.risks||[]).length === 1
+                            ? "1 document demand" : `${(v.risks||[]).length} document demands`);
     if(claims.length) parts.push(`${claims.length} claim risk${claims.length>1?"s":""}`);
-    return `<div class="compbanner warn"><i class="ti ti-alert-triangle"></i><div>
-      <b>Needs attention — ${esc(parts.join(" · "))}</b>
-      <span class="cc">None of this blocks publishing. The panels below say
-      exactly which documents and which wording.</span></div></div>`;
+    const flags = (gated ? 1 : 0) + (docs ? (v.risks||[]).length : 0) + claims.length;
+    return `<div class="compline ${gated ? "bad" : "warn"}" title="${esc(parts.join(" · "))}. None of this blocks publishing. Safety &amp; Compliance says exactly which documents and which wording.">
+      <i class="ti ti-shield-half"></i><span><b>${gated ? "Restricted" : "Needs attention"}</b> — ${flags} flag${flags === 1 ? "" : "s"}</span></div>`;
   }
 
-  // Clear. Worded as "no flags", never "safe" -- these are keyword checks, and
-  // the banner must not read as a clearance it is not in a position to give.
-  return `<div class="compbanner clear"><i class="ti ti-shield-check"></i><div>
-    <b>Compliance clear — no restricted-product or claim flags</b>
-    <span class="cc">Keyword-based checks. A clean result is not a guarantee —
-    a disguised product can still slip past.</span></div></div>`;
+  // Clear. Worded as "no restrictions or claims", never "safe" -- these are
+  // keyword checks, and the line must not read as a clearance it is not in a
+  // position to give. The hover says so.
+  return `<div class="compline ok" title="Keyword-based checks. A clean result is not a guarantee — a disguised product can still slip past.">
+    <i class="ti ti-shield-check"></i><span><b>Clear</b> — no restrictions or claims</span></div>`;
 }
 
 // ---- RESTRICTED PRODUCTS CHECK (Shape 2) -- its own panel, separate from Amazon feedback

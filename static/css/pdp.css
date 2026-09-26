@@ -668,6 +668,16 @@ body.pdp-on .chatwrap{ z-index:79; }
 .pdp-barcode-say.checking{ color:var(--pdp-dim); }
 .pdp-barcode-say.good{ color:var(--pdp-ok, #2dd4a8); }
 .pdp-barcode-say.bad{ color:var(--pdp-bad, #f87171); }
+/* The starting verdict (pdpBarcodeVerdict), before anything is typed. */
+.pdp-barcode-say .ok{ color:var(--pdp-ok, #2dd4a8); }
+.pdp-barcode-say .warn{ color:var(--gold, #e3b768); }
+.pdp-barcode-say .bad{ color:var(--pdp-bad, #f87171); }
+.pdp-barcode-say .ti{ font-size:11px; }
+/* "Showing Amazon's live copy..." -- one subtle line (pdpAmazonCopyNote). */
+.pdp-amznote{ display:flex; align-items:center; gap:5px; font-size:11px;
+  color:var(--pdp-dim); padding:4px 8px; margin:6px 0 10px;
+  border:1px solid var(--pdp-line, #2a2f3a); border-radius:4px; }
+.pdp-amznote .ti{ font-size:13px; }
 
 .pdp-badges{ display:flex; gap:5px; margin-top:10px; flex-wrap:wrap; }
 .pdp-hb{
