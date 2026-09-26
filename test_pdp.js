@@ -748,5 +748,29 @@ console.log("\nthe Amazon feedback light reads Amazon's answer");
         light({identifier: {clash: [{sku: "X", live: false}]}}), ["warn", "— barcode clash"]);
 }
 
+console.log("\nthe status badge says what the list says");
+// ---------------------------------------------------------------------------
+// It read the stored status raw, so a listing the table showed as LIVE or
+// DRAFT opened here as SUBMITTED or GENERATED. Stubs mirror listings.js
+// _shownStatus (LIVE when Amazon's catalogue has it) and liststatus.js
+// lsBadgeWord.
+{
+  const savedLv = globalThis.__live;
+  globalThis.__live = null;
+  globalThis._shownStatus = r => (r.inCatalogue ? "LIVE" : (r.status || ""));
+  globalThis.lsBadgeWord = s => ({GENERATED: "DRAFT", SUBMITTED: "WAITING",
+                                   API_ERROR: "ISSUE"})[s] || s;
+  const word = r => (/<span class="pdp-hb [^"]*"[^>]*>([^<]*)<\/span>/.exec(ctx.pdpStatusBadge(r)) || [])[1];
+  check("  a draft reads DRAFT, as on the list", word({sku: SKU, status: "GENERATED"}), "DRAFT");
+  check("  submitted reads WAITING", word({sku: SKU, status: "SUBMITTED"}), "WAITING");
+  check("  Amazon's catalogue has it: LIVE, whatever was stored",
+        word({sku: SKU, status: "SUBMITTED", inCatalogue: true}), "LIVE");
+  truthy("  and the stale stored word is named on hover",
+         /title="[^"]*SUBMITTED/.test(ctx.pdpStatusBadge({sku: SKU, status: "SUBMITTED", inCatalogue: true})));
+  delete globalThis._shownStatus;
+  delete globalThis.lsBadgeWord;
+  globalThis.__live = savedLv;
+}
+
 console.log("\n%d failed", fails);
 process.exit(fails ? 1 : 0);

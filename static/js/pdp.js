@@ -403,18 +403,31 @@ document.addEventListener("keydown", function(ev){
 
 /* ---- the pieces -------------------------------------------------------- */
 
-/* The status word, in the four-status vocabulary liststatus.js owns, plus what
- * Amazon itself says about the listing when we have read it. The WORD comes
- * from lsStatusOf so this page can never disagree with the card and the table
- * about a listing's status. */
+/* The status word, as the table, the detailed row and the drawer show it, plus
+ * what Amazon itself says about the listing when we have read it.
+ *
+ * THE SAME TWO STEPS EVERY OTHER VIEW TAKES (Rule 12):
+ *   _shownStatus(r)  LIVE when Amazon's catalogue lists it, else the stored
+ *                    status (listings.js)
+ *   lsBadgeWord(st)  GENERATED -> DRAFT, SUBMITTED -> WAITING, API_ERROR ->
+ *                    ISSUE (liststatus.js)
+ * This read the stored status raw (lsStatusOf), so a listing the list called
+ * LIVE or DRAFT opened here as SUBMITTED or GENERATED. The colour keys off the
+ * shown status, as the drawer's does; the stored word, where it differs, is
+ * named on hover rather than hidden. */
 function pdpStatusBadge(r){
-  const st = (typeof lsStatusOf === "function") ? lsStatusOf(r)
-                                                : String(r.status||"").toUpperCase();
+  const st = String(((typeof _shownStatus === "function") ? _shownStatus(r)
+                                                          : r.status) || "").toUpperCase();
+  const stored = String(r.status || "").toUpperCase();
+  const word = (typeof lsBadgeWord === "function") ? lsBadgeWord(st) : st;
   const cls = st === "LIVE" ? "live" : st === "SUBMITTED" ? "sent"
             : st === "GENERATED" ? "gen" : st === "QUEUED" ? "queued" : "other";
   const L = (typeof lvGet === "function") ? lvGet(r.sku) : null;
   const amz = (L && L.state === "ok" && L.amazon_status) ? (" · " + L.amazon_status) : "";
-  return '<span class="pdp-hb ' + cls + '">' + esc(st || "—") + esc(amz) + '</span>';
+  const tip = (stored && stored !== st)
+    ? ' title="Amazon is showing this listing, so it is live. Its stored status still says '
+      + esc(stored) + ' from an earlier attempt."' : "";
+  return '<span class="pdp-hb ' + cls + '"' + tip + '>' + esc(word || "—") + esc(amz) + '</span>';
 }
 
 function pdpHero(r){
