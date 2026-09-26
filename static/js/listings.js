@@ -1325,10 +1325,9 @@ function summary(){
       on: _cur === filter,
       onclick: "metricFilter('" + filter + "')",
       title: "Show only these",
-      // SAY THAT IT IS A BUTTON (the owner's redesign, kept when the rest of
-      // the row redesign was reverted). The lit card says what pressing it
-      // again does, because that is different: it clears the filter.
-      note: (_cur === filter) ? "Click to clear" : "Click to filter",
+      // No hint line under the number: removed on the owner's
+      // instruction (27 Sep 2026) -- the cards are already clickable, and the
+      // hover title says what they do.
       share: (sub && !_pending && whole > 0 && isFinite(cnt))
         ? Math.min(1, cnt / whole) : null,
       barColor: tone,

@@ -36,8 +36,10 @@ check("no card features moved in (margin/ROI, ad spend, A+)",
 truthy("but the condition is Amazon's, not a hard-coded New",
        /Condition ' \+ lrCondition\(r\)/.test(LRD) && LRD.indexOf("Condition <strong>New</strong>") < 0);
 
-console.log("\n=== 2. stat cards say they can be clicked ===");
-truthy("Click to filter", /"Click to filter"/.test(LS));
+// 27 Sep 2026, later the same day: the owner removed the hint again ("the cards
+// are already clickable -- the text is unnecessary clutter").
+console.log("\n=== 2. no hint text under the stat cards ===");
+check("no Click to filter / Click to clear", /Click to (filter|clear)/.test(LS), false);
 
 console.log("\n=== 3. three view toggles, card view back ===");
 check("table, detailed and card", (TPL.match(/data-view="(table|detailed|grid)"/g) || []).sort(),
@@ -53,11 +55,12 @@ console.log("\n=== 5. the upload zone and an empty queue are one line ===");
 truthy("the drop zone is one row with the template link in it",
        /iup-zone iup-line/.test(IU) && /Drop a spreadsheet here/.test(IU) && /Download template<\/a>/.test(IU));
 truthy("  the template link does not open the file picker", /iup-link" onclick="event\.stopPropagation\(\)"/.test(IU));
-truthy("an empty queue says so in one line",
-       IQ.indexOf("No products queued · drop a spreadsheet or click <b>Upload template</b>") >= 0);
-truthy("  and hides the header's controls until something is queued",
+// The "No products queued" line was removed later the same day (the drop zone
+// already says what to do): an empty queue now shows nothing at all.
+check("no 'No products queued' line", IQ.indexOf("No products queued") >= 0, false);
+truthy("an empty queue hides the whole card until something is queued",
        /classList\.toggle\("iq-empty", !IQ\.rows\.length\)/.test(IQ)
-       && /\.genflow-queue\.iq-empty \.genflow-qhead\{ display: none; \}/.test(GFCSS));
+       && /\.genflow-queue\.iq-empty\{ display: none; \}/.test(GFCSS));
 truthy("Upload template still opens and closes the section", /onclick="genflowToggle\(\)"/.test(TPL));
 
 console.log("\n=== the approved toolbar stays ===");

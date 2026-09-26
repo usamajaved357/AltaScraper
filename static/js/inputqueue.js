@@ -78,15 +78,16 @@ function inputQueueRender(){
   // above. The /input/add route is left in place; nothing on this screen calls
   // it any more.
 
-  // EMPTY: ONE LINE, and the header's controls (filter, refresh, clear,
-  // generate now, the pre-flight "Check again") are hidden -- they act on a
-  // queue, and there is none. The .iq-empty class does the hiding
-  // (dashboard.css), so they come back the moment something is queued.
+  // EMPTY: NOTHING AT ALL. The whole queue card -- its header controls
+  // (filter, refresh, clear, generate now, "Check again") and its body -- is
+  // hidden while nothing is queued, and comes back the moment something is
+  // (.iq-empty, genflow.css). The one-line empty-queue message that stood in
+  // for it was removed on the owner's instruction (27 Sep 2026): the drop zone
+  // above already says what to do.
   const wrap = document.getElementById("inputsheetwrap");
   if(wrap) wrap.classList.toggle("iq-empty", !IQ.rows.length);
   if(!IQ.rows.length){
-    body.innerHTML = '<div class="iq-emptyline"><i class="ti ti-inbox"></i> '
-      + 'No products queued · drop a spreadsheet or click <b>Upload template</b></div>';
+    body.innerHTML = "";
     return;
   }
 
