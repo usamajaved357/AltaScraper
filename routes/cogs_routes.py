@@ -124,11 +124,32 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
 
     @app.route("/cogs/set", methods=["POST"])
     def cogs_set():
-        """Manually set/override COGS for a SKU in the active account."""
+        """Manually set/override COGS for a SKU in the account the request names.
+
+        THE ACCOUNT MUST BE NAMED. This used to fall back to
+        _state["active_account_id"] -- the account the SERVER last had open, one
+        variable for the whole process, moved by whichever browser tab switched
+        account last. The row editor sent no account at all, so a cost typed on
+        one account's row was saved against another's. The owner reuses SKUs
+        across accounts, so it found a real row there and silently changed that
+        company's profit figures.
+
+        Not "refuse when it differs from the open account": that comparison was
+        retired on purpose (domain/account_scope.is_mismatch) because it refused
+        every tab but the last one to switch. The account a request NAMES is the
+        account it gets -- so a request that names none is refused, not guessed.
+        Costs are kept per account and SKU (cogs_store.key), so the marketplace
+        is not part of it.
+        """
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = str(b.get("id", "") or "").strip()
         sku = (b.get("sku", "") or "").strip()
         cost = b.get("cost", None)
+        if not aid:
+            return jsonify({"ok": False, "error": (
+                "no account named, so the cost was not saved -- a cost belongs "
+                "to one account, and guessing which could change another "
+                "company's figures")}), 400
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
         # THROUGH THE STORE, which owns the dict and the file together. Writing
