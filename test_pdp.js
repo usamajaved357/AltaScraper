@@ -141,8 +141,11 @@ truthy("and falls back to the drawer when pdp.js has not loaded",
 // want this symbol at all, i already have 3 symbols for restricted compliance
 // and claims risk"). The point of the count is unchanged -- a NEW caller still
 // has to be a deliberate act -- and it moves down as well as up.
+// 9 -> 4 on 26 Sep 2026: the card view was retired on the owner's redesign,
+// and five of the nine were on the card -- its picture, its body, and the
+// compliance, claim and "no copy yet" chips.
 check("every way into a listing goes through it",
-      (LISTINGS.match(/openListing(At)?\('/g) || []).length, 9);
+      (LISTINGS.match(/openListing(At)?\('/g) || []).length, 4);
 // AND ONLY THREE THINGS CALL pdpOpen ITSELF: openListing, openLiveListing, and
 // the drawer's own expand button -- which is deliberate, because the drawer is
 // already showing this listing and is asking for the same one full screen
@@ -511,8 +514,11 @@ truthy("openLiveListing decides where a live row goes",
 truthy("  and both live row builders call it",
        /openLiveListing\('\$\{esc\(it\.asin/.test(LISTINGS));
 const MILES = fs.readFileSync("static/js/miles_template.js", "utf8");
-check("  including the live TILE, in miles_template.js",
-      (MILES.match(/openLiveListing\('/g) || []).length, 2);
+// The live TILE in miles_template.js made two of these calls; it went with the
+// card view (26 Sep 2026). Amazon's catalogue rows are drawn by liveTableRow,
+// checked just above, and by the detailed row.
+check("  and the retired live tile left none behind in miles_template.js",
+      (MILES.match(/openLiveListing\('/g) || []).length, 0);
 // No ROW handler may still go straight to the modal. Row handlers are the ones
 // built from a live catalogue item (`it.`); the BUTTONS that offer the modal on
 // purpose -- the drawer's "Optimize live copy" and the product page's sidebar --

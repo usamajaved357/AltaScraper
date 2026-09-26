@@ -148,21 +148,19 @@ TOK = {
     "var(--side-bg)": "var(--sidebar)",
 }
 
-print("== item 1: LISTINGS ARE A TABLE, and the tile grid is still there ==")
+print("== item 1: LISTINGS ARE A TABLE ==")
 L = JS["listings.js"]
-yes("tableRow(r) exists beside card(r)",
-    "function tableRow(r)" in L and "function card(r)" in L)
-yes("  and card() was not deleted", L.count("function card(r)") == 1)
-yes("table is the DEFAULT view", 'let LIST_VIEW = "table"' in L)
+# The tile grid was kept here "one click away" until the owner's redesign of
+# 26 Sep 2026 retired it: the detailed view became the main one, the table the
+# compact one, and what only a card showed moved into the detailed row first.
+yes("tableRow(r) exists", "function tableRow(r)" in L)
+yes("  and the card grid is retired", "function card(r)" not in L)
+yes("the DETAILED view is the default now", 'let LIST_VIEW = "detailed"' in L)
 yes("  the preference is in localStorage", '"alta_list_view"' in L)
 yes("  and an unknown stored value falls back rather than sticking",
     "function listViewNow()" in L)
 yes("there is a toggle in the toolbar", "viewtoggle" in L)
-# The brief names two views. A third -- the Amazon Manage-All-Inventory row --
-# was added later by LISTINGS_FUNCTIONAL_FIXES.md and is additive: table is
-# still the default and the card grid is still one click away.
-yes("  the grid view is one of its options", 'data-view="grid"' in L
-    or "dataset.view" in L)
+yes("  the table view is one of its options", "dataset.view" in L)
 print("\n  -- the .lt rules, against the prototype's --")
 # THE TABLE IS DENSER THAN THE PROTOTYPE, on a later instruction:
 #     "the sizing and the theme of the repricer page is nice, i want this to be

@@ -166,17 +166,23 @@ truthy("the local cache is dropped too, or the cells keep drawing stale costs",
        "delete COGS_LOCAL[k]" in _fn)
 
 HTML = open("templates/dashboard.html", encoding="utf-8").read()
-truthy("the button is on the toolbar", 'onclick="cogsClearAll()"' in HTML)
-# All four cost controls in one group, in order: get the sheet, upload it, learn
-# how it works, clear it. A character-distance check broke the moment two more
-# buttons went between them, which measures the markup rather than the grouping.
-_grp = HTML[HTML.index("/cogs/template.csv"):]
-_grp = _grp[:_grp.index("</div>")]
+truthy("the button is on the page", 'onclick="cogsClearAll()"' in HTML)
+# THE THREE COST CONTROLS ARE ONE GROUP -- the Costs ▾ menu: get the sheet,
+# upload it, learn how it works. Clear COGS USED TO BE THE FOURTH, "because that
+# is where somebody looking to take them out will look". The owner's redesign
+# (26 Sep 2026) moved it to the ⋯ menu with the other rare and destructive
+# actions, so it is checked THERE, and checked to be NOT in the Costs menu.
+_grp = HTML[HTML.index('<template id="tpl_costs">'):]
+_grp = _grp[:_grp.index("</template>")]
 for _what, _mark in (("get the sheet", "/cogs/template.csv"),
                      ("upload it", 'onclick="cogsUploadOpen()"'),
-                     ("explain it", 'onclick="cogsExplain()"'),
-                     ("clear it", 'onclick="cogsClearAll()"')):
-    truthy("  the control to %s is in the same group" % _what, _mark in _grp)
+                     ("explain it", 'onclick="cogsExplain()"')):
+    truthy("  the control to %s is in the Costs menu" % _what, _mark in _grp)
+truthy("  and Clear COGS is not in it", 'onclick="cogsClearAll()"' not in _grp)
+_more = HTML[HTML.index('<template id="tpl_more_danger">'):]
+_more = _more[:_more.index("</template>")]
+truthy("Clear COGS is in the ⋯ menu's destructive group", 'onclick="cogsClearAll()"' in _more)
+truthy("  still styled as the destructive thing it is", 'class="danger' in _more)
 CSS = open("static/css/dashboard.css", encoding="utf-8").read()
 # The rule it lives on, not the exact selector text: the Weekly KPIs page grew
 # the same kind of button and the two now share one declaration, so pinning the

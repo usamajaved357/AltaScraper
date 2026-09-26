@@ -139,7 +139,12 @@ truthy("Edit is still in the More menu",   "Edit details" in LJ)
 # Where the click LANDS moved to the full-screen product page (openListing ->
 # pdp.js). That the WHOLE CARD is still the way in is what this pins, and that
 # has not changed -- which is the property the section above is about.
-truthy("Edit is still the whole card",     "class=\"tilebody\" onclick=\"openListing(" in LJ)
+# The CARD was retired on the owner's redesign (26 Sep 2026); the property
+# lives on in the detailed row, the main view now: the whole row opens it.
+_LRD = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "static", "js", "listrow_detailed.js"), encoding="utf-8").read()
+truthy("Edit is still the whole row",
+       "' onclick=\"openListing(\\'' + esc(r.sku) + '\\')\">'" in _LRD)
 truthy("the price panel is still what sends a price", "priceEdit('" in LJ)
 truthy("and the table row keeps its Review button",   ">Review</button>" in LJ)
 # The way IN to Amazon is the ASIN itself -- "we should be able to open the
@@ -156,15 +161,19 @@ truthy("the draft row's ASIN is an anchor", "<a class=\"asin\" href=" in LJ)
 check("both row kinds link it", LJ.count("<a class=\"asin\" href="), 2)
 truthy("  it stops the row's own click",
        "onclick=\"event.stopPropagation()\" style=\"text-decoration:none\"" in LJ)
-truthy("  and the live tile linked it already", "_dpUrl(it.asin)" in MT)
+# Asked of the live TILE until it was retired (26 Sep 2026); the live table
+# row draws those listings now, and links the ASIN the same way.
+truthy("  and the live row links it", "_dpUrl(it.asin)" in LJ)
 
 print("\n== clicking a card opens the listing, whichever kind of card ==")
 # WHERE IT OPENS MOVED; THAT IT OPENS DID NOT. A live row now goes through
 # openLiveListing (listings.js), which sends it to the full-screen product page
 # when this app holds a row for the SKU and to optimizeLive when it does not --
 # some catalogue rows were never made here and have nothing local to show.
-truthy("a live tile opens the listing", "onclick=\"openLiveListing(" in MT)
-truthy("a live table row does too",
+# The live TILE went with the card view (26 Sep 2026); the live table row is
+# what draws those listings now.
+truthy("the retired live tile is gone", "function liveTile(" not in MT)
+truthy("a live table row opens the listing",
        "const _open = `openLiveListing(" in LJ)
 # The decision moved into openListing so the detailed view's rows get the same
 # answer as the tiles -- the ASIN it hands over now comes from Amazon's own
@@ -210,7 +219,11 @@ falsy("  instead of the dash it used to print",
       "<td><span class=\"cc\">—</span></td>\n    <td><span class=\"badge b-LIVE\">" in LJ)
 # FBA's "0 days handling" is this code's assumption, not Amazon's figure, and
 # the ship-by date hid that completely.
-truthy("an assumed handling time says it is assumed", "(assumed)" in MT)
+# The assumed figure was the live TILE's own -- it printed "~0d handling
+# (assumed)" for FBA. The tile was retired (26 Sep 2026), and nothing that
+# replaced it assumes a figure: _handCell shows Amazon's or ours, labelled, or
+# none. So there is no longer an assumption to label.
+falsy("no view invents a handling time any more", "(assumed)" in MT)
 
 print("\n== and Amazon's figure is actually fetched, not just labelled ==")
 # MEASURED, not assumed. 46 of 47 live listings arrived with no handling time
@@ -250,8 +263,10 @@ truthy("  with the reason it matters", "late-dispatch" in LJ)
 print("\n== the brand is stated on every card ==")
 truthy("there is one brand cell", "function _brandCell(" in LJ)
 falsy("no more show-it-only-if-set", "${r.brand?`<span class=\"brand pii\">" in LJ)
-truthy("the draft tile states it",     "_brandCell(r)" in LJ)
-truthy("the live tile states it",      "_brandCell(it)" in MT)
+truthy("the draft row states it",      "_brandCell(r)" in LJ)
+# The live TILE said it too until the card view was retired (26 Sep 2026); the
+# live table row carries it now.
+truthy("the live row states it",       "_brandCell(it)" in LJ)
 truthy("the table rows state it",      LJ.count("_brandCell(") >= 3)
 truthy("an account default is labelled as one", "(account default)" in LJ)
 

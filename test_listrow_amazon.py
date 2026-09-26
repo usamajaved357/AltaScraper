@@ -149,8 +149,12 @@ falsy("  and no longer draws the button strip", "rowActions(r" in JSCODE)
 print("\n=== the mockup's structure ===")
 truthy("a real table, as the mockup has", "inv-table" in JS and "<thead" in JS)
 for col in ("col-cb", "col-status", "col-product", "col-perf", "col-inv",
-            "col-price", "col-fees", "col-actions"):
+            "col-price", "col-actions"):
     truthy("column %s" % col, col in JS and ("." + col) in CSS)
+# The fees are a line inside Pricing now (owner's redesign, 26 Sep 2026), not a
+# column of their own.
+falsy("no separate fees column", "col-fees" in JS)
+truthy("  the fees are drawn inside Pricing", "+ lrFees(r)" in JS)
 truthy("a sort bar with a count and a picker",
        "lr-sortbar" in CSS and "function lrSortBar(" in JS)
 truthy("  which sorts a COPY, leaving the grid's own order alone",
@@ -307,9 +311,10 @@ try:
         print("  FAIL the renderer threw:", (out.stderr or "")[:400])
     else:
         g = json.loads(out.stdout.strip().splitlines()[-1])
-        check("eight cells per row", g["cells"], 8)
+        # Seven since the fees column was folded into Pricing (26 Sep 2026).
+        check("seven cells per row", g["cells"], 7)
         truthy("a real table with a body", g["isTable"])
-        check("  eight columns in the header", g["headCols"], 8)
+        check("  seven columns in the header", g["headCols"], 7)
         truthy("  and a sort bar above it", g["sortBar"])
         truthy("2. handling is an editable box on a live row", g["handLive"])
         truthy("   and on a draft", g["handDraft"])
