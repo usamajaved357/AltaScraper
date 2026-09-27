@@ -352,7 +352,13 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None,
     That is an estimate; `fee_estimated` is True and the screen says so. Once the
     finance records land, domain/order_finance.py has the real per-order figures.
     """
-    rate = DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)
+    # THE RATE THE ESTIMATE WAS ACTUALLY MADE AT. amazon_fees.estimate puts it
+    # on its reply; the detail route passes no referral_rate, so reading only
+    # that made the panel say "estimated at 15%" under a fee worked out at this
+    # account's measured rate.
+    _used = (fees or {}).get("rate")
+    rate = (float(_used) if _used is not None else
+            (DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)))
     its = [i for i in (items or []) if i]
     total = None
     try:

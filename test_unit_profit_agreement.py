@@ -24,6 +24,12 @@ sys.path.insert(0, HERE)
 os.chdir(HERE)
 _TMP = tempfile.mkdtemp(prefix="unit_profit_")
 os.environ["ALTASCRAPER_DB"] = os.path.join(_TMP, "t.db")
+# The account's own settings -- above all its VAT rate, which the fee rate
+# and every profit figure read from the account (domain/unit_profit).
+# A temporary config.json, so nothing real is read.
+with open(os.path.join(_TMP, "config.json"), "w") as _fh:
+    _fh.write('{"accounts": [{"id": "__unit__", "vat_rate": 0.2}]}')
+os.environ["CONFIG_PATH"] = os.path.join(_TMP, "config.json")
 
 from data import db as _db                      # noqa: E402
 from domain import amazon_fees as _af           # noqa: E402

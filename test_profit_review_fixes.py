@@ -25,6 +25,12 @@ sys.path.insert(0, HERE)
 os.chdir(HERE)
 _TMP = tempfile.mkdtemp(prefix="profit_review_")
 os.environ["ALTASCRAPER_DB"] = os.path.join(_TMP, "t.db")
+# The account's own settings -- above all its VAT rate, which the fee rate
+# and every profit figure read from the account (domain/unit_profit).
+# A temporary config.json, so nothing real is read.
+with open(os.path.join(_TMP, "config.json"), "w") as _fh:
+    _fh.write('{"accounts": []}')
+os.environ["CONFIG_PATH"] = os.path.join(_TMP, "config.json")
 
 from data import db as _db                      # noqa: E402
 from domain import asin_charges as _ac          # noqa: E402
@@ -150,6 +156,56 @@ srows, _st = _contrib.by_product(None, W6, "UK", "2026-08-01", "2026-08-31",
                                  vat_rate=0)
 check("the coupon fee is in the product's fees", srows[0]["fees"], 8.0)
 check("and so off its contribution: 40 - 8 - 10", srows[0]["contribution"], 22.0)
+
+print("\n--- the second review (of the per-product change) ---")
+
+print("\n7. US sales tax is not part of the fee base")
+W7 = "__rv7__"          # not VAT-registered (no rate in the account config)
+ins("finance_daily", workspace_id=W7, marketplace="US", date="2026-08-10", asin="*",
+    principal=1000.0, tax=70.0, referral_fees=150.0, fba_fees=0.0, other_fees=0.0,
+    currency="USD")
+conn.commit()
+_r7, _b7, _d7 = _op.fee_rate(None, W7, "US", "2026-09-01")
+check("150 of fees on 1000 of sales is 15%, sales tax left out", round(_r7, 4), 0.15)
+
+print("\n8. a product's own rate counts the postage its buyers paid")
+from domain import amazon_fees as _af                                  # noqa: E402
+W8 = "__rv8__"
+for i in (1, 2, 3):
+    oid = "Q%d" % i
+    ins("order_lines", workspace_id=W8, marketplace="UK", order_id=oid,
+        purchase_date="2026-08-0%dT10:00:00Z" % i, sku="SQ", asin="B0POST0001",
+        units=1, revenue=20.0, shipping=4.0, cogs=8.0, status="Shipped",
+        currency="GBP")
+    settle(W8, oid, "2026-08-1%d" % i, 3.60, 24.0)
+conn.commit()
+bd8 = _af.breakdown_for(None, W8, "UK", "B0POST0001", 24.0, sku="SQ")
+check("3.60 on 24.00 paid is 15%, so 24.00 is charged 3.60", bd8["total"], 3.6)
+
+print("\n9. an 'Amazon PPC' cost is not Amazon's account charge")
+W9 = "__rv9__"
+ins("finance_daily", workspace_id=W9, marketplace="UK", date="2026-08-14", asin="*",
+    other_fees=30.0, currency="GBP")
+conn.commit()
+_exp.add(None, W9, name="Amazon PPC (manual)", amount=120.0, starts="2026-01-01")
+check("the 30.00 subscription still comes off",
+      _exp.overhead_for(None, W9, "UK", "2026-08-01", "2026-08-31")
+      ["amazon_account_charges"], 30.0)
+
+print("\n10. the settled history is read once, and again the moment it changes")
+_a = _af._settled_orders(None, W8, "UK")
+check("asked twice, the same answer is reused",
+      _af._settled_orders(None, W8, "UK") is _a, True)
+line(W8, "Q9", "2026-08-09", "SQ", "B0POST0001", 1, 20.0, 8.0)
+settle(W8, "Q9", "2026-08-19", 3.0, 20.0)
+conn.commit()
+check("a new settlement is seen at once",
+      len(_af._settled_orders(None, W8, "UK")[0]), len(_a[0]) + 1)
+
+print("\n11. the cost editor asks the one per-unit answer")
+_CR = open(os.path.join(HERE, "routes", "cogs_routes.py"), encoding="utf-8").read()
+check("it calls unit_profit.at_price, not the flat-15% estimate",
+      "_up.at_price(" in _CR and "_estimate_profit(b.get" not in _CR, True)
 
 print("\n%d checks, %d failed" % (len(ran), len(fails)))
 if fails:

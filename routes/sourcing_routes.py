@@ -1588,7 +1588,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
              **vals})
         m_pct = merged.get("target_margin_pct")
         if m_pct is not None:
-            room = (1.0 - float(merged["referral_rate"])) * 100.0
+            # AFTER VAT, the same limit the pricing itself works to: margin is a
+            # share of the price after VAT, so on a VAT-registered account the
+            # room is 1 - rate / (1/(1+VAT)), not 1 - rate. Without this a
+            # target could be saved that no price can meet.
+            from listing import pricing as _pricing
+            _k = _pricing._kept(merged.get("vat_rate"))
+            room = (1.0 - float(merged["referral_rate"]) / _k) * 100.0
             if float(m_pct) >= room - 1:
                 return jsonify({"ok": False, "error": (
                     "Amazon takes %.0f%% of the sale, so a MARGIN target has to "

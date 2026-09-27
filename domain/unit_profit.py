@@ -41,8 +41,9 @@ def account_vat_rate(config_path, workspace_id):
     try:
         from config import settings as _settings
         from domain import sales_data as _sd
-        return _sd.vat_rate_for(_settings.read_raw(config_path) or {},
-                                workspace_id)
+        raw = (_settings.read_raw(config_path) if config_path
+               else _settings.read_raw())          # the app's own config.json
+        return _sd.vat_rate_for(raw or {}, workspace_id)
     except Exception:
         return None
 

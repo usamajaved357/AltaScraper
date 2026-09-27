@@ -161,9 +161,24 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
         if not ok and cost not in (None, "", "null"):
             return jsonify({"ok": False, "error": (
                 "cost must be a number, and not a negative one")}), 400
-        # return the recomputed profit for immediate UI update
-        prof = (_estimate_profit(b.get("price", ""), stored)
-                if stored is not None else None)
+        # THE RECOMPUTED PROFIT, from the one per-unit answer the Live rows and
+        # the price editor use (domain/unit_profit.py) -- Amazon's fee from the
+        # three-tier resolver, VAT at the account's setting. This used
+        # _estimate_profit, a flat 15% with VAT left in, so the row changed to a
+        # different number the moment a cost was typed.
+        prof = None
+        if stored is not None:
+            from domain import unit_profit as _up
+            mkt = str(b.get("mkt") or b.get("marketplace")
+                      or _state.get("active_marketplace") or "UK").upper()
+            _p = str(b.get("price", "") or "").replace(",", "").strip()
+            try:
+                _p = float(_p) if _p else 0.0
+            except ValueError:
+                _p = 0.0
+            prof = _up.as_estimate(_up.at_price(
+                CONFIG_PATH, aid, mkt, sku, str(b.get("asin") or ""), _p, stored,
+                currency=("USD" if mkt in ("US", "USA") else "GBP")))
         return jsonify({"ok": True, "profit": prof, "cost": stored,
                         "cogs_source": ("manual" if stored is not None else "")})
 

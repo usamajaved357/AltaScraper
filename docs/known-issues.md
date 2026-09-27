@@ -96,6 +96,15 @@ has these until the owner merges):
   account charge compared two calendars; per-product charges missing from grid
   and Finance rows; Profit card ignored the product filter; settlement view
   dropped coupon fees.
+  Second review fixes (28 Sep 2026, test_profit_review_fixes.py 7-11): fee
+  base includes tax only on VAT-registered accounts (US sales tax excluded);
+  product fee rate counts buyer-paid postage; settled history memoised
+  (400 SKUs / 5000 orders: 15.4s -> 0.15s); cost editor on unit_profit;
+  "Amazon PPC" expense no longer cancels the subscription charge; margin
+  target save check is VAT-aware; Repricer tile/bar and PPC page JS take VAT.
+  Known small gap: when the Sales grid falls back to the money calendar
+  (fees older than the order history), per-product charges are not
+  subtracted there (the Profit card still subtracts them).
   **Still not changed:** the generator's stored listing profit
   (amazon_listing_generator.calculate_financials -- protected file; fee from
   the competitor ASIN or flat 15%, VAT in) and its price floor; a single

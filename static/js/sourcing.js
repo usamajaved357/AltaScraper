@@ -1480,13 +1480,22 @@ function _stackBar(b, r){
   const prop = _proposedPrice(r);
   const other = +(b.postage_label || 0) + +(b.ads || 0);
   const profit = +(b.profit || 0);
-  const tot = cost + ref + close + other + Math.max(0, profit);
+  // THE VAT INSIDE THE PRICE, on a VAT-registered account. It is part of what
+  // the price pays for, so without its own segment the bar no longer added up
+  // to the price once profit started taking it out.
+  const vat = +(b.vat || 0);
+  const tot = cost + ref + close + other + vat + Math.max(0, profit);
   if(!(tot > 0)) return '';
   let h = '<div class="rp-sbar">'
     + '<div class="rp-sb-cost" style="flex:' + cost + '" title="What one unit '
     + 'costs you delivered from the supplier">' + _smoney(cost) + '</div>'
     + '<div class="rp-sb-ref" style="flex:' + ref + '" title="Amazon\'s '
-    + 'referral fee on this price">' + _smoney(ref) + '</div>';
+    + 'referral fee on this price">' + _smoney(ref) + '</div>'
+    + (vat > 0
+        ? '<div style="flex:' + vat + ';background:var(--line2);color:var(--ink2)" '
+          + 'title="VAT inside this price, at this account\'s rate — collected '
+          + 'for HMRC">' + _smoney(vat) + '</div>'
+        : '');
   if(close > 0)
     h += '<div class="rp-sb-close" title="Amazon\'s variable closing fee">'
       +  _smoney(close) + '</div>';
@@ -1509,6 +1518,9 @@ function _stackBar(b, r){
     + '<span><span class="rp-sq" style="background:var(--bar-fee)"></span>Referral</span>'
     + (close > 0
         ? '<span><span class="rp-sq" style="background:var(--bar-fee2)"></span>Closing</span>'
+        : '')
+    + (vat > 0
+        ? '<span><span class="rp-sq" style="background:var(--line2)"></span>VAT</span>'
         : '')
     + (other > 0
         ? '<span><span class="rp-sq" style="background:var(--line2)"></span>'
@@ -1555,7 +1567,11 @@ function _metStrip(r){
   const priced = (b.price != null && b.profit != null);
   const roi = priced ? (b.cost ? (b.profit / b.cost) * 100 : null)
             : (g.roi_pct != null ? g.roi_pct : null);
-  const mgn = priced ? (b.price ? (b.profit / b.price) * 100 : null)
+  // Margin over the price AFTER VAT (b.vat, at the account's setting) -- the
+  // definition target_status and every profit screen use, so a 20% target
+  // that is met does not read 16.7% here.
+  const _net = priced ? (+b.price - +(b.vat || 0)) : 0;
+  const mgn = priced ? (_net > 0 ? (b.profit / _net) * 100 : null)
             : (g.margin_pct != null ? g.margin_pct : null);
   const tgt = ((r.rule || {}).target_roi_pct != null)
             ? +r.rule.target_roi_pct : null;

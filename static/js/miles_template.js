@@ -1809,7 +1809,7 @@ function liveTile(it){
     profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}
 Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale price you keep">margin ${it.profit.margin}%</span>${roiHtml} · ${CUR_SYMBOL}${it.profit.net}</span>`;
   } else {
-    profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs('${esc(it.sku||'')}','${esc(String(it.price||''))}')">+ COGS</span>`;
+    profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs('${esc(it.sku||'')}','${esc(String(it.price||''))}','${esc(it.asin||'')}')">+ COGS</span>`;
   }
   // fulfillment (FBA/FBM) + handling time + delivery estimate
   var fch = it.fulfillment||"";
@@ -2017,12 +2017,15 @@ async function fetchLiveImages(){
   }
   _imgFetchBusy=false;
 }
-async function setCogs(sku, price){
-  const cur=await uiPrompt("Enter your cost (COGS) for SKU "+sku+"\n\nThis is your total cost including shipping. Margin = (price − COGS − ~15% Amazon referral) / price.","");
+async function setCogs(sku, price, asin){
+  const cur=await uiPrompt("Enter your cost (COGS) for SKU "+sku+"\n\nThis is your total cost including shipping. Margin = (price − VAT − Amazon's fee − COGS) / (price − VAT), with Amazon's fee from what it actually charges this product.","");
   if(cur===null) return;
   try{
     const j=await (await fetch("/cogs/set",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({id:CUR_ACCOUNT.id,sku:sku,cost:cur,price:price})})).json();
+      // asin + mkt so the server can find Amazon's fee for THIS product in THIS
+      // marketplace (domain/unit_profit.py), the same answer a Live sync gives.
+      body:JSON.stringify({id:CUR_ACCOUNT.id,sku:sku,cost:cur,price:price,
+                           asin:asin||"", mkt:WS_MARKET||""})})).json();
     if(!j.ok){ toast("Could not set COGS: "+(j.error||"")); return; }
     // update the cached item and re-render
     const key=_liveKey();

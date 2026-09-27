@@ -314,7 +314,13 @@ def from_settled(row):
         return None
     ref = _f(row.get("referral_fees"), 0.0)
     fba = _f(row.get("fba_fees"), 0.0)
-    other = _f(row.get("other_fees"), 0.0)
+    # Coupon and deal fees are Amazon's charges too. The newer finance sync
+    # files them in their own column (finance_data._bucket_fee); on older rows
+    # they are NULL here and still inside other_fees, so adding them never
+    # counts anything twice. Left out, a settled order with a coupon read as
+    # cheaper to sell than it was -- the gap closed on the period screens on
+    # 28 Sep 2026 (sales_data.net_proceeds_for).
+    other = _f(row.get("other_fees"), 0.0) + _f(row.get("promo_fees"), 0.0)
     promos = _f(row.get("promos"), 0.0)
     if ref == 0.0 and fba == 0.0 and other == 0.0:
         # A row exists but Amazon has taken nothing yet. Not a settlement.
@@ -352,7 +358,8 @@ def for_order(config_path, workspace_id, marketplace, order_id, gross,
             conn = _db.get_db(config_path)
             r = conn.execute(
                 "SELECT SUM(referral_fees) referral_fees, SUM(fba_fees) fba_fees, "
-                "       SUM(other_fees) other_fees, SUM(promos) promos "
+                "       SUM(other_fees) other_fees, SUM(promo_fees) promo_fees, "
+                "       SUM(promos) promos "
                 "FROM order_fees WHERE workspace_id=? AND marketplace=? "
                 "  AND order_id=?",
                 (workspace_id, marketplace, str(order_id))).fetchone()
@@ -485,6 +492,85 @@ def rate_for(config_path, workspace_id, marketplace, end_date=None):
             % (DEFAULT_REFERRAL_RATE * 100))
 
 
+_SETTLED_MEMO = {}
+
+
+def _settled_orders(config_path, ws, mkt):
+    """Every settled order on this account, with its lines. Read ONCE per change.
+
+    (orders, index) or None, where orders is
+    [{order_id, ref, fba, oth, promos, refunds, returned, tot_rev, nlines,
+      last_at, lines: [(sku, asin, revenue_incl_postage), ...]}]
+    and index is {"sku": {sku: [order, ...]}, "asin": {asin: [order, ...]}}.
+
+    WHY IT IS REMEMBERED. _settled_for used to run this as a full GROUP BY over
+    the account's order history for EVERY product asked about, and the listing
+    row, the price editor and the Live sync now ask for every product on the
+    screen: measured by the review of the profit work, 15.4 seconds for 400
+    SKUs on 5,000 orders. The answer only changes when an order or a
+    settlement is written, so it is kept against a cheap signature of both
+    tables and read again the moment either moves.
+
+    REVENUE INCLUDES THE POSTAGE THE BUYER PAID. Amazon charges its fee on the
+    item plus postage, and the price this rate is multiplied by (unit_profit,
+    the repricer) is that same total. Measured on the item alone, a product
+    whose buyers pay postage showed a rate a sixth too high.
+    """
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        # HAS ANYTHING BEEN WRITTEN SINCE? SQLite answers that for nothing:
+        # data_version moves when ANOTHER connection commits, total_changes when
+        # THIS one does. Both are per connection, so the memo is too.
+        sig = (conn.execute("PRAGMA data_version").fetchone()[0],
+               conn.total_changes)
+        k = (_db.db_path(config_path), ws, mkt, id(conn))
+        hit = _SETTLED_MEMO.get(k)
+        if hit and hit[0] == sig:
+            return hit[1]
+        fees = {}
+        for r in conn.execute(
+                "SELECT order_id, SUM(referral_fees) ref, SUM(fba_fees) fba, "
+                "       SUM(other_fees) oth, SUM(promos) promos, "
+                "       SUM(refunds) refunds, SUM(refund_fees_returned) returned "
+                "FROM order_fees WHERE workspace_id=? AND marketplace=? "
+                "GROUP BY order_id", (ws, mkt)):
+            fees[r["order_id"]] = dict(r)
+        lines = {}
+        for r in conn.execute(
+                "SELECT order_id, COALESCE(sku,'') sku, COALESCE(asin,'') asin, "
+                "       COALESCE(revenue,0) + COALESCE(shipping,0) rev, "
+                "       purchase_date FROM order_lines "
+                "WHERE workspace_id=? AND marketplace=? "
+                "  AND lower(IFNULL(status,'')) NOT IN ('canceled','cancelled')",
+                (ws, mkt)):
+            if r["order_id"] in fees:
+                lines.setdefault(r["order_id"], []).append(
+                    (r["sku"], r["asin"], float(r["rev"] or 0.0),
+                     str(r["purchase_date"] or "")))
+        out = []
+        for oid, ls in lines.items():
+            f = fees[oid]
+            out.append(dict(f, lines=[(a, b, c) for a, b, c, _d in ls],
+                            tot_rev=sum(x[2] for x in ls), nlines=len(ls),
+                            last_at=max(x[3] for x in ls)))
+        # WHICH ORDERS EACH PRODUCT IS IN, so a product looks at its own orders
+        # rather than walking all of them -- the second half of the slowdown.
+        index = {"sku": {}, "asin": {}}
+        for o in out:
+            for sku_, asin_, _rev in o["lines"]:
+                for kind, v in (("sku", sku_), ("asin", asin_)):
+                    if v:
+                        lst = index[kind].setdefault(v, [])
+                        if not lst or lst[-1] is not o:
+                            lst.append(o)
+        got = (out, index)
+        _SETTLED_MEMO[k] = (sig, got)
+        return got
+    except Exception:
+        return None
+
+
 def _settled_for(config_path, workspace_id, marketplace, sku=None, asin=None):
     """What Amazon took, and what buyers paid, on ONE product's settled orders.
 
@@ -501,32 +587,15 @@ def _settled_for(config_path, workspace_id, marketplace, sku=None, asin=None):
     key, val = ("sku", str(sku or "")) if sku else ("asin", str(asin or ""))
     if not val:
         return None
-    try:
-        from data import db as _db
-        conn = _db.get_db(config_path)
-        rows = conn.execute(
-            "SELECT f.order_id, f.ref, f.fba, f.oth, f.promos, f.refunds, "
-            "       f.returned, l.mine_rev, l.tot_rev, l.nlines, l.last_at "
-            "  FROM (SELECT order_id, SUM(referral_fees) ref, SUM(fba_fees) fba, "
-            "               SUM(other_fees) oth, SUM(promos) promos, "
-            "               SUM(refunds) refunds, "
-            "               SUM(refund_fees_returned) returned "
-            "          FROM order_fees "
-            "         WHERE workspace_id=? AND marketplace=? "
-            "         GROUP BY order_id) f "
-            "  JOIN (SELECT order_id, "
-            "               SUM(CASE WHEN %s=? THEN revenue ELSE 0 END) mine_rev, "
-            "               SUM(revenue) tot_rev, COUNT(*) nlines, "
-            "               MAX(purchase_date) last_at "
-            "          FROM order_lines "
-            "         WHERE workspace_id=? AND marketplace=? "
-            "           AND lower(IFNULL(status,'')) "
-            "               NOT IN ('canceled','cancelled') "
-            "         GROUP BY order_id) l ON l.order_id = f.order_id "
-            " WHERE l.mine_rev > 0" % key,
-            (ws, mkt, val, ws, mkt)).fetchall()
-    except Exception:
+    got = _settled_orders(config_path, ws, mkt)
+    if got is None:
         return None
+    rows = []
+    for o in got[1][key].get(val, []):
+        mine = sum(L[2] for L in o["lines"]
+                   if (L[0] if key == "sku" else L[1]) == val)
+        if mine > 0:
+            rows.append(dict(o, mine_rev=mine))
 
     out = {"fee": 0.0, "revenue": 0.0, "orders": 0, "single_line": 0,
            "last": "", "discounted": 0, "refunded": 0, "rows_seen": len(rows)}
@@ -1227,7 +1296,10 @@ def breakdown_for(config_path, workspace_id, marketplace, asin, price,
     underneath a price it disagrees with (CLAUDE.md Rule 12).
 
     WITHOUT ONE, IT ASKS rate_for_listing -- THE SAME THREE TIERS, IN THE SAME
-    ORDER -- with Amazon never called (allow_quote=False). It used to go
+    ORDER -- with Amazon never called (allow_quote=False). With no SKU it starts
+    at the stored quote, which is now scaled by the account's measured
+    multiplier with the closing fee folded into the rate, exactly as the
+    repricer prices it (it used to be shown raw here). It used to go
     straight to the stored quote and then the account's average, skipping the
     first tier: what Amazon actually took on THIS product's settled sales. So a
     product with a sales history showed one fee in the price editor and on the

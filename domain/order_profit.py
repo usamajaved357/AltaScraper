@@ -119,6 +119,18 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
     # about 14.6% of the shelf price, and every listing priced on this fallback
     # was charged a fifth too much in fees. Measured 28 Sep 2026. On accounts
     # that are not VAT-registered the tax is nought and nothing changes.
+    #
+    # ONLY VAT, NEVER A SALES TAX. The tax column also carries US sales tax,
+    # which Amazon collects as marketplace facilitator and does NOT charge its
+    # referral fee on -- and which order_lines' revenue (the base the estimate
+    # is applied to) leaves out. So the tax is added only on an account that is
+    # VAT-registered. Found by the review of the profit work, 28 Sep 2026.
+    try:
+        from domain import unit_profit as _up
+        _vr = _up.account_vat_rate(config_path, workspace_id)
+        with_tax = _vr is not None and float(_vr) > 0
+    except Exception:
+        with_tax = False
     fees = principal = other = 0.0
     for r in (rows or {}).values():
         for k in ("referral_fees", "fba_fees"):
@@ -130,7 +142,7 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
             other += float(r.get("other_fees") or 0.0)
         except (TypeError, ValueError):
             pass
-        for k in ("principal", "tax"):
+        for k in (("principal", "tax") if with_tax else ("principal",)):
             try:
                 principal += float(r.get(k) or 0.0)
             except (TypeError, ValueError):
@@ -139,7 +151,8 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
     if principal >= MIN_PRINCIPAL_FOR_RATE and fees > 0:
         rate = round(fees / principal, 4)
         detail = ("%.1f%% -- referral and FBA fees Amazon actually charged this "
-                  "account on %.2f that buyers paid (VAT included) since %s"
+                  "account on %.2f that buyers paid (VAT included where the "
+                  "account is VAT-registered) since %s"
                   % (rate * 100, principal, start.isoformat()))
         if other:
             # Named, not hidden. It is money that left the account and the owner

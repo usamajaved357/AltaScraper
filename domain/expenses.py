@@ -311,9 +311,18 @@ def _is_amazon_charge(expense):
     which made a "Helium 10 subscription" stand in for Amazon's own charge and
     quietly stop that being subtracted. Found by the review, 28 Sep 2026.
     """
+    # AND IT HAS TO BE THE ACCOUNT CHARGE, not any Amazon cost. Matching every
+    # name containing "amazon" let an "Amazon PPC (manual)" entry cancel the
+    # measured subscription -- found by the second review, 28 Sep 2026. So: the
+    # category suggest() files it under, or a name that says Amazon AND says
+    # what kind of charge it is.
     e = expense or {}
-    return (str(e.get("category") or "").strip().lower() == "amazon"
-            or "amazon" in str(e.get("name") or "").lower())
+    name = str(e.get("name") or "").lower()
+    if str(e.get("category") or "").strip().lower() == "amazon":
+        return True
+    return "amazon" in name and any(
+        w in name for w in ("subscription", "seller account", "selling plan",
+                            "professional plan", "monthly fee"))
 
 
 def _subscription_recorded(config_path, workspace_id, marketplace):
