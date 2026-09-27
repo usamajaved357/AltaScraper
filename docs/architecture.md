@@ -341,6 +341,22 @@ only, never PUTs a listing.
   ALTA_RUNS_PER_ACCOUNT, ALTA_RUNS_TOTAL, ALTA_IMG_WORKERS, ALTA_IMG_BATCH,
   MONITOR_INTERVAL_S, AWS_SQS_QUEUE_URL, PUBLIC_BASE_URL, APP_BASE_URL.
 
+### Running locally for a visual check (no credentials)
+- The app needs only a `config.json` at `$CONFIG_PATH` (`build_app()` reads
+  it at boot); the SQLite database is created beside it. No `APP_PASSWORD` =
+  no login; no `PORT` = binds 127.0.0.1 and picks a free port from 5000.
+- A safe dev setup lives OUTSIDE the repo in
+  `D:\AltaScraper-wt\claude-environment-devdata\`: a config with no keys and
+  two fake credential-free accounts (`dev_test_a`, `dev_test_b`, read-only
+  workspaces: no Amazon calls, no publishing) and a few TEST drafts, one SKU
+  shared by both accounts (seeded through `data/store.ListingStore`).
+- Start (PowerShell, from the worktree):
+  `$env:CONFIG_PATH="D:\AltaScraper-wt\claude-environment-devdata\config.json"; py -3.11 -u dashboard.py`
+  then open the URL it prints (normally http://127.0.0.1:5000). Logs can be
+  redirected into the devdata folder. `.app_port` is written in the worktree
+  (gitignored).
+- Never point CONFIG_PATH at the real config.json from a development session.
+
 ## 14. Tests
 
 About 355 standalone scripts at the repo root (`test_*.py`, `test_*.js`), run
