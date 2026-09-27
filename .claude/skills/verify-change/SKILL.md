@@ -1,0 +1,59 @@
+---
+name: verify-change
+description: AltaScraper's mandatory check after edits and before any commit or push - compile, node --check, deleted-function check across changed files, relevant tests vs the baseline, full suite before a push, CLAUDE.md wording check. Use after every batch of edits (CLAUDE.md Rule 3) and whenever about to say something is fixed.
+---
+
+# verify-change
+
+**Problem it solves:** "fixed" being claimed without evidence, regressions
+hidden among ~28 known baseline failures, and a scope check that only covered
+two files.
+
+**Modifies files:** no (reads and runs checks only). Delegate the running to
+the `qa-runner` agent when the output would be long.
+
+## Inputs
+- worktree path (repo root)
+- what changed: `git status --short` and `git diff --name-only <base>`
+- the baseline file: `<main checkout>/active/test-baseline-<branch>.txt`
+  (made by `start-task`; if missing, say so and make one on a clean copy of the
+  base commit before judging failures)
+
+## Procedure
+Run from the repo root. `$g` = the git.exe from CLAUDE.md Rule 2.
+
+1. **Syntax** (the hook already did each saved file; repeat for the set):
+   - each changed .py: `py -3.11 -m py_compile <file>`
+   - each changed .js: `node --check <file>` (parse only)
+2. **Deleted functions:** `py -3.11 .claude/skills/verify-change/scope_check.py`
+   REMOVED must be empty, or each removal explained (a faithful move with the
+   new location, confirmed by the owner if not already agreed).
+3. **Re-read the diff:** `& $g diff` — does it change exactly what was intended?
+   Anything touching Rule 1 (payload), Rule 8 (bids), Rule 14 (account scope)?
+   If so, the matching agent must review it.
+4. **Relevant tests:** `py -3.11 .claude/skills/verify-change/relevant_tests.py --changed`
+   then run each (`py -3.11 <test>.py` / `node <test>.js`) or
+   `py -3.11 run_tests.py <filter>`.
+5. **Full suite** before any push, or when CLAUDE.md, run_tests.py,
+   dashboard.py, data/db.py, templates/dashboard.html or more than about 40
+   tests are involved: `py -3.11 run_tests.py`.
+6. **Compare with the baseline.** For every failing file: REGRESSION (passed in
+   baseline), BASELINE (same failure before), DATA (needs real config/DB — see
+   docs/known-issues.md "Tests"), SOURCE-TEXT PIN (a literal the diff moved),
+   ENV (startup-speed timing, parallel run). In a clean worktree, a DATA
+   failure is re-run in the main checkout only if the owner's data is needed
+   to judge it — never modify the main checkout to do so.
+7. **CLAUDE.md changed?** `py -3.11 .claude/skills/verify-change/claude_md_check.py`
+   (the real test cannot reach its wording checks without data).
+8. **UI changed?** Follow the `ui-change` skill's verification states too.
+
+## Output (report to the owner, CLAUDE.md Rule 3/5)
+- plain English: what was checked and whether it is safe
+- compile: pass/fail per file; scope: REMOVED / ADDED per file
+- tests: files run, passed, failed; regressions listed; baseline/data failures
+  named as such
+- what was NOT verified and why
+
+## Persist afterwards
+- a new baseline after merging to main is taken by the next `start-task`
+- a newly discovered data-dependent or drifted test -> docs/known-issues.md "Tests"

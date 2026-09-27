@@ -1,0 +1,79 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(py -3.11 run_tests.py*)",
+      "PowerShell(python run_tests.py*)",
+      "PowerShell(py -3.11 -m py_compile *)",
+      "PowerShell(python -m py_compile *)",
+      "PowerShell(node --check *)",
+      "PowerShell(py -3.11 test_*)",
+      "PowerShell(python test_*)",
+      "PowerShell(node test_*)"
+    ],
+    "ask": [
+      "PowerShell(git push*)",
+      "Bash(git push*)"
+    ],
+    "deny": [
+      "Read(**/config.json)",
+      "Read(**/config.json.*)",
+      "Read(**/service_account.json)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/users.json)",
+      "Read(**/image_url_key)",
+      "Read(**/*secret*)",
+      "Read(**/*credential*)",
+      "Edit(**/config.json)",
+      "Edit(**/service_account.json)",
+      "Edit(**/.env)",
+      "Edit(**/users.json)",
+      "Write(**/config.json)",
+      "Write(**/service_account.json)",
+      "Write(**/.env)",
+      "Write(**/users.json)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/session_start.ps1",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "PowerShell|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/guard_commit.ps1",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/guard_push.ps1",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/syntax_check.ps1",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,30 @@
-﻿# CLAUDE.md — Standing Rules for Every Session
-# This file is version-controlled. Every branch inherits these rules.
-# Read this entire file before touching any code, any session, no exceptions.
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+Standing rules for every session. Rules 1-12 keep their numbers: about 80 tests
+and code comments cite them ("CLAUDE.md Rule 4"), and test_barcode_and_exemption.py
+reads Rule 1's wording. Never renumber them, and never reword Rule 1's protected
+sentences (listed in Rule 17).
+
+**Where things live** (read the one you need, not all of them):
+
+| Need | File |
+|---|---|
+| How the app works (request path, storage, background jobs, gotchas) | docs/architecture.md |
+| UI conventions, palettes, helpers, layers, load order | docs/design-system.md |
+| The business, accounts, entities, who uses the app | docs/product-context.md |
+| Why something is the way it is (owner decisions) | docs/decisions.md |
+| Open bugs, blockers outside the code, baseline test failures | docs/known-issues.md |
+| What changed in production | docs/changelog.md |
+| Auth model, public endpoints, secrets | docs/security.md |
+| Build prompts and Orbit specs (reference, never edited) | docs/specs/ |
+| What is in flight across all worktrees | `<main checkout>/current-work.md` (untracked) |
+| Temporary output: traces, plans, baselines, reports | `<main checkout>/active/` (untracked) |
+
+`<main checkout>` is `D:\AltaScraper`. From any worktree it is the parent of
+`git rev-parse --path-format=absolute --git-common-dir`. The session-start hook
+prints both paths.
 
 ---
 
@@ -30,9 +54,6 @@ product under the owner's own brand.
       "i dont want to use the gtin exemption until the user wants to, he can
        check the button under the box apply for gtin exemption as we have in
        amazon backend, dont apply for exemption automatically"
-  This file used to say the opposite — "when no real barcode is available, use
-  the GTIN exemption" — and the generator did exactly that, silently, whenever
-  the barcode box was empty or the value unusable.
   Claiming the exemption is a DECLARATION TO AMAZON that the product has no
   barcode. The app must never make that declaration on his behalf.
     * exemption ticked on the listing -> send
@@ -55,9 +76,8 @@ product under the owner's own brand.
   condition looks. Both routes go through static/js/gtin.js, which is the one
   place in the browser that writes the column (Rule 12).
   An "empty the barcode box and it will use the exemption" instruction — in a
-  help string, an error explanation, or a comment — is now WRONG and must be
-  corrected wherever it is found: emptying the box sends Amazon no identifier
-  at all.
+  help string, an error explanation, or a comment — is WRONG and must be
+  corrected wherever it is found: emptying the box sends Amazon no identifier.
 - A BARCODE ALREADY ON ANOTHER LISTING MUST BE REPORTED, not sent and hoped for.
   Amazon matches the code to the ASIN that already owns it and refuses to create
   a second product — measured on his own data, where one EAN was on a live
@@ -68,307 +88,197 @@ product under the owner's own brand.
 ### To change any of the above:
 The user must write explicitly: "I want to change the listing mode to X."
 An Amazon error message is never sufficient justification to change this.
-
----
+Any diff touching the payload goes to the `listing-payload-guardian` agent.
 
 ## 2. GIT WORKFLOW — EVERY PIECE OF WORK IS A BRANCH
 
-Before starting any work in a session, check which branch is active:
-  git branch
-
-If on main, create a branch before touching anything:
-  git checkout -b short-description-of-work
-  (examples: fix/barcode-validation, feature/miles-drive-scan, refactor/phase-1-templates)
-
-After completing and verifying work in a branch:
-  git add .
-  git commit -m "clear description of what changed and why"
-
-### What NEVER goes into a commit — verify with git status before every commit:
-- config.json (SP-API keys, Anthropic key, seller IDs)
-- service_account.json (Google credentials)
-- miles_bundles_store.json (local data cache)
-- miles_bundles.json
-- *.pyc files and __pycache__/ folders
-- .env files
-- Any file whose name contains: secret, credential, key, token
-
-If any of the above appear in git status as untracked or modified,
-STOP and check .gitignore before committing anything.
-
-### If something breaks during a session and cannot be quickly fixed:
-  git checkout main
-Tell the user what happened, what was attempted, and why the rollback was needed.
-Never leave a broken branch without telling the user.
-
-### Merging back to main:
-Only merge a branch to main after the user has confirmed it works in production
-for at least a short period. Never auto-merge.
-
----
+- Branch from **origin/main**, never local `main` (it goes stale silently):
+  `git fetch origin`, then a worktree: `git worktree add -b fix/x <dir> origin/main`.
+- git is not on PATH. Use the GitHub Desktop git (newest `app-*` folder):
+  `$g=(Get-ChildItem "$env:LOCALAPPDATA\GitHubDesktop" -Directory -Filter "app-*" | Sort-Object Name -Descending | Select-Object -First 1).FullName + "\resources\app\git\cmd\git.exe"`
+- **Pushing to origin/main IS the production deploy** (Render builds it).
+  Push, merge and deploy ONLY on the owner's explicit instruction in this
+  conversation. Rule 2 says merge only after the owner has confirmed a branch
+  in production; when he orders a merge before that, say out loud that the
+  waiting period is being waived on his instruction. Never auto-merge.
+- **Never commit** (the guard_commit hook enforces this list):
+  `config.json*`, `service_account.json`, `.env*`, `users.json`,
+  `app_state.json`, `miles_bundles_store.json`, `miles_bundles.json`,
+  `image_url_key`, `*.db` / `*.db-wal` / `*.db-shm`, `*.pem`, `*.key`,
+  `*.p12`, `*.pfx`, `*.pyc`, `__pycache__/`, any file whose name contains
+  `secret` or `credential`, and any NON-SOURCE file (not .py/.js/.css/.html/
+  .md/.jsx/.ts/.ps1/.bat/.command) whose name contains `key` or `token`. Source files such as
+  auth/token_crypto.py and routes/keywords_routes.py are code, not secrets.
+- If something breaks and cannot be quickly fixed: stop, leave the branch, and
+  tell the owner what happened. Never leave a broken branch unreported.
 
 ## 3. BUG CHECK — MANDATORY AFTER EVERY CODE EDIT
 
-This is non-negotiable. After every single edit to any Python file,
-run this full sequence before saying anything else or moving to the next step.
-
-### Step 1 — Baseline (once per session, before first edit)
-  cp amazon_listing_generator.py amazon_listing_generator.baseline.py
-  cp dashboard.py dashboard.baseline.py
-Keep these for the entire session. Never overwrite them.
-
-### Step 2 — Compile check (after every edit)
-  python -m py_compile amazon_listing_generator.py
-  python -m py_compile dashboard.py
-If this fails: STOP. Fix the syntax error. Do not proceed.
-Never deliver a file that fails py_compile.
-
-### Step 3 — Scope check (after every edit)
-Run this to confirm no functions were accidentally deleted or renamed:
-
-  python - << 'EOF'
-  import ast
-  b = ast.parse(open('amazon_listing_generator.baseline.py').read())
-  n = ast.parse(open('amazon_listing_generator.py').read())
-  def fns(t): return {x.name for x in ast.walk(t) if isinstance(x, ast.FunctionDef)}
-  removed = sorted(fns(b) - fns(n))
-  added   = sorted(fns(n) - fns(b))
-  print("REMOVED:", removed)
-  print("ADDED:  ", added)
-  EOF
-
-If REMOVED is not empty: STOP. A function was accidentally deleted.
-Do not continue until the missing function is restored or the deletion
-is explicitly confirmed intentional by the user.
-
-### Step 4 — Re-read the diff
-After every edit, re-read the exact changed lines and ask:
-- Does this change exactly what was intended and nothing else?
-- Could this affect any other part of the app that was not considered?
-- Is any assumption baked into this change that could be wrong?
-- Does this change touch business logic that is protected by Rule 1?
-
-### Step 5 — Report to user
-After every edit, tell the user:
-- PLAIN ENGLISH: what was wrong, what was changed, what will be different now
-- TECHNICAL: which file, which function, which lines changed
-- BUG CHECK RESULTS: compile pass/fail, scope check (removed/added functions)
-- BASELINE: confirm the baseline copy exists and where it is
-
----
+After every edit: compile check, deleted-function check against the branch's
+base commit (every changed .py file, `async def` included), re-read the diff,
+report (compile result, removed/added functions). The `verify-change` skill
+holds the exact commands; the syntax_check hook compiles each .py and
+`node --check`s each .js on save. Never deliver a file that fails to compile. A function that disappears
+must be explained (a faithful move) or restored.
 
 ## 4. WHEN AMAZON REJECTS A VALUE — NEVER GUESS
 
-When Amazon returns an error like "value is invalid" or "does not match":
-
-### Do NOT:
-- Guess what Amazon wants based on documentation
-- Guess based on training data or similar fields seen before
-- Try a different value and hope it works
-- Assume the schema shape from memory
-
-### DO:
-1. Add a temporary diagnostic that prints the RAW schema Amazon returns
-   for the failing field — the exact JSON Amazon sends back, before any
-   of our code processes it
-2. Run one preview to capture that raw schema
-3. Read the schema to find: the exact field name for the number
-   (is it "value" or "decimal_value"?), whether the container is an
-   array or an object, what units are allowed (the enum list)
-4. Build the fix from what the schema literally says
-5. Remove the diagnostic once the fix is confirmed working
-
-### When explaining the fix to the user, always say:
-- "Here is what Amazon's schema actually says" (show the raw schema)
-- "Here is what we were sending" (show the actual payload)
-- "Here is the difference" (point at the exact mismatch)
-- "Here is the fix" (explain in plain English what changes)
-
-This is how the leg/cable/decimal_value bugs were eventually solved.
-Every hour spent guessing is wasted. The schema is always available — use it.
-
-### Parsing rule (companion to the above — governs how we READ an error, not how we fix it):
-Never derive an attribute name from Amazon's human-readable message text — use the
-structured field/schema, and validate any derived name against the schema before
-rendering it as an input field. (Origin: the "The"/"Your" phantom-field bug — a
-case-insensitive regex captured the capitalised first word of Amazon's prose and
-rendered it as a required field. Fix was a case-sensitive parse PLUS a schema check
-before any field is drawn.)
-
----
+Read what Amazon actually sends (the raw schema or reply) before changing
+anything: the `amazon-schema-first` skill. When explaining the fix, show:
+what Amazon's schema says / what we were sending / the difference / the fix.
+Never derive an attribute name from Amazon's human-readable message text — use
+the structured field/schema, and validate any derived name against the schema
+before rendering it as an input field (the "The"/"Your" phantom-field bug).
 
 ## 5. PLAIN ENGLISH FIRST — EVERY TIME
 
-Every time code is changed, an error is explained, or the user is asked
-to approve a change, structure the response like this:
-
-### PLAIN ENGLISH (always first):
-One paragraph maximum. Explain:
-- What was going wrong (as if explaining to someone who has never coded)
-- What the fix does (same level)
-- What the user will see change in the app
-
-### TECHNICAL DETAIL (always second):
-- Which file and which lines changed
-- What the code did before vs what it does now
-- Why this approach was chosen over alternatives
-- Any risks or side effects
-
-### Never use technical terms without defining them first in that same message.
-Examples of terms that always need a plain English explanation before use:
-schema, payload, endpoint, API, enum, array, object, regex, middleware,
-merchant_suggested_asin, LISTING_OFFER_ONLY, sp-api, gtin, ean, upc,
-build_api_attributes, shape_by_schema, taken_skus, ws_out, gc, mid
-
----
+The owner is not a programmer. Answer the question asked in the first two or
+three lines, in short sentences. Then the technical detail (files, lines,
+before/after, why this approach, risks). Define any technical term the first
+time it appears in a message (schema, payload, endpoint, API, enum, GTIN, EAN,
+SP-API, merchant_suggested_asin, ...). Offer one next step, not three.
 
 ## 6. ERROR EXPLANATION FORMAT
 
-When an error occurs, always structure the explanation like this:
+What happened (plain English) / why it happened (root cause, file and line) /
+why it will not happen again (say honestly if the fix only treats a symptom) /
+what to do now.
 
-### What happened (plain English):
-One paragraph. What the user saw. What the app was trying to do.
-What went wrong in terms anyone can understand.
+## 7. ARCHITECTURE RULES
 
-### Why it happened (plain English + technical):
-The root cause. Not the symptom — the underlying reason.
-Include which file, which function, which line if relevant.
+- No new logic in `dashboard.py` or `amazon_listing_generator.py`. New features
+  get their own module in `routes/`, `domain/`, `listing/`, `api/`, `data/`,
+  `static/js/`, `static/css/` or `templates/` (map: docs/architecture.md).
+- `api/` = outside-API calls only. `routes/` = HTTP wiring. `domain/` and
+  `listing/` = business logic. `templates/` = HTML only. Never embed JS or CSS
+  in Python strings.
+- **A change touching more than 2 files: explain the plan and get the owner's
+  confirmation before editing.**
+- One function, one job. Split before adding to a function that does two.
 
-### Why it will not happen again:
-Explain what the fix addresses at the root level.
-If the fix only addresses the symptom, say so honestly and
-describe what a root-level fix would require.
+## 8. PPC AND CAMPAIGNS
 
-### What to do now:
-Clear next steps for the user.
+Never change bids or budgets unless the owner names the exact new value in his
+message. Do not recommend bid/budget changes in the middle of other work.
 
----
+## 9. WHAT THIS APP IS
 
-## 7. ARCHITECTURE RULES — DO NOT VIOLATE
+Multi-account Amazon seller tool (UK/US/EU), run as a Flask app on Render at
+app.altascraper.com; the owner tests there, not on 127.0.0.1. Accounts,
+entities and brands: docs/product-context.md.
 
-The app is being progressively restructured. During this process:
+## 10. RESTRUCTURING
 
-### Never add new logic to these files:
-- dashboard.py — being broken up into routes/ + templates/ + static/
-- amazon_listing_generator.py — being broken up into listing/ modules
+The structural phases are done: routes are out of dashboard.py, HTML/CSS/JS
+are out of Python strings, the listing engine's movable parts are in listing/,
+and config/settings.py exists. `build_api_attributes` and the functions that
+read the mutable `MARKETPLACE_ID` stay in the engine on purpose. Any further
+move: `refactor-move` skill — move code, do not rewrite it; behaviour must be
+identical before and after.
 
-New features go in their own dedicated file from day one.
-If it does not fit in an existing module, create a new one.
+## 11. HOW TO START EVERY TASK
 
-### File responsibilities (strictly enforced):
-- api/amazon_sp.py — SP-API calls only. No UI, no business logic.
-- api/google_sheets.py — Sheets read/write only. No listing logic.
-- api/google_drive.py — Drive operations only. No business logic.
-- listing/shaper.py — shape_by_schema and field shaping only.
-- listing/builder.py — build_api_attributes only.
-- listing/compliance.py — IP rules, hazmat, compliance_rules.json only.
-- listing/auto_fix.py — the suggest/apply/preview loop only.
-- listing/miles.py — Miles Lubricants specific logic only.
-- templates/ — HTML files only. No Python logic inside templates.
-- static/js/ — JavaScript files only. Never embed JS in Python strings.
-- static/css/ — CSS files only. Never embed CSS in Python strings.
+Use the `start-task` skill: read the task (usually `<main checkout>/read.txt`),
+check branch and current-work.md, classify it, create a worktree from
+origin/main, take the test baseline, do the Rule 12 audit. If the request is
+unclear, ask one specific question before starting.
 
-### If a change requires touching more than 2 files:
-Stop. Explain the full plan to the user before making any edits.
-Get confirmation before proceeding.
+## 12. NO DUPLICATED LOGIC
 
-### One function, one job:
-If a function does more than one thing (e.g. fetches data AND formats it
-AND writes to a sheet), split it before adding to it.
-
----
-
-## 8. STANDING RULES FOR PPC AND CAMPAIGNS
-
-NEVER change bids or budgets on any campaign unless the user explicitly
-specifies in their message the exact new value to set.
-
-Do not recommend bid/budget changes proactively in the middle of other work.
-If bid/budget changes are needed, flag them separately and wait for instruction.
+Before adding, fixing or touching any logic, search the whole codebase for
+every place that handles the same concept (barcode, price, dimensions, status,
+hazmat, account, ...). If it exists in 2+ places, extract ONE shared helper
+first, then change it there. Never add a "second pass" that reimplements
+existing logic. Every delivered fix includes the audit: each location that
+touches the concept, and confirmation they all call the same helper.
 
 ---
 
-## 9. WHAT THIS APP IS — CONTEXT FOR EVERY SESSION
+## 13. COMMANDS (Windows, PowerShell 5.1)
 
-**Owner:** Talha (Sahiwal, Punjab, Pakistan)
-**Operation:** Multi-platform e-commerce (Amazon US/UK, eBay UK/US/AU, TikTok Shop)
+- Run the app: `py -3.11 dashboard.py` (picks a free port from 5000; with no
+  users and no APP_PASSWORD there is no login).
+- All tests: `py -3.11 run_tests.py`. A subset: `py -3.11 run_tests.py pdp`.
+  One file: `py -3.11 test_x.py` or `node test_x.js`. Every test is a plain
+  script at the repo root that exits non-zero on failure; there is no pytest.
+- Syntax: `py -3.11 -m py_compile <file>`; `node --check <file.js>` (parse only).
+- PowerShell: no `&&` (use `; if ($?) {...}`); don't redirect native stderr
+  with `2>&1`; .NET `[IO.File]` relative paths resolve against `D:\AltaScraper`,
+  so always pass absolute paths.
+- There is no lint, type-check, build step or CI.
 
-**UK entities:**
-- FLIPX LTD
-- Green Haven Goods Ltd (CRN 16578100, director Nida Mustafa)
-- Selvora Limited (CRN 16977772, director Rida Rasheed)
+## 14. ACCOUNT SCOPE — EVERY REQUEST NAMES ITS ACCOUNT
 
-**Amazon accounts:**
-- jack_uk — seller A34CMN3Q5Q4U3Z (UK, marketplace A1F83G8C2ARO7P)
-- sheelady_us — seller A1W1VC2O2BR7M2 (US)
+The app runs several companies' Amazon accounts, and **SKUs are not unique
+across accounts**, so a SKU never identifies an account.
+- Browser: every request that reads or writes one account's data names it,
+  via `acctBody()` / `acctUrl()` (static/js/reqscope.js) or `scopeQs()`.
+- Server: resolve the named account (`routes/scope.py`,
+  `domain/request_account.py`, `data/backend.store_for`), never silently fall
+  back to the session's `_state`. `_wrong_account` is currently a no-op.
+- Guard: a new route that publishes, spends money, deletes or touches
+  credentials needs an `auth/guard.py` RULES entry (unlisted writes need only
+  "edit").
+- Browser state that holds one account's data is keyed by account or reset in
+  `enterAccount`.
+Changes here go to the `account-scope-reviewer` agent.
 
-**Amazon agency:** ALTAVOUR (brand recovery, $12K fixed 90-day engagement)
-**Agency role:** Manager at Full Circle Agency (Houston)
+## 15. UI RULES
 
-**Tech stack:**
-- Local Flask app running at 127.0.0.1:5000 (auto-fallback port if taken)
-- Python 3.11 on Windows
-- Google Sheets as the primary data store (input + output)
-- Google Drive for file/image storage
-- SP-API for Amazon listing validation and submission
-- Anthropic Claude API for listing copy generation
+Document and reuse the existing system (docs/design-system.md); never invent a
+new one. Reuse an existing helper or pattern before adding one. Data inside an
+inline `onclick` goes through `jsArg()`, never `'${esc(x)}'`. Tokens, not hex
+(the drawer's literal hex is a recorded decision). Every UI change states its
+loading, empty, error and after-account-switch behaviour. A new UI convention
+needs the owner's approval. Procedure: `ui-change` skill.
 
-**Key config files:**
-- config.json — all credentials (NEVER commit to Git)
-- service_account.json — Google credentials (NEVER commit to Git)
-- compliance_rules.json — 17 product categories
-- ip_rules.json — IP violation rules
-- valid_values.json — 21 product types
+## 16. TESTING AND VERIFICATION
 
----
+- "Fixed" / "works" is said only with evidence: which checks ran and their
+  results. Anything not run is reported as not verified.
+- A failure is a regression only if it is not in the baseline taken before the
+  change. About 20 tests read the owner's real config.json / database and fail
+  in a clean worktree (docs/known-issues.md lists them).
+- Many tests assert source text. When one breaks because wording moved,
+  re-pin it with a stated reason — never change behaviour to satisfy a pin.
+- Every fix adds or updates a test that fails without it.
 
-## 10. RESTRUCTURING PLAN — CURRENT STATUS
+## 17. PROTECTED WORDING (tested)
 
-The app is being restructured in 6 phases. Do not skip phases or
-combine phases. Each phase must be stable in production before the next begins.
+test_barcode_and_exemption.py requires this file to contain
+"THE GTIN EXEMPTION IS THE OWNER'S DECISION", "dont apply for exemption
+automatically" and "MUST BE REPORTED", and to NOT contain the old sentence that
+told the app to use the exemption when no real barcode is available.
+test_title_is_a_source.py requires `dashboard.py` to keep the words
+"CLAUDE.md rule 1".
 
-- Phase 1: Architecture mapping — produce ARCHITECTURE.md (read-only, no code changes)
-- Phase 2: Extract HTML/JS into templates/ and static/ folders
-- Phase 3: Extract API layer into api/ folder
-- Phase 4: Extract listing engine into listing/ folder
-- Phase 5: Extract eBay, PPC, TikTok into domain folders
-- Phase 6: Clean routing — dashboard.py becomes routes only
+## 18. KEEPING PROJECT CONTEXT
 
-### Current phase: NOT STARTED (Git setup must come first)
+At the end of every meaningful task run the `update-context` skill. It routes:
+architecture fact -> docs/architecture.md; observed UI convention ->
+docs/design-system.md; unresolved problem -> docs/known-issues.md; decision
+the owner made -> docs/decisions.md; deployed change -> docs/changelog.md;
+in-flight state -> current-work.md; temporary output -> active/.
 
-### Rule during restructuring:
-Move code, do not rewrite it. The app must behave identically
-before and after every phase. If behaviour changes during a move,
-stop and investigate — a move should never change what the app does.
+Claude maintains those automatically. **Owner approval is required for:** any
+change to this file; a new UI convention; new or changed skills, agents or
+hooks; deleting or archiving files; `.gitignore` / `.dockerignore` edits;
+any behaviour change. **Explicit instruction is required for:** push, merge,
+deploy.
 
----
+## 19. CAPABILITIES
 
-## 11. HOW TO START EVERY SESSION
+Skills (`.claude/skills/`): start-task, investigate, verify-change,
+amazon-schema-first, ui-change, refactor-move, ship, update-context,
+project-maintenance, security-review.
+Agents (`.claude/agents/`, all read-only): tracer, listing-payload-guardian,
+account-scope-reviewer, ui-reviewer, change-reviewer, qa-runner (runs tests,
+never edits).
+Hooks (`.claude/hooks/`): syntax check after each edit; commit guard; push
+confirmation; session-start summary.
 
-Read this file. Then:
-1. Run: git branch (confirm which branch you are on)
-2. If on main and doing real work: git checkout -b branch-name
-3. Take baselines: cp the two main Python files to .baseline.py
-4. Read ARCHITECTURE.md if it exists (it will after Phase 1)
-5. Then and only then, start the work the user asked for
+## 20. UNCERTAINTY
 
-If the user's request is unclear, ask one specific clarifying question
-before starting. Do not make assumptions about what they want.
-
-
-## 12. STANDING RULE — NO DUPLICATED LOGIC:
-Before adding, fixing, or touching any logic, grep the ENTIRE 
-codebase for every place that handles the same concept (barcode, 
-price, dimensions, status, hazmat, etc). If the same logic exists 
-in 2+ places, extract it into ONE shared helper FIRST, then make 
-the change in that one place.
-
-Never copy-paste validation logic. Never add a "second pass" or 
-"authoritative override" that reimplements existing logic — fix 
-the original instead.
-
-Before delivering any fix: search for the field/concept name 
-across all files, list every location that touches it, confirm 
-they all call the same shared function. Include this audit in 
-your response so I can verify.
-
+Say "not verified" rather than guess. Never state an inference as a measured
+fact. For Amazon behaviour, capture the raw reply (Rule 4). If code and a doc
+disagree, the code wins, and the doc is corrected in the same task.

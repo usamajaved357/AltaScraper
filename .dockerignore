@@ -25,3 +25,10 @@ KITCHEN_COOKWARE_SET_FOOD_SPATULA_KITCHEN_KNIFE_HARDWARE__2_.xlsm
 
 # Docs
 *.md
+
+# Claude Code environment and project docs -- not used by the running app.
+# (`*.md` above matches only the repository root, not docs/ or .claude/.)
+docs/
+.claude/
+active/
+current-work.md
