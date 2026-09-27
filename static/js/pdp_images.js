@@ -120,18 +120,34 @@ function _pdpiSourceImages(r){
 
 /* ---- loading ----------------------------------------------------------- */
 
-async function pdpImagesLoad(sku, productType){
-  PDPI = {sku: String(sku || ""), slots: [], live: false, checked: false,
+function _pdpiEmpty(sku, productType){
+  return {sku: String(sku || ""), slots: [], live: false, checked: false,
           note: "", productType: String(productType || ""), library: [],
-          loading: true, err: "", dragUrl: "", comp: null, compTab: "ebay",
-          compLoading: true};
+          loading: false, err: "", dragUrl: "", comp: null, compTab: "ebay",
+          compLoading: false,
+          // The account and marketplace this state was loaded for (pdpContext,
+          // pdp.js). The same SKU in another context is another listing.
+          ctx: (typeof pdpContext === "function") ? pdpContext() : ""};
+}
+
+/* Forget the tab's state. shell.js calls this (through pdpLeaveContext) when
+ * the account or marketplace changes. A load still in flight then writes into
+ * the object it started with, not into this new one (see `mine` below). */
+function pdpImagesForget(){ PDPI = _pdpiEmpty("", ""); }
+
+async function pdpImagesLoad(sku, productType){
+  PDPI = _pdpiEmpty(sku, productType);
+  PDPI.loading = true;
+  PDPI.compLoading = true;
+  const mine = PDPI;
   _pdpiPaint();
   // The calls are independent -- the slot list from Amazon's schema, the
   // library from disk, the competitor's pictures from eBay and the catalogue --
   // so none waits on another. The slots are what the tab cannot draw without;
   // the competitor strip fills in when it arrives.
-  _pdpiLoadCompetitor().then(_pdpiPaint);
+  _pdpiLoadCompetitor().then(function(){ if(PDPI === mine) _pdpiPaint(); });
   await Promise.all([_pdpiLoadSlots(), _pdpiLoadLibrary()]);
+  if(PDPI !== mine) return;                  // another listing or context since
   PDPI.loading = false;
   _pdpiPaint();
 }
@@ -139,43 +155,51 @@ async function pdpImagesLoad(sku, productType){
 /* The competitor's pictures, from /listing/competitor_images: eBay and Amazon
  * kept apart, each with its own reason when it could not be read. */
 async function _pdpiLoadCompetitor(){
-  const sku = PDPI.sku;
-  PDPI.compLoading = true;
+  // WRITES GO TO THE STATE THIS LOAD STARTED WITH. Comparing the SKU was not
+  // enough: after an account switch the same SKU is reopened for the other
+  // account, and the old account's answer would have landed in it.
+  const mine = PDPI;
+  const sku = mine.sku;
+  mine.compLoading = true;
   try{
     const url = "/listing/competitor_images?sku=" + encodeURIComponent(sku)
               + ((typeof acctId === "function" && acctId())
                   ? "&account=" + encodeURIComponent(acctId()) : "");
     const j = await (await fetch(url)).json();
-    if(PDPI.sku !== sku) return;             // another listing opened meanwhile
-    PDPI.comp = (j && j.ok) ? j
+    if(PDPI !== mine) return;                // another listing or context meanwhile
+    mine.comp = (j && j.ok) ? j
       : {ebay: [], amazon: [], ebay_error: (j && j.error) || "could not read",
          amazon_error: (j && j.error) || "could not read"};
     // Start on whichever tab has pictures, eBay first as the generator does.
-    if(!(PDPI.comp.ebay || []).length && (PDPI.comp.amazon || []).length) PDPI.compTab = "amazon";
+    if(!(mine.comp.ebay || []).length && (mine.comp.amazon || []).length) mine.compTab = "amazon";
   }catch(e){
-    if(PDPI.sku === sku) PDPI.comp = {ebay: [], amazon: [], ebay_error: String(e), amazon_error: String(e)};
+    if(PDPI === mine) mine.comp = {ebay: [], amazon: [], ebay_error: String(e), amazon_error: String(e)};
   }finally{
-    if(PDPI.sku === sku) PDPI.compLoading = false;
+    if(PDPI === mine) mine.compLoading = false;
   }
 }
 
 async function _pdpiLoadSlots(){
+  const mine = PDPI;
   try{
-    const qs = "sku=" + encodeURIComponent(PDPI.sku)
-             + (PDPI.productType ? "&product_type=" + encodeURIComponent(PDPI.productType) : "");
+    const qs = "sku=" + encodeURIComponent(mine.sku)
+             + (mine.productType ? "&product_type=" + encodeURIComponent(mine.productType) : "");
     const j = await (await fetch("/listing/image_slots?" + qs)).json();
-    if(!j || !j.ok){ PDPI.err = (j && j.error) || "could not read the slots"; return; }
-    PDPI.slots = j.slots || [];
-    PDPI.live = !!j.live;
-    PDPI.checked = !!j.checked;
-    PDPI.note = j.note || "";
-    if(j.product_type) PDPI.productType = j.product_type;
-  }catch(e){ PDPI.err = String(e); }
+    if(PDPI !== mine) return;
+    if(!j || !j.ok){ mine.err = (j && j.error) || "could not read the slots"; return; }
+    mine.slots = j.slots || [];
+    mine.live = !!j.live;
+    mine.checked = !!j.checked;
+    mine.note = j.note || "";
+    if(j.product_type) mine.productType = j.product_type;
+  }catch(e){ if(PDPI === mine) mine.err = String(e); }
 }
 
 async function _pdpiLoadLibrary(){
+  const mine = PDPI;
   try{
-    const j = await (await fetch("/media/list?sku=" + encodeURIComponent(PDPI.sku))).json();
+    const j = await (await fetch("/media/list?sku=" + encodeURIComponent(mine.sku))).json();
+    if(PDPI !== mine) return;
     // THE SHAPE /media/list ACTUALLY RETURNS, read off the route rather than
     // assumed:
     //
@@ -195,8 +219,8 @@ async function _pdpiLoadLibrary(){
         }
       });
     });
-    PDPI.library = out;
-  }catch(e){ PDPI.library = []; }
+    mine.library = out;
+  }catch(e){ if(PDPI === mine) mine.library = []; }
 }
 
 /* RE-READ THE LIBRARY FROM OUTSIDE THIS FILE -- for the AI generator (doGen in
@@ -223,10 +247,15 @@ async function pdpImgAssign(slotKey, url, opts){
     const body = (typeof acctBody === "function")
       ? acctBody({sku: sku, target: "attr", key: slotKey, value: url || ""})
       : {sku: sku, target: "attr", key: slotKey, value: url || ""};
+    const ctx = (typeof pdpContext === "function") ? pdpContext() : "";
     const j = await (await fetch("/edit", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)})).json();
     if(!j || !j.ok){ toast("Could not assign: " + ((j && j.error) || "unknown")); return false; }
+    // The server saved it to the account named when it was sent. If the
+    // account or marketplace has changed since, the row in ROWS with this SKU
+    // is ANOTHER account's: leave it alone (pdpContext, pdp.js).
+    if(typeof pdpContext === "function" && pdpContext() !== ctx) return true;
     // Keep the row in step the way saveEdit does, so the hero and the strip
     // redraw from the same values without a reload.
     const r = (typeof ROWS !== "undefined" && ROWS)
@@ -593,7 +622,10 @@ function pdpImagesTab(r){
   const sku = String((r && r.sku) || "");
   const pt = String((r && (r.product_type || r.productType)) || "");
   const gen = (typeof pdpImgGenSection === "function") ? pdpImgGenSection(r) : "";
-  if(PDPI.sku !== sku){
+  // A different listing, OR the same SKU in another account / marketplace
+  // (pdpContext): either way what is held is not this listing's.
+  if(PDPI.sku !== sku
+     || (typeof pdpContext === "function" && PDPI.ctx !== pdpContext())){
     setTimeout(function(){ pdpImagesLoad(sku, pt); }, 0);
     return '<div id="pdpimages" class="pdpi">'
          + '<div class="pdpi-note">Reading this product type\'s image slots…</div>'

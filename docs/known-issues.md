@@ -40,35 +40,47 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
    `enterAccount`; `SELECTED` and `LISTING_METRICS` are not reset either.
    SKUs are not unique across accounts.
 
-## PDP (product page) — review of 27 Sep 2026 (read-only; no tests run)
+## Fixed on the development branch, NOT yet in production
 
-Account switching (none of these is pinned by a test yet):
-- **READ — the PDP stays open across an account switch.** `enterAccount` /
-  `switchAccountMarket` (shell.js) never call `pdpClose` or reset `PDP_SKU`,
-  `PDP_DIRTY`, `PDP_EDITED_FIELDS`, `PDPI`, `LIVE_ATTRS`. Reachable with the
-  Ctrl+K palette (z 200, above the PDP) and Back/Forward between
-  `/w/A/listing/X` and `/w/B/listing/X`. Edits then save with `acctBody()` =
-  the NEW account, into its same-SKU row (or `adopt` creates one). Cross-account write.
-- **READ — `LIVE_ATTRS` (drawer_attributes.js) is keyed by SKU only, cached
-  forever (failures included) and never cleared**; with a shared SKU, account
-  B's PDP shows and merges account A's Amazon copy (`pdpAmazonCopy`) and
-  `lvPushChanges` diffs against A. Extends suspected bug #5.
-- **READ — `PDPI` (pdp_images.js) is keyed by SKU only, never reset** on close
-  or switch; reopening the same SKU shows stale slots/library.
-- **READ — a late `/row` reply** (pdp.js `pdpRefreshChecks`) is checked by SKU
-  only, not account, and merged into the new account's row.
-- **READ — `/listing/live_attributes` ignores the named account** and uses
-  `_active_account()` (listing_routes.py `listing_live_attributes`).
+On `claude-environment-setup` (local, not merged or deployed — production still
+has these until the owner merges):
+- **PDP account/marketplace switching** (27 Sep 2026). Proven by
+  test_pdp_account_switch.js (runs the real browser code; 28 checks fail on the
+  old code, all pass now): the page stayed open across an account switch and a
+  save from it went to the NEW account; LIVE_ATTRS / PDPI leaked across the
+  switch; late `/row` and live-attribute replies were painted over the new
+  account; `detectMarketplaces` for another account silently made it the open
+  one. Now an account, marketplace or workspace change closes the page and
+  forgets its state (`pdpLeaveContext`, `pdpContext`).
+- **Guard: `/row`, `/rows`, `/rows_all` did not check a named account** for a
+  user restricted to some accounts (the `"/row"` exemption, matched with
+  startswith). Proven by test_row_account_guard.py; fixed in auth/guard.py.
+
+## PDP (product page) — still open (27 Sep 2026)
+
+Account scope, remaining after the fix above:
+- **DEFERRED by owner (D2) — `/listing/live_attributes` ignores the named
+  account** and uses `_active_account()`, and the `"/listing/"` guard exemption
+  lets a restricted user name another account on `/listing/*`. Separate follow-up.
 - **READ — PDP calls that name no account:** `/listing/image_slots`,
-  `/media/list`, `/media/upload`, `/genimage/start_batch`.
-- **NEEDS VERIFICATION — an image-generation job finishing after a switch**
-  may place images into the new account's slots (`_pdpigPlace`).
-
-Security:
-- **READ — guard exemption prefix bug.** `auth/guard.py`
-  `WORKSPACE_PARAM_EXEMPT` uses `p.startswith(ex)`, so `"/row"` also exempts
-  `/rows` and `/rows_all`: a user restricted to one account is not stopped from
-  naming another in `/rows_all?account=`. Verify with the Flask test client.
+  `/media/list`, `/media/upload`, `/genimage/start_batch` (answered for the
+  session's account; after the fix they only run for the open context).
+- **READ — image generation finishing after a switch** (`_pdpigPlace`,
+  pdp_imagegen.js, checks the SKU only): if the SAME SKU is reopened on the new
+  account and its Images tab loaded before the job ends, the old job's pictures
+  could be assigned into the new account's slots. The switch now resets the
+  image-tab state, which narrows this to that reopen case. pdp_imagegen.js was
+  outside the approved change.
+- **LIKELY — a save reply that lands after a switch updates the new account's
+  same-SKU row IN THE BROWSER** (`editField`, autofix.js, has no context check;
+  `pdpBarcodeSave` likewise). The server write goes to the correct account;
+  only the in-memory row/screen can show the old value until a reload. Needs a
+  context check in autofix.js (outside the approved change).
+- **Rule 12 follow-up:** `pdpContext` (pdp.js) and `_liveKey` / inline
+  `acct::mkt` keys in miles_template.js build similar account+marketplace keys.
+- **UNVERIFIED — whether the browser fires blur when a focused field is
+  removed.** The switch now blurs the focused PDP field itself before the
+  account changes, so this matters only for paths that bypass pdpLeaveContext.
 
 States and rendering:
 - **READ — silent failures:** `/row` checks (so a barcode clash can go

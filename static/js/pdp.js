@@ -204,6 +204,67 @@ function pdpIsCatalogueOnly(r){ return !!(r && r.catalogue_only); }
 
 function pdpIsOpen(){ return !!PDP_SKU; }
 
+/* WHICH PRODUCT CONTEXT IS OPEN: the account AND the marketplace.
+ *
+ * SKUs are not unique across accounts -- the owner lists the same product on
+ * two of his companies and may reuse the SKU -- and the same SKU on another
+ * marketplace is a different Amazon listing. So "which listing is this" is
+ * never the SKU alone. Measured 27 Sep 2026 (test_pdp_account_switch.js):
+ * switching account left this page open on the old account's listing, a save
+ * from it went to the NEW account, and replies sent for the old account were
+ * painted over the new one, because every check here compared SKUs only.
+ *
+ * The product page's one definition of the context: anything that caches or
+ * waits for data about the open listing stamps it with this and compares it
+ * again when the answer lands. (miles_template.js _liveKey builds a similar
+ * account::marketplace key for the live catalogue -- noted in known-issues as a
+ * Rule 12 follow-up; it was outside this change.) The workspace key is part of
+ * it too: a brand workspace can share an account and marketplace. */
+function pdpContext(){
+  const a = (typeof acctId === "function") ? acctId() : "";
+  const w = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS) ? String(ACTIVE_WS.key || "") : "";
+  const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? String(WS_MARKET) : "";
+  return a + "::" + w + "::" + m;
+}
+
+/* LEAVING A PRODUCT CONTEXT. Called by shell.js BEFORE the account or the
+ * marketplace changes -- before, so a field that saves as it loses focus still
+ * saves to the account it was typed in.
+ *
+ * The page is closed, not carried across: the owner's decision (27 Sep 2026)
+ * is that an account or marketplace change is a change of product context and
+ * the listing is reopened explicitly for the new one. Everything this page
+ * keeps about a listing goes with it. */
+function pdpLeaveContext(){
+  // A FIELD STILL BEING TYPED IN SAVES FIRST, to the account it belongs to.
+  // Fields save as they lose focus, and that save names the account open at
+  // that moment (acctBody). A click on the switcher or Ctrl+K moves focus
+  // first anyway; Back/Forward does not, so the page would be emptied under the
+  // caret and the edit lost. Blurring here, before CUR_ACCOUNT moves, sends it
+  // to the right account. (Same as pdpSaveAndFinish.)
+  try{
+    const host = document.getElementById("pdp");
+    const el = document.activeElement;
+    if(PDP_SKU && el && host && host.contains(el) && typeof el.blur === "function") el.blur();
+  }catch(e){}
+  // A barcode check that has not been sent yet would be sent for the NEW
+  // account, about a code typed on the old one.
+  if(typeof _PDP_BC_T !== "undefined" && _PDP_BC_T){ clearTimeout(_PDP_BC_T); _PDP_BC_T = null; }
+  // ...and one already sent is made stale, so its answer is not painted onto
+  // the same SKU reopened in the new context.
+  if(typeof _PDP_BC_SEQ !== "undefined") _PDP_BC_SEQ++;
+  // Closed WITHOUT touching the address bar: the switch that called this sets
+  // the URL for where it is going. Syncing here added a history entry for the
+  // old account's grid, and during Back/Forward wrote it over the new one.
+  if(PDP_SKU){ try{ pdpClose({keepUrl: true}); }catch(e){} }
+  PDP_SKU = "";
+  PDP_DIRTY = false;
+  PDP_TAB = "details";
+  PDP_EDITED_FIELDS = new Set();
+  if(typeof lvForgetAll === "function"){ try{ lvForgetAll(); }catch(e){} }
+  if(typeof pdpImagesForget === "function"){ try{ pdpImagesForget(); }catch(e){} }
+}
+
 /* ---- open / close ------------------------------------------------------ */
 
 function pdpOpen(sku){
@@ -340,8 +401,10 @@ function pdpOpen(sku){
   if(typeof altaSyncUrl === "function") altaSyncUrl();
 }
 
-/* Back to the grid, which is still underneath exactly as it was. */
-function pdpClose(){
+/* Back to the grid, which is still underneath exactly as it was.
+ * opts.keepUrl: leave the address bar alone -- only pdpLeaveContext passes it,
+ * because the account/marketplace switch that called it sets the URL itself. */
+function pdpClose(opts){
   if(!PDP_SKU) return;
   PDP_SKU = "";
   // THE LIST UNDERNEATH IS ANOTHER COPY OF THE ROW, and it goes stale the same
@@ -374,7 +437,7 @@ function pdpClose(){
     host.onclick = null;
   }
   document.body.classList.remove("pdp-on");
-  if(typeof altaSyncUrl === "function") altaSyncUrl();
+  if(!(opts && opts.keepUrl) && typeof altaSyncUrl === "function") altaSyncUrl();
   // After the grid is on screen again, not before -- scrolling a hidden
   // element sets nothing.
   try{ window.scrollTo(0, PDP_BACK_SCROLL || 0); }catch(e){}
@@ -1358,11 +1421,14 @@ function pdpApiIssues(r){
  */
 function pdpRefreshChecks(sku){
   if(typeof acctUrl !== "function") return;
+  // The reply is about the account AND marketplace open when it was asked for;
+  // after a switch the same SKU can be another company's row (pdpContext).
+  const ctx = pdpContext();
   fetch(acctUrl("/row?sku=" + encodeURIComponent(sku)))
     .then(function(res){ return res.json(); })
     .then(function(j){
       if(!j || !j.ok || !j.row) return;
-      if(PDP_SKU !== sku) return;
+      if(PDP_SKU !== sku || pdpContext() !== ctx) return;
       const i = (typeof ROWS !== "undefined")
         ? ROWS.findIndex(function(x){ return String(x.sku) === String(sku); })
         : -1;

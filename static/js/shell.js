@@ -385,6 +385,18 @@ function _toggleVat(on){
 async function enterAccount(accountId){
   const a=ACCOUNTS.find(x=>x.id===accountId) || ACCOUNTS[0];
   if(!a){ toast("Account not found"); return; }
+  // A DIFFERENT ACCOUNT IS A DIFFERENT PRODUCT CONTEXT (owner, 27 Sep 2026).
+  // The product page used to stay open across this line: still showing the
+  // old account's listing, while every save from it named the new account
+  // (acctBody reads CUR_ACCOUNT at the moment of saving) -- and SKUs are shared
+  // between accounts, so the save found a row. Closed and forgotten HERE,
+  // before CUR_ACCOUNT moves, so anything that saves on the way out still
+  // saves to the account it was typed in. Re-entering the SAME account is not
+  // a change and closes nothing. (test_pdp_account_switch.js)
+  if((!CUR_ACCOUNT || String(CUR_ACCOUNT.id) !== String(a.id))
+     && typeof pdpLeaveContext === "function"){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
   CUR_ACCOUNT=a;
   // Refresh inventory alert badge when workspace changes (fire-and-forget)
   if(typeof invBadgeRefresh === 'function') invBadgeRefresh();
@@ -432,7 +444,13 @@ async function enterAccount(accountId){
   LIST_SOURCE = 'drafts';
   // default marketplace: account's configured default, else first detected
   const dflt = a.default_marketplace && (a.marketplaces||[]).indexOf(a.default_marketplace)>=0 ? a.default_marketplace : null;
-  WS_MARKET = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");
+  const _newMkt = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");
+  // Re-entering the same account can still move the MARKETPLACE (back to the
+  // default), which is a change of product context too (pdpLeaveContext).
+  if(String(_newMkt) !== String(WS_MARKET || "") && typeof pdpLeaveContext === "function"){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
+  WS_MARKET = _newMkt;
   CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js
   // A read-only workspace has no live catalog at all -- /live/catalog refuses it --
   // so don't offer the Live / All / Sync controls that can only fail.
@@ -599,7 +617,11 @@ function buildAccountMktSwitch(a){
   const mkts=a.marketplaces&&a.marketplaces.length?a.marketplaces:[];
   if(!mkts.length) return;
   // keep the current selection if it's valid for this account; else default to first
-  if(!WS_MARKET || (WS_MARKET!=="__all__" && mkts.indexOf(WS_MARKET)<0)){ WS_MARKET=mkts[0]; }
+  if(!WS_MARKET || (WS_MARKET!=="__all__" && mkts.indexOf(WS_MARKET)<0)){
+    // Moving the marketplace is a change of product context (pdpLeaveContext).
+    if(WS_MARKET && typeof pdpLeaveContext === "function"){ try{ pdpLeaveContext(); }catch(e){} }
+    WS_MARKET=mkts[0];
+  }
   if(WS_MARKET!=="__all__"){
     // One table of what a marketplace code means, in static/js/marketplaces.js.
     // This was an inline ternary here AND another in switchAccountMarket, and
@@ -621,14 +643,23 @@ async function detectMarketplaces(accountId){
     if(!j.ok){ toast("Detect failed: "+(j.error||"")); 
       // refresh the account object so the button comes back
       try{ var al=await (await fetch("/accounts/list")).json(); ACCOUNTS=al.accounts||[]; }catch(e){}
-      var a=ACCOUNTS.find(x=>x.id===accountId); if(a) buildAccountMktSwitch(a);
+      // Only the OPEN account's switcher is rebuilt: building it for another
+      // account could move WS_MARKET to that account's marketplace.
+      var a=ACCOUNTS.find(x=>x.id===accountId);
+      if(a && CUR_ACCOUNT && String(CUR_ACCOUNT.id) === String(a.id)) buildAccountMktSwitch(a);
       return;
     }
     toast("Detected: "+(j.marketplaces||[]).join(", "));
     // update local account + rebuild switcher
     try{ var al=await (await fetch("/accounts/list")).json(); ACCOUNTS=al.accounts||[]; }catch(e){}
     var a2=ACCOUNTS.find(x=>x.id===accountId);
-    if(a2){ CUR_ACCOUNT=a2; buildAccountMktSwitch(a2); }
+    // REFRESH THE OPEN ACCOUNT, NEVER REPLACE IT. The switcher can run this for
+    // an account that is not the open one; assigning CUR_ACCOUNT here made that
+    // account "open" to every later save (acctBody) while the screen, ROWS and
+    // the server all still described the real one. (test_pdp_account_switch.js)
+    if(a2 && CUR_ACCOUNT && String(CUR_ACCOUNT.id) === String(a2.id)){
+      CUR_ACCOUNT=a2; buildAccountMktSwitch(a2);
+    }
   }catch(e){ toast("Error: "+e); }
 }
 async function setDefaultMarketplace(){
@@ -644,6 +675,12 @@ async function setDefaultMarketplace(){
   }catch(e){ toast("Error: "+e); }
 }
 async function switchAccountMarket(m){
+  // A DIFFERENT MARKETPLACE IS A DIFFERENT PRODUCT CONTEXT (owner, 27 Sep
+  // 2026): the same SKU there is another Amazon listing. Close the product page
+  // and forget what it held BEFORE the marketplace moves.
+  if(String(m) !== String(WS_MARKET || "") && typeof pdpLeaveContext === "function"){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
   WS_MARKET=m;
   CUR_SYMBOL = mktSymbol(m) || "\u00a3";   // one table, in static/js/marketplaces.js
   // A marketplace is as different as an account: UK sales are not US sales.
@@ -1002,6 +1039,12 @@ function closeAccounts(){
 
 async function enterWorkspace(key){
   const v=VIEWS.find(x=>String(x.key)===String(key)) || {key:key,label:key};
+  // Another workspace is another product context: close the product page
+  // before anything moves (pdpLeaveContext, pdp.js).
+  if(typeof pdpLeaveContext === "function"
+     && !(typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && String(ACTIVE_WS.key) === String(v.key))){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
   ACTIVE_WS=v;
   // switch the backend view so all existing routes read this workspace's sheet
   try{ await fetch("/view/set",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1025,7 +1068,13 @@ async function enterWorkspace(key){
   document.getElementById("nav_setup").style.display = isDrop ? "none" : "flex";
   window.WS_BRAND = isDrop ? "" : (v.brand||"");
   // currency + marketplace for this workspace
-  WS_MARKET = _mktOf(v) || (isDrop ? "" : "");
+  const _wsMkt = _mktOf(v) || (isDrop ? "" : "");
+  // Re-entering the same workspace can still move the marketplace, which is a
+  // change of product context (pdpLeaveContext, pdp.js).
+  if(String(_wsMkt) !== String(WS_MARKET || "") && typeof pdpLeaveContext === "function"){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
+  WS_MARKET = _wsMkt;
   // This one only knew about dollars and pounds, so a German or Irish
   // marketplace showed euro amounts with a pound sign in front of them.
   CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js
@@ -1424,7 +1473,18 @@ async function altaRouteFromUrl(){
   // enterAccount() would put a spinner in front of a screen that is already
   // rendered and only hidden.
   if(!lm && typeof pdpIsOpen === "function" && pdpIsOpen()){
-    try{ pdpClose(); }catch(e){}
+    // Back/Forward to ANOTHER workspace's screen is a change of product
+    // context: leave it properly (save a field being typed in to the account
+    // it belongs to, forget the page's caches, and leave the address bar to
+    // this router). Within the same workspace it is an ordinary close.
+    let _tw = "";
+    try{ _tw = decodeURIComponent((/^\/w\/([^\/]+)/.exec(location.pathname || "") || [])[1] || ""); }catch(e){}
+    const _cw = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS) ? String(ACTIVE_WS.key || "") : "";
+    if(_tw && _cw && _tw !== _cw && typeof pdpLeaveContext === "function"){
+      try{ pdpLeaveContext(); }catch(e){}
+    } else {
+      try{ pdpClose(); }catch(e){}
+    }
   }
   const m = lm ? [lm[0], lm[1], "listings"]
               : /^\/w\/([^\/]+)(?:\/([^\/]+))?\/?$/.exec(location.pathname || "");

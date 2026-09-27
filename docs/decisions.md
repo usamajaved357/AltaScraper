@@ -77,6 +77,14 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   zone; stat-card hint text removed; an empty queue shows nothing. Source:
   commits 5e78d3e, 0e5529e; test_listings_restore.js.
 
+- **27 Sep 2026 — An account or marketplace change is a change of product
+  context.** "When the account or marketplace changes: close the open PDP;
+  clear its account/marketplace-specific state and caches; prevent stale
+  replies from updating the new context; allow the product to be reopened
+  explicitly for the new context. Do not try to preserve the open PDP across an
+  account or marketplace boundary." The `/listing/live_attributes` account
+  handling is a separate follow-up (D2). Source: read.txt, 27 Sep 2026.
+
 ## PPC and advertising
 
 - **7 Sep 2026 — Skip Phase 4 (AMS/AWS) entirely.** "Skip Phase 4 entirely

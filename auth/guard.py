@@ -378,7 +378,12 @@ WORKSPACE_PARAM_EXEMPT = (
     "/trackers/watch",   # asin + metric, no workspace
     "/input/",           # input row ids
     "/listing/",         # sku-scoped
-    "/row",              # row ids
+    # "/row" WAS HERE ("row ids") AND IS GONE (27 Sep 2026). No caller sends a
+    # row id to /row -- every one sends sku= and account= -- and because this
+    # list is matched with startswith, "/row" also exempted /rows and
+    # /rows_all: a user limited to one account could read another's listings
+    # by naming it, the exact read the `account` entry in WORKSPACE_PARAMS was
+    # added to stop. (test_row_account_guard.py)
     "/genimage",         # job ids
     "/aplus",            # module ids
     "/drive",            # drive file ids

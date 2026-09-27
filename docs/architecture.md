@@ -310,6 +310,17 @@ only, never PUTs a listing.
   account's store (`_store_for`) via `listing/repo.set_field`. "Save & finish"
   only blurs the focused box and closes. `pdpClose` redraws the grid only if
   `PDP_DIRTY`.
+- **Product context** (27 Sep 2026): `pdpContext()` (pdp.js) =
+  `account::workspace::marketplace`. An account, marketplace or workspace
+  change calls `pdpLeaveContext()` BEFORE `CUR_ACCOUNT` / `WS_MARKET` move
+  (shell.js `enterAccount`, `switchAccountMarket`, `enterWorkspace`,
+  `buildAccountMktSwitch`, and `altaRouteFromUrl` when Back/Forward goes to
+  another workspace): it blurs a focused PDP field (so its save names the old
+  account), cancels a pending barcode check, closes the page without touching
+  the URL, and forgets `LIVE_ATTRS` (`lvForgetAll`) and `PDPI`
+  (`pdpImagesForget`). Late replies are dropped by comparing the context (or,
+  for caches, the identity of the entry/object they started with). The listing
+  is reopened explicitly for the new context.
 - Open problems: docs/known-issues.md "PDP".
 
 ## 13. Deployment

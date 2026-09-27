@@ -100,8 +100,10 @@ print("\n== 2b. AND THE LIST UNDERNEATH, which is the same bug one screen out ==
 # It was. Measured: edit the title on the product page, close it, and the row in
 # the table still read the OLD title -- nothing after a save re-drew the grid.
 # The row object was already correct, so this is a redraw, not a re-read.
+# Re-pinned 27 Sep 2026: pdpClose gained an optional `opts` ({keepUrl}) for
+# account/marketplace switches; the redraw-on-close is unchanged.
 yes("closing the page redraws the grid when something was edited",
-    re.search(r"function pdpClose\(\)\{(?:(?!\n\}).)*const _edited = PDP_DIRTY",
+    re.search(r"function pdpClose\((?:opts)?\)\{(?:(?!\n\}).)*const _edited = PDP_DIRTY",
               PDP, re.S) is not None)
 yes("  and only then", "if(_edited && typeof render === \"function\")" in PDP)
 # ON CLOSE, NOT ON EVERY SAVE: a blur-save fires as you tab between fields and

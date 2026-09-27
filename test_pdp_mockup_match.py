@@ -226,8 +226,11 @@ yes("  and the footer itself", 't.closest(".pdp-footer")' in JS)
 yes("marking dirty reveals it without a re-render",
     'f.classList.add("on")' in JS)
 # "When saved or cancelled: bar disappears." Both buttons close the panel.
+# Re-pinned 27 Sep 2026: pdpClose gained an optional `opts` ({keepUrl}) for
+# account/marketplace switches (test_pdp_account_switch.js); what it does on
+# close is unchanged.
 yes("closing forgets the change", re.search(
-    r"function pdpClose\(\)\{(?:(?!\n\}).)*PDP_DIRTY = false", JS, re.S) is not None)
+    r"function pdpClose\((?:opts)?\)\{(?:(?!\n\}).)*PDP_DIRTY = false", JS, re.S) is not None)
 yes("  and so does opening a different listing", re.search(
     r"if\(changed\)\{(?:(?!\n  \}).)*PDP_DIRTY = false", JS, re.S) is not None)
 
