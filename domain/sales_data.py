@@ -264,7 +264,8 @@ def availability(config_path, workspace_id, marketplace):
     return out
 
 
-_FIN_COLS = ("referral_fees", "fba_fees", "other_fees", "refunds", "refund_units",
+_FIN_COLS = ("referral_fees", "fba_fees", "other_fees", "promo_fees",
+             "refunds", "refund_units",
              "refund_fees_returned", "reimbursements", "promos", "principal",
              "tax", "refund_tax", "units_shipped", "cogs", "cogs_units")
 
@@ -360,7 +361,12 @@ def net_proceeds_for(row, vat_rate=None):
         except (TypeError, ValueError):
             return 0.0
 
-    fees = [row.get(k) for k in ("referral_fees", "fba_fees", "other_fees")]
+    # promo_fees: coupon and deal fees, which the newer finance sync files in a
+    # column of their own instead of inside other_fees (finance_data.
+    # _bucket_fee). Left out, a coupon's fee was money that never left. Older
+    # rows have it NULL and inside other_fees, so it is never counted twice.
+    fees = [row.get(k) for k in ("referral_fees", "fba_fees", "other_fees",
+                                 "promo_fees")]
     fees = [float(x) for x in fees if x is not None]
     total_fees = round(sum(fees), 2) if fees else None
 
@@ -767,7 +773,12 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
         cu = row.get("cogs_units") or 0
         _every_unit_costed = (u == 0) or (cu == u)
         if row["net_proceeds"] is not None and _every_unit_costed:
-            row["profit"] = round(row["net_proceeds"] - float(row.get("cogs") or 0.0), 2)
+            # LESS THE DAY'S AD SPEND, where it is measured -- the same figure
+            # the Profit card, the P&L and Finance state (profit_for below does
+            # the same for a week or a month). Unmeasured spend is not zero, so
+            # a day with no ads row has nothing taken off.
+            row["profit"] = round(row["net_proceeds"] - float(row.get("cogs") or 0.0)
+                                  - float(row.get("spend") or 0.0), 2)
             p = float(row.get("principal") or 0.0)
             row["margin_pct"] = round(row["profit"] / p * 100, 2) if p else None
         else:
@@ -1127,8 +1138,15 @@ def aggregate(rows, key):
     return _sum(rows, key)
 
 
-def profit_for(rows):
+def profit_for(rows, allow_uncosted=False):
     """Profit across rows, or None if ANY unit in them has no known cost.
+
+    `allow_uncosted=True` is the owner's rule for a figure that carries its own
+    warning: "if no cogs are added show profit as wrong ... the user should know
+    he needs to add cogs" (domain/order_profit.py). The uncosted units then add
+    revenue and no cost, and the CALLER must say the figure is too high. The
+    daily grid keeps the default, because a cell has nowhere to put that
+    warning.
 
     Not the sum of the daily profits: a week containing one uncosted day would
     then report the other six days' profit as the week's, which is a smaller
@@ -1145,12 +1163,16 @@ def profit_for(rows):
     # the rule is for.
     units = _sum(rows, "units_shipped") or 0
     costed = _sum(rows, "cogs_units") or 0
-    if units and costed != units:
+    if units and costed != units and not allow_uncosted:
         return None
     net = _sum(rows, "net_proceeds")
     if net is None:
         return None
-    return round(net - float(_sum(rows, "cogs") or 0.0), 2)
+    # Measured ad spend comes off, as it does on every other profit screen.
+    # Rows that carry no `spend` (the Finance screen's, which subtract their
+    # own) contribute nothing here.
+    return round(net - float(_sum(rows, "cogs") or 0.0)
+                 - float(_sum(rows, "spend") or 0.0), 2)
 
 
 def bucket(rows, gran):

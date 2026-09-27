@@ -278,16 +278,71 @@ def account_level_charge(config_path, workspace_id, marketplace, start, end):
         "WHERE workspace_id=? AND marketplace=? AND asin='*' "
         "AND date>=? AND date<=?",
         (workspace_id, marketplace, start, end)).fetchone()
+    # ONE ROW PER ORDER. Joined to order_lines row by row, an order with three
+    # products had its fees counted three times, which made the orders appear
+    # to account for more than they did and hid the account-level charge.
     attributed = conn.execute(
-        "SELECT ROUND(SUM(COALESCE(f.other_fees,0)),2) o FROM order_lines o2 "
-        "JOIN order_fees f ON f.workspace_id=o2.workspace_id "
-        "  AND f.marketplace=o2.marketplace AND f.order_id=o2.order_id "
-        "WHERE o2.workspace_id=? AND o2.marketplace=? "
-        "AND substr(o2.purchase_date,1,10)>=? AND substr(o2.purchase_date,1,10)<=?",
-        (workspace_id, marketplace, start, end)).fetchone()
+        "SELECT ROUND(SUM(COALESCE(f.other_fees,0)),2) o FROM order_fees f "
+        "WHERE f.workspace_id=? AND f.marketplace=? AND f.order_id IN ("
+        "  SELECT DISTINCT order_id FROM order_lines WHERE workspace_id=? "
+        "  AND marketplace=? AND substr(purchase_date,1,10)>=? "
+        "  AND substr(purchase_date,1,10)<=?)",
+        (workspace_id, marketplace, workspace_id, marketplace, start, end)
+    ).fetchone()
     gap = round(float((charged["o"] if charged else 0) or 0)
                 - float((attributed["o"] if attributed else 0) or 0), 2)
     return max(0.0, gap)
+
+
+def _subscription_recorded(config_path, workspace_id, marketplace):
+    """Has the owner recorded Amazon's monthly charge as a cost of their own?
+
+    Matched on the name, exactly as suggest() matches it, so the offer to add it
+    and the rule that stops it being subtracted twice cannot disagree.
+    """
+    for r in all_for(config_path, workspace_id, marketplace):
+        n = str(r.get("name") or "").lower()
+        if "subscription" in n or "seller account" in n or "monthly fee" in n:
+            return True
+    return False
+
+
+def overhead_for(config_path, workspace_id, marketplace, start, end):
+    """The step from the headline profit to NET profit. -> a dict.
+
+        net profit = profit (the Sales card's figure)
+                   - what Amazon charged the ACCOUNT and no order carries
+                   - the costs you entered yourself
+
+    THE ONE PLACE THAT STEP IS TAKEN. The P&L and the Finance screen each had
+    their own, and they disagreed: Finance subtracted Amazon's account charge
+    automatically, the P&L only once somebody had typed it in as a cost -- so
+    the two "net profit" figures for the same month differed by the
+    subscription (CLAUDE.md Rule 12).
+
+    The account charge is MEASURED (Amazon took it), so it comes off. The one
+    exception is when the owner has already recorded it as a cost of their own:
+    then it is inside `own`, and taking it off again would count it twice.
+    """
+    try:
+        charge = account_level_charge(config_path, workspace_id, marketplace,
+                                      start, end)
+    except Exception:
+        charge = 0.0
+    man = for_window(config_path, workspace_id, marketplace, start, end)
+    recorded_already = charge > 0 and _subscription_recorded(
+        config_path, workspace_id, marketplace)
+    amazon = 0.0 if recorded_already else round(charge, 2)
+    own = round(float(man.get("total") or 0.0), 2)
+    return {
+        "amazon_account_charges": amazon,
+        "amazon_charge_seen": round(charge, 2),
+        "amazon_charge_in_own_costs": bool(recorded_already),
+        "own_costs": own,
+        "own_costs_recorded": bool(man.get("recorded")),
+        "own_costs_detail": man,
+        "total": round(amazon + own, 2),
+    }
 
 
 def suggest(config_path, workspace_id, marketplace, start, end):
@@ -312,10 +367,8 @@ def suggest(config_path, workspace_id, marketplace, start, end):
 
     # Already recorded? Matched on name rather than amount, because the amount
     # is what somebody would correct.
-    for r in all_for(config_path, workspace_id, marketplace):
-        n = str(r.get("name") or "").lower()
-        if "subscription" in n or "seller account" in n or "monthly fee" in n:
-            return None
+    if _subscription_recorded(config_path, workspace_id, marketplace):
+        return None
 
     return {
         "name": "Amazon selling subscription",
@@ -324,7 +377,8 @@ def suggest(config_path, workspace_id, marketplace, start, end):
         "starts": str(start)[:10],
         "why": ("Amazon charged this account %.2f in this window that belongs to "
                 "no order — the monthly selling subscription is the usual one. "
-                "It cannot be attached to a sale, so no per-order query can find "
-                "it and it is not in the profit above. Add it as a monthly cost "
-                "and it will be." % gap),
+                "It is already taken off net profit as an Amazon account charge. "
+                "Add it as a monthly cost of your own if you want it named and "
+                "carried into months Amazon has not posted yet; it will not be "
+                "counted twice." % gap),
     }

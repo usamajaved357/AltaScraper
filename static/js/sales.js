@@ -2406,7 +2406,19 @@ function _sProfitTip(c){
     L.push("  = goods " + _sNum(d.goods, "money")
            + " + postage the buyer paid " + _sNum(d.postage, "money"));
   if(d.vat) L.push("less VAT " + _sNum(d.vat, "money") + " (HMRC's, not yours)");
-  L.push("less Amazon fees " + _sNum(d.fees, "money") + " — " + (d.rate_detail || ""));
+  // Every line domain/order_profit.for_period subtracts, so the working adds up
+  // to the figure on the card -- the same one the P&L and Finance now state.
+  L.push("less Amazon fees " + _sNum(d.fees, "money")
+         + (d.fees_estimated ? " (" + _sNum(d.fees_estimated, "money")
+            + " estimated for orders Amazon has not settled — "
+            + (d.rate_detail || "") + ")" : ""));
+  if(d.promos) L.push("less coupons you funded " + _sNum(d.promos, "money"));
+  if(d.refunds) L.push("less refunds " + _sNum(d.refunds, "money")
+                       + " (counted on the day the money went back)");
+  if(d.refund_fees_returned)
+    L.push("plus fees returned on refunds " + _sNum(d.refund_fees_returned, "money"));
+  if(d.reimbursements)
+    L.push("plus reimbursements " + _sNum(d.reimbursements, "money"));
   L.push("less stock cost " + _sNum(d.cogs, "money")
          + " (" + d.costed_units + " of " + d.units + " units costed)");
   if(d.charges)

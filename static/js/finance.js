@@ -6,8 +6,10 @@
 //   * Ad spend reads "not connected" rather than 0.00. Nothing writes to
 //     ads_daily yet, and a zero would inflate every advertised product's
 //     contribution by exactly what you are spending on it — convincingly.
-//   * A product with any uncosted unit shows no contribution at all, because a
-//     partial cost only ever makes a product look better than it is.
+//   * A product with uncosted units IS shown, flagged "N uncosted" -- its
+//     figure counts that stock as free, so it is too high. The owner's rule:
+//     "if no cogs are added show profit as wrong ... the user should know he
+//     needs to add cogs". Only a product whose FEE is unknown shows nothing.
 // Both are stated on screen rather than left for the reader to notice.
 
 let FIN = {rows: [], totals: {}, sort: "revenue", desc: true,
@@ -241,7 +243,10 @@ function _finMatching(f){
 // MONEY, not counts, is a separate list because only money gets rounded to
 // pence at the end; rounding a unit count is meaningless and rounding it twice
 // is how a count of 3 becomes 2.999999.
-const FIN_MONEY = ["revenue", "vat", "fees", "cogs", "refunds", "promos"];
+// net_revenue is summed because margin is worked out over it -- sales after
+// VAT, the same denominator as every other profit screen.
+const FIN_MONEY = ["revenue", "vat", "net_revenue", "fees", "cogs", "refunds",
+                   "promos"];
 const FIN_COUNTS = ["units", "uncosted_units"];
 const FIN_SUM = FIN_MONEY.concat(FIN_COUNTS);
 
@@ -270,8 +275,9 @@ function _finRollup(rows){
   return order.map(function(k){
     const g = out[k];
     if(g._blank) g.contribution = null;
-    g.margin_pct = (g.contribution !== null && g.revenue)
-                 ? Number((g.contribution / g.revenue * 100).toFixed(2)) : null;
+    // Over sales AFTER VAT, as the server and every other screen do.
+    g.margin_pct = (g.contribution !== null && g.net_revenue)
+                 ? Number((g.contribution / g.net_revenue * 100).toFixed(2)) : null;
     if(g._isGroup) g.title = (g.title || "") + " (" + g._n + " children)";
     return g;
   });
@@ -335,8 +341,9 @@ function _finTotals(rows){
   });
   if(!anyAds) t.ad_spend = null;
   if(blank) t.contribution = null;
-  t.margin_pct = (t.contribution !== null && t.revenue)
-               ? Number((t.contribution / t.revenue * 100).toFixed(2)) : null;
+  // Over sales AFTER VAT, as the server and every other screen do.
+  t.margin_pct = (t.contribution !== null && t.net_revenue)
+               ? Number((t.contribution / t.net_revenue * 100).toFixed(2)) : null;
   FIN_MONEY.forEach(function(k){ t[k] = Number(t[k].toFixed(2)); });
   if(t.contribution !== null) t.contribution = Number(t.contribution.toFixed(2));
   return t;
@@ -591,13 +598,17 @@ function financeRender(){
     {label: "What it cost", value: _fmoney(t.fees + t.cogs, ""),
      note: "Amazon " + _fmoney(t.fees, "") + " · stock " + _fmoney(t.cogs, "")},
     {label: "Contribution", value: _fmoney(t.contribution, ""),
-     // Withheld, not zero. A blank contribution means a product has no cost
-     // recorded, and printing 0 there would read as "it earned nothing".
-     tone: (t.contribution === null) ? "warn"
+     // Withheld, not zero, when a product's FEE is unknown. Uncosted stock is
+     // shown and flagged instead -- the owner's rule -- so the card says the
+     // figure is too high rather than hiding it.
+     tone: (t.contribution === null || t.uncosted_units) ? "warn"
            : (t.contribution < 0 ? "bad" : "good"),
      note: (t.contribution === null)
-           ? "withheld - a product has no cost recorded"
-           : "after fees, stock, refunds and promotions"},
+           ? "withheld - Amazon's fee on a product could not be worked out"
+           : (t.uncosted_units
+              ? "TOO HIGH - " + t.uncosted_units + " unit"
+                + (t.uncosted_units === 1 ? "" : "s") + " have no cost recorded"
+              : "after fees, stock, refunds and promotions")},
     {label: "Margin", value: _fpct(t.margin_pct),
      tone: (t.margin_pct === null || t.margin_pct === undefined) ? ""
            : (t.margin_pct < 0 ? "bad" : (t.margin_pct < 10 ? "warn" : "good")),
@@ -645,7 +656,9 @@ function financeRender(){
           : '<code style="font-size:11.5px">'+_fesc(v)+'</code>';
         if(r.uncosted_units){
           cell += '<span class="cc" style="font-size:10px;color:var(--warn);margin-left:6px" '
-                + 'title="These units have no cost recorded, so no contribution is shown">'
+                + 'title="These units have no cost recorded, so nothing was subtracted '
+                + 'for them and this product\'s contribution is HIGHER than the truth. '
+                + 'Set a cost, then press Sync.">'
                 + r.uncosted_units+' uncosted</span>';
         }
       } else if(c.kind === "int"){

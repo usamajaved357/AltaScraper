@@ -302,20 +302,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         """
         out = {"items": [], "total": 0.0, "why": ""}
 
-        # THE SAME CHARGE WHICHEVER CALENDAR IS ON. This read
-        # totals["unattributed_fees"], which is derived by comparing Amazon's
-        # settled figures against the product ROWS -- a comparison that only
-        # holds when those rows came from the settlement feed. On the order
-        # calendar the rows cover far more revenue than Amazon has settled, so
-        # the gap came out nought and the overhead line read 65.51 on one tab
-        # and 0.00 on the other, for the same month and the same subscription.
-        # domain/expenses owns the figure now and neither half of it depends on
-        # the basis (Rule 12).
+        # THE SAME STEP THE P&L TAKES, from the same place. Both the Amazon
+        # charge that belongs to no order and the costs entered by hand come
+        # from expenses.overhead_for, which also makes sure a subscription the
+        # owner has recorded as a cost is not taken off a second time. This
+        # screen used to take the Amazon charge off automatically while the
+        # P&L did not, so their "net profit" differed by the subscription.
         try:
-            from domain import expenses as _exp0
-            unatt = _exp0.account_level_charge(CONFIG_PATH, wsid, mkt, start, end)
+            from domain import expenses as _exp
+            ov = _exp.overhead_for(CONFIG_PATH, wsid, mkt, start, end)
         except Exception:
-            unatt = float(totals.get("unattributed_fees") or 0.0)
+            ov = {"amazon_account_charges": 0.0, "own_costs": 0.0,
+                  "own_costs_detail": {"total": 0.0, "items": [], "recorded": 0}}
+        unatt = float(ov.get("amazon_account_charges") or 0.0)
         if unatt:
             out["items"].append({
                 "label": "Amazon charges that belong to no order",
@@ -325,12 +324,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                          "sale, so no per-product row can carry them."),
                 "children": [],
             })
-
-        try:
-            from domain import expenses as _exp
-            man = _exp.for_window(CONFIG_PATH, wsid, mkt, start, end)
-        except Exception:
-            man = {"total": 0.0, "items": [], "recorded": 0}
+        man = ov["own_costs_detail"]
         out["items"].append({
             "label": "Your own costs",
             # RECORDED NONE AND SPENT NONE ARE DIFFERENT, and the accordion says
@@ -351,7 +345,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "only the bucket it falls into, so those cannot be listed "
             "separately yet. The total above is right; the breakdown inside it "
             "is not available.")
-        c = totals.get("contribution")
+        # FROM THE ACCOUNT'S FIGURE where there is one -- the Sales card's
+        # profit, which also carries ad spend no product could be matched to --
+        # so this screen's net profit is the P&L's net profit.
+        c = (totals.get("account_contribution")
+             if totals.get("basis") == "orders" else totals.get("contribution"))
         out["contribution"] = c
         out["net_profit"] = (round(c - out["total"], 2) if c is not None else None)
         return out

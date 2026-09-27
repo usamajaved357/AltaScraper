@@ -47,6 +47,11 @@ measured: a card read 114.00 against a true 102.21, over by exactly the 12.24 of
 postage. The split is reported instead, so the line can be SEEN without being
 added.
 
+VAT COMES OUT, AT THE ACCOUNT'S SETTING.
+It used to stay in the profit, shown beside it and never subtracted. On 28 Sep
+2026 the owner decided every profit figure follows the VAT rate set on the
+account, so this statement now agrees with the Sales card to the penny.
+
 NOTHING IS INVENTED. A figure that cannot be known is None and says why. A zero
 is a claim that something was zero, and is only ever written when Amazon said so.
 """
@@ -57,6 +62,9 @@ from data import db as _db
 # What each line is, in the order a P&L reads. `sign` is how it moves profit.
 LINES = (
     ("ordered_sales", "Sales", +1),
+    # VAT OUT, at the account's own setting -- the owner's decision of 28 Sep
+    # 2026. It used to be left in the profit and only shown beside it.
+    ("vat_line", "VAT", -1),
     ("refunds", "Refunds", -1),
     ("net_sales", "Net sales", 0),
     ("cogs", "Cost of goods", -1),
@@ -69,8 +77,23 @@ LINES = (
     ("promo_fees", "Coupon and deal fees", -1),
     ("other_fees", "Other Amazon fees", -1),
     ("fees_estimated", "Fees not yet itemised", -1),
+    # COUPONS AND DEALS YOU FUNDED -- the discount itself, not Amazon's fee for
+    # running it (that is promo_fees above). Amazon sends the full price and the
+    # discount separately, so leaving this out counted the discount as money
+    # kept. The Sales card always subtracted it; the statement did not.
+    ("promos", "Coupons and deals you funded", -1),
+    ("refund_fees_returned", "Fees returned on refunds", +1),
     ("reimbursements", "Reimbursements", +1),
+    ("charges", "Your per-product charges", -1),
     ("ad_spend", "Advertising", -1),
+    # THE SALES CARD'S FIGURE. Everything above is the same calculation the card
+    # makes (domain/order_profit.for_period); only the line below is the
+    # statement's own.
+    ("profit_before_own_costs", "Profit before your own costs", 0),
+    # What Amazon charged the ACCOUNT and no order carries -- the monthly
+    # selling subscription. Measured, so it comes off; not when it is already
+    # recorded as one of your own costs below (expenses.overhead_for).
+    ("account_charges", "Amazon charges on the account", -1),
     ("manual_expenses", "Your own costs", -1),
     ("profit", "Net profit", 0),
 )
@@ -111,43 +134,15 @@ _VAT_EXPLAIN = {
 }
 
 
-def _vat_for_window(conn, workspace_id, marketplace, start, end, vat_rate,
-                    gross):
-    """(vat, basis) for the whole window. Amazon's own figures where it sent them.
-
-    AMAZON'S TAX COLUMN IS PREFERRED OVER ANY RATE, and `is not None` is the
-    test rather than truthiness: a stored 0.00 means "we read Amazon's tax lines
-    and they came to zero", while NULL means "this row predates us capturing tax
-    at all". Treating a real zero as absent would fall through to the rate and
-    subtract VAT from a figure that is already net of it.
-    """
-    from domain import sales_data as _sd
-
-    row = conn.execute(
-        "SELECT SUM(f.tax) t, COUNT(f.tax) n FROM order_lines o "
-        "JOIN order_fees f ON f.workspace_id=o.workspace_id "
-        "  AND f.marketplace=o.marketplace AND f.order_id=o.order_id "
-        "WHERE o.workspace_id=? AND o.marketplace=? "
-        "AND substr(o.purchase_date,1,10)>=? AND substr(o.purchase_date,1,10)<=?",
-        (workspace_id, marketplace, start, end)).fetchone()
-    if row and (row["n"] or 0):
-        return round(float(row["t"] or 0), 2), _sd.VAT_FROM_AMAZON
-
-    # Nothing settled yet, so fall back to the account's rate -- and say so.
-    if vat_rate in (None, ""):
-        return None, _sd.VAT_UNKNOWN
-    try:
-        r = float(vat_rate)
-    except (TypeError, ValueError):
-        return None, _sd.VAT_UNKNOWN
-    if r == 0:
-        return 0.0, _sd.VAT_NONE
-    if r <= 0 or r >= 1:
-        return None, _sd.VAT_UNKNOWN
-    # The sales figure INCLUDES the VAT, so the tax in it is gross x r/(1+r),
-    # not gross x r. Multiplying by the rate is the classic way to take out a
-    # fifth too much -- the same formula sales_data.vat_for uses (Rule 12).
-    return round(float(gross) * r / (1.0 + r), 2), _sd.VAT_DERIVED
+# The orders PLACED in a window that are real sales. DISTINCT, because an order
+# with three products has three order_lines rows and joining fees to it row by
+# row counted its fees three times; and cancelled orders are not sales, the
+# same rule every other order-calendar figure applies
+# (order_finance.complete_by_order_date).
+_PLACED = ("SELECT DISTINCT order_id FROM order_lines WHERE workspace_id=? "
+           "AND marketplace=? AND lower(COALESCE(status,'')) NOT IN "
+           "('canceled','cancelled') AND substr(purchase_date,1,10)>=? "
+           "AND substr(purchase_date,1,10)<=?")
 
 
 def fee_coverage(config_path, workspace_id, marketplace, start, end):
@@ -157,18 +152,17 @@ def fee_coverage(config_path, workspace_id, marketplace, start, end):
     and the one a reader needs before trusting either.
     """
     conn = _db.get_db(config_path)
-    placed = conn.execute(
-        "SELECT COUNT(DISTINCT order_id) FROM order_lines WHERE workspace_id=? "
-        "AND marketplace=? AND substr(purchase_date,1,10)>=? "
-        "AND substr(purchase_date,1,10)<=?",
-        (workspace_id, marketplace, start, end)).fetchone()[0] or 0
+    args = (workspace_id, marketplace, start, end)
+    placed = conn.execute("SELECT COUNT(*) FROM (%s)" % _PLACED,
+                          args).fetchone()[0] or 0
+    # A refund posting is an order_fees row too; only a SALE settling counts.
     settled = conn.execute(
-        "SELECT COUNT(DISTINCT o.order_id) FROM order_lines o "
-        "JOIN order_fees f ON f.workspace_id=o.workspace_id "
-        "  AND f.marketplace=o.marketplace AND f.order_id=o.order_id "
-        "WHERE o.workspace_id=? AND o.marketplace=? "
-        "AND substr(o.purchase_date,1,10)>=? AND substr(o.purchase_date,1,10)<=?",
-        (workspace_id, marketplace, start, end)).fetchone()[0] or 0
+        "SELECT COUNT(DISTINCT f.order_id) FROM order_fees f "
+        "WHERE f.workspace_id=? AND f.marketplace=? AND f.order_id IN (%s) "
+        "AND (COALESCE(f.principal,0)<>0 OR COALESCE(f.referral_fees,0)<>0 "
+        "  OR COALESCE(f.fba_fees,0)<>0 OR COALESCE(f.other_fees,0)<>0 "
+        "  OR COALESCE(f.promo_fees,0)<>0 OR COALESCE(f.tax,0)<>0)" % _PLACED,
+        (workspace_id, marketplace) + args).fetchone()[0] or 0
     pct = round(100.0 * settled / placed, 1) if placed else None
     return {"orders": placed, "settled": settled, "pct_settled": pct,
             "estimated": placed - settled}
@@ -183,16 +177,14 @@ def _settled_fees(conn, workspace_id, marketplace, start, end):
     deliberately sit on their own date instead.
     """
     rows = conn.execute(
-        "SELECT o.order_id, SUM(f.referral_fees) ref, SUM(f.fba_fees) fba, "
+        "SELECT f.order_id, SUM(f.referral_fees) ref, SUM(f.fba_fees) fba, "
         "       SUM(f.other_fees) oth, SUM(f.promo_fees) promo, "
         "       COUNT(f.promo_fees) promo_n "
-        "FROM order_lines o "
-        "JOIN order_fees f ON f.workspace_id=o.workspace_id "
-        "  AND f.marketplace=o.marketplace AND f.order_id=o.order_id "
-        "WHERE o.workspace_id=? AND o.marketplace=? "
-        "AND substr(o.purchase_date,1,10)>=? AND substr(o.purchase_date,1,10)<=? "
-        "GROUP BY o.order_id",
-        (workspace_id, marketplace, start, end)).fetchall()
+        "FROM order_fees f "
+        "WHERE f.workspace_id=? AND f.marketplace=? AND f.order_id IN (%s) "
+        "GROUP BY f.order_id" % _PLACED,
+        (workspace_id, marketplace, workspace_id, marketplace, start, end)
+    ).fetchall()
     tot = {"referral_fees": 0.0, "fba_fees": 0.0, "other_fees": 0.0,
            "promo_fees": 0.0}
     ids = set()
@@ -216,84 +208,56 @@ def _settled_fees(conn, workspace_id, marketplace, start, end):
 
 
 def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
-    """The whole statement. Never raises; unknown lines are None with a reason."""
+    """The whole statement. Never raises; unknown lines are None with a reason.
+
+    THE SAME PROFIT AS THE SALES CARD, broken into lines. Every figure down to
+    "Profit before your own costs" comes from domain/order_profit.for_period,
+    which the card itself shows -- so the two cannot disagree (CLAUDE.md Rule
+    12). Measured 27 Sep 2026 on jack_uk for the same month: card 64.70,
+    statement 80.76. The statement had its own sales figure (from a different
+    table than its costs), left VAT in, ignored coupons you funded, and counted
+    a multi-product order's fees once per product.
+
+    Only the last step is the statement's own: the costs Amazon never sees.
+    """
     from domain import order_profit as _op
-    from domain import sales_data as _sd
+    from domain import expenses as _exp
 
     conn = _db.get_db(config_path)
     out = {"ok": True, "workspace": workspace_id, "marketplace": marketplace,
            "start": start, "end": end, "notes": [], "basis": {}}
 
-    # ---- what was sold, on the ORDER calendar -----------------------------
-    tot = _sd.totals(config_path, workspace_id, marketplace, start, end,
-                     None, vat_rate)
-    sales = _f(tot.get("ordered_sales"))
-    out["currency"] = tot.get("currency") or ""
-
-    # ---- fees: actuals where settled, the account's own rate where not ----
-    cov = fee_coverage(config_path, workspace_id, marketplace, start, end)
-    actual, settled_ids = _settled_fees(conn, workspace_id, marketplace,
-                                        start, end)
-
-    # The revenue that has NOT settled, so the rate is applied only to that.
-    unsettled_rev = 0.0
-    for r in conn.execute(
-            "SELECT order_id, SUM(COALESCE(revenue,0)) rev FROM order_lines "
-            "WHERE workspace_id=? AND marketplace=? "
-            "AND substr(purchase_date,1,10)>=? AND substr(purchase_date,1,10)<=? "
-            "GROUP BY order_id",
-            (workspace_id, marketplace, start, end)):
-        if str(r["order_id"]) not in settled_ids:
-            unsettled_rev += _f(r["rev"])
-    unsettled_rev = round(unsettled_rev, 2)
-
-    rate, rate_basis, rate_detail = _op.fee_rate(config_path, workspace_id,
-                                                 marketplace, end)
-    estimated_fees = round(unsettled_rev * float(rate or 0), 2)
-
-    out["fee_coverage"] = cov
-    out["fee_rate"] = rate
-    out["fee_rate_basis"] = rate_basis
-    out["fee_rate_detail"] = rate_detail
-    out["fees_actual"] = actual
-    out["fees_estimated"] = estimated_fees
-    out["unsettled_revenue"] = unsettled_rev
-    # The estimate cannot be split by kind -- it is one rate over the revenue
-    # Amazon has not itemised yet. Said, rather than divided up plausibly.
-
-    # ---- refunds: their OWN date, never re-dated --------------------------
-    ref = conn.execute(
-        "SELECT ROUND(SUM(COALESCE(refunds,0)),2) r, "
-        "       SUM(COALESCE(refund_units,0)) u, "
-        "       ROUND(SUM(COALESCE(refund_fees_returned,0)),2) back, "
-        "       ROUND(SUM(COALESCE(reimbursements,0)),2) reimb "
-        "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
-        "AND asin='*' AND date>=? AND date<=?",
-        (workspace_id, marketplace, start, end)).fetchone()
-    refunds = _f(ref["r"]) if ref else 0.0
-    fees_back = _f(ref["back"]) if ref else 0.0
-    reimb = _f(ref["reimb"]) if ref else 0.0
-
-    # ---- cost of goods, frozen onto the orders ---------------------------
-    cg = conn.execute(
-        "SELECT ROUND(SUM(COALESCE(cogs,0) * COALESCE(units,1)),2) c, "
-        "       SUM(CASE WHEN cogs IS NULL THEN COALESCE(units,1) ELSE 0 END) missing, "
-        "       SUM(COALESCE(units,1)) units "
-        "FROM order_lines WHERE workspace_id=? AND marketplace=? "
-        "AND substr(purchase_date,1,10)>=? AND substr(purchase_date,1,10)<=?",
-        (workspace_id, marketplace, start, end)).fetchone()
-    cogs = _f(cg["c"]) if cg else 0.0
-    missing_units = int((cg["missing"] if cg else 0) or 0)
-    total_units = int((cg["units"] if cg else 0) or 0)
-
-    # ---- advertising ------------------------------------------------------
+    # ---- advertising, as measured for the whole account ------------------
     ad = conn.execute(
         "SELECT ROUND(SUM(COALESCE(spend,0)),2) s FROM ads_daily "
         "WHERE workspace_id=? AND marketplace=? AND asin='*' "
         "AND date>=? AND date<=?",
         (workspace_id, marketplace, start, end)).fetchone()
-    ad_spend = _f(ad["s"]) if ad else 0.0
     ads_connected = bool(ad and ad["s"] is not None)
+    ad_spend = _f(ad["s"]) if ad else 0.0
+
+    # ---- everything down to the headline profit: ONE calculation --------
+    est = _op.for_period(config_path, workspace_id, marketplace, start, end,
+                         vat_rate=vat_rate, ads_connected=ads_connected,
+                         ad_spend=ad_spend)
+    out["currency"] = est.get("currency") or ""
+    rate, rate_detail = est.get("rate"), est.get("rate_detail") or ""
+
+    cov = fee_coverage(config_path, workspace_id, marketplace, start, end)
+    actual, _ids = _settled_fees(conn, workspace_id, marketplace, start, end)
+
+    out["fee_coverage"] = cov
+    out["fee_rate"] = rate
+    out["fee_rate_basis"] = est.get("rate_basis")
+    out["fee_rate_detail"] = rate_detail
+    out["fees_actual"] = actual
+    out["fees_estimated"] = est.get("fees_estimated") or 0.0
+    # The revenue Amazon has not itemised yet, which the estimate is charged on
+    # (after VAT -- the rate is measured on revenue after VAT).
+    unsettled_rev = float(est.get("revenue_fee_unknown") or 0.0)
+    if rate:
+        unsettled_rev += float(out["fees_estimated"]) / float(rate)
+    out["unsettled_revenue"] = round(unsettled_rev, 2)
 
     # ---- the costs Amazon knows nothing about ----------------------------
     #
@@ -302,22 +266,19 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     # order, so every order-joined query above is blind to it by construction.
     # domain/expenses.py owns the apportioning: a monthly amount contributes
     # only the days of it that fall in this window.
-    from domain import expenses as _exp
+    #
+    # AND THE CHARGE AMAZON POSTS AGAINST THE ACCOUNT -- the monthly selling
+    # subscription -- which no order carries. expenses.overhead_for owns both,
+    # and the Finance screen asks it the same question (Rule 12).
     try:
-        man = _exp.for_window(config_path, workspace_id, marketplace, start, end)
+        ov = _exp.overhead_for(config_path, workspace_id, marketplace, start, end)
     except Exception:
-        man = {"total": 0.0, "count": 0, "recorded": 0, "items": []}
+        ov = {"amazon_account_charges": 0.0, "own_costs": 0.0,
+              "own_costs_detail": {"total": 0.0, "count": 0, "recorded": 0,
+                                   "items": []}}
+    man = ov["own_costs_detail"]
     manual = round(float(man.get("total") or 0), 2)
-
-    # promo_fees is INSIDE other_fees on rows the newer sync has not touched, so
-    # adding both would double count. It is added only once it is separated.
-    fees_total = round(actual["referral_fees"] + actual["fba_fees"]
-                       + actual["other_fees"]
-                       + (actual["promo_fees"]
-                          if actual.get("_promo_separated") else 0.0)
-                       + estimated_fees - fees_back, 2)
-    net_sales = round(sales - refunds, 2)
-    profit = round(net_sales - cogs - fees_total + reimb - ad_spend - manual, 2)
+    account_charges = float(ov.get("amazon_account_charges") or 0.0)
 
     # A category Amazon has itemised nothing for is UNKNOWN, not zero -- see
     # _FEE_LINES. Where it HAS itemised some of the window, the figure is real
@@ -325,7 +286,7 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     any_actual = any(actual[k] for k in _FEE_LINES)
     cat = {k: (actual[k] if any_actual else None) for k in _FEE_LINES}
     for k in _FEE_LINES:
-        out["basis"][k] = ("actual" if (any_actual and not unsettled_rev)
+        out["basis"][k] = ("actual" if (any_actual and not out["fees_estimated"])
                            else ("part-actual" if any_actual else "not itemised"))
 
     # COUPON FEES ARE UNKNOWN, NOT NOUGHT, UNTIL THE WINDOW HAS BEEN RE-SYNCED.
@@ -340,51 +301,55 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
         out["basis"]["promo_fees"] = "not separated yet"
     out["basis"]["fees_estimated"] = "estimated at the account's measured rate"
 
-    # ---- VAT: BOTH WAYS, AND NEVER SUBTRACTED BEHIND YOUR BACK -----------
+    sales = est["revenue"]
+    vat_amount = est.get("vat")
+    refunds = est.get("refunds") or 0.0
+    net_sales = round(sales - float(vat_amount or 0.0) - refunds, 2)
+    operating = est["profit"]
+    profit = round(operating - account_charges - manual, 2)
+    missing_units = int(est.get("missing_units") or 0)
+    total_units = int(est.get("units") or 0)
+
+    # ---- VAT: TAKEN OUT AT THE ACCOUNT'S SETTING --------------------------
     #
-    # VAT is collected on the buyer's behalf and never earned, so a VAT-
-    # registered seller's real revenue is lower than the sales line above. But
-    # whether an account IS registered is not something this app can measure,
-    # and quietly subtracting a fifth of the revenue from somebody who is not
-    # would be as wrong as leaving it in for somebody who is.
-    #
-    # Measured on this database: nestwell_goods and selvora_limited are both
-    # configured vat_rate=0. If either is actually registered, the profit above
-    # is overstated by roughly a fifth. That is exactly the sort of thing that
-    # has to be SHOWN rather than decided.
-    #
-    # So the statement carries both figures and says which basis produced them.
-    # `profit` stays on the gross basis -- the number that was there before --
-    # and `profit_ex_vat` sits beside it.
-    vat_amount, vat_basis = _vat_for_window(conn, workspace_id, marketplace,
-                                            start, end, vat_rate, sales)
+    # This used to be shown beside the profit and never subtracted, because
+    # "whether an account IS registered is not something this app can measure".
+    # The account form now asks, and on 28 Sep 2026 the owner decided every
+    # profit figure follows that answer (D1, active/plan-profit-accuracy.md).
+    # The old side figure was also wrong: it used the tax on SETTLED orders as
+    # the tax for the whole window, so on jack_uk it took out 5.83 of 41.31.
+    vb = est.get("vat_basis") or ""
     out["vat"] = {
         "amount": vat_amount,
-        "basis": vat_basis,
+        "basis": vb,
         "rate": vat_rate,
-        # Gross is what Amazon reports and what the lines above use.
         "sales_gross": sales,
-        "sales_ex_vat": (round(sales - vat_amount, 2)
-                         if vat_amount is not None else None),
-        "profit_ex_vat": (round(profit - vat_amount, 2)
-                          if vat_amount is not None else None),
-        "explain": _VAT_EXPLAIN.get(vat_basis, ""),
+        "sales_ex_vat": est.get("net_revenue"),
+        # Kept for anything still reading it: the profit IS now ex VAT.
+        "profit_ex_vat": profit,
+        "explain": _VAT_EXPLAIN.get(vb, ""),
     }
 
     out.update({
         "ordered_sales": sales,
+        "vat_line": vat_amount,
         "refunds": refunds,
-        "refund_units": int((ref["u"] if ref else 0) or 0),
-        "refund_fees_returned": fees_back,
+        "refund_units": est.get("refund_units") or 0,
+        "refund_fees_returned": est.get("refund_fees_returned") or 0.0,
         "net_sales": net_sales,
-        "cogs": cogs,
+        "cogs": est["cogs"],
         "referral_fees": cat["referral_fees"],
         "fba_fees": cat["fba_fees"],
         "promo_fees": cat["promo_fees"],
         "other_fees": cat["other_fees"],
-        "fees_total": fees_total,
-        "reimbursements": reimb,
+        "fees_total": est.get("fees"),
+        "promos": est.get("promos") or 0.0,
+        "reimbursements": est.get("reimbursements") or 0.0,
+        "charges": est.get("charges") or 0.0,
         "ad_spend": ad_spend if ads_connected else None,
+        "profit_before_own_costs": operating,
+        "account_charges": round(account_charges, 2),
+        "account_charge_in_own_costs": bool(ov.get("amazon_charge_in_own_costs")),
         # RECORDED NONE AND SPENT NONE ARE DIFFERENT. An account where nobody
         # has entered a single cost reports None, so the line reads "not
         # recorded" rather than a confident 0.00 that says this business has no
@@ -393,9 +358,11 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
         "manual_expenses": (manual if man.get("recorded") else None),
         "manual_expense_detail": man,
         "profit": profit,
-        "margin_pct": (round(profit / net_sales * 100, 1) if net_sales else None),
-        "units": total_units,
-        "uncosted_units": missing_units,
+        # Over sales after VAT, the same as every other screen.
+        "margin_pct": (round(profit / est["net_revenue"] * 100, 1)
+                       if est.get("net_revenue") else None),
+        "units": est.get("units") or 0,
+        "uncosted_units": est.get("missing_units") or 0,
     })
 
     # ---- what the reader has to know before trusting any of it -----------
@@ -448,14 +415,14 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
                                                 marketplace, start, end)
     except Exception:
         out["suggested_expense"] = None
-    if unattributed > 0 and out.get("suggested_expense"):
+    if out["account_charges"]:
         out["notes"].append(
             "%s%.2f of Amazon's charges in this window belong to the account "
             "rather than to any order -- the monthly selling subscription is "
-            "the usual one. It is NOT in the profit above, because no per-order "
-            "query can see it. Add it as a monthly cost and it will be."
+            "the usual one. It is taken off net profit on its own line, because "
+            "no per-order figure can carry it."
             % ((out.get("currency") + " ") if out.get("currency") else "",
-               unattributed))
+               out["account_charges"]))
     if man.get("count"):
         out["notes"].append(
             "%d of your own costs fall in this window, coming to %s%.2f. A "
@@ -477,20 +444,21 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     out["notes"].append(
         "Sales already include the postage buyers paid, so there is no separate "
         "shipping-credits line -- adding one would count it twice.")
-    # VAT IS SHOWN, NEVER SILENTLY TAKEN OUT. The headline profit above is on
-    # the gross basis; profit_ex_vat sits beside it, and this says which is
-    # which so nobody has to guess which one they are reading.
+    # VAT IS TAKEN OUT AT THE ACCOUNT'S SETTING, and the statement says how it
+    # was worked out -- or, where no rate is set, that it could not be.
     v = out.get("vat") or {}
     if v.get("basis") in ("unknown", "none"):
         out["notes"].append(v.get("explain") or "")
     elif v.get("amount"):
         out["notes"].append(
-            "The profit above INCLUDES VAT of %s%.2f, because VAT is collected "
-            "for HMRC rather than earned. Profit net of it is %s%.2f. Nothing "
-            "was subtracted automatically -- both figures are here so you can "
-            "use the one that applies. %s"
+            "VAT of %s%.2f has been taken out, because it is collected for HMRC "
+            "rather than earned. %s"
             % ((out.get("currency") + " ") if out.get("currency") else "",
-               v["amount"],
-               (out.get("currency") + " ") if out.get("currency") else "",
-               v.get("profit_ex_vat") or 0.0, v.get("explain") or ""))
+               v["amount"], v.get("explain") or ""))
+    if out.get("charges"):
+        out["notes"].append(
+            "Your per-product charges (postage out, prep and the like, set on "
+            "each product) come to %s%.2f and are subtracted."
+            % ((out.get("currency") + " ") if out.get("currency") else "",
+               out["charges"]))
     return out

@@ -106,7 +106,12 @@ try:
 
     print("\n== the arithmetic still adds up ==")
     # 200 sales - 30 refunds - 40 cogs - (15 + 0 + 1 + estimate) + 0 - 0
-    expected = round(200.0 - 30.0 - 40.0 - r["fees_total"], 2)
+    # - the 24.00 Amazon charged the ACCOUNT. Re-pinned 28 Sep 2026: that
+    # charge is measured, so net profit now takes it off on its own line (as
+    # the Finance screen always did), via expenses.overhead_for.
+    check("the account-level charge is its own line", r["account_charges"], 24.0)
+    expected = round(200.0 - 30.0 - 40.0 - r["fees_total"]
+                     - r["account_charges"], 2)
     check("profit is the lines subtracted from each other", r["profit"], expected)
     check("  net sales is sales minus refunds", r["net_sales"], 170.0)
 finally:

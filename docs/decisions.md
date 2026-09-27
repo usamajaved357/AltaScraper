@@ -26,6 +26,28 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 
 ## Money and profit
 
+- **28 Sep 2026 — Every profit figure takes VAT out at the account's own
+  setting.** Asked "should every profit figure for a VAT-registered account
+  exclude VAT", he answered "D1 yes use the account VAT setting". SUPERSEDES the
+  P&L's earlier "VAT is shown both ways and never subtracted" design. Source:
+  chat, 28 Sep 2026; active/plan-profit-accuracy.md.
+- **28 Sep 2026 (reaffirmed) — Refunds count on the day the money went back,
+  on every screen.** Asked refund date or order date, he chose "Refund date
+  (your rule)". The original words, quoted in domain/pnl.py: "REFUNDS stay on
+  the refund event date -- NOT re-dated to the original order. July's profit
+  stays locked. September's refund hits September's P&L." Rules out re-dating
+  refunds anywhere (the Sales screen used to). Source: chat, 28 Sep 2026.
+- **Missing cost prices: show the profit, say it is too high.** "if no cogs
+  are added show profit as wrong i agree do not subtract cogs this is the
+  standard way, the user should know he needs to add cogs otherwise the profit
+  numbers wont be accurate." Applied to Finance on 28 Sep 2026 (it hid the
+  figure); the Sales grid's daily cells still withhold, having nowhere to put
+  the warning. Source: domain/order_profit.py docstring.
+- **28 Sep 2026 — He delegated the remaining profit rules to Claude** ("i want
+  you to chose the logics you think is accurate ... report me all at the end").
+  Those choices are listed in known-issues "Fixed on the development branch" as
+  awaiting his review; they are not recorded here as his decisions.
+
 - **18 Aug 2026 — Profit is measured, never padded.** "do not add 3 pounds
   postage and 2 pounds ad cost and 1 pound profit space on your own, if i added
   this rule earlier, remove it. i want to be shown the profit as the truth."

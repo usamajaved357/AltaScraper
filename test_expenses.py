@@ -129,7 +129,11 @@ check("once recorded it is a real figure", after["manual_expenses"], 31.0)
 check("and profit is lower by exactly that",
       round(before["profit"] - after["profit"], 2), 31.0)
 
-print("\nVAT is shown both ways and never taken off quietly")
+# RE-PINNED 28 Sep 2026. This section used to pin "VAT is shown beside the
+# profit and never subtracted". The owner decided (D1, profit-accuracy work)
+# that every profit figure follows the VAT rate set on the account, so the
+# statement now TAKES IT OUT -- and still never invents it where no rate is set.
+print("\nVAT follows the account's own setting, and is never invented")
 v = after.get("vat") or {}
 # No rate set and no tax from Amazon: UNKNOWN, not zero. Silently subtracting a
 # fifth from an unregistered seller is as wrong as leaving it in for a
@@ -152,11 +156,15 @@ check("a rate of 20% derives the tax", tv.get("basis"), "derived")
 # -- 16.67 of 100, not 20. Multiplying by the rate takes out a fifth too much.
 check("and takes it OUT of the gross rather than adding it on",
       tv.get("amount"), round(100.0 * 0.2 / 1.2, 2))
-check("the profit line itself is unchanged by any of this",
-      twenty["profit"], after["profit"])
-truthy("profit excluding VAT is offered beside it",
-       tv.get("profit_ex_vat") is not None
-       and tv["profit_ex_vat"] < twenty["profit"])
+# Lower by the VAT LESS the fee on it: this order is unsettled, so its fee is
+# estimated at the account's rate on sales AFTER VAT, and taking the VAT out
+# shrinks that estimate too. 16.67 - 16.67 x 15% = 14.17.
+_v = round(100.0 * 0.2 / 1.2, 2)
+check("and the profit is lower by that VAT, less the fee on it",
+      round(after["profit"] - twenty["profit"], 2),
+      round(_v - _v * float(twenty["fee_rate"]), 2))
+check("the statement carries it as its own line", twenty.get("vat_line"),
+      round(100.0 * 0.2 / 1.2, 2))
 
 print("\nthe Amazon charge that belongs to no order")
 # An order-joined fee query cannot see the monthly subscription: Amazon posts it
@@ -167,8 +175,12 @@ conn.commit()
 s = _exp.suggest(None, WS, MKT, "2026-08-01", "2026-08-31")
 truthy("it is found", bool(s))
 check("at the amount Amazon charged", (s or {}).get("amount"), 60.0)
+# Wording re-pinned 28 Sep 2026: the charge is now taken off net profit by
+# itself (expenses.overhead_for), so the offer says that rather than "it is not
+# in the profit".
 truthy("and explained rather than just reported",
-       "cannot be attached to a sale" in ((s or {}).get("why") or ""))
+       "belongs to no order" in ((s or {}).get("why") or "")
+       and "will not be counted twice" in ((s or {}).get("why") or ""))
 _exp.add(None, WS, name="Amazon selling subscription", amount=60.0,
          starts="2026-08-01", marketplace=MKT)
 # OFFERING IT TWICE IS HOW IT GETS SUBTRACTED TWICE.

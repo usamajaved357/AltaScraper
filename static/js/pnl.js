@@ -15,11 +15,11 @@
  * And the two things the statement cannot know on its own are asked for here:
  * the costs Amazon never sees, and whether VAT applies.
  *
- * VAT IS SHOWN BOTH WAYS AND NEVER SUBTRACTED SILENTLY. Whether an account is
- * registered is a fact about the business that this app cannot measure. Taking
- * a fifth off somebody who is not registered is as wrong as leaving it in for
- * somebody who is, so both figures are on screen and the basis says which one
- * to use.
+ * VAT IS TAKEN OUT AT THE ACCOUNT'S OWN SETTING, on its own line, and the box
+ * below says how it was worked out. It used to be left in the profit and shown
+ * beside it; on 28 Sep 2026 the owner decided every profit figure follows the
+ * VAT rate set on the account, so this statement agrees with the Sales card.
+ * Where no rate is set the box says the VAT could not be worked out.
  */
 
 const PNL = {data: null, loading: false, expenses: null, adding: false};
@@ -174,16 +174,11 @@ function pnlVat(j, cur){
     +   '<td style="text-align:right">' + _pnlMoney(v.amount, cur) + '</td></tr>'
     + '<tr><td style="padding:5px 0">Sales excluding VAT</td>'
     +   '<td style="text-align:right">' + _pnlMoney(v.sales_ex_vat, cur) + '</td></tr>'
-    + '<tr style="font-weight:600"><td style="padding:5px 0;'
-    +   'border-top:1px solid var(--line2)">Profit excluding VAT</td>'
-    +   '<td style="text-align:right;border-top:1px solid var(--line2)">'
-    +   _pnlMoney(v.profit_ex_vat, cur) + '</td></tr>'
     + '</tbody></table>'
     + '<div class="cc' + (risky ? " " : " ") + '" style="font-size:11px;'
     +   'margin-top:7px;line-height:1.6' + (risky ? ';color:var(--warn)' : '')
-    +   '">' + esc(v.explain || "") + ' Nothing is taken off automatically — '
-    + 'the profit line above includes VAT, and this is what it looks like '
-    + 'without.</div>'
+    +   '">' + esc(v.explain || "") + ' The VAT line in the statement above is '
+    + 'this figure — the profit is already after it.</div>'
     + '</div>';
 }
 

@@ -55,6 +55,29 @@ has these until the owner merges):
 - **Guard: `/row`, `/rows`, `/rows_all` did not check a named account** for a
   user restricted to some accounts (the `"/row"` exemption, matched with
   startswith). Proven by test_row_account_guard.py; fixed in auth/guard.py.
+- **Profit screens disagreed (28 Sep 2026).** Measured on the local copy,
+  jack_uk 29 Jul–27 Aug: Profit card 64.70, grid 64.43, P&L 80.76, Finance
+  50.19. Now all four read 41.36 (20.0%), and P&L/Finance net profit both
+  −9.36 after the 50.72 subscription. nestwell 1 Aug–14 Sep: card = P&L =
+  Finance account figure = 415.10. Pinned by test_profit_agreement.py (23 of 32
+  checks failed on the old code). One calculation now: order_profit.
+  period_money / for_period, built on order_finance.complete_by_order_date and
+  sales_data.net_proceeds_for; the step to net profit is expenses.overhead_for.
+  Bugs removed on the way: the P&L's VAT line used one settled order's tax as
+  the whole window's (5.83 of 41.31); Finance (order view) left VAT in, dropped
+  postage, counted CANCELLED orders, and charged a multi-product order's whole
+  fee to every product; P&L and expenses joined fees per order LINE (counted a
+  multi-product order's fees several times); coupon/deal fees in `promo_fees`
+  were missing from every figure except the P&L; reimbursements were missing
+  on the order calendar; the P&L ignored coupons you funded.
+  **Rules Claude chose (owner delegated, awaiting his review):** margin = profit
+  ÷ sales after VAT everywhere; all measured ad spend comes off every headline
+  (Finance shows unmatched spend as its own step); the grid's Profit row now
+  subtracts ad spend too; the Amazon account-level charge (subscription) comes
+  off NET profit automatically unless recorded as an own cost; a multi-product
+  order's fee/VAT/coupon is split by each line's share of the price.
+  **Not changed:** per-product figures (listing card, price editor, live rows,
+  repricer, Orders screen) — Stage 2.
 
 ## PDP (product page) — still open (27 Sep 2026)
 
