@@ -72,7 +72,9 @@ async function ppcaLoad(){
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/analytics/overview?" + qs)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     PPCA.loading = false;
     if(!j || !j.ok){
       host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'

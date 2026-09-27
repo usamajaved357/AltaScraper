@@ -41,7 +41,9 @@ function _wkQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; }
 async function weeklyLoad(){
   WK.loading = true; weeklyRender();
   try{
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/weekly/list" + _wkQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if(j && j.ok){
       WK.weeks = j.weeks || [];
       WK.change = j.change || {};

@@ -523,7 +523,11 @@ function _opCostBox(bd, r){
     + 'the product\'s own cost is left alone. Empty it and Save to put this line '
     + 'back to &quot;not known&quot;.">'
     + '<label for="' + id + '">Cost</label>'
-    + '<input id="' + id + '" class="ed" placeholder="'
+    + '<input id="' + id + '" class="ed"'
+    // data-has: a cost EXISTS and is only shown as the placeholder, so Save on
+    // an untouched box must not quietly clear it (ordSetOrderCogs asks first).
+    + (unit === null ? '' : ' data-has="1"')
+    + ' placeholder="'
     + (unit === null ? "e.g. 15.10" : _oEsc(Number(unit).toFixed(2))) + '">'
     + '<button class="o-save" onclick="ordSetOrderCogs('
     + jsArg(r.order_id) + ',' + jsArg(l.sku || "") + ',' + jsArg(id) + ','

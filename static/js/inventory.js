@@ -101,6 +101,11 @@ async function invBadgeRefresh(){
   if(!acctId){ badge.style.display="none"; return; }
   try{
     const j = await (await fetch("/inventory/v2/alerts?account_id="+encodeURIComponent(acctId))).json();
+    // THE ACCOUNT IT ASKED FOR, and only that. Not screenScope(): enterAccount
+    // calls this BEFORE the switch finishes (before screenForgetAll moves the
+    // generation), so a scope check threw away every reply and the badge never
+    // updated on entering an account (Milestone 3 review).
+    if(!(CUR_ACCOUNT && String(CUR_ACCOUNT.id) === String(acctId))) return;
     const n = j.count || 0;
     if(n > 0){
       badge.textContent = n;

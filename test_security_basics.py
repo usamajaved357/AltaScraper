@@ -194,6 +194,19 @@ for rel, needle in (("routes/backup_routes.py", "visible_accounts(CONFIG_PATH, _
 _ai = open(os.path.join(HERE, "routes", "aiusage_routes.py"), encoding="utf-8").read()
 check("  both usage views are", _ai.count("= _scope_for_caller(only)"), 2)
 
+print("\n8. a named account never borrows another account's credentials")
+from routes import scope as SC                                         # noqa: E402
+_open = {"id": "jack_uk", "marketplaces": ["UK"], "lwa_client_id": "OPEN-ACCT"}
+acc, wsid, mkt = SC.resolve(state={}, account=_open, asked_id="ghost_acct",
+                            load_account=lambda aid: None)
+check("an id that cannot be loaded gets NO record, not the open one's", acc, {})
+check("  and the id stays the one asked for", wsid, "ghost_acct")
+acc, wsid, mkt = SC.resolve(state={}, account=_open, asked_id="nestwell_goods",
+                            load_account=lambda aid: {"id": aid, "marketplaces": ["UK"]})
+check("an id that loads gets its OWN record", acc.get("id"), "nestwell_goods")
+check("'__all__' selected is not a country",
+      SC.marketplace(state={"active_marketplace": "__all__"}, account={}), "")
+
 print("\n%d checks, %d failed" % (len(ran), len(fails)))
 print("FAILURES: %d" % len(fails))
 sys.exit(1 if fails else 0)

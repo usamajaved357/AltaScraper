@@ -17,12 +17,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, **_kw):
     from domain import hourly_week as _hw
 
     def _scope():
-        acc = _active_account() or {}
-        wsid = str(acc.get("id") or "")
-        mkt = (request.args.get("marketplace") or "").strip()
-        if not mkt or mkt == "__all__":
-            mkt = str(acc.get("default_marketplace") or "")
-        return acc, wsid, mkt
+        # THE ACCOUNT THE PAGE NAMED, not only the server's open one: this read
+        # _active_account() alone, so a reply could describe another account
+        # than the screen showed (master audit S8). One shared answer now.
+        from routes import scope as _scope_mod
+        return _scope_mod.for_request(request, state=_state,
+                                      active_account=_active_account, cfg=_cfg,
+                                      config_path=CONFIG_PATH)
 
     def _days():
         try:

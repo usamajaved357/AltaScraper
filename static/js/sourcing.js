@@ -61,6 +61,13 @@ function _srcBody(o, scope){
  * mid-loop armed -- or re-ruled -- the new account's same-SKU listings
  * (master audit S1, 28 Sep 2026). */
 function _srcScopeNow(){
+  // THE SHARED ANSWER when it is loaded (screenstate.js screenScope: account,
+  // marketplace AND the switch generation, so A -> B -> A is caught too). The
+  // fallback below is only for this file loaded on its own, as tests do.
+  if(typeof screenScope === "function"){
+    const sc = screenScope();
+    return {id: sc.acct, marketplace: sc.mkt, gen: sc.gen, _shared: sc};
+  }
   return {
     id: (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
         ? String(CUR_ACCOUNT.id) : "",
@@ -69,6 +76,8 @@ function _srcScopeNow(){
 }
 /* Is the screen still on the scope a loop started in? */
 function _srcStillIn(scope){
+  if(scope && scope._shared && typeof screenStillIn === "function")
+    return screenStillIn(scope._shared);
   const now = _srcScopeNow();
   return now.id === scope.id && now.marketplace === scope.marketplace;
 }
@@ -145,8 +154,13 @@ async function sourcingLoad(quiet){
       + '<span class="genspin"></span> Loading…</div>';
   }
   let j;
+  // The account and marketplace this reply is for: one that lands after a
+  // switch is not painted (master audit S5). _srcScopeNow/_srcStillIn are this
+  // screen's own copy of screenScope, kept for its bulk loops.
+  const _sc = _srcScopeNow();
   try{ j = await (await fetch(_srcUrl("/sourcing/list"))).json(); }
   catch(e){
+    if(!_srcStillIn(_sc)) return;
     // A quiet refresh that fails leaves what is on screen alone and says so in
     // a toast. Replacing a working table with an error because a background
     // refresh timed out would be worse than the stale table.
@@ -155,6 +169,7 @@ async function sourcingLoad(quiet){
       + 'Could not load: ' + _sesc(String(e)) + '</div>';
     return;
   }
+  if(!_srcStillIn(_sc)) return;
   if(!j || !j.ok){
     if(quiet){ toast((j && j.error) || "Could not refresh"); return; }
     body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'
@@ -167,8 +182,13 @@ async function sourcingLoad(quiet){
   SRC_DEFAULT_TARGET = j.default_target || {};
   // Read from the server, never remembered from the last click: whether the app
   // is currently allowed to change prices is not something to guess at.
-  try{ SRC_MASTER = !!(await (await fetch(_srcUrl("/sourcing/master"))).json()).enabled; }
-  catch(e){ SRC_MASTER = false; }
+  // Read into a local and checked BEFORE it is kept: assigned first, a late
+  // reply put A's auto-pricing on/off into B until B's load finished.
+  let _master = false;
+  try{ _master = !!(await (await fetch(_srcUrl("/sourcing/master"))).json()).enabled; }
+  catch(e){ _master = false; }
+  if(!_srcStillIn(_sc)) return;
+  SRC_MASTER = _master;
   sourcingRender(j);
   if(quiet){
     open.forEach(function(id){
@@ -205,8 +225,10 @@ async function sourcingAlerts(){
   const host = document.getElementById("srcalerts");
   if(!host) return;
   let j;
+  const _sc = _srcScopeNow();
   try{ j = await (await fetch(_srcUrl("/sourcing/alerts"))).json(); }
-  catch(e){ host.innerHTML = ''; return; }
+  catch(e){ if(_srcStillIn(_sc)) host.innerHTML = ''; return; }
+  if(!_srcStillIn(_sc)) return;        // another account's alerts (audit S5)
   if(!j || !j.ok){ host.innerHTML = ''; return; }
   const bad = j.alerts || [], dunno = j.unreadable || [];
   // NOTHING ABOVE THE TOOLBAR ANY MORE.

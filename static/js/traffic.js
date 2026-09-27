@@ -1,4 +1,4 @@
-﻿// ===================== TRAFFIC & CONVERSIONS =====================
+// ===================== TRAFFIC & CONVERSIONS =====================
 //
 // Built to Orbit's page, scanned panel by panel on 15 Aug 2026, and drawn with
 // the SAME chart functions the Sales screen uses -- salesChart and salesCombo
@@ -70,6 +70,10 @@ function _tQuery(){
   }
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
     q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+  // AND THE ACCOUNT (audit S8): this sent the marketplace alone, so the
+  // server answered for whichever account it had open.
+  if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+    q.push("account=" + encodeURIComponent(CUR_ACCOUNT.id));
   return q.join("&");
 }
 
@@ -113,8 +117,10 @@ async function trafficLoad(){
   if(host && host.innerHTML.trim()) host.style.opacity = ".45";
   else if(host) host.innerHTML = '<div class="cc" style="padding:18px">'
     + '<span class="genspin"></span> Loading traffic…</div>';
+  const sc = (typeof screenScope === "function") ? screenScope() : null;         // the account this reply is for (audit S5)
   try{
     const j = await (await fetch("/traffic/summary?" + _tQuery())).json();
+    if(sc && !screenStillIn(sc)) return;
     TRAF.data = j;
     trafficRender();
   }catch(e){

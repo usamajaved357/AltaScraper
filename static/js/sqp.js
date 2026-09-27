@@ -163,8 +163,10 @@ function sqpFilter(k) {
 
 async function sqpLoad() {
   SQP.loading = true; SQP.note = ""; sqpRender();
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   try {
     const j = await (await fetch("/sqp" + _sqpQs())).json();
+    if (_sc && !screenStillIn(_sc)) return;   // another account's report (M3 review)
     if (j && j.ok) { SQP.data = j; }
     else if (j && (j.reason === "not_brand_registered" || j.reason === "fatal" ||
                    j.reason === "no_data")) {

@@ -466,16 +466,29 @@ const _SCHEMA_INFLIGHT = {};      // "PT|MKT" -> the request already in the air
  * the third. They are of no use once you have left; the work is dropped.
  */
 let _SCHEMA_GEN = 0;
-function schemasAbandon(){ _SCHEMA_GEN++; }
+function schemasAbandon(){
+  _SCHEMA_GEN++;
+  // AND FORGET WHAT IS IN THE AIR. A request from before the switch now stores
+  // nothing (the generation check in _loadOneSchema), so handing it to the new
+  // account's identical request left SCHEMAS[pt] empty -- no dropdowns until
+  // the page was reopened (Milestone 3 review). The new request asks afresh.
+  for(const k in _SCHEMA_INFLIGHT) delete _SCHEMA_INFLIGHT[k];
+}
 
 async function _loadOneSchema(pt, q, mp, force){
   // Asked once even if several parts of the screen want it at the same moment.
   const key = pt + "|" + mp + (force ? "|f" : "");
   if(!force && _SCHEMA_INFLIGHT[key]) return _SCHEMA_INFLIGHT[key];
   const run = (async function(){
+    // A schema is per product type AND marketplace, but SCHEMAS is keyed by
+    // type alone: a reply landing after a marketplace/account switch would be
+    // filed as the new one's (master audit S7). Asked in one generation,
+    // stored only in that generation.
+    const gen = _SCHEMA_GEN;
     try{
       const r = await fetch("/schema/"+encodeURIComponent(pt)+q);
       const j = await r.json();
+      if(gen !== _SCHEMA_GEN) return;
       // help / maxitems / readonly: Amazon's own description per field, how many
       // values it takes, and whether it can be set. The product page draws its
       // (?) bubbles, its "Add more" and its locks from these -- see the note in
@@ -488,6 +501,7 @@ async function _loadOneSchema(pt, q, mp, force){
                          : {opts:{}, req:[], attrs:[], subs:{}, titles:{},
                             help:{}, maxitems:{}, readonly:[]};
     }catch(e){
+      if(gen !== _SCHEMA_GEN) return;
       SCHEMAS[pt] = {opts:{}, req:[], attrs:[], subs:{}, titles:{},
                      help:{}, maxitems:{}, readonly:[]};
     }finally{

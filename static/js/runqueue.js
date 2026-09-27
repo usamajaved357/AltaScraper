@@ -176,10 +176,24 @@ function rqEnqueue(sku, mode, minimal){
     // Names the account (known-issues #4).
     body:JSON.stringify(acctBody({sku:sku, mode:mode, minimal:!!minimal}))})
     .then(r=>r.json()).then(r=>{
-      if(!r||!r.ok){ if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc((r&&r.error)||"unknown")+'</span>'; return; }
+      // SAID SOMEWHERE THAT EXISTS. The verdict panel lives in the old drawer;
+      // from the product page there is none, so a refusal -- no publish
+      // permission, the account changed, nothing to submit -- vanished without
+      // a word (master audit, UX #6). Now it is a toast when there is no panel.
+      if(!r||!r.ok){
+        const why = (r&&r.error)||"unknown";
+        if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc(why)+'</span>';
+        else if(typeof toast==="function") toast("Could not queue "+sku+": "+why);
+        window.RUN_STREAMING=false;
+        return;
+      }
       rqGlobalPollNow();
       rqWatch(sku, r.job);
-    }).catch(e=>{ if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc(String(e))+'</span>'; });
+    }).catch(e=>{
+      if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc(String(e))+'</span>';
+      else if(typeof toast==="function") toast("Could not queue "+sku+": "+e);
+      window.RUN_STREAMING=false;
+    });
 }
 
 // Watch a sku's job in the OPEN drawer: render its current log, poll until terminal.

@@ -40,10 +40,11 @@ def _load(fn):
         return {}
 
 def _save(fn, obj):
+    # ATOMIC, through the one writer (Milestone 4, domain/jsonstore): open(...,
+    # "w") emptied the file before writing, and the handle was never closed.
     try:
-        json.dump(obj, open(os.path.join(_data_dir(), fn), "w", encoding="utf-8"),
-                  ensure_ascii=False, indent=2)
-        return True
+        from domain import jsonstore as _js
+        return bool(_js.write_json_atomic(os.path.join(_data_dir(), fn), obj, indent=2))
     except Exception:
         return False
 

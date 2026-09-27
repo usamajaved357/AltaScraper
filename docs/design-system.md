@@ -57,10 +57,12 @@ overrides need it, and the reason is written in a comment beside the `<link>`.
 
 ## 4. Layer order (z-index)
 
-App bar 20 · drawer scrim 70 · drawer 75 · PDP 78 · toast 80 · tile menu 85 ·
+App bar 20 · drawer scrim 70 · drawer 75 · PDP 78 · tile menu 85 ·
 modals 90 (some inline: `#genpanel` 115, `#usersmodal` 120) · inline popover
-9550 · dialogs 9600 · tooltips 9999. The PDP's layer reasoning is written in
-pdp.css. Known consequence: a toast fired from inside a modal is hidden behind it.
+9550 · dialogs 9600 · **toast 9800** · tooltips 9999. The PDP's layer reasoning
+is written in pdp.css. (Milestone 6: the toast was at 80, so one fired from
+inside a modal was hidden behind it. It is a live region, `role=status`, and a
+failure is styled `.toast.err`.)
 One global Escape handler (escape.js) closes the topmost open layer.
 
 ## 5. Buttons (families in use)

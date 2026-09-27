@@ -42,8 +42,10 @@ async function ppclLoad(force){
       + 'Reading the advertising figures…</div></div>';
   }
   try{
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/live?" + ppcQS({
       days: PPCL.days, cumulative: PPCL.cumulative ? 1 : 0}))).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     PPCL.loading = false;
     if(!j || !j.ok){
       host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
@@ -308,8 +310,10 @@ async function ppclOpenAsin(asin){
   ppclRender();
   if(!PPCL.openAsin || PPCL.asinData[asin]) return;
   try{
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/live/asin?"
       + ppcQS({asin: asin, days: PPCL.days}))).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if(j && j.ok){
       PPCL.asinData[asin] = j;
       if(PPCL.openAsin === asin) ppclRender();

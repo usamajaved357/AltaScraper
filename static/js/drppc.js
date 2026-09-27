@@ -168,7 +168,9 @@ function drpRender() {
 async function drpStatus() {
   DRP.note = "";
   try {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/drppc/status" + _drpQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     DRP.status = j;
   } catch (e) {
     DRP.note = "Could not check the connection: " + e;
@@ -183,11 +185,13 @@ async function drpRun() {
   DRP.target = (tEl && tEl.value) || "";
   DRP.loading = true; DRP.note = ""; drpRender();
   try {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/drppc/run" + _drpQs(), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days: Number(DRP.days),
                              target_acos: DRP.target || null })
     })).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if (j && j.ok) { DRP.data = j; }
     else {
       DRP.note = (j && j.error) || "Could not run.";

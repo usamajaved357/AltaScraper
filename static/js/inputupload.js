@@ -237,7 +237,10 @@ function _iupSuccess(j, file){
   h += '<div class="iup-line iup-dim">The queue now holds <b>'
      + Number(j.count || 0) + '</b>.</div>';
   h += '<div class="iup-actions">'
-    +   '<button class="mktbtn on" onclick="navTo(\'generate\')">'
+    // genflowGenerate, NOT navTo('generate'): that screen was retired, so this
+    // button -- the one that follows a successful upload -- opened a blank page
+    // (master audit, UX #3). The run starts from the Listings page it is on.
+    +   '<button class="mktbtn on" onclick="genflowGenerate()">'
     +     '<i class="ti ti-player-play"></i> Generate listings now</button>'
     // REVIEW BEFORE GENERATING. The queue table is on this screen already, so
     // this scrolls to it rather than navigating somewhere -- a "review" button

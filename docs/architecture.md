@@ -271,6 +271,14 @@ only, never PUTs a listing.
 
 ## 11. Front end
 
+- **Account/marketplace switch (Milestone 3):** `screenstate.screenForgetAll()`
+  bumps `SCREEN_GEN`, resets every screen's held data and busy flags and the
+  SKU-keyed caches (`_screenResetHeld`), and empties the panels listed in
+  `SCREEN_BODIES`. A loader takes `screenScope()` before its fetch and returns
+  if `!screenStillIn(sc)` after each await (guarded with `typeof`, so a file
+  loaded alone in a test still runs). A new screen that holds data must be
+  added to both lists.
+
 - One page: `templates/dashboard.html` loads about 20 CSS files and about 118 JS
   files as classic scripts in a fixed order; they share one global scope. Load
   order is execution order: the files began as one script split at top-level

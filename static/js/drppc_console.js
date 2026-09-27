@@ -203,11 +203,17 @@ function drpcErr(msg){
 async function drpcLoad(force){
   if(DRPC.loading) return;
   DRPC.loading = true;
+  // The account this load is for. Every page below awaits Amazon's mirror; a
+  // reply landing after a switch must not become account B's page -- and the
+  // plan page SEEDS THE DRAFT that Save sends (master audit S3/S5).
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  const _gone = () => _sc && !screenStillIn(_sc);
   try{
     if(DRPC.page === "setup"){
       if(!DRPC.setup || force){
         drpcSpin("Measuring what this account is ready for…");
         const j = await (await fetch("/drppc/console/setup?" + ppcQS())).json();
+        if(_gone()) return;
         if(!j || !j.ok){ drpcErr((j && j.error) || "Could not read the console."); return; }
         DRPC.setup = j;
       }
@@ -216,6 +222,7 @@ async function drpcLoad(force){
       if(!DRPC.state || force){
         drpcSpin("Reading the mirrored Amazon structure…");
         const j = await (await fetch("/drppc/console/state?" + ppcQS())).json();
+        if(_gone()) return;
         if(!j || !j.ok){ drpcErr((j && j.error) || "Could not read the mirror."); return; }
         DRPC.state = j;
       }
@@ -226,6 +233,7 @@ async function drpcLoad(force){
                  + "baseline…");
         const j = await (await fetch("/drppc/console/performance?"
                                      + ppcQS())).json();
+        if(_gone()) return;
         if(!j || !j.ok){
           drpcErr((j && j.error) || "Could not read performance."); return; }
         DRPC.perf = j;
@@ -236,6 +244,7 @@ async function drpcLoad(force){
         drpcSpin("Reading the ledger…");
         const j = await (await fetch("/drppc/console/activity?"
           + ppcQS({kind: DRPC.actKind, actor: DRPC.actActor}))).json();
+        if(_gone()) return;
         if(!j || !j.ok){
           drpcErr((j && j.error) || "Could not read the ledger."); return; }
         DRPC.act = j;
@@ -245,6 +254,7 @@ async function drpcLoad(force){
       if(!DRPC.plan || force){
         drpcSpin("Reading the plan…");
         const j = await (await fetch("/drppc/console/plan?" + ppcQS())).json();
+        if(_gone()) return;
         if(!j || !j.ok){ drpcErr((j && j.error) || "Could not read the plan."); return; }
         DRPC.plan = j;
         DRPC.vocab = j.vocab;
@@ -863,9 +873,13 @@ async function drpcOpenCamp(name){
   DRPC.openCamp = (DRPC.openCamp === name) ? null : name;
   drpcState();
   if(!DRPC.openCamp || DRPC.detail[name]) return;
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   try{
     const j = await (await fetch("/drppc/console/state/campaign?"
       + ppcQS({campaign: name}))).json();
+    // Campaign names repeat across accounts: A's detail must not be filed
+    // under B's campaign of the same name (Milestone 3 review).
+    if(_sc && !screenStillIn(_sc)) return;
     if(j && j.ok){
       DRPC.detail[name] = j;
       const el = document.getElementById("drpc_detail");
@@ -1614,6 +1628,14 @@ async function drpcDrop(kind, i){
 }
 
 async function drpcSavePlan(){
+  // A DRAFT BELONGS TO THE ACCOUNT IT WAS WRITTEN IN. The account switch drops
+  // it (screenstate.js); saving nothing is right, saving it into the account
+  // now open was the bug (master audit S3).
+  if(!DRPC.draft){
+    if(typeof toast === "function")
+      toast("Nothing to save: the plan was put away when the account changed.");
+    return;
+  }
   try{
     const j = await (await fetch("/drppc/console/plan?" + ppcQS(), {
       method: "POST", headers: {"Content-Type": "application/json"},

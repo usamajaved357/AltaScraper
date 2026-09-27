@@ -146,7 +146,9 @@ async function rbLoad(force) {
   RB.loading = true; RB.error = "";
   rbRender();
   try {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/inventory/money-back" + _rbQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if (j && j.ok) { RB.data = j; }
     else { RB.error = (j && j.error) || "Could not read the settled orders."; }
   } catch (e) {

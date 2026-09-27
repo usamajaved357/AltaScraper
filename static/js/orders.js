@@ -1498,6 +1498,15 @@ async function ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace){
     if(typeof toast === "function") toast("That cost is not a number.");
     return;
   }
+  // AN EMPTY BOX IS NOT ALWAYS "CLEAR IT". The saved cost is shown only as the
+  // box's placeholder, so pressing Save without typing sent cost:null and wiped
+  // it (master audit, UX #1). Clearing stays possible -- it is now a question.
+  if(raw === "" && el && el.dataset && el.dataset.has === "1"){
+    const _msg = "Clear the cost on this order? This line goes back to "
+               + "“not known”. (To change it, type the new cost instead.)";
+    const _ok = (typeof uiConfirm === "function") ? await uiConfirm(_msg) : false;
+    if(!_ok) return;
+  }
   try{
     const j = await (await fetch("/cogs/order", {
       method: "POST", headers: {"Content-Type": "application/json"},

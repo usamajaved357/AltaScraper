@@ -32,7 +32,8 @@ from flask import request, jsonify
 from domain.image_rules import _IMAGE_TEXT_RULES, _PRESENCE_RULES
 
 
-def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
+def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult,
+             APLUS_MOBILE_IS_ASSUMED=""):
     """Attach the /aplus/* routes to the existing Flask app."""
 
     @app.route("/aplus/modules", methods=["GET"])
@@ -43,11 +44,10 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         each screen -- and the mobile one is COMPOSED for a phone rather than
         being the desktop asset scaled down.
         """
-        try:
-            import dashboard as _dash
-            note = getattr(_dash, "APLUS_MOBILE_IS_ASSUMED", "")
-        except Exception:
-            note = ""
+        # INJECTED, not `import dashboard`: that loads a SECOND copy of the
+        # running app (it runs as __main__) just to read one sentence (master
+        # audit A2, Milestone 5).
+        note = APLUS_MOBILE_IS_ASSUMED or ""
         return jsonify({"ok": True, "modules": _APLUS_MODULES,
                         # Said out loud rather than left to be discovered: the
                         # desktop figures are Amazon's published ones, the

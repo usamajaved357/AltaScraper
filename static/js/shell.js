@@ -630,7 +630,12 @@ function buildAccountMktSwitch(a){
   if(!WS_MARKET || (WS_MARKET!=="__all__" && mkts.indexOf(WS_MARKET)<0)){
     // Moving the marketplace is a change of product context (pdpLeaveContext).
     if(WS_MARKET && typeof pdpLeaveContext === "function"){ try{ pdpLeaveContext(); }catch(e){} }
+    const _moved = !!WS_MARKET && WS_MARKET !== mkts[0];
     WS_MARKET=mkts[0];
+    // A MOVED MARKETPLACE IS A SWITCH like any other: what screens hold, and
+    // any reply in flight, belong to the old one (Milestone 3 review -- loads
+    // in flight returned early and left their busy flags set).
+    if(_moved && typeof screenForgetAll === "function"){ try{ screenForgetAll(); }catch(e){} }
   }
   if(WS_MARKET!=="__all__"){
     // One table of what a marketplace code means, in static/js/marketplaces.js.
@@ -1084,7 +1089,11 @@ async function enterWorkspace(key){
   if(String(_wsMkt) !== String(WS_MARKET || "") && typeof pdpLeaveContext === "function"){
     try{ pdpLeaveContext(); }catch(e){}
   }
+  const _wsMoved = String(_wsMkt) !== String(WS_MARKET || "");
   WS_MARKET = _wsMkt;
+  // Same rule as every other switch (Milestone 3 review): held data and
+  // in-flight replies belong to the marketplace just left.
+  if(_wsMoved && typeof screenForgetAll === "function"){ try{ screenForgetAll(); }catch(e){} }
   // This one only knew about dollars and pounds, so a German or Irish
   // marketplace showed euro amounts with a pound sign in front of them.
   CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js

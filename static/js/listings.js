@@ -600,8 +600,26 @@ function _noneless(v){
   const s = String(v == null ? "" : v).trim();
   return /^(none|null|nan|undefined)$/i.test(s) ? "" : String(v == null ? "" : v);
 }
-function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");
-  clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),1800);}
+/* ONE LINE AT THE FOOT OF THE SCREEN, for 640 call sites. What changed
+ * (master audit, UX #7 -- "errors travel through one weak toast"):
+ *   - a failure is styled as one, and stays up long enough to read;
+ *   - a long message gets time in proportion to its length (1.8 s was the same
+ *     for "Saved" and for a two-sentence refusal from Amazon);
+ *   - the element is a live region (templates/dashboard.html), so it is read
+ *     out, not only shown. */
+const _TOAST_ERR = /^(could not|couldn.t|can.t|cannot|failed|error|refused|not saved|nothing (was )?saved|that .* (is not|isn.t)|stopped)/i;
+function toast(m){
+  const t = document.getElementById("toast");
+  if(!t) return;
+  const s = String(m == null ? "" : m);
+  const isErr = _TOAST_ERR.test(s.trim()) || /\b(failed|refused|error:)/i.test(s);
+  t.textContent = s;
+  t.classList.toggle("err", isErr);
+  t.classList.add("show");
+  const ms = Math.min(9000, Math.max(isErr ? 4500 : 1800, 1200 + s.length * 45));
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("show"), ms);
+}
 
 function badgeClass(s){return ["APPROVED","NEEDS_REVIEW","IP_HOLD","COMPLIANCE_HOLD","ERROR","API_READY","API_ERROR","LIVE","PARENT"].includes(s)?("b-"+s):"b-none";}
 /* TWO DIFFERENT THINGS STOP A LISTING, and they are not fixed the same way.
@@ -1849,11 +1867,16 @@ async function loadPpcByAsin(){
       + (m && m !== "__all__" ? "&marketplace=" + encodeURIComponent(m) : "")
       + (a ? "&account_id=" + encodeURIComponent(a) : ""));
     const j = await r.json();
+    // A REPLY FOR THE KEY WE ASKED FOR ONLY. Landing after a switch, it was
+    // stored under the NEW key and shown on the new account's shared ASINs
+    // (master audit S7). Drop it; the next card asks again for the right key.
+    if(_ppcKey() !== key) return;
     PPC_BY_ASIN = (j && j.ok && j.asins) ? j.asins : {};
     PPC_META = {connected: !!(j && j.connected), note: (j && j.note) || "",
                 start: (j && j.start) || "", end: (j && j.end) || ""};
   }catch(e){
     // Never fatal. The listings page has to render with or without advertising.
+    if(_ppcKey() !== key) return;
     PPC_BY_ASIN = {};
   }
   PPC_KEY = key;

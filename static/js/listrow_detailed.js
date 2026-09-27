@@ -131,7 +131,9 @@ async function lrLoadMetrics(rows, force){
     url += "&prices=" + encodeURIComponent(ask.map(s => priceOf(byS[s])).join(","))
          + "&asins="  + encodeURIComponent(ask.map(s => asinOf(byS[s])).join(","));
     if(force) url += "&fetch=1";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if(j && j.ok){
       // MERGED, not replaced. Several blocks contribute their own SKUs, and
       // assigning the reply would throw away whatever the previous block had
@@ -1171,7 +1173,9 @@ async function lrLoadRules(){
     // only the account, and a rule is per marketplace.
     const url = (typeof _srcUrl === "function") ? _srcUrl("/sourcing/rules_all")
                                                 : "/sourcing/rules_all";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;
     const j = await (await fetch(url)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // another account's rules (M3 review)
     if(!j || !j.ok) return;
     LR_RULES_LOADED = true;
     let added = 0;
@@ -1550,7 +1554,9 @@ async function lrLoadFamilies(){
   LR_FAM_ASKED = true;
   try{
     const url = "/variations/families";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;
     const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // another account's families
     if(!j || !j.ok){ LR_FAMILIES = {}; return; }
     const map = {};
     (j.families || []).forEach(function(f){

@@ -88,6 +88,12 @@ def marketplace(*, state=None, account=None, asked=None, with_data=None):
     sells_in = {str(m or "").strip().upper()
                 for m in (acc.get("marketplaces") or []) if str(m or "").strip()}
     selected = str((state or {}).get("active_marketplace") or "").strip().upper()
+    # "__all__" is the UI's word for every marketplace, not a country; stored
+    # as the selection it must not come back as one (Milestone 3 review).
+    if selected == "__ALL__":
+        selected = ""
+    if str(asked or "").strip().upper() == "__ALL__":
+        asked = ""
     if selected and sells_in and selected not in sells_in:
         selected = ""
     # An account that lists no marketplaces but HAS named a default has still
@@ -137,11 +143,47 @@ def resolve(*, state=None, account=None, asked_id=None, asked_marketplace=None,
             found = load_account(asked)
         except Exception:
             found = None
-        if found:
-            acc = found
+        # NOT FOUND IS NOT "USE THE OPEN ONE". Keeping the open account's record
+        # here paired the NAMED id with ANOTHER account's credentials -- a pull
+        # would read one seller and file it under another (Milestone 3 review).
+        # No record means the route's own "no account" path refuses.
+        acc = found or {}
     mkt = marketplace(state=state, account=acc, asked=asked_marketplace,
                       with_data=with_data)
     return acc, wsid, mkt
+
+
+def for_request(request, *, state, active_account, cfg, config_path,
+                with_data=None):
+    """resolve() for a Flask request, with the account the PAGE named.
+
+    The three things every screen route needs and kept assembling by hand:
+    the account the page named (`account`, `account_id`, or the legacy `id`),
+    its marketplace (never "__all__", which is not a country), and a loader so
+    the account RECORD -- credentials included -- follows the id (see resolve).
+    Two routes (hourly, traffic) read only the server's open account and so
+    answered for whatever it held (master audit S8, Milestone 3).
+    """
+    from domain import request_account as _req_acct
+    from domain import accounts as _acc_mod
+
+    def _load(aid):
+        try:
+            return _acc_mod.get_account(cfg() if callable(cfg) else (cfg or {}),
+                                        aid, config_path)
+        except Exception:
+            return None
+    asked_mkt = (request.args.get("marketplace") or "").strip()
+    if asked_mkt == "__all__":
+        asked_mkt = ""
+    try:
+        acc = active_account() or {}
+    except Exception:
+        acc = {}
+    return resolve(state=state, account=acc,
+                   asked_id=_req_acct.named_any(request),
+                   asked_marketplace=asked_mkt, with_data=with_data,
+                   load_account=_load)
 
 
 # What a screen should SAY when it still has nothing. One sentence, in the same

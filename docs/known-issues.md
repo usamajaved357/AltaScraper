@@ -40,16 +40,44 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
    autofix.js `/run/api` and `/autofix/start`, Live-tab verify
    (miles_template.js `/run/api_verify`). `mismatch_for_write` only refuses when
    an account IS named.
-5. **READ — Another account's data can show after switching accounts.**
-   `LIVE_MIRROR` and `COGS_LOCAL` (browser) are keyed by SKU only and not reset in
-   `enterAccount`; `LISTING_METRICS` is not reset either. SKUs are not unique
-   across accounts. (`SELECTED` and the repricer's `SRC_SEL` ARE now cleared on
-   an account switch -- Milestone 2.) The rest is Milestone 3 work (audit S3-S9).
+5. **FIXED ON THE DEV BRANCH (Milestone 3, 28 Sep 2026) — another account's data
+   could show after switching accounts.** Every screen's held data, busy flag
+   and the SKU-keyed caches (LIVE_MIRROR, COGS_LOCAL, LISTING_METRICS/LR_*,
+   SCHEMAS, PPC per ASIN) are reset on a switch (`screenstate._screenResetHeld`);
+   loaders check `screenStillIn()` after each await; the Dr PPC draft cannot be
+   saved into another account; returns/hourly/traffic name their account.
+   test_switch_drops_old_replies.js (22 checks; the first 15 all fail on the
+   old code). After the Milestone 3 review also: SQP, tracker alerts, Dr PPC
+   campaign detail, repricer rules/families (which pre-filled B's dialogs with
+   A's floor), schema requests in flight, and the two paths that moved the
+   marketplace without the switch reset.
+   STILL OPEN: S9 (navTo marks a screen fresh before its load finishes, so a
+   failed load looks fresh for 10 minutes); S10 (the shared-password owner and
+   background threads share one process-wide selection); an old request's
+   `finally`/`catch` can still clear the new request's busy flag or paint its
+   network error for a moment (low); and four older per-screen copies of the
+   "still the same account?" check (submit.js stillMine, miles_template
+   stillHere, sales _sFetch -- account only, orders loadId) are not yet on the
+   shared screenScope (Rule 12, work when those screens are next touched).
 
 ## Fixed on the development branch, NOT yet in production
 
 On `claude-environment-setup` (local, not merged or deployed — production still
 has these until the owner merges):
+- **Milestones 4-6 (28 Sep 2026).** Cost overrides (cogs_overrides.json) and
+  the Miles bundle store are written atomically -- a crash mid-write could
+  empty them, and a corrupt file was then saved back as `{}`. The live
+  refresher and the A+ route no longer `import dashboard` (a second copy of the
+  app with a config cache nobody cleared: accounts added later were invisible
+  to live catch-up until a restart). Marketplace currency symbols come from
+  money.js's one map (Canada/Mexico/Singapore/Australia were "$" on some screens
+  and "C$"/"MX$"/"S$"/"A$" on others). UX: an untouched order-cost box no
+  longer wipes the saved cost on Save (it asks); the button after a template
+  upload no longer opens the retired Generate screen; Generate no longer says
+  "Nothing queued" when the queue panel simply has not been opened; toasts are
+  above every overlay, announced (`role=status`), styled as errors when they
+  are, and stay up in proportion to their length; a refused queue from the
+  product page is now said (it vanished, and left RUN_STREAMING stuck on).
 - **Milestone 2 — security and account isolation (28 Sep 2026).** From the
   master audit, each with a test: the guard now checks every account a request
   names (query, any body type, form fields, every batch row; only `id` exempt

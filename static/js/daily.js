@@ -29,7 +29,9 @@ function _dyQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; }
 async function dailyLoad(){
   DAILY.loading = true; DAILY.note = ""; dailyRender();
   try{
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/daily/check" + _dyQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if(j && j.ok) DAILY.data = j;
     else DAILY.note = (j && j.error) || "Could not run the round.";
   }catch(e){ DAILY.note = "Could not run the round: " + e; }

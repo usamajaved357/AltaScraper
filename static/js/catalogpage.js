@@ -188,8 +188,10 @@ function catpPeriod(p) {
 async function catpLoad() {
   CATP.loading = true; CATP.note = ""; catpRender();
   try {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/catalog/products" +
       _catpQs({ period: CATP.period }))).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if (j && j.ok) CATP.data = j;
     else CATP.note = (j && j.error) || "Could not read the catalogue.";
   } catch (e) {

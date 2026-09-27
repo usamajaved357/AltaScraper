@@ -7956,7 +7956,11 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
                         _added += 1
                 if _added:
                     try:
-                        _json.dump(_store, open(store_path, "w", encoding="utf-8"))
+                        # ATOMIC (Milestone 4): the same store the Miles routes
+                        # now write through domain/jsonstore.
+                        from domain import jsonstore as _jsonstore
+                        if not _jsonstore.write_json_atomic(str(store_path), _store):
+                            raise OSError("could not write %s" % store_path)
                         console.print(f"[green]  Back-filled {_added} SKU(s) from Drive into "
                                       f"miles_bundles_store.json (merged, existing kept).[/green]")
                     except Exception as _se:

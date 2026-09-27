@@ -184,8 +184,16 @@ async function financeLoad(){
   // basis from the one the toggle is showing.
   qs.push("basis=" + encodeURIComponent(FIN.basis || "orders"));
   let j;
+  // ONLY THE NEWEST REQUEST, AND ONLY FOR THE ACCOUNT STILL ON SCREEN. There
+  // was no guard at all: two preset clicks raced and the slower reply won, and
+  // a reply landing after an account switch painted the old account's rows on
+  // the new account's screen -- measured in the master audit (S5).
+  const _seq = (FIN._seq = (FIN._seq || 0) + 1);
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  const _stale = () => _seq !== FIN._seq || (_sc && !screenStillIn(_sc));
   try{ j = await (await fetch("/finance/contribution"+(qs.length?"?"+qs.join("&"):""))).json(); }
-  catch(err){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load: '+_fesc(String(err))+'</div>'; return; }
+  catch(err){ if(_stale()) return; body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load: '+_fesc(String(err))+'</div>'; return; }
+  if(_stale()) return;
   if(!j || !j.ok){
     body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_fesc((j&&j.error)||"Could not load")+'</div>';
     return;

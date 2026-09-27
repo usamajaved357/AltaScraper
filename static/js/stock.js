@@ -100,8 +100,10 @@ async function stockLoad(force){
       if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
         qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
     }catch(e){}
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     j = await (await fetch("/inventory/stock"
       + (qs.length ? "?" + qs.join("&") : ""))).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
   }catch(e){
     host.innerHTML = '<div class="odp-note warn" style="padding:14px">'
       + 'Could not load the stock view: ' + _skEsc(String(e)) + '</div>';
@@ -731,7 +733,9 @@ function _skCoverage(){
 
 async function _skCoverageLoad(){
   try{
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/inventory/coverage" + _skScopeQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     STOCK.coverage = (j && j.ok) ? j
       : {error: (j && j.error) || "Could not work out coverage."};
   }catch(e){
@@ -833,7 +837,9 @@ function _skMoneyBack(){
 
 async function _skMoneyLoad(){
   try{
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/inventory/money-back" + _skScopeQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     STOCK.moneyBack = (j && j.ok) ? j
       : {error: (j && j.error) || "Could not read the settled orders."};
   }catch(e){

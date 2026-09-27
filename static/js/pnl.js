@@ -34,7 +34,9 @@ async function pnlLoad(){
     // The Sales page owns the date range; this reads whatever it is showing so
     // the two screens cannot answer for different months.
     const qs = (typeof _sQuery === "function") ? _sQuery() : "";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/sales/pnl?" + qs)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     PNL.loading = false;
     if(!j || j.ok === false){
       host.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
@@ -49,8 +51,11 @@ async function pnlLoad(){
       if(j.marketplace) q2.push("marketplace=" + encodeURIComponent(j.marketplace));
       if(j.start) q2.push("start=" + encodeURIComponent(j.start));
       if(j.end) q2.push("end=" + encodeURIComponent(j.end));
-      PNL.expenses = await (await fetch("/expenses?" + q2.join("&"))).json();
+      const _ex = await (await fetch("/expenses?" + q2.join("&"))).json();
+      if(_sc && !screenStillIn(_sc)) return;   // switched meanwhile (audit S5)
+      PNL.expenses = _ex;
     }catch(e){ PNL.expenses = null; }
+    if(_sc && !screenStillIn(_sc)) return;
     pnlRender();
   }catch(e){
     PNL.loading = false;

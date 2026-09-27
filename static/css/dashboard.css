@@ -159,6 +159,10 @@
        costs nothing and brings all four into the Orbit palette. */
     --fg:var(--ink);        --text:var(--ink);
     --bd:var(--line);       --card:var(--panel);
+    /* --fg2 WAS THE FIFTH: three bookmark-bar rules used it with no fallback,
+       so their colour was dropped and the chips took whatever their parent
+       had (master audit section 13; Milestone 8). The secondary ink. */
+    --fg2:var(--ink2);
   }
   *{box-sizing:border-box}
   /* Inter first, then the system stack. No webfont is loaded on purpose -- the
@@ -714,8 +718,14 @@
   .empty{color:var(--muted);padding:40px;text-align:center;grid-column:1/-1}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
          background:#222a36;border:1px solid var(--line);color:var(--ink);
-         padding:9px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;z-index:80}
+         padding:9px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;
+         /* ABOVE EVERY OVERLAY: at 80 a toast raised from inside a dialog
+            (z 9600) or the repricer's modal (9000) was drawn underneath it and
+            never seen (master audit, UX #7). */
+         z-index:9800;max-width:min(640px,calc(100vw - 32px))}
   .toast.show{opacity:1}
+  /* A failure must not look like a success. */
+  .toast.err{border-color:var(--red,#ef5350);box-shadow:0 0 0 1px var(--red,#ef5350) inset}
   .b-API_READY{background:var(--accent-bg);color:var(--accent2);border:1px solid var(--accent-line)}
   .b-API_ERROR{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
   /* LIVE is deliberately NEUTRAL, per the brief -- grey, not green. A listing

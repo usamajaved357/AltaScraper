@@ -4609,6 +4609,7 @@ def build_app(backend=None):
     _catalog_routes.register(app, _cfg=_cfg, _state=_state, CONFIG_PATH=CONFIG_PATH)
     import routes.aplus_routes as _aplus_routes
     _aplus_routes.register(app, _APLUS_MODULES=_APLUS_MODULES, _cfg=_cfg,
+                           APLUS_MOBILE_IS_ASSUMED=APLUS_MOBILE_IS_ASSUMED,
                            _load_img_instructions=_load_img_instructions,
                            _imgresult=_imgresult)
     import routes.settings_routes as _settings_routes
