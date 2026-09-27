@@ -19,7 +19,9 @@ words if he asked to push, merge or deploy.
 ## Procedure (three gated stages)
 
 ### Stage A — Commit (normal end of a task)
-1. `verify-change` has passed (or its failures are stated).
+1. The review tier for the change is complete (CLAUDE.md Rule 16): for any
+   meaningful change `verify-change`, `qa-runner` and `change-reviewer` have
+   run and their findings are fixed or stated; failures are stated, not hidden.
 2. `& $g status --short`: nothing from the never-commit list (CLAUDE.md Rule 2);
    the guard_commit hook enforces it, but look anyway. Stage files by name, not
    `git add .`, unless status shows only intended files.

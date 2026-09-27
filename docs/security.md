@@ -26,11 +26,21 @@ this file. Claude updates it after a `security-review`; the owner reviews change
   GitHub push protection blocked it and the history was scrubbed before any
   push. The owner chose not to rotate (docs/decisions.md). No local backup refs
   holding it remain (checked 27 Sep 2026).
-- Claude never opens config.json, service_account.json, .env files or users.json
-  (deny rules in `.claude/settings.json`), and never looks for tokens in
-  credential stores.
+- Claude never opens secret-bearing files and never looks for tokens in
+  credential stores. Enforced two ways:
+  - deny rules in `.claude/settings.json` stop the Read/Edit tools (and simple
+    cmdlets such as Get-Content) on config.json*, service_account.json, .env*,
+    users.json, app_state.json, miles_bundles*.json, image_url_key, *.db*,
+    *.pem, *.p12, *.pfx and secret/credential data files;
+  - the `guard_secrets` hook denies any tool call — including shell, .NET and
+    Python routes — whose command or path NAMES one of those files. It checks
+    names only and never opens the files. A name assembled at run time is not
+    caught (docs/known-issues.md "Claude Code environment").
 - The commit guard (`.claude/hooks/guard_commit.ps1`) blocks staging or
   committing secret-bearing files: the list is in CLAUDE.md Rule 2.
+- The `guard_rules` hook makes every edit to CLAUDE.md and `.claude/`
+  (settings, hooks, agents, skills) an owner confirmation, so the rules above
+  cannot be relaxed silently.
 
 ## 2. Authentication
 

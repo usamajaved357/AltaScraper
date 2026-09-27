@@ -21,17 +21,34 @@
       "Read(**/.env)",
       "Read(**/.env.*)",
       "Read(**/users.json)",
+      "Read(**/app_state.json)",
+      "Read(**/miles_bundles*.json)",
       "Read(**/image_url_key)",
-      "Read(**/*secret*)",
-      "Read(**/*credential*)",
+      "Read(**/*.db)",
+      "Read(**/*.db-wal)",
+      "Read(**/*.db-shm)",
+      "Read(**/*.pem)",
+      "Read(**/*.p12)",
+      "Read(**/*.pfx)",
+      "Read(**/*secret*.json)",
+      "Read(**/*secret*.txt)",
+      "Read(**/*secret*.env)",
+      "Read(**/*secret*.yaml)",
+      "Read(**/*secret*.yml)",
+      "Read(**/*credential*.json)",
+      "Read(**/*credential*.txt)",
+      "Read(**/*credential*.env)",
+      "Read(**/*credential*.yaml)",
+      "Read(**/*credential*.yml)",
       "Edit(**/config.json)",
+      "Edit(**/config.json.*)",
       "Edit(**/service_account.json)",
       "Edit(**/.env)",
+      "Edit(**/.env.*)",
       "Edit(**/users.json)",
-      "Write(**/config.json)",
-      "Write(**/service_account.json)",
-      "Write(**/.env)",
-      "Write(**/users.json)"
+      "Edit(**/app_state.json)",
+      "Edit(**/image_url_key)",
+      "Edit(**/*.db)"
     ]
   },
   "hooks": {
@@ -48,6 +65,26 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "PowerShell|Bash|Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/guard_secrets.ps1",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell|Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/guard_rules.ps1",
+            "timeout": 30
+          }
+        ]
+      },
+      {
         "matcher": "PowerShell|Bash",
         "hooks": [
           {
@@ -58,7 +95,7 @@
           {
             "type": "command",
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/guard_push.ps1",
-            "timeout": 15
+            "timeout": 30
           }
         ]
       }

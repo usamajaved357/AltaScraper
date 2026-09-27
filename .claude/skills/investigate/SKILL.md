@@ -38,8 +38,9 @@ account and marketplace, the screen and view (table / detailed / card / PDP).
 8. **Propose** in plain English (CLAUDE.md Rule 6 format): what happened, why,
    the fix, what else it touches (Rule 12 audit). More than 2 files or a
    behaviour change -> wait for approval.
-9. After implementation: `verify-change`, the reviewers the change needs, then
-   `update-context`.
+9. After implementation, follow the review tier for the change (CLAUDE.md
+   Rule 16): the specialist(s) if high risk, `verify-change`, `qa-runner`,
+   `change-reviewer`; for UI, the `ui-change` order. Then `update-context`.
 
 ## Output
 `<main checkout>/active/investigation-<topic>.md`: symptom, reproduction,

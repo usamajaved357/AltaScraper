@@ -46,15 +46,20 @@ Sales, ...), the account and marketplace, a screenshot if given.
 5. **Regression risks to check:** CSS load order (docs/design-system.md §3);
    layer order; source-text/pixel tests pinning the old markup
    (`relevant_tests.py`); the ~58 `render()` callers; focus/caret loss.
-6. **Review:** `ui-reviewer` agent (mode A) on the diff; add
-   `account-scope-reviewer` if state or requests changed.
-7. **Visual verification:** Playwright is installed locally. Start the app in
-   the worktree (`py -3.11 dashboard.py`) and capture the affected states at
-   1280px and 390px into `<main checkout>/active/screens/`. If the local app
-   needs a login or has no data for that account, say "not visually verified"
-   and why — never claim a visual check that did not happen. The owner verifies
-   on app.altascraper.com after deploy.
-8. `verify-change`, then `update-context`.
+6. **Review, in this order** (CLAUDE.md Rule 16, UI tier):
+   1. `ui-reviewer` agent (mode A) on the diff; add `account-scope-reviewer`
+      only if state, requests or caches changed.
+   2. `verify-change` (syntax, scope check, relevant tests).
+   3. `qa-runner` agent (tests vs baseline).
+   4. `change-reviewer` agent (independent bug/regression review).
+   Fix what they find and repeat the affected steps.
+7. **Visual verification (when possible):** Playwright is installed locally.
+   Start the app in the worktree (`py -3.11 dashboard.py`) and capture the
+   affected states at 1280px and 390px into `<main checkout>/active/screens/`,
+   then LOOK at them. If the local app needs a login or has no data for that
+   account, say "not visually verified" and why — never claim a visual check
+   that did not happen. The owner verifies on app.altascraper.com after deploy.
+8. `update-context`.
 
 ## Output
 The seven answers, the state checklist with results, screenshots or the reason

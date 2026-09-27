@@ -151,6 +151,35 @@ redesign) listed seven items. Whether each is still open was not verified on
   `ads_sync.stray_marketplaces()` reports them, `drop_marketplace()` removes
   (dry run by default). (memory: two-grain-tables)
 
+## Claude Code environment (hooks, permissions) — limits as of 27 Sep 2026
+
+Measured in live headless Claude Code 2.1.283 sessions on this machine. What
+works is in CLAUDE.md Rule 19; these are the genuine remaining limits.
+
+- **Hooks fail OPEN if they cannot even start.** The guards catch their own
+  errors (deny / ask), but if PowerShell itself cannot start the script, the
+  script has a syntax error, or Claude Code's 30 s hook timeout expires, Claude
+  Code treats it as a non-blocking error and the action proceeds. The guards
+  give up after 10 s internally to stay inside that window.
+- **guard_secrets matches names, not intent.** A file name assembled at run
+  time (`'con' + 'fig.json'`), a wildcard (`Get-Content conf*`), or a program
+  that opens the file without its name in the command is not caught. The deny
+  rules cover the Read/Edit tools and simple cmdlets regardless.
+- **guard_rules recognises writes that NAME a governance file.** A shell
+  command that changes CLAUDE.md or `.claude/` without naming it (e.g.
+  `git checkout .`, `git stash`) is not caught; reviewing `git diff` before
+  every commit remains the backstop.
+- **In bypass mode governance edits and pushes cannot be approved from Claude**
+  — they are denied, by design. The owner makes them himself or in a
+  normal-mode session.
+- **Agents are read-only by instruction only**: four have PowerShell.
+- **Hooks use relative paths** (`.claude/hooks/...`); a session started in a
+  subfolder of the worktree was not tested.
+- **The interactive approval path** (owner clicks "allow" on a guard prompt) was
+  not testable in headless sessions; the ask was verified to stop the action.
+- The syntax_check hook reports through JSON because PowerShell turns a child's
+  exit code 2 into 1 (measured). Any future hook must also report via JSON.
+
 ## Tests
 
 **Baseline on origin/main 0e5529e, clean worktree with no config.json or

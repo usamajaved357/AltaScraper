@@ -105,10 +105,11 @@ Any diff touching the payload goes to the `listing-payload-guardian` agent.
   `config.json*`, `service_account.json`, `.env*`, `users.json`,
   `app_state.json`, `miles_bundles_store.json`, `miles_bundles.json`,
   `image_url_key`, `*.db` / `*.db-wal` / `*.db-shm`, `*.pem`, `*.key`,
-  `*.p12`, `*.pfx`, `*.pyc`, `__pycache__/`, any file whose name contains
-  `secret` or `credential`, and any NON-SOURCE file (not .py/.js/.css/.html/
-  .md/.jsx/.ts/.ps1/.bat/.command) whose name contains `key` or `token`. Source files such as
-  auth/token_crypto.py and routes/keywords_routes.py are code, not secrets.
+  `*.p12`, `*.pfx`, `*.pyc`, `__pycache__/`, and any NON-SOURCE file (not
+  .py/.js/.css/.html/.md/.jsx/.ts/.ps1/.bat/.command) whose name contains
+  `secret`, `credential`, `key` or `token`. Source files such as
+  auth/token_crypto.py, routes/keywords_routes.py and
+  .claude/hooks/guard_secrets.ps1 are code, not secrets.
 - If something breaks and cannot be quickly fixed: stop, leave the branch, and
   tell the owner what happened. Never leave a broken branch unreported.
 
@@ -242,6 +243,21 @@ needs the owner's approval. Procedure: `ui-change` skill.
 - Many tests assert source text. When one breaks because wording moved,
   re-pin it with a stated reason — never change behaviour to satisfy a pin.
 - Every fix adds or updates a test that fails without it.
+- Never claim a visual check without having actually seen the result
+  (a screenshot); say "not visually verified" instead.
+
+**Review tiers — use the smallest one that fits; never run every specialist:**
+
+| Change | Workflow |
+|---|---|
+| Trivial and harmless: comments, docstrings, docs/*.md, whitespace, a typo in text that is not shown to users or tested | syntax check only (the hook does it) |
+| Meaningful code change | `verify-change` -> `qa-runner` -> `change-reviewer` |
+| UI change (static/, templates/, text the UI shows) | `ui-change` -> `ui-reviewer` -> `verify-change` -> `qa-runner` -> `change-reviewer` -> visual verification when possible |
+| High risk: listing payload / GTIN / submit (Rule 1), account scope / guard RULES / auth, Amazon writes, bids (Rule 8), DB schema, config/secrets, deploy config | the relevant specialist(s) -> `verify-change` -> `qa-runner` -> `change-reviewer` |
+
+Specialists: `listing-payload-guardian` (Rule 1/4), `account-scope-reviewer`
+(Rule 14), `ui-reviewer` (Rule 15), `security-review` skill (auth, secrets,
+public endpoints). When unsure which tier applies, use the higher one.
 
 ## 17. PROTECTED WORDING (tested)
 
@@ -266,16 +282,43 @@ hooks; deleting or archiving files; `.gitignore` / `.dockerignore` edits;
 any behaviour change. **Explicit instruction is required for:** push, merge,
 deploy.
 
+**Governance layer.** This file, `.claude/settings.json` (and
+`settings.local.json`), `.claude/hooks/`, `.claude/agents/` and
+`.claude/skills/` are the governance layer. Permanent governance changes need
+the owner's approval: propose the exact change (what and why) and wait. The
+`guard_rules` hook enforces this by turning every edit of those files into a
+confirmation prompt; the owner approves it there, which keeps the system
+maintainable. Never try to get around a guard (for example by writing a file
+through a different tool); if a guard blocks something legitimate, say so and
+let the owner decide.
+
 ## 19. CAPABILITIES
 
 Skills (`.claude/skills/`): start-task, investigate, verify-change,
 amazon-schema-first, ui-change, refactor-move, ship, update-context,
 project-maintenance, security-review.
-Agents (`.claude/agents/`, all read-only): tracer, listing-payload-guardian,
-account-scope-reviewer, ui-reviewer, change-reviewer, qa-runner (runs tests,
-never edits).
-Hooks (`.claude/hooks/`): syntax check after each edit; commit guard; push
-confirmation; session-start summary.
+Agents (`.claude/agents/`): tracer, listing-payload-guardian,
+account-scope-reviewer, ui-reviewer, change-reviewer, qa-runner. They are
+**read-only by instruction**: their definitions forbid edits, but four of them
+can run PowerShell, so this is not technically enforced. qa-runner runs tests;
+change-reviewer is the independent bug/regression reviewer.
+Hooks (`.claude/hooks/`, enforced by Claude Code in every permission mode):
+- `session_start` — prints branch, worktree and current-work.md at start
+- `syntax_check` — compiles each edited .py / `node --check`s each .js and
+  reports errors back to Claude
+- `guard_secrets` — denies any tool call naming a secret-bearing file
+  (config.json, service_account.json, .env*, users.json, app_state.json,
+  miles_bundles*.json, image_url_key, *.db, *.pem, *.p12, *.pfx, non-source
+  names containing secret/credential), including indirect shell/.NET/Python reads
+- `guard_rules` — asks the owner before any governance-file edit
+- `guard_commit` — denies staging or committing never-commit files
+- `guard_push` — asks the owner before any push (louder for main)
+The guards fail safe: if a check cannot complete, guard_secrets and
+guard_commit deny, guard_push and guard_rules ask. Where no confirmation
+prompt can be shown (bypass mode; accept-edits mode for file edits), an "ask"
+becomes a deny, because Claude Code was measured ignoring a hook's ask there:
+the owner then does the action himself or approves it in a normal-mode
+session. Known limits: docs/known-issues.md "Claude Code environment".
 
 ## 20. UNCERTAINTY
 

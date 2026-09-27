@@ -46,6 +46,12 @@ Run from the repo root. `$g` = the git.exe from CLAUDE.md Rule 2.
 7. **CLAUDE.md changed?** `py -3.11 .claude/skills/verify-change/claude_md_check.py`
    (the real test cannot reach its wording checks without data).
 8. **UI changed?** Follow the `ui-change` skill's verification states too.
+9. **Next, by review tier** (CLAUDE.md Rule 16): trivial harmless edits stop
+   at step 1. Every meaningful change continues with the `qa-runner` agent
+   (steps 4-6 with the full output kept out of the conversation) and then the
+   `change-reviewer` agent. High-risk changes also get their specialist
+   (listing-payload-guardian / account-scope-reviewer / security-review)
+   BEFORE this skill. Do not run specialists the change does not need.
 
 ## Output (report to the owner, CLAUDE.md Rule 3/5)
 - plain English: what was checked and whether it is safe

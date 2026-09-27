@@ -40,6 +40,10 @@ Rules:
 - Memory notes (the user's auto-memory) are not the project record: project
   facts go in docs/; memory is for personal preferences about how to work.
 - Keep entries short: a few lines each, with a file or function name to search.
+- Governance files (CLAUDE.md, .claude/settings*.json, hooks, agents, skills)
+  are never edited as part of context upkeep. Write the proposal (exact text
+  and reason) in the task report; only after the owner approves, make the
+  edit — the `guard_rules` hook will then ask him to confirm it once more.
 
 ## Output
 A short list for the owner: "Updated: ... / Proposed for your approval: ...".

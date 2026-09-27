@@ -24,7 +24,9 @@ The owner's message, and usually `<main checkout>/read.txt` (the task inbox).
    Read `current-work.md` and the relevant part of `docs/known-issues.md`.
 3. **Classify:** UI / backend / Amazon API / account scope / new feature /
    refactor / deployment / maintenance / question-only. A question-only task
-   needs no branch: answer and stop.
+   needs no branch: answer and stop. Also pick the **review tier** (CLAUDE.md
+   Rule 16: trivial / meaningful / UI / high risk) and name the specialists it
+   needs, and only those.
 4. **Separate** (memory: ask-before-changing-existing-behaviour):
    ALREADY DOES (cite file/function) / NEEDS YOUR INPUT / WOULD CHANGE
    BEHAVIOUR / PURE ADDITION.
