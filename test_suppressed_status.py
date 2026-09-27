@@ -18,10 +18,15 @@ THREE FAULTS BEHIND ONE SYMPTOM, and this pins all three.
 
 Every payload below is real, captured from nestwell_goods/UK on 19 Sep 2026.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import listing_status as S          # noqa: E402
 
@@ -40,7 +45,7 @@ def yes(label, got):
 
 
 def read(p):
-    with open(r"D:\AltaScraper\%s" % p, encoding="utf-8-sig") as f:
+    with open(_os_repo.path.join(_REPO, r"%s") % p, encoding="utf-8-sig") as f:
         return f.read()
 
 

@@ -114,14 +114,14 @@ function salesDrawFilters(){
     p.className = "seg";
     p.innerHTML = SALES_PRESETS.map(function(x){
       return '<button class="'+(SALES.preset===x[0]?"on":"")+'" '
-           + 'onclick="salesSet(\'preset\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+           + 'onclick="salesSet(\'preset\',' + jsArg(x[0]) + ')">'+x[1]+'</button>';}).join("");
   }
   const g=document.getElementById("sales_gran");
   if(g){
     g.className = "seg";
     g.innerHTML = SALES_GRAN.map(function(x){
       return '<button class="'+(SALES.gran===x[0]?"on":"")+'" '
-           + 'onclick="salesSet(\'gran\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+           + 'onclick="salesSet(\'gran\',' + jsArg(x[0]) + ')">'+x[1]+'</button>';}).join("");
   }
   // THE LAST THREE WHOLE MONTHS. Orbit puts Aug / Jul / Jun beside the presets,
   // and a month is the unit a business reports in -- picking one out of two date
@@ -140,7 +140,7 @@ function salesDrawFilters(){
                     "Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()];
       const on = (SALES.preset === "custom" && SALES.start === start && SALES.end === end);
       html += '<button class="' + (on ? "on" : "") + '" '
-           +  'onclick="salesSetMonth(\'' + start + '\',\'' + end + '\')" '
+           +  'onclick="salesSetMonth(' + jsArg(start) + ',' + jsArg(end) + ')" '
            +  'title="' + start + ' to ' + end + '">' + name + '</button>';
     }
     mo.innerHTML = html;

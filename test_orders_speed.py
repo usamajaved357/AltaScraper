@@ -8,9 +8,14 @@
  a backup"
 "the orders page takes too much long to reflect the item name and image etc"
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -20,12 +25,12 @@ def check(l, g, w):
 def truthy(l, g): check(l, bool(g), True)
 def falsy(l, g): check(l, bool(g), False)
 
-L = open(r"D:\AltaScraper\static\js\listings.js", encoding="utf-8").read()
-M = open(r"D:\AltaScraper\static\js\miles_template.js", encoding="utf-8").read()
-O = open(r"D:\AltaScraper\routes\orders_routes.py", encoding="utf-8").read()
-R = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
-SR = open(r"D:\AltaScraper\domain\source_repo.py", encoding="utf-8").read()
-J = open(r"D:\AltaScraper\static\js\sourcing.js", encoding="utf-8").read()
+L = open(_os_repo.path.join(_REPO, r"static\js\listings.js"), encoding="utf-8").read()
+M = open(_os_repo.path.join(_REPO, r"static\js\miles_template.js"), encoding="utf-8").read()
+O = open(_os_repo.path.join(_REPO, r"routes\orders_routes.py"), encoding="utf-8").read()
+R = open(_os_repo.path.join(_REPO, r"routes\sourcing_routes.py"), encoding="utf-8").read()
+SR = open(_os_repo.path.join(_REPO, r"domain\source_repo.py"), encoding="utf-8").read()
+J = open(_os_repo.path.join(_REPO, r"static\js\sourcing.js"), encoding="utf-8").read()
 
 print("=== the table columns line up ===")
 # liveTableRow shipped with NINE cells against a ten-column header, so the whole
@@ -81,7 +86,7 @@ check("an unchecked SKU behaves as before", d3["blocked_by"], "")
 # code that reads listing_state -- which is where it belongs and where the next
 # person changing that branch will see it. The check follows the rule rather
 # than the file it used to sit in.
-_RUN = open(r"D:\AltaScraper\domain\source_run.py", encoding="utf-8").read()
+_RUN = open(_os_repo.path.join(_REPO, r"domain\source_run.py"), encoding="utf-8").read()
 truthy("and a timeout is never taken as deletion",
        "\"Amazon would not answer\" is NOT \"the listing is gone\"" in _RUN)
 
@@ -103,7 +108,7 @@ truthy("  saying how many it dropped", "X-Alta-Skipped-Deleted" in R)
 print("\n=== every rule is per SKU, never per ASIN ===")
 # "the repricer should work for each sku, because a single asin can have more
 #  than 1 sku. the rule is per sku and not per asin"
-SS = open(r"D:\AltaScraper\domain\sourcing.py", encoding="utf-8").read()
+SS = open(_os_repo.path.join(_REPO, r"domain\sourcing.py"), encoding="utf-8").read()
 truthy("said in decide()", "PER SKU, NEVER PER ASIN" in SS)
 truthy("  with the reason", "can carry several of our SKUs" in SS)
 # Asserted on CODE, with comments AND docstrings removed. The prose says the word
@@ -146,7 +151,7 @@ truthy("and it is offered beside the listings themselves",
 truthy("  which now have a view of their own",
        'LIST_SOURCE==="removed"' in M)
 truthy("  reachable from the toolbar", 'data-src="removed"' in
-       open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read())
+       open(_os_repo.path.join(_REPO, r"templates\dashboard.html"), encoding="utf-8").read())
 truthy("  and the old warning points at it instead of hiding them",
        "see ${goneRows.length>1?'them':'it'} in Removed" in M)
 # Clearing them is still a deliberate act and still says it does not touch Amazon.

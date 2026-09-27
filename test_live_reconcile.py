@@ -19,9 +19,14 @@ Orbit's rule, which this now follows: "Orders API wins for top-line
 Amazon is stood in for throughout: what is being tested is which source the app
 BELIEVES and what it writes down, not what Amazon says.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil, datetime as dt
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from data import db as _db
 from domain import sales_data as _sd

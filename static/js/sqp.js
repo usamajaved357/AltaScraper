@@ -100,7 +100,7 @@ function sqpRender() {
     const c = s[k];
     if (!c || !c.count) return;
     const on = SQP.filter === k ? " on" : "";
-    html += '<div class="ui-stat' + on + '" onclick="sqpFilter(\'' + k + '\')">' +
+    html += '<div class="ui-stat' + on + '" onclick="sqpFilter(' + jsArg(k) + ')">' +
       '<div class="ui-stat-v">' + c.count + "</div>" +
       '<div class="ui-stat-k">' + esc(c.label) + "</div>" +
       (c.missed ? '<div class="cc" style="font-size:11px">' + sqpNum(c.missed) +

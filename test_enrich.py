@@ -6,8 +6,13 @@ thumbnails trickle in, and pressing "pull live images" by hand. There was no
 reason a person had to ask -- the same background job already keeps the catalogue
 fresh.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, time, tempfile, shutil
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 from flask import Flask, jsonify, request
 
 import domain.live_snapshots as snap
@@ -212,22 +217,22 @@ print("\n=== thumbnails ask the CDN for the size they will be drawn at ===")
 # one -- kilobytes instead of most of a megabyte, per picture, per row.
 import io as _io
 import re as _re
-T = _io.open(r"D:\AltaScraper\static\js\thumbs.js", encoding="utf-8").read()
+T = _io.open(_os_repo.path.join(_REPO, r"static\js\thumbs.js"), encoding="utf-8").read()
 check("there is ONE helper, not one rule per file",
       len(_re.findall(r"function thumbUrl\(", T)), 1)
 for f in ("stock.js", "orders.js", "sourcing.js", "sales.js", "listings.js",
           "miles_template.js"):
-    src = _io.open(r"D:\AltaScraper\static\js\%s" % f, encoding="utf-8").read()
+    src = _io.open(_os_repo.path.join(_REPO, r"static\js\%s") % f, encoding="utf-8").read()
     check("  %s routes its thumbnails through it" % f,
           ("thumbUrl(" in src or "thumbImg(" in src), True)
 check("it is loaded before anything that draws a picture",
-      _io.open(r"D:\AltaScraper\templates\dashboard.html",
+      _io.open(_os_repo.path.join(_REPO, r"templates\dashboard.html"),
                encoding="utf-8").read().index("js/thumbs.js")
-      < _io.open(r"D:\AltaScraper\templates\dashboard.html",
+      < _io.open(_os_repo.path.join(_REPO, r"templates\dashboard.html"),
                  encoding="utf-8").read().index("js/listings.js"), True)
 
 print("\n=== the views are reused, not reimplemented (Rule 12) ===")
-src = open(r"D:\AltaScraper\domain\live_refresher.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"domain\live_refresher.py"), encoding="utf-8").read()
 check("it calls the real /live/images view",
       'app.view_functions.get("live_images")' in src, True)
 check("  and the real /live/aplus view",

@@ -26,7 +26,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const read = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 const ctx = {esc: s => String(s == null ? "" : s).replace(/[&<>"]/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))};
 new Function("exports", "esc", read("static/js/pageui.js") +

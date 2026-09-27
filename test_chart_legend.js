@@ -46,6 +46,8 @@ const sandbox = {
   matchMedia: undefined,
 };
 sandbox.window = sandbox;
+// The page's own jsArg (users.js); handlers use it since Milestone 2.
+sandbox.jsArg = require("./test_helpers.js").jsArg;
 vm.createContext(sandbox);
 try {
   vm.runInContext(src, sandbox, { filename: "salescharts.js" });

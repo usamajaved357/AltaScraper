@@ -791,11 +791,11 @@ function salesChart(points, opts){
     hits += `<rect x="${_hb.x}" y="${padT}"
                    width="${_hb.w}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
-                   onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},${
+                   onmousemove="_scHover(${jsArg(cid)},${i},${x(i).toFixed(1)},${
                        v === null ? -1 : y(v).toFixed(1)},'${_scAttr(p.label)}','${_scAttr(shown)}')"
-                   onmouseleave="_scLeave('${cid}')"
-                   onmousedown="_scDragStart('${cid}',${i},event)"
-                   onmouseup="_scDragEnd('${cid}',${i})"></rect>`;
+                   onmouseleave="_scLeave(${jsArg(cid)})"
+                   onmousedown="_scDragStart(${jsArg(cid)},${i},event)"
+                   onmouseup="_scDragEnd(${jsArg(cid)},${i})"></rect>`;
   });
   // The marker: a vertical line and a dot, moved by the handler rather than
   // redrawn, so hovering costs nothing.
@@ -1429,11 +1429,11 @@ function salesCombo(o){
     hits += `<rect x="${_hb.x}" y="${padT}"
                    width="${_hb.w}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
-                   onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},-1,
+                   onmousemove="_scHover(${jsArg(cid)},${i},${x(i).toFixed(1)},-1,
                        '${_scAttr(c)}','${_scAttr(_scRows(rows))}')"
-                   onmouseleave="_scLeave('${cid}')"
-                   onmousedown="_scDragStart('${cid}',${i},event)"
-                   onmouseup="_scDragEnd('${cid}',${i})"></rect>`;
+                   onmouseleave="_scLeave(${jsArg(cid)})"
+                   onmousedown="_scDragStart(${jsArg(cid)},${i},event)"
+                   onmouseup="_scDragEnd(${jsArg(cid)},${i})"></rect>`;
   });
   // The shaded band that shows the range while it is being chosen, and the
   // readout the drag writes into.
@@ -1452,7 +1452,7 @@ function salesCombo(o){
   // because "this one is dimmed" is not information a screen reader has.
   const item = function(mark, label, k, on){
     return '<button type="button" class="sc-key' + (on ? '' : ' off') + '"'
-         + ' onclick="scToggleSeries(\'' + cid + '\',\'' + k + '\')"'
+         + ' onclick="scToggleSeries(' + jsArg(cid) + ',' + jsArg(k) + ')"'
          + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
          + ' title="' + (on ? 'Hide ' : 'Show ') + _scAttr(label) + ' on the chart">'
          + mark + '<span>' + _scEsc(label) + '</span></button>';

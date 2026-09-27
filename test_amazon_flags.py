@@ -28,9 +28,14 @@ against one shared reader, and the false-yes direction is checked hardest,
 because a warning shown wrongly is worse than one missed: it is what stops the
 screen being believed at all.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import amazon_flags as _flags       # noqa: E402
 from domain import orders_view as _ov           # noqa: E402
@@ -130,7 +135,7 @@ print("\n== one reader, not five ==")
 # is left behind, the same bug is one Amazon change away in that screen instead.
 import re                                                        # noqa: E402
 for path in ("domain/orders_view.py", "monitor/pricing.py"):
-    src = open(r"D:\AltaScraper\%s" % path, encoding="utf-8-sig").read()
+    src = open(_os_repo.path.join(_REPO, r"%s") % path, encoding="utf-8-sig").read()
     body = re.sub(r'"""[\s\S]*?"""', "", src)
     body = "\n".join(re.sub(r"#.*$", "", ln) for ln in body.split("\n"))
     stray = re.findall(r'bool\(\s*[\w.]*\.get\(\s*"Is', body)

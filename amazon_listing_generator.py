@@ -5227,6 +5227,10 @@ def _load_attr_defaults() -> dict:
             _ATTR_DEFAULTS_CACHE["data"] = json.load(open(CONFIG_PATH.parent / "attribute_defaults.json", encoding="utf-8"))
         except Exception:
             _ATTR_DEFAULTS_CACHE["data"] = {}
+        # Shared by every account, so never a brand, name, identifier or offer
+        # (CLAUDE.md Rule 1) -- cleaned as read, for files saved before the rule.
+        from listing.attribute_defaults import clean_file_data as _clean_defaults
+        _ATTR_DEFAULTS_CACHE["data"] = _clean_defaults(_ATTR_DEFAULTS_CACHE["data"])
     return _ATTR_DEFAULTS_CACHE["data"] or {}
 
 

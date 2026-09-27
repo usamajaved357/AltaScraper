@@ -182,6 +182,7 @@ truthy("6. the brand is shown", "Brand " in JS and "r.brand" in JS)
 print("\n=== the renderer actually runs ===")
 probe = r"""
 const fs=require("fs"), vm=require("vm");
+globalThis.jsArg=require(require("path").join(process.cwd(),"test_helpers.js")).jsArg;  // the page's own (Milestone 2)
 globalThis.window=globalThis;
 globalThis.esc=s=>String(s==null?"":s).replace(/[&<>"']/g,
   c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));

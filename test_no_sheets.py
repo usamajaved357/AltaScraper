@@ -12,9 +12,14 @@ without a spreadsheet configured.
 The test imports the app with gspread and google.oauth2 forced to fail, which is
 the state a deployment is in when those packages are not installed.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import builtins, importlib, os, sys, types
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -72,23 +77,30 @@ if ok_import:
 print("\n=== the store in use is the database, not a spreadsheet ===")
 from data import choice as _choice
 import json
-CFG = r"D:\AltaScraper\config.json"
+# A TEMPORARY CONFIG, never the real one. This read the checkout's own
+# config.json -- the owner's live credentials in the main checkout -- to ask a
+# question whose answer does not depend on it: the database is the only store
+# whatever the config says (data/choice._SHEETS_UNLINKED). Milestone 1.
+import tempfile as _tf
+CFG = _os_repo.path.join(_tf.mkdtemp(prefix="nosheets_"), "config.json")
+with open(CFG, "w", encoding="utf-8") as _fh:
+    json.dump({"accounts": []}, _fh)
 cfg = json.load(open(CFG, encoding="utf-8"))
 check("backend", _choice.decide(cfg, CFG)["backend"], "db")
 
 print("\n=== every publish path resolves the store the same way ===")
 # regen opened a Google Sheet directly while everything else used output_ws, so
 # a regenerated listing landed where the app never looks.
-regen = open(r"D:\AltaScraper\listing\regen.py", encoding="utf-8").read()
+regen = open(_os_repo.path.join(_REPO, r"listing\regen.py"), encoding="utf-8").read()
 truthy("regen uses the shared resolver", "G.output_ws(config, gc, spreadsheet_id, output_tab)" in regen)
 truthy("  and no longer opens a spreadsheet itself",
        "_open_sheet_retry" not in regen and "sh.worksheet(" not in regen)
-gen = open(r"D:\AltaScraper\amazon_listing_generator.py", encoding="utf-8").read()
+gen = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
 truthy("output_ws returns the database store on this backend",
        "SheetLikeStore(ListingStore(" in gen)
 
 print("\n=== the header does not advertise a spreadsheet ===")
-shell = open(r"D:\AltaScraper\static\js\shell.js", encoding="utf-8").read()
+shell = open(_os_repo.path.join(_REPO, r"static\js\shell.js"), encoding="utf-8").read()
 truthy("nothing is drawn on the database backend",
        'if(window.DATA_BACKEND === "db"){\n    el.innerHTML = "";' in shell)
 truthy("  no Import-from chip", "_srcChip(\"Import from\"" not in shell)
@@ -103,7 +115,7 @@ truthy("  no gid caption", "only read when you press Import" not in shell)
 # /input/import and the auto-import inside /run/generate are commented out; see
 # test_input_upload.py, which checks the removal by looking for a LIVE
 # @app.route rather than for text that is still present in the commented code.
-tpl = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read()
+tpl = open(_os_repo.path.join(_REPO, r"templates\dashboard.html"), encoding="utf-8").read()
 truthy("the sheet-import button is gone from the queue",
        "inputQueueImport(" not in tpl)
 truthy("  and the file upload stands where it stood",

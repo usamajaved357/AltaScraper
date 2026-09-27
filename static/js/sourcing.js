@@ -47,12 +47,32 @@ function _srcUrl(path, extra){
   const q = [_srcScope(), extra || ""].filter(Boolean).join("&");
   return path + (q ? (path.indexOf("?") >= 0 ? "&" : "?") + q : "");
 }
-function _srcBody(o){
+function _srcBody(o, scope){
   const b = Object.assign({}, o || {});
-  if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id) b.id = CUR_ACCOUNT.id;
-  if(typeof WS_MARKET !== "undefined" && WS_MARKET) b.marketplace = WS_MARKET;
+  const sc = scope || _srcScopeNow();
+  if(sc.id) b.id = sc.id;
+  if(sc.marketplace) b.marketplace = sc.marketplace;
   return JSON.stringify(b);
 }
+/* The account + marketplace on screen NOW, as a value that will not change.
+ *
+ * A BULK LOOP TAKES THIS ONCE, before its first write, and passes it to every
+ * _srcBody call. Reading CUR_ACCOUNT afresh per SKU meant switching account
+ * mid-loop armed -- or re-ruled -- the new account's same-SKU listings
+ * (master audit S1, 28 Sep 2026). */
+function _srcScopeNow(){
+  return {
+    id: (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+        ? String(CUR_ACCOUNT.id) : "",
+    marketplace: (typeof WS_MARKET !== "undefined" && WS_MARKET) ? String(WS_MARKET) : ""
+  };
+}
+/* Is the screen still on the scope a loop started in? */
+function _srcStillIn(scope){
+  const now = _srcScopeNow();
+  return now.id === scope.id && now.marketplace === scope.marketplace;
+}
+const _SRC_MOVED = "stopped — the account or marketplace was changed part-way";
 
 function _sesc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -61,11 +81,9 @@ function _sesc(s){
 // An argument for an inline onclick. Single-quoted for JS, then escaped for the
 // attribute -- see the same helper in users.js and the bug that made it
 // necessary: JSON.stringify closes the attribute it is pasted into.
-function _sarg(s){
-  const js = String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
-  return "'" + js.replace(/&/g,"&amp;").replace(/"/g,"&quot;")
-                 .replace(/</g,"&lt;").replace(/>/g,"&gt;") + "'";
-}
+// ONE escaper for a value inside an inline handler: jsArg, in users.js (Rule 12,
+// Milestone 2). This name is kept for its callers.
+function _sarg(s){ return jsArg(s); }
 /* An amount, WITH the currency it is in.
  *
  * It used to return a bare "10.06". On a UK-only screen that is merely terse;
@@ -550,6 +568,8 @@ async function sourcingMinPriceBulk(){
              + (p.was != null ? "   was " + _smoney(p.was) : "");
       }).join("\n");
 
+    // The account these were chosen in, fixed BEFORE the question (master audit S1).
+      const scope = _srcScopeNow();
       const go = await srcConfirm({
         title: "Set a floor on " + plan.length + " listing(s)?",
         body: sample
@@ -569,11 +589,12 @@ async function sourcingMinPriceBulk(){
       const failed = [];
       toast("Setting " + plan.length + " floor(s)…");
       for(const p of plan){
+        if(!_srcStillIn(scope)){ failed.push(_SRC_MOVED); break; }
         try{
           const j = await (await fetch("/sourcing/rules", {method: "POST",
             headers: {"Content-Type": "application/json"},
             body: _srcBody({sku: p.sku,
-                            rule: {min_price: String(p.floor)}})})).json();
+                            rule: {min_price: String(p.floor)}}, scope)})).json();
           if(j && j.ok) ok++;
           else failed.push(p.sku + ": " + ((j && j.error) || "refused"));
         }catch(e){ failed.push(p.sku + ": " + String(e)); }
@@ -669,6 +690,8 @@ async function sourcingHoldAtCurrent(){
   ask += "\n\nNothing on Amazon changes now — this only sets the floor the "
        + "repricer works to.";
   // srcConfirm, not the browser's confirm(): this page deliberately has none.
+  // The account these were chosen in, fixed BEFORE the question (master audit S1).
+  const scope = _srcScopeNow();
   const go = await srcConfirm({
     title: "Hold " + rows.length + " listing(s) at today's price?",
     body: ask,
@@ -683,11 +706,12 @@ async function sourcingHoldAtCurrent(){
   const failed = [];
   toast("Holding " + rows.length + " listing(s)…");
   for(const r of rows){
+    if(!_srcStillIn(scope)){ failed.push(_SRC_MOVED); break; }
     try{
       const j = await (await fetch("/sourcing/rules", {method: "POST",
         headers: {"Content-Type": "application/json"},
         body: _srcBody({sku: r.sku,
-                        rule: {hold_price: String(r.current.price)}})})).json();
+                        rule: {hold_price: String(r.current.price)}}, scope)})).json();
       if(j && j.ok) ok++; else failed.push(r.sku + ": " + ((j && j.error) || "refused"));
     }catch(e){ failed.push(r.sku + ": " + String(e)); }
   }
@@ -3062,10 +3086,12 @@ function _srcPicked(){
 async function _srcBulkRule(rule, verb){
   const skus = _srcPicked();
   if(!skus.length) return;
+  const scope = _srcScopeNow();
   let ok = 0;
   const bad = [];
   for(const sku of skus){
-    const err = await sourcingSaveRuleQuiet(sku, rule);
+    if(!_srcStillIn(scope)){ bad.push(_SRC_MOVED); break; }
+    const err = await sourcingSaveRuleQuiet(sku, rule, scope);
     if(err) bad.push(sku + ": " + err); else ok++;
   }
   toast(verb + " on " + ok + " SKU" + (ok === 1 ? "" : "s")
@@ -3076,11 +3102,11 @@ async function _srcBulkRule(rule, verb){
 }
 
 /* sourcingSaveRule without the toast and without a refresh per SKU. */
-async function sourcingSaveRuleQuiet(sku, rule){
+async function sourcingSaveRuleQuiet(sku, rule, scope){
   try{
     const j = await (await fetch("/sourcing/rules", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: _srcBody({sku: sku, rule: rule})})).json();
+      body: _srcBody({sku: sku, rule: rule}, scope)})).json();
     if(!j.ok) return j.error || "refused";
     const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0];
     if(row) row.rule = Object.assign({}, row.rule || {}, rule);
@@ -3159,6 +3185,9 @@ async function sourcingBulkTarget(kind, btn){
 async function sourcingBulkArm(on){
   const skus = _srcPicked();
   if(!skus.length) return;
+  // Fixed BEFORE the question is asked: the confirm names these SKUs in this
+  // account, and that is what the answer agrees to.
+  const scope = _srcScopeNow();
   if(on){
     const ok = await uiConfirm(
       "Arm " + skus.length + " SKU" + (skus.length === 1 ? "" : "s") + "?\n\n"
@@ -3174,10 +3203,11 @@ async function sourcingBulkArm(on){
   let done = 0;
   const bad = [];
   for(const sku of skus){
+    if(!_srcStillIn(scope)){ bad.push(_SRC_MOVED); break; }
     try{
       const j = await (await fetch("/sourcing/arm", {method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: _srcBody({sku: sku, live: !!on})})).json();
+        body: _srcBody({sku: sku, live: !!on}, scope)})).json();
       if(j.ok) done++; else bad.push(sku + ": " + (j.error || "refused"));
     }catch(e){ bad.push(sku + ": " + String((e && e.message) || e)); }
   }

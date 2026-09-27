@@ -31,8 +31,8 @@ function check(label, got, want) {
   console.log("  %s %s", label.padEnd(64),
               ok ? "OK" : `FAIL got=${JSON.stringify(got)} want=${JSON.stringify(want)}`);
 }
-const sales = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
-const routes = fs.readFileSync("D:/AltaScraper/routes/sales_routes.py", "utf8");
+const sales = fs.readFileSync((__dirname + "/static/js/sales.js"), "utf8");
+const routes = fs.readFileSync((__dirname + "/routes/sales_routes.py"), "utf8");
 
 console.log("\n=== the live endpoints are named in ONE place ===");
 check("there is a list of them", /const _S_LIVE = \[/.test(sales), true);
@@ -104,7 +104,7 @@ check("  which is what makes a request shareable at all",
 check("and leaving an account forgets what was held for it",
       /function _sForget\(\)/.test(sales), true);
 check("  hooked into the ONE thing that already forgets on a switch",
-      /_sForget\(\)/.test(fs.readFileSync("D:/AltaScraper/static/js/screenstate.js", "utf8")),
+      /_sForget\(\)/.test(fs.readFileSync((__dirname + "/static/js/screenstate.js"), "utf8")),
       true);
 check("  and the figures themselves go too, not just the held replies",
       /SALES\.gridSeries = null/.test(fnBody(sales, "_sForget")), true);

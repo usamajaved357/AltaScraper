@@ -22,9 +22,14 @@ The distinction this file pins:
     Compliance Risk   any row, because a stale verdict is not a fact about the
     IP Risk           listing -- it is a fact about a rule we have since fixed.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from amazon_listing_generator import load_ip_rules
 from listing import flags
@@ -121,7 +126,7 @@ check("  and it is not written twice",
       k["new"]["notes"].count("possible brand words"), 1)
 
 print("\n== the route writes every changed row, not only the ones it may re-status ==")
-src = open(r"D:\AltaScraper\routes\listing_routes.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"routes\listing_routes.py"), encoding="utf-8").read()
 check("the filter is on what changed", 'if res["changed"]:' in src, True)
 check("  not on whether the status is ours",
       'if res["eligible"] and res["changed"]' in src, False)

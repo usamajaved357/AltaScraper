@@ -137,6 +137,7 @@ truthy("and it fails open", "return None" in
 print("\n=== the chart survives a period whose own days are unknown ===")
 PROBE = r"""
 const fs = require("fs"), vm = require("vm");
+globalThis.jsArg=require(require("path").join(process.cwd(),"test_helpers.js")).jsArg;  // the page's own (Milestone 2)
 globalThis.window = globalThis;
 globalThis.document = {getElementById: () => null, addEventListener(){}};
 globalThis.addEventListener = function(){};

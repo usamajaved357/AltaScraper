@@ -37,6 +37,12 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
     @app.route("/backup/status")
     def backup_status():
         st = _backup.NIGHTLY.status()
+        # Each result names its account; only the caller's are shown
+        # (account-scope review, Milestone 2).
+        from auth import users as _users
+        st["last_result"] = [r for r in (st.get("last_result") or [])
+                             if not isinstance(r, dict) or not r.get("workspace")
+                             or _users.caller_may_see(CONFIG_PATH, r.get("workspace"))]
         st["ok"] = True
         # Said in words, because "last_ok: 0" is not something to read at a
         # glance and this is a screen you look at when you are worried.
@@ -73,6 +79,13 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
         runs in WAL mode, so a plain file copy can miss the newest writes or be
         unreadable.
         """
+        # EVERY account is in this file, so only someone allowed every account
+        # may take it -- manage_accounts alone let a manager limited to one
+        # account download all of them (account-scope review, Milestone 2).
+        from auth import users as _users
+        if not _users.caller_sees_every_account(CONFIG_PATH):
+            return jsonify({"ok": False, "error": "The full backup holds every "
+                            "account, and your access covers only some."}), 403
         try:
             path = _backup.snapshot(CONFIG_PATH)
         except Exception as e:
@@ -105,7 +118,11 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
         """
         only = (request.args.get("id") or "").strip()
         out = []
-        for a in _accounts():
+        # ONLY THE ACCOUNTS THE CALLER MAY OPEN. This walked every account and
+        # reported each one's listing counts and missing SKUs to anyone signed
+        # in (master audit, 28 Sep 2026).
+        from auth import users as _users
+        for a in _users.visible_accounts(CONFIG_PATH, _accounts()):
             aid = str(a.get("id") or "").strip()
             if not aid or (only and aid != only):
                 continue

@@ -25,10 +25,15 @@ THE THREE THINGS THIS PINS
      24-hour rest period would change nothing at all and the setting would be a
      lie the user could not see through.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from monitor import checker as _chk        # noqa: E402
 from monitor import schedule as _sch       # noqa: E402
@@ -105,7 +110,7 @@ check("  and does not drop the per-ASIN floor to zero",
       _chk._MIN_RECHECK_LIVE >= 3600, True)
 
 print("\n== the button is unconditional ==")
-SRC = open(r"D:\AltaScraper\monitor\checker.py", encoding="utf-8-sig").read()
+SRC = open(_os_repo.path.join(_REPO, r"monitor\checker.py"), encoding="utf-8-sig").read()
 BODY = re.sub(r'"""[\s\S]*?"""', "", SRC)
 BODY = "\n".join(re.sub(r"#.*$", "", ln) for ln in BODY.split("\n"))
 # check_now_async must not consult the schedule -- pressing the button means
@@ -128,13 +133,13 @@ truthy("  waking often enough that a change takes effect quickly",
        and int(re.search(r"_TICK_S\s*=\s*(\d+)", BODY).group(1)) <= 300)
 
 print("\n== both schedulers read the same choice (Rule 12) ==")
-DASH = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8-sig").read()
+DASH = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8-sig").read()
 check("dashboard.py no longer hardcodes 24 hours",
       bool(re.search(r"MONITOR_INTERVAL_S[^)]*24 \* 3600", DASH)), False)
-ROUTES = open(r"D:\AltaScraper\routes\monitor_routes.py", encoding="utf-8-sig").read()
+ROUTES = open(_os_repo.path.join(_REPO, r"routes\monitor_routes.py"), encoding="utf-8-sig").read()
 truthy("there is a route to read and set it", "/monitor/schedule" in ROUTES)
 truthy("  and saving tells the checker immediately", "_chk.set_interval(" in ROUTES)
-JS = open(r"D:\AltaScraper\static\js\monitor.js", encoding="utf-8-sig").read()
+JS = open(_os_repo.path.join(_REPO, r"static\js\monitor.js"), encoding="utf-8-sig").read()
 truthy("the screen loads it when the monitor opens", "monSchedLoad()" in JS)
 truthy("  offers the common intervals as shortcuts", "suggested_hours" in JS)
 truthy("  and still lets any number be typed",
@@ -147,12 +152,12 @@ truthy("  redrawing from what the server stored, not what was clicked",
 
 print("\n== config.json is read and written in one place (Rule 12) ==")
 for path in ("routes/monitor_routes.py", "routes/sourcing_routes.py"):
-    src = open(r"D:\AltaScraper\%s" % path, encoding="utf-8-sig").read()
+    src = open(_os_repo.path.join(_REPO, r"%s") % path, encoding="utf-8-sig").read()
     body = "\n".join(re.sub(r"#.*$", "", ln) for ln in src.split("\n"))
     check("%s does not open config.json by hand" % path,
           bool(re.search(r'open\(CONFIG_PATH,\s*["\']w', body)), False)
     truthy("  it goes through config/settings", "_settings." in body)
-SET = open(r"D:\AltaScraper\config\settings.py", encoding="utf-8-sig").read()
+SET = open(_os_repo.path.join(_REPO, r"config\settings.py"), encoding="utf-8-sig").read()
 truthy("and that writer is atomic, for the file holding every credential",
        "write_json_atomic" in SET)
 

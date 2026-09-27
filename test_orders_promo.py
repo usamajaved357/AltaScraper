@@ -30,9 +30,14 @@ The rule is not "always subtract the coupon". It is "know what your revenue
 figure already includes". This test exists so a later reader who finds one half
 does not go and "fix" the other.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -74,7 +79,7 @@ check("  by the coupon, less the fee no longer charged on it",
 # been my arithmetic rather than the code's.
 
 print("\n--- and it is written down where someone would come to change it ---")
-V = open(r"D:\AltaScraper\domain\orders_view.py", encoding="utf-8").read()
+V = open(_os_repo.path.join(_REPO, r"domain\orders_view.py"), encoding="utf-8").read()
 truthy("the measurement is recorded", "26.89" in V or "20.89" in V)
 truthy("  with the seven orders it was measured on",
        "206-9874023-3627501" in V and "026-1374880-3466755" in V)
@@ -91,7 +96,7 @@ got = OP.for_lines(LINES, 0.15, charge_of=lambda s: (18.00, "sku"),
                    promos_by_order={"A": 1.50})
 check("the promotion is counted", got["promos"], 1.5)
 truthy("  and taken out of the profit", "promos" in
-       open(r"D:\AltaScraper\domain\order_profit.py", encoding="utf-8").read())
+       open(_os_repo.path.join(_REPO, r"domain\order_profit.py"), encoding="utf-8").read())
 
 without = OP.for_lines(LINES, 0.15, charge_of=lambda s: (18.00, "sku"))
 check("no promotion reported means none deducted", without["promos"], 0.0)

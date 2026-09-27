@@ -17,9 +17,14 @@ listing was modelled on, never where the stock is bought (CLAUDE.md Rule 1).
 Attaching it as a supplier would produce a source that answers "could not tell"
 on every sweep for ever, and the repricer would correctly do nothing, silently.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json, os, sys, tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -134,7 +139,7 @@ print("\n=== Rule 1: the ASIN in a SKU is the COMPETITOR's ===")
 # It is used to look a row up and for nothing else. Worth asserting, because a
 # helper that resolves an ASIN from a SKU is exactly the shape of thing that
 # gets reused later for the wrong purpose.
-src = open(r"D:\AltaScraper\domain\source_link.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"domain\source_link.py"), encoding="utf-8").read()
 truthy("the file says so where it does it", "COMPETITOR" in src and "Rule 1" in src)
 truthy("nothing here writes anything", "INSERT" not in src.upper().replace("INSERT QUEUE", ""))
 

@@ -85,6 +85,7 @@ WEEKS = [
 
 PROBE = r"""
 const fs = require("fs"), vm = require("vm");
+globalThis.jsArg=require(require("path").join(process.cwd(),"test_helpers.js")).jsArg;  // the page's own (Milestone 2)
 globalThis.window = globalThis;
 globalThis.addEventListener = function(){};
 globalThis.document = {
@@ -302,6 +303,7 @@ print("\n=== and the gap survives all the way into the drawn SVG ===")
 # every assertion so far and still be the exact lie this feature must not tell.
 DRAW = r"""
 const fs = require("fs"), vm = require("vm");
+globalThis.jsArg=require(require("path").join(process.cwd(),"test_helpers.js")).jsArg;  // the page's own (Milestone 2)
 globalThis.window = globalThis;
 globalThis.addEventListener = function(){};
 let HTML = "";

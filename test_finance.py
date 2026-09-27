@@ -10,8 +10,13 @@ Three things here are easy to get backwards and expensive when you do:
   * POSTED DATE. A refund lands on the day the money went back, which may be a
     day with no sales at all. That day must still appear.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):

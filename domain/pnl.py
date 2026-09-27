@@ -252,8 +252,9 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     out["fee_rate_detail"] = rate_detail
     out["fees_actual"] = actual
     out["fees_estimated"] = est.get("fees_estimated") or 0.0
-    # The revenue Amazon has not itemised yet, which the estimate is charged on
-    # (after VAT -- the rate is measured on revenue after VAT).
+    # The revenue Amazon has not itemised yet: the part the estimate is charged
+    # on (fees / rate, on the same base the rate was measured on --
+    # order_profit.fee_rate) plus the part with no measurable rate at all.
     unsettled_rev = float(est.get("revenue_fee_unknown") or 0.0)
     if rate:
         unsettled_rev += float(out["fees_estimated"]) / float(rate)

@@ -522,7 +522,7 @@ function _wkTrendCard(){
   let chips = "";
   WK_TREND.forEach(function(t){
     chips += '<button class="db-chip wk-tchip' + (t.key === m.key ? " on" : "")
-      + '" onclick="weeklyTrendPick(\'' + t.key + '\')">' + _wkEsc(t.label)
+      + '" onclick="weeklyTrendPick(' + jsArg(t.key) + ')">' + _wkEsc(t.label)
       + '</button>';
   });
   const missing = WK_TREND_N - built;

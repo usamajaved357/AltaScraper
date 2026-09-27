@@ -570,7 +570,7 @@ function returnsRender(){
           const r = RET_REPORTS[k];
           return '<div class="ri-card"><div class="ri-card-head">'
             + '<div class="ri-card-title">' + _rEsc(r.name) + '</div>'
-            + '<button class="db-chip" onclick="returnsUploadOpen(\'' + k + '\')">'
+            + '<button class="db-chip" onclick="returnsUploadOpen(' + jsArg(k) + ')">'
             + '<i class="ti ti-file-upload"></i> Upload this one</button></div>'
             + '<div class="cc" style="font-size:11.5px;line-height:1.6">'
             + '<b>Where:</b> ' + _rEsc(r.where) + '</div>'

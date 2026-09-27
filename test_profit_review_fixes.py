@@ -207,6 +207,96 @@ _CR = open(os.path.join(HERE, "routes", "cogs_routes.py"), encoding="utf-8").rea
 check("it calls unit_profit.at_price, not the flat-15% estimate",
       "_up.at_price(" in _CR and "_estimate_profit(b.get" not in _CR, True)
 
+print("\n--- the master audit (28 Sep 2026) ---")
+
+print("\n12. an unreadable VAT setting is not 'not registered'")
+from domain import unit_profit as _up                                  # noqa: E402
+from domain import source_repo as _repo                                # noqa: E402
+from domain import sourcing as _src                                    # noqa: E402
+_cfgdir = tempfile.mkdtemp(prefix="vatcfg_")
+_good = os.path.join(_cfgdir, "good.json")
+with open(_good, "w") as _fh:
+    _fh.write('{"accounts": [{"id": "__vat__", "vat_rate": 0.2}]}')
+_torn = os.path.join(_cfgdir, "torn.json")
+with open(_torn, "w") as _fh:
+    _fh.write('{"accounts": [{"id": "__va')          # a write caught half-way
+check("a readable setting is known", _up.account_vat_status(_good, "__vat__"),
+      (0.2, True))
+check("a missing file is known: nothing set",
+      _up.account_vat_status(os.path.join(_cfgdir, "nope.json"), "__vat__"),
+      (None, True))
+check("a torn file is NOT known", _up.account_vat_status(_torn, "__vat__"),
+      (None, False))
+_rule = _repo.rule_for(_torn, "__vat__", "UK", "SKU1")
+check("the repricer's rule says so", _rule.get("vat_unknown"), True)
+_dec = _src.decide({"price": 20.0, "quantity": 3}, [({"id": 1}, {"price": 5.0})],
+                   _rule)
+check("and nothing is priced that run", _dec.get("price"), None)
+check("  with the reason named", _dec.get("blocked_by"),
+      "the account's VAT setting could not be read")
+check("while a readable account prices as before",
+      _repo.rule_for(_good, "__vat__", "UK", "SKU1").get("vat_rate"), 0.2)
+
+print("\n13. the settled-history memo belongs to its own thread")
+import threading as _thr                                               # noqa: E402
+_seen = {}
+
+
+def _other_thread():
+    _seen["other"] = _af._settled_orders(None, W8, "UK")
+
+
+_mine = _af._settled_orders(None, W8, "UK")
+_t = _thr.Thread(target=_other_thread)
+_t.start()
+_t.join()
+check("another thread builds its own answer, never this thread's object",
+      _seen["other"] is not _mine, True)
+check("  with the same content", len(_seen["other"][0]), len(_mine[0]))
+check("and this thread's answer is still reused",
+      _af._settled_orders(None, W8, "UK") is _mine, True)
+
+print("\n14. config.json is only ever written atomically")
+_SR = open(os.path.join(HERE, "routes", "settings_routes.py"), encoding="utf-8").read()
+check("no route truncates it with open(..., 'w')",
+      'open(CONFIG_PATH, "w"' in _SR, False)
+import re as _re                                                       # noqa: E402
+for _rel in ("domain/accounts.py", "monitor/known_sellers.py",
+             "dashboard_brand_patch.py"):
+    _txt = open(os.path.join(HERE, *_rel.split("/")), encoding="utf-8").read()
+    check("  nor does %s" % _rel,
+          bool(_re.search(r"open\((config_path|CONFIG_PATH),\s*[\"']w", _txt)),
+          False)
+# And the accounts writer really writes, and says when it cannot.
+import json                                                            # noqa: E402
+from domain import accounts as _accts                                  # noqa: E402
+_acfg = os.path.join(_TMP, "accounts_cfg.json")
+with open(_acfg, "w", encoding="utf-8") as _fh:
+    json.dump({"accounts": [{"id": "a1", "label": "A"}]}, _fh)
+_accts.save_account({}, _acfg, {"id": "a2", "label": "B"})
+check("an account saved through it is on disk afterwards",
+      [a["id"] for a in json.load(open(_acfg, encoding="utf-8"))["accounts"]],
+      ["a1", "a2"])
+check("and deleting one removes it",
+      (_accts.delete_account({}, _acfg, "a2"),
+       [a["id"] for a in json.load(open(_acfg, encoding="utf-8"))["accounts"]]),
+      (True, ["a1"]))
+
+print("\n15. no floor is worked out on an unknown VAT setting")
+check("floor_price refuses when the VAT setting could not be read",
+      _src.floor_price(5.0, {"vat_unknown": True}), None)
+check("  and still answers when it could",
+      _src.floor_price(5.0, {"vat_rate": 0.2}) is not None, True)
+_PR = open(os.path.join(HERE, "routes", "price_routes.py"), encoding="utf-8").read()
+check("the live price screen says why", "whether its prices carry VAT" in _PR, True)
+
+print("\n16. a listing run with no account open is refused, not run as nobody")
+_LR = open(os.path.join(HERE, "routes", "listing_routes.py"), encoding="utf-8").read()
+_run = _LR[_LR.index("def run(mode)"):]
+_run = _run[:_run.index("def stream(")] if "def stream(" in _run else _run[:20000]
+check("the run stops when no account is open",
+      "if not _scope_acct_id:" in _run and "No account is open" in _run, True)
+
 print("\n%d checks, %d failed" % (len(ran), len(fails)))
 if fails:
     print("FAILED:")

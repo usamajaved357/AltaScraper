@@ -32,6 +32,12 @@ def _safe_next(raw):
     after you had typed your password -- a classic open redirect.
     """
     raw = str(raw or "").strip()
+    # BROWSERS REWRITE WHAT THIS CHECKS. They read "\" as "/" and silently drop
+    # tabs and newlines inside a URL, so "/\evil.example" and "/\t/evil.example"
+    # both passed the "//" test below and were followed as //evil.example --
+    # another site (master audit, 28 Sep 2026). Neither belongs in an app path.
+    if "\\" in raw or any(ord(ch) < 32 or ord(ch) == 127 for ch in raw):
+        return ""
     if not raw.startswith("/") or raw.startswith("//"):
         return ""
     parsed = urlparse(raw)

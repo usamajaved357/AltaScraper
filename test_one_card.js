@@ -28,8 +28,8 @@ function check(label, got, want) {
 function truthy(l, g) { check(l, !!g, true); }
 function falsy(l, g) { check(l, !!g, false); }
 
-const L = fs.readFileSync("D:/AltaScraper/static/js/listings.js", "utf8");
-const M = fs.readFileSync("D:/AltaScraper/static/js/miles_template.js", "utf8");
+const L = fs.readFileSync((__dirname + "/static/js/listings.js"), "utf8");
+const M = fs.readFileSync((__dirname + "/static/js/miles_template.js"), "utf8");
 // Both files explain the change in comments, using the very words these
 // assertions look for. Strip them, or the test passes on the explanation.
 //
@@ -137,7 +137,7 @@ truthy("the Amazon link is drawn only from OUR OWN live ASIN",
        /const ownAsin\s*=\s*ownLiveAsin\(r\)/.test(LC)
        && /\$\{ownAsin\?/.test(LC));
 truthy("  and no button passes the competitor ASIN to a live action",
-       !/optimizeLive\('\$\{esc\(r\.asin/.test(LC));
+       !/optimizeLive\((?:'\$\{esc\(|\$\{jsArg\()r\.asin/.test(LC));
 
 console.log("\n" + fails + " failed");
 process.exit(fails ? 1 : 0);

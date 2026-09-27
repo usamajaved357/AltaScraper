@@ -105,7 +105,9 @@ print("\n== an 'id' that is not a workspace is left alone ==")
 for path, args in (("/users", {"id": "u123"}),
                    ("/media/delete", {"id": "abc"}),
                    ("/notify/channel", {"id": "3"}),
-                   ("/trackers/watch", {"id": "B0XXXXXXXX"}),
+                   # /trackers/watch WAS in this list and is not: its route
+                   # reads `id` AS the account (Milestone 2, 28 Sep 2026).
+                   ("/monitor/remove", {"id": "12"}),
                    ("/genimage/job_status", {"id": "job1"})):
     check("%-26s id is not read as a workspace" % path,
           guard.named_workspace(path, args, None), "")
@@ -119,9 +121,10 @@ src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "auth", "guard.py"), encoding="utf-8").read()
 truthy("before_request passes request.args",
        "check(request.path, request.method, user, body, request.args)" in src)
-truthy("  and the check reads them", "named_workspace(p, args, json_body)" in src)
+# named_workspaceS since Milestone 2: every account named, not the first.
+truthy("  and the check reads them", "named_workspaces(p, args, json_body)" in src)
 truthy("  before features or permissions are considered",
-       src.index("named_workspace(p, args") < src.index("feat = feature_for(p)"))
+       src.index("named_workspaces(p, args") < src.index("feat = feature_for(p)"))
 
 print("\n== NO screen reads every account any more ==")
 # There WAS one: the Business overview aggregated all six limited companies and

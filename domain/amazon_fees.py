@@ -492,7 +492,15 @@ def rate_for(config_path, workspace_id, marketplace, end_date=None):
             % (DEFAULT_REFERRAL_RATE * 100))
 
 
-_SETTLED_MEMO = {}
+# PER THREAD, because the database connection is per thread (data/db.get_db)
+# and the freshness check below is a per-connection counter. It was one global
+# dict keyed by id(conn): a finished thread's connection could be collected and
+# a new one given the same id and the same starting counters, so a stale entry
+# looked fresh -- and entries piled up, one per thread (audit, 28 Sep 2026).
+# A thread-local memo goes away with its thread and never meets another
+# thread's connection.
+import threading as _threading
+_SETTLED_LOCAL = _threading.local()
 
 
 def _settled_orders(config_path, ws, mkt):
@@ -524,10 +532,15 @@ def _settled_orders(config_path, ws, mkt):
         # THIS one does. Both are per connection, so the memo is too.
         sig = (conn.execute("PRAGMA data_version").fetchone()[0],
                conn.total_changes)
-        k = (_db.db_path(config_path), ws, mkt, id(conn))
-        hit = _SETTLED_MEMO.get(k)
-        if hit and hit[0] == sig:
-            return hit[1]
+        memo = getattr(_SETTLED_LOCAL, "memo", None)
+        if memo is None:
+            memo = _SETTLED_LOCAL.memo = {}
+        k = (_db.db_path(config_path), ws, mkt)
+        hit = memo.get(k)
+        # The same connection object, not merely the same id: the counters in
+        # `sig` only mean anything on the connection that produced them.
+        if hit and hit[0] is conn and hit[1] == sig:
+            return hit[2]
         fees = {}
         for r in conn.execute(
                 "SELECT order_id, SUM(referral_fees) ref, SUM(fba_fees) fba, "
@@ -565,7 +578,7 @@ def _settled_orders(config_path, ws, mkt):
                         if not lst or lst[-1] is not o:
                             lst.append(o)
         got = (out, index)
-        _SETTLED_MEMO[k] = (sig, got)
+        memo[k] = (conn, sig, got)
         return got
     except Exception:
         return None

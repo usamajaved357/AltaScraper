@@ -261,10 +261,16 @@ truthy("one reader serves both the per-product rate and the multiplier",
 # 29.99 sale whose principal is 24.99 -- 15.0% of the one and 18.0% of the
 # other, and only the first can be multiplied by a shelf price. Dividing by the
 # principal would have overstated every VAT-registered account's fee by a fifth.
+# RE-PINNED (Milestone 1, 28 Sep 2026): the query moved into _settled_orders,
+# which reads every settled order once and is remembered; _settled_for now
+# walks that. The divisor is the same -- what the buyer paid, item plus postage.
+_so = FEE.split("def _settled_orders(")[1].split("\ndef ")[0]
+_lines_sql = _so.split("FROM order_lines")[0].split("SELECT order_id, COALESCE(sku")[1]
 truthy("the rate is measured against what the buyer paid, not the ex-VAT figure",
-       "l.mine_rev" in _fo and "SUM(revenue)" in _fo)
+       "mine_rev" in _fo
+       and "COALESCE(revenue,0) + COALESCE(shipping,0)" in _lines_sql)
 truthy("  and principal is deliberately not the divisor",
-       "principal" not in _fo.split("SELECT f.order_id")[1].split("fetchall")[0])
+       "principal" not in _lines_sql)
 truthy("  with the reason written down",
        "INC-VAT" in FEE.split("def rate_from_orders(")[1].split("\ndef ")[0])
 truthy("a discounted order is left out of the rate", 'r["promos"]' in _fo)

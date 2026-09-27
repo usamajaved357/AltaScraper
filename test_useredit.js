@@ -16,7 +16,7 @@ const { execFileSync } = require("child_process");
 // Overridable so a regression can be demonstrated against a patched copy --
 // a test nobody has ever seen fail is not yet known to test anything.
 const src = fs.readFileSync(
-  process.env.USERS_JS || "D:/AltaScraper/static/js/users.js", "utf8");
+  process.env.USERS_JS || (__dirname + "/static/js/users.js"), "utf8");
 
 /* THE FIXTURES ARE BUILT, NOT STORED.
  *
@@ -260,7 +260,7 @@ function domSandbox(listJson) {
   // onclick with JSON.stringify inside it is always this bug, so the whole
   // static/js tree is scanned rather than trusting that the two known cases were
   // all of them. onclick='...' with SINGLE quotes is fine and is left alone.
-  const dir = "D:/AltaScraper/static/js";
+  const dir = (__dirname + "/static/js");
   const offenders = [];
   for (const fn of fs.readdirSync(dir).filter((f) => f.endsWith(".js"))) {
     const text = fs.readFileSync(dir + "/" + fn, "utf8");
@@ -277,7 +277,7 @@ function domSandbox(listJson) {
   // https://www.co.uk/dp/B0... It rendered, it was blue, it was clickable, and
   // it went somewhere else entirely. A link that is plausibly wrong is worse
   // than one that fails.
-  const ls = fs.readFileSync("D:/AltaScraper/static/js/listings.js", "utf8");
+  const ls = fs.readFileSync((__dirname + "/static/js/listings.js"), "utf8");
   const box = {
     WS_MARKET: "UK", console,
     document: { getElementById: () => null, querySelectorAll: () => [], addEventListener: () => {} },

@@ -184,6 +184,11 @@ globalThis.window=globalThis;
 globalThis.esc=s=>String(s==null?"":s).replace(/[&<>"']/g,
   c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 globalThis.toast=function(){};
+// THE REAL jsArg, from users.js where the page gets it -- every value inside an
+// inline handler goes through it (Milestone 2, the esc()-in-a-handler XSS).
+{ const U=fs.readFileSync("static/js/users.js","utf8"), a=U.indexOf("function jsArg(");
+  vm.runInThisContext(U.slice(a, U.indexOf("\n}", a)+2).replace("function jsArg(",
+                      "globalThis.jsArg=function(")); }
 globalThis.document={getElementById:()=>null};
 globalThis.fetch=()=>Promise.resolve({json:()=>Promise.resolve({ok:true})});
 globalThis.ROWS=[];

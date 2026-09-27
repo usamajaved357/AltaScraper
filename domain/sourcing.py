@@ -143,6 +143,9 @@ DEFAULT_RULE = {
     # The account's VAT rate, attached by source_repo.rule_for -- never stored
     # per SKU. None (not registered, or not said) changes nothing.
     "vat_rate":             None,
+    # True when the account's settings could not be READ (not when no rate is
+    # set) -- decide() then prices nothing this run. Attached by rule_for.
+    "vat_unknown":          False,
     # The three per-unit costs of the user's pricing rule. Defaults come from
     # listing/pricing.py so there is one definition of what a unit costs to sell;
     # they are here so a SKU that posts in a bigger box can say so.
@@ -594,6 +597,13 @@ def floor_price(cost, rule=None):
     c = _num(cost)
     if c is None or c < 0:
         return None
+    # NO FLOOR ON AN UNKNOWN VAT SETTING. If the account's config could not be
+    # read, whether its prices carry VAT is not known, and a floor worked out
+    # as if they did not is up to a sixth too low for a VAT-registered account.
+    # decide() already refuses to reprice on this; this covers every other
+    # screen that shows or checks against a floor (Milestone 1, 28 Sep 2026).
+    if rule.get("vat_unknown"):
+        return None
     # A TARGET THAT CANNOT BE MET IS NOT A TARGET THAT IS ABSENT. Without this,
     # an impossible margin target produced no floor of its own and the unit was
     # priced to the flat minimum instead -- quietly, while the screen said a 95%
@@ -871,6 +881,19 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         out["reason"] = ("Amazon no longer has this SKU, so there is no offer to "
                          "price. Auto-pricing has been switched off for it. "
                          "Remove it from the repricer, or relist it on Amazon.")
+        return out
+
+    # THE ACCOUNT'S VAT RATE COULD NOT BE READ. Not the same as "not
+    # registered": on a VAT-registered account, pricing as if there were no VAT
+    # sets every floor about a sixth too low. So this run prices nothing and
+    # says why; the next run, with the settings readable, carries on
+    # (source_repo.rule_for sets the flag; Milestone 1, 28 Sep 2026).
+    if rule.get("vat_unknown"):
+        out["blocked_by"] = "the account's VAT setting could not be read"
+        out["reason"] = ("This account's settings could not be read just now, so "
+                         "whether its prices carry VAT is not known. Nothing was "
+                         "priced this run rather than risk pricing below cost; "
+                         "the next check will try again.")
         return out
 
     live = [(s, c) for s, c in (pairs or []) if s.get("enabled", 1)]

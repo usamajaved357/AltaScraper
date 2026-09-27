@@ -22,6 +22,8 @@ function truthy(label, got) { check(label, !!got, true); }
 
 // Load the two real files into one scope, as the browser does.
 const src = fs.readFileSync(path.join(ROOT, "static/js/salescharts.js"), "utf8");
+// The page's own jsArg (users.js); handlers use it since Milestone 2.
+globalThis.jsArg = require("./test_helpers.js").jsArg;
 const sales = fs.readFileSync(path.join(ROOT, "static/js/sales.js"), "utf8");
 
 // Only the chart-picking function is needed from sales.js; the rest reaches for

@@ -173,7 +173,8 @@ function rqEnqueue(sku, mode, minimal){
   }
   window.RUN_STREAMING=true;
   fetch("/preview/enqueue",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({sku:sku, mode:mode, minimal:!!minimal})})
+    // Names the account (known-issues #4).
+    body:JSON.stringify(acctBody({sku:sku, mode:mode, minimal:!!minimal}))})
     .then(r=>r.json()).then(r=>{
       if(!r||!r.ok){ if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc((r&&r.error)||"unknown")+'</span>'; return; }
       rqGlobalPollNow();
@@ -430,11 +431,11 @@ function rqRenderPanel(){
     + (jobs.length? jobs.map(j=>{
         const st=j.status, cls=(st==="running")?"run":(st==="queued")?"q":(st==="done")?"ok":(st==="cancelled")?"c":"err";
         const active=(st==="queued"||st==="running");
-        return '<div class="rqrow" onclick="rqOpenJob(\''+esc(String(j.sku))+'\')">'
+        return '<div class="rqrow" onclick="rqOpenJob(' + jsArg(String(j.sku)) + ')">'
           +'<span class="rqst '+cls+'">'+esc(st)+'</span>'
           +'<span class="rqsku">'+esc(String(j.label||j.sku))+'</span>'
           +'<span class="rqmode">'+esc(j.mode==="api_submit"?"submit":"preview")+'</span>'
-          +(active?'<button class="rqstop" title="Cancel" onclick="event.stopPropagation();rqStopJob(\''+esc(String(j.id))+'\')">✕</button>':'')
+          +(active?'<button class="rqstop" title="Cancel" onclick="event.stopPropagation();rqStopJob(' + jsArg(String(j.id)) + ')">✕</button>':'')
           +'</div>';
       }).join("") : '<div class="rqempty">No recent runs.</div>');
 }

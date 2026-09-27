@@ -23,6 +23,18 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
         sku = str(b.get("sku", "")).strip()
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
+        # THE ROW IS FOUND IN THE SERVER'S OPEN ACCOUNT (_ws()), and SKUs repeat
+        # across accounts -- so a page showing another account must be refused,
+        # not answered with that account's same-SKU row (change review, M2).
+        if _state is not None:
+            from domain import request_account as _req_acct
+            _named = _req_acct.named(request)
+            _open = str(_state.get("active_account_id", "") or "")
+            if _named and _named != _open:
+                return jsonify({"ok": False, "error": (
+                    "This page is showing %s but the server has %s open, so "
+                    "nothing was saved. Reselect %s and retry."
+                    % (_named, _open or "no account", _named))}), 409
         try:
             rec = next((r for r in _records(_ws()) if str(r.get("SKU", "")).strip() == sku), None)
             if not rec:
@@ -36,8 +48,17 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
                 attrs = {}
             attrs = {k: v for k, v in (attrs.items() if isinstance(attrs, dict) else [])
                      if str(v).strip() != ""}
+            # NEVER BRAND, NAME, IDENTIFIERS OR OFFER. This file is shared by
+            # every account; remembering `brand` put one company's brand on
+            # another's new listings (CLAUDE.md Rule 1). listing/attribute_defaults.
+            from listing import attribute_defaults as _adef
+            _before = set(attrs)
+            attrs = _adef.strip_identity(attrs)
+            _left_out = sorted(_before - set(attrs))
             if not attrs:
-                return jsonify({"ok": False, "error": "no filled attributes to remember"}), 400
+                return jsonify({"ok": False, "error": "no filled attributes to remember"
+                                + (" (brand, title, identifiers and price are never "
+                                   "remembered)" if _left_out else "")}), 400
             path = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "attribute_defaults.json")
             try:
                 data = json.load(open(path, encoding="utf-8"))
@@ -50,8 +71,14 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
                 cur = {}
             cur.update(attrs)
             data[pt] = cur
-            json.dump(data, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-            return jsonify({"ok": True, "pt": pt, "count": len(cur)})
+            # The whole file cleaned on the way out too, so an identity field
+            # saved before this rule existed goes the next time anyone saves.
+            data = _adef.clean_file_data(data)
+            from domain import jsonstore as _js
+            if not _js.write_json_atomic(path, data, indent=2):
+                return jsonify({"ok": False, "error": "could not write the defaults file"}), 500
+            return jsonify({"ok": True, "pt": pt, "count": len(data.get(pt) or {}),
+                            "left_out": _left_out})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:200]}), 500
 

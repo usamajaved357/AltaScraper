@@ -4,8 +4,13 @@ Drives the real error handler and the real /diag route, then checks that (a) a
 crash is recorded, (b) credentials never survive into the record, (c) the boot
 banner names a real misconfiguration, (d) the copy-paste block is readable.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from flask import Flask, jsonify, session, request
 import domain.selfcheck as sc
@@ -112,7 +117,7 @@ check("the pasteable text is scrubbed too", "IwEBIFAKESECRETVALUE123" in txt, Fa
 
 print("\n=== the boot banner names real problems ===")
 os.environ["RAILWAY_ENVIRONMENT"] = "production"
-bad = dc.check(os.path.join(r"D:\AltaScraper", "config.json"))   # inside the app dir
+bad = dc.check(os.path.join(_REPO, "config.json"))   # inside the app dir
 ban = sc.boot_banner(bad)
 check_true("banner flags the ephemeral filesystem",
            "State survives a deploy" in ban and "WIPED" in ban)

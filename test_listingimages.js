@@ -15,7 +15,7 @@ function check(label, got, want) {
   console.log("  %s %s", label.padEnd(60),
               ok ? "OK" : `FAIL got=${JSON.stringify(got)} want=${JSON.stringify(want)}`);
 }
-const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const read = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 
 /* The source of one named function, brace-matched.
  *
@@ -70,20 +70,22 @@ check("it reads the existing media library", /\/media\/list\?sku=/.test(lib), tr
 check("  rather than a new endpoint", /\/images\/list/.test(lib), false);
 check("upload uses the existing upload route", /\/media\/upload/.test(lib), true);
 check("push uses the existing push route", /\/listing\/push_image/.test(lib), true);
-// The shared builder escapes the SKU ONCE at the top and reuses it, so the
-// button reads ${sku} rather than ${esc(r.sku)}. Still escaped -- and checked
-// here, because that is the part that matters.
+// A HANDLER ARGUMENT GOES THROUGH jsArg (Milestone 2): esc() is for text, and
+// inside onclick="fn('...')" the browser decodes its &#39; back into a quote.
+// jsArg escapes for JavaScript first, then for the attribute. It is given the
+// RAW r.sku -- the escaped `sku` above it would be escaped twice.
 check("draft rows get a library button",
-      /openImageLibrary\('\$\{sku\}'/.test(fnBody(listings, "rowActions")), true);
-check("  with the SKU escaped before it is put in the markup",
-      /const sku = esc\(r\.sku\)/.test(fnBody(listings, "rowActions")), true);
+      /openImageLibrary\(\$\{jsArg\(r\.sku\)\}/.test(fnBody(listings, "rowActions")), true);
+check("  with the SKU made safe for a handler, not merely for HTML",
+      !/openImageLibrary\(\$\{jsArg\(sku\)\}/.test(fnBody(listings, "rowActions"))
+      && !/openImageLibrary\('\$\{sku\}'/.test(fnBody(listings, "rowActions")), true);
 // ONE FUNCTION SERVES BOTH NOW. There used to be a separate live-row builder
 // with its own openImageLibrary('${esc(it.sku||'')}', true) call, which is what
 // this matched. Draft and live rows are drawn by the same rowActions() with a
 // `live` flag, so the button cannot exist on one and be forgotten on the other
 // -- which is exactly how it went missing from the live TILE before.
 check("live rows get one too, from the same builder",
-      /openImageLibrary\('\$\{sku\}', \$\{live \? "true" : "false"\}\)/
+      /openImageLibrary\(\$\{jsArg\(r\.sku\)\}, \$\{live \? "true" : "false"\}\)/
         .test(fnBody(listings, "rowActions")), true);
 // TWO CALL SITES, AND BOTH ARE MEANT. The row's icon, and the drawer's More
 // menu -- the drawer's own Push-image and Upload-image buttons were demoted on

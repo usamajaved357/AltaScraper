@@ -116,7 +116,7 @@ function catpRender() {
   [["all", "All time"], ["month", "Last month"], ["quarter", "Last 3 months"],
    ["year", "Last year"]].forEach(function (p) {
     html += '<button class="db-chip' + (CATP.period === p[0] ? " on" : "") +
-            '" onclick="catpPeriod(\'' + p[0] + '\')">' + p[1] + "</button>";
+            '" onclick="catpPeriod(' + jsArg(p[0]) + ')">' + p[1] + "</button>";
   });
   html += '<input class="ed" id="catp_q" placeholder="Search ASIN, title or SKU…" ' +
           'style="flex:1;min-width:180px" value="' + esc(CATP.q) +

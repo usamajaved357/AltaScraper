@@ -98,6 +98,10 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
         data = b.get("data", "")            # data URL or bare base64
         name = b.get("name", "")           # optional original filename
         kind = b.get("kind", "ref")        # 'ref' | 'generated' | 'main'
+        # `kind` BECOMES PART OF THE FILENAME below, and came straight from the
+        # body: "../../x" wrote outside the SKU's folder (master audit). The same
+        # safe set the subfolder segments use.
+        kind = re.sub(r"[^A-Za-z0-9_-]", "", str(kind or ""))[:24] or "ref"
         # optional subfolder to organize images inside the SKU folder, e.g.
         # "aplus/basic", "aplus/premium", "secondary". Sanitized to a safe set of
         # path segments (letters/digits/_/-) so it can never traverse outside.
@@ -125,9 +129,16 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
         if re.match(r"^https?://", data.strip(), re.I):
             try:
                 import urllib.request as _ur
+                # THROUGH THE URL POLICY, and capped. A plain urlopen here fetched
+                # any address the SERVER can reach -- file://, 127.0.0.1, the
+                # cloud metadata address -- then saved and served back what it got
+                # (master audit, 28 Sep 2026). domain/url_policy.py.
+                from domain import url_policy as _urlp
                 _req = _ur.Request(data.strip(), headers={"User-Agent": "Mozilla/5.0"})
-                with _ur.urlopen(_req, timeout=30) as _r:
-                    raw = _r.read()
+                with _urlp.urlopen(_req, timeout=30) as _r:
+                    raw = _r.read(40 * 1024 * 1024 + 1)
+                if len(raw) > 40 * 1024 * 1024:
+                    return jsonify({"ok": False, "error": "that image is over 40 MB"}), 400
                 _ct = ""
                 try:
                     _ct = _r.headers.get("Content-Type", "") if hasattr(_r, "headers") else ""

@@ -26,10 +26,15 @@ It is a separate OAuth from SP-API. The SP Search Term Report carries everything
 except the intraday view and domain/ppc_module.py has always been able to read
 one — it simply never kept the rows.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import io
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 
@@ -142,7 +147,7 @@ check("  a cheap converter is worth scaling", flags["acme hose"], "scaling")
 losing = PV.opportunity({"clicks": 30, "orders": 2, "spend": 90.0, "sales": 40.0})
 check("  and one that sells at a loss says so", losing[0], "losing")
 # It reports; the decision is the owner's. Rule 8.
-src = io.open(r"D:\AltaScraper\domain\ppc_view.py", encoding="utf-8").read()
+src = io.open(_os_repo.path.join(_REPO, r"domain\ppc_view.py"), encoding="utf-8").read()
 truthy("the module says it never applies anything",
        "NOTHING HERE WRITES TO AMAZON" in src)
 
@@ -178,7 +183,7 @@ def _code_only(path):
     return _re.sub(r"\s+", "", " ".join(out))
 
 
-CODE = _code_only(r"D:\AltaScraper\domain\ppc_view.py")
+CODE = _code_only(_os_repo.path.join(_REPO, r"domain\ppc_view.py"))
 falsy("  and no line of code mentions a bid", "bid" in CODE.lower())
 falsy("  nor a budget", "budget" in CODE.lower())
 truthy("  the only write is storing the uploaded report",
@@ -222,7 +227,7 @@ check("no share-of-profit when the advertising lost money overall",
       neg[0]["pct_profit"], None)
 
 print("\n=== the route surface ===")
-R = io.open(r"D:\AltaScraper\routes\ppc_routes.py", encoding="utf-8").read()
+R = io.open(_os_repo.path.join(_REPO, r"routes\ppc_routes.py"), encoding="utf-8").read()
 truthy("analytics is a GET", '@app.route("/ppc/analytics")' in R)
 truthy("the report is stored through the SAME ingester the harvester uses",
        "_PPC.ingest_csv_bytes" in R)
@@ -242,7 +247,7 @@ print("\n=== the account is never guessed from server state ===")
 # term added while looking at one account was saved against another, and the
 # save reported success.
 truthy("the scope reads the JSON body too", 'body.get("id")' in R)
-J = io.open(r"D:\AltaScraper\static\js\ppcview.js", encoding="utf-8").read()
+J = io.open(_os_repo.path.join(_REPO, r"static\js\ppcview.js"), encoding="utf-8").read()
 truthy("  and the screen always sends it", "body.id = CUR_ACCOUNT.id" in J)
 
 print("\n%d failed" % len(fails))

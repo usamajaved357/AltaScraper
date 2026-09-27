@@ -8,8 +8,13 @@ Must still hold: the SAME SKU never runs twice at once (two runs would write the
 same sheet row and submit the same listing twice), and one Amazon account is
 capped because SP-API quota is per selling account.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, time, threading
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(label, got, want):
@@ -129,7 +134,7 @@ s.acquire("a", "1", owner=""); s.acquire("b", "2", owner="")
 check("both stopped", s.stop(), 2)
 
 print("\n=== the queue has enough workers to fill the slots ===")
-src = open(r"D:\AltaScraper\listing\preview_jobs.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"listing\preview_jobs.py"), encoding="utf-8").read()
 check("worker count follows the slot limit", "total_limit()" in src, True)
 check("  and there is no single-worker flag left", '_WORKER = {"on": False}' in src, False)
 check("the job carries its account", '"account_id": str(account_id or "")' in src, True)

@@ -25,10 +25,15 @@ BUG 2 -- every merge was rejected, for every product type.
   six attributes and batteries_required is NOT among them. Reading the message
   to get attribute names is forbidden (Rule 4) and would not have worked either.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -247,7 +252,7 @@ check("the missing one is reported, not filled", pa4["unresolved"],
 
 
 print("\n=== preview and apply cannot disagree ===")
-R = open(r"D:\AltaScraper\routes\variations_routes.py", encoding="utf-8").read()
+R = open(_os_repo.path.join(_REPO, r"routes\variations_routes.py"), encoding="utf-8").read()
 check("both build the parent with the same function",
       R.count("_var.parent_attributes("), 2)
 # BOTH PASS THE PARENT'S OWN REQUIRED LIST, through the one helper that fetches
@@ -273,11 +278,11 @@ truthy("apply refuses rather than sending an incomplete parent",
 truthy("Amazon's own shape is kept for writing back", '"raw": a' in R)
 truthy("  and not leaked to the browser", 'if k != "raw"' in R)
 
-D = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+D = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8").read()
 truthy("the cached schema carries the attribute names", '"attribute_names"' in D)
 truthy("  and the required list", '"required": [str(r) for r in (raw.get("required")' in D)
 
-J = open(r"D:\AltaScraper\static\js\variations.js", encoding="utf-8").read()
+J = open(_os_repo.path.join(_REPO, r"static\js\variations.js"), encoding="utf-8").read()
 truthy("unusable themes are shown, not silently dropped", "_varBlockedGroup" in J)
 truthy("  greyed out so they cannot be picked", "disabled>" in J)
 truthy("  with the reason next to each", "u.why" in J)

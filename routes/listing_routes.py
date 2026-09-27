@@ -1837,8 +1837,14 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             return jsonify({"ok": False, "error": "invalid status"}), 400
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
+        # THE NAMED ACCOUNT, as /delete and /edit do. This read the server's
+        # open account only, so a bulk Approve that ran across an account
+        # switch approved the new account's same-SKU drafts (master audit S1).
+        _bad = _wrong_account(body.get("account"))
+        if _bad:
+            return _bad
         try:
-            ws    = _ws()
+            ws    = _store_for(body.get("account")) or _ws()
             found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
             if not found.ok:
                 return jsonify({"ok": False, "error": found.error}), 404
@@ -2011,8 +2017,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 return jsonify(payload)
             finally:
                 # restore global state so a one-off schema fetch doesn't change the
-                # user's active workspace marketplace
-                if _mkt_param:
+                # user's active workspace marketplace -- BUT ONLY IF IT IS STILL
+                # OURS. A real switch made while this was loading (the account
+                # switcher, another tab) was overwritten with the value from
+                # before it, undoing the switch (master audit S11, Milestone 3).
+                if _mkt_param and _state.get("active_marketplace", "") == _mkt_param:
                     _state["active_marketplace"] = _prev_mkt
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
@@ -2650,7 +2659,19 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             _scope_acc = _active_account()
         except Exception:
             _scope_acc = None
-        _scope_acct_id = str((_scope_acc or {}).get("id") or "") or _state_account
+        # NO FALLBACK TO THE SHARED VALUE. This read `or _state_account`, a name
+        # defined nowhere, so a request with no account open raised NameError
+        # (known-issues #2; found again by the undefined-name check, Milestone 1,
+        # 28 Sep 2026). Falling back to _state instead would bring back exactly
+        # the bug described above. With no account open the run is REFUSED:
+        # running it as "no account" would still reach the generator, whose
+        # credential fallback is the global block (jack_uk's).
+        _scope_acct_id = str((_scope_acc or {}).get("id") or "")
+        if not _scope_acct_id:
+            return Response("data: [error] No account is open. Open the account "
+                            "this run is for, then try again.\n\n"
+                            "event: end\ndata: end\n\n",
+                            mimetype="text/event-stream")
         _scope_sheet = _state.get("active_sheet_id")
         _scope_tab = _state.get("active_tab")
         _scope_mkt = str(_state.get("active_marketplace") or "")

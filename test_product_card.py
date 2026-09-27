@@ -140,7 +140,7 @@ truthy("Edit is still in the More menu",   "Edit details" in LJ)
 # pdp.js). That the WHOLE CARD is still the way in is what this pins, and that
 # has not changed -- which is the property the section above is about.
 truthy("Edit is still the whole card",     "class=\"tilebody\" onclick=\"openListing(" in LJ)
-truthy("the price panel is still what sends a price", "priceEdit('" in LJ)
+truthy("the price panel is still what sends a price", ("priceEdit('" in LJ or "priceEdit(${jsArg(" in LJ))
 truthy("and the table row keeps its Review button",   ">Review</button>" in LJ)
 # The way IN to Amazon is the ASIN itself -- "we should be able to open the
 # listing by clicking on the green asin". The card lost its button; the drawer
@@ -259,8 +259,9 @@ truthy("an account default is labelled as one", "(account default)" in LJ)
 print("\n== one action row, so grid and list cannot drift apart again ==")
 # The live TABLE row had Sync and Add-variant; the live TILE did not. Same
 # listing, two views, different things you could do to it.
-truthy("Sync comes from rowActions now",       "syncForSku('${sku}')" in LJ)
-truthy("Add variant too",                      "addVariant('${sku}')" in LJ)
+# Handler arguments go through jsArg, given the RAW r.sku (Milestone 2).
+truthy("Sync comes from rowActions now",       "syncForSku(${jsArg(r.sku)})" in LJ)
+truthy("Add variant too",                      "addVariant(${jsArg(r.sku)})" in LJ)
 truthy("the live table row calls rowActions",  "rowActions(_r, \"dotb\", {live: true})" in LJ)
 # Approve set a draft's status to "ready to send". On a listing Amazon has
 # already published there is nothing to approve -- and on a catalogue-only card

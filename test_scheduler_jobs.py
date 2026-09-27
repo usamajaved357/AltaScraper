@@ -10,8 +10,13 @@ catalogue sweep, a second monitor throttle or a second inventory model would
 drift from the ones the buttons use, and the difference would surface as "the
 scheduled job disagrees with the screen".
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 from flask import Flask, jsonify, request
 
 import data.scheduler as sched
@@ -43,7 +48,7 @@ for name, fn in (("catalog_sync", sched.catalog_sync),
         check("%s refuses when unbound" % name, type(e).__name__, "RuntimeError")
 
 print("\n=== none of them raises NotImplementedError any more ===")
-src = open(r"D:\AltaScraper\data\scheduler.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"data\scheduler.py"), encoding="utf-8").read()
 check("no stub left", "raise NotImplementedError" in src, False)
 check("  and none of them imports sp_api", "sp_api" in src, False)
 
@@ -111,6 +116,24 @@ res = sched.catalog_sync()
 check("the refresher was started", started["n"], 1)
 check("  and it says so", res.get("started_refresher"), True)
 
+print("\n=== the ASIN monitor job obeys the owner's schedule (known-issues #3) ===")
+import monitor.checker as _chk
+_swept = {"n": 0}
+_real_check_all = _chk.check_all
+_chk.check_all = lambda cfg, cp, log=None, force_rescan=False: (
+    _swept.__setitem__("n", _swept["n"] + 1), {"ok": True, "checks": 0})[1]
+try:
+    sched.bind(app=app, config_path=CFG, cfg=lambda: json.load(open(CFG)))
+    res = sched.asin_monitor_check()
+    check("with the schedule unset (off by default) nothing is swept", _swept["n"], 0)
+    check("  and it says why", "off" in str(res.get("skipped", "")), True)
+    _on = dict(json.load(open(CFG)), asin_monitor_schedule={"mode": "every", "hours": 4})
+    sched.bind(app=app, config_path=CFG, cfg=lambda: _on)
+    sched.asin_monitor_check()
+    check("switched on, it sweeps", _swept["n"], 1)
+finally:
+    _chk.check_all = _real_check_all
+
 print("\n=== every run is recorded, success or failure ===")
 # run_job must never raise -- a scheduled job that throws kills its thread and
 # stops running for ever, with nothing on screen to say so.
@@ -138,7 +161,7 @@ except Exception as e:
 check("an unknown job is refused", sched.run_job("nosuch")["ok"], False)
 
 print("\n=== the beta binds them at startup ===")
-beta = open(r"D:\AltaScraper\dashboard_beta.py", encoding="utf-8").read()
+beta = open(_os_repo.path.join(_REPO, r"dashboard_beta.py"), encoding="utf-8").read()
 check("register_jobs is given the config path", "config_path=_d.CONFIG_PATH" in beta, True)
 check("  and the config reader", "cfg=_d._cfg" in beta, True)
 

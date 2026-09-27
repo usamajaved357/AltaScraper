@@ -373,9 +373,21 @@ function financeBasisToggle(){
      && t.revenue) {
     const est = Number(t.estimated_revenue || 0);
     const pct = t.revenue ? Math.round(100 * est / t.revenue) : 0;
-    cover = " " + pct + "% of the revenue here has not settled yet, so its "
-          + "fees are charged at " + ((Number(t.fee_rate) || 0) * 100).toFixed(2)
-          + "%.";
+    // NO RATE IS NOT A 0% RATE. With nothing settled to measure from, the
+    // unsettled revenue carries no fee at all -- saying "charged at 0.00%"
+    // read as though Amazon had charged nothing (Milestone 1 review).
+    const unpriced = Number(t.unpriced_fee_revenue || 0);
+    cover = " " + pct + "% of the revenue here has not settled yet, so ";
+    if(t.fee_rate) {
+      cover += "its fees are charged at "
+             + (Number(t.fee_rate) * 100).toFixed(2) + "%";
+      cover += unpriced > 0
+        ? ", except where no rate could be measured — those carry no fee yet."
+        : ".";
+    } else {
+      cover += "no fee rate could be measured for it yet — it carries no fee "
+             + "until Amazon settles it.";
+    }
   }
   return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;'
     + 'margin:0 0 8px">'

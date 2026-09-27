@@ -16,9 +16,14 @@ The refusal is kept where it is honest: with no public base URL configured there
 is no correct address, and a guessed one is WORSE than no image -- Amazon accepts
 it, fetches nothing, and the listing goes up bare.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json, os, sys, tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -40,7 +45,7 @@ check("  so no url is built", I.public_url(CFG, "/media/a/b.jpg"), "")
 # The dangerous alternative: a link to localhost, or to whatever host happened to
 # be handy, which Amazon accepts and then cannot fetch.
 truthy("  and the reason is written down",
-       "worse than no image" in open(r"D:\AltaScraper\domain\image_urls.py",
+       "worse than no image" in open(_os_repo.path.join(_REPO, r"domain\image_urls.py"),
                                      encoding="utf-8").read())
 
 print("\n=== configured, it builds the same address the library serves ===")
@@ -71,7 +76,7 @@ check("env beats config", I.base_url(CFG), "https://from-env.example.com")
 os.environ.pop("PUBLIC_BASE_URL", None)
 
 print("\n=== and the submit path uses it ===")
-gen = open(r"D:\AltaScraper\amazon_listing_generator.py", encoding="utf-8").read()
+gen = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
 truthy("build_api_attributes resolves a media path", "_fetchable(" in gen)
 truthy("  through the shared builder", "_iu.public_url(CONFIG_PATH, u)" in gen)
 truthy("  for the main image", '_main_img = _fetchable(' in gen)
@@ -79,7 +84,7 @@ truthy("  and every gallery slot", '_iv = _fetchable(' in gen)
 truthy("  and says what to set when it cannot",
        "set \n" not in gen and "public_base_url in config.json" in gen)
 # dashboard had its own copy of this; it must not drift from the one above.
-dash = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+dash = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8").read()
 truthy("the dashboard delegates rather than rebuilding it",
        "_iu.public_url(CONFIG_PATH, media_url)" in dash)
 

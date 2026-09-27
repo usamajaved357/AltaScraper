@@ -642,6 +642,8 @@ _RULE_NOT_STORED = frozenset({
     # account form -- never a per-SKU setting. rule_for reads it from the
     # account every time, so changing it there moves every price at once.
     "vat_rate",
+    # Set when those settings could not be read at all; never stored.
+    "vat_unknown",
 })
 
 
@@ -711,13 +713,18 @@ def rule_for(config_path, workspace_id, marketplace, sku):
     # that goes to HMRC, so break-even and every margin target have to be
     # worked out on what is left after it (listing/pricing._kept). Read from
     # the account, the same reader every profit screen uses.
+    # "COULD NOT READ" IS KEPT APART FROM "NOT REGISTERED": the first used to
+    # come back as None too, and the repricer then priced a VAT-registered
+    # account as if it were not (found by the audit, 28 Sep 2026).
     try:
         from domain import unit_profit as _up
-        _v = _up.account_vat_rate(config_path, workspace_id)
-        if _v is not None:
-            out["vat_rate"] = _v
+        _v, _known = _up.account_vat_status(config_path, workspace_id)
     except Exception:
-        pass
+        _v, _known = None, False
+    if not _known:
+        out["vat_unknown"] = True
+    elif _v is not None:
+        out["vat_rate"] = _v
     return out
 
 

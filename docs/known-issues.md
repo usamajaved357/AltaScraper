@@ -14,17 +14,22 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
 
 ## Suspected bugs (from the 27 Sep 2026 analysis — all need verification)
 
-1. **READ — A lister (no publish permission) appears able to submit to Amazon.**
-   `/run/api_submit` needs only "edit" (`auth/guard.py` RULES `/run`), and
-   `POST /preview/enqueue` is not in RULES so it defaults to "edit".
-   `_require_publish()` (dashboard.py) checks whether the *workspace* can
-   publish, not whether the *user* has `publish`.
-   Verify with: a Flask test-client request as a lister.
-2. **READ — `_state_account` is never defined** (routes/listing_routes.py, in
-   `run()`, the scope-capture line). If the session's selected account is no
-   longer in config, `/run/<mode>` raises NameError and the browser shows an
-   empty stream. Verify with: test client, `_state` pointing at a removed account.
-3. **READ — The 4-hourly `asin_monitor` scheduler job ignores the monitor's own
+1. **FIXED ON THE DEV BRANCH (Milestone 2, 28 Sep 2026) — a lister could submit
+   to Amazon.** Proved by the master audit; now `/run/api_submit` needs
+   `publish` (RULES) and so does `/preview/enqueue` with `mode: api_submit`
+   (BODY_RULES). A streamed `/run/*` counts as a write, so a view-only user
+   cannot start one either. test_guard_every_account.py section 7.
+2. **FIXED ON THE DEV BRANCH (Milestone 1, 28 Sep 2026) — `_state_account` was
+   never defined** (routes/listing_routes.py, `run()`). Any request with no
+   account open raised NameError. Now: no fallback to the shared state (which the
+   comment there forbids); an empty account runs as `_no_account`, nothing to
+   act on. Guarded from returning by test_no_undefined_names.py. After the
+   Milestone 1 review: with no account open the run is now REFUSED with a
+   message, not run as `_no_account` (the generator's credential fallback is the
+   global block, jack_uk's). test_profit_review_fixes.py section 16.
+3. **FIXED ON THE DEV BRANCH (Milestone 3, 28 Sep 2026)** -- the job now returns
+   "skipped" unless `monitor/schedule.is_on()`; test_scheduler_jobs.py. Original
+   report: **the 4-hourly `asin_monitor` scheduler job ignores the monitor's own
    on/off schedule.** `data/scheduler.py` registers it and `register_jobs()`
    calls `start()` at boot; the job calls `checker.check_all()` directly, which
    honours only `asin_monitor_enabled`, not `monitor/schedule.py` (off by
@@ -37,13 +42,32 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
    an account IS named.
 5. **READ — Another account's data can show after switching accounts.**
    `LIVE_MIRROR` and `COGS_LOCAL` (browser) are keyed by SKU only and not reset in
-   `enterAccount`; `SELECTED` and `LISTING_METRICS` are not reset either.
-   SKUs are not unique across accounts.
+   `enterAccount`; `LISTING_METRICS` is not reset either. SKUs are not unique
+   across accounts. (`SELECTED` and the repricer's `SRC_SEL` ARE now cleared on
+   an account switch -- Milestone 2.) The rest is Milestone 3 work (audit S3-S9).
 
 ## Fixed on the development branch, NOT yet in production
 
 On `claude-environment-setup` (local, not merged or deployed — production still
 has these until the owner merges):
+- **Milestone 2 — security and account isolation (28 Sep 2026).** From the
+  master audit, each with a test: the guard now checks every account a request
+  names (query, any body type, form fields, every batch row; only `id` exempt
+  and only where it is a record id; `/listing/` and `/trackers/watch` no longer
+  exempt) -- test_guard_every_account.py; submitting needs `publish`; streamed
+  runs are writes; `/jobs/run`, `/media/recover/move`, writes to `/ai/settings`
+  and `/admin/logic_settings` need `manage_accounts`; preview jobs are owned;
+  bulk GTIN/arm/rule/Delete/Approve pin their account and stop on a switch, and
+  ticks clear on a switch -- test_bulk_account_pinned.js; CSRF (SameSite=Lax +
+  cross-site Origin refused), open redirect, sign-in fails closed when hosted,
+  URL policy for user-supplied fetches, `kind` path traversal, all-account lists
+  scoped to the caller -- test_security_basics.py; ~260 inline-handler XSS
+  sinks (esc'd or raw values inside a quoted JS argument) converted to `jsArg`
+  -- test_no_esc_in_handlers.js; shared attribute
+  defaults can no longer carry a brand, name, identifier or offer into another
+  account's drafts (Rule 1) -- test_defaults_carry_no_identity.py. Also fixed
+  on the way: 14 routes whose `id` is a record id were refused for users limited
+  to some accounts.
 - **PDP account/marketplace switching** (27 Sep 2026). Proven by
   test_pdp_account_switch.js (runs the real browser code; 28 checks fail on the
   old code, all pass now): the page stayed open across an account switch and a
@@ -105,6 +129,13 @@ has these until the owner merges):
   Known small gap: when the Sales grid falls back to the money calendar
   (fees older than the order history), per-product charges are not
   subtracted there (the Profit card still subtracts them).
+  Milestone 1 fixes (28 Sep 2026): the repricer now refuses to price a run
+  when the account's config cannot be READ (`rule["vat_unknown"]`), instead of
+  pricing a VAT-registered account as if it had no VAT; the three routes that
+  truncated config.json on write now write it atomically; the per-product fee
+  history memo is thread-local (it could serve a stale answer when a finished
+  thread's connection id was reused); Finance's estimated revenue again counts
+  sales with no measured fee rate.
   **Still not changed:** the generator's stored listing profit
   (amazon_listing_generator.calculate_financials -- protected file; fee from
   the competitor ASIN or flat 15%, VAT in) and its price floor; a single
@@ -301,40 +332,52 @@ works is in CLAUDE.md Rule 19; these are the genuine remaining limits.
 
 ## Tests
 
-**Baseline on origin/main 0e5529e, clean worktree with no config.json or
-database (27 Sep 2026): 355 files, 327 passed, 28 failed.** Before calling a
-failure a regression, check it fails the same way without the change
-(memory: tests-need-real-data).
+**Baseline after Milestones 1-2 (28 Sep 2026), `py -3.11 run_tests.py` in this
+worktree: 367 files, 353 passed, 12 failed, 2 could not run.** Every test runs
+against the tree it lives in (141 used to hard-code `D:\AltaScraper` and so
+tested the main checkout). The runner gives each test file its own empty
+database and a STAND-IN config.json (`run_tests._safe_env` / `TEST_CONFIG`:
+visible placeholder values, one test account with no SP-API details), so no test
+can read or write the owner's real data or credentials, and tests that build the
+whole app now run instead of stopping at "config.json not found". Earlier
+baselines (355/327/28 on 27 Sep; 362/339/11/12 mid-Milestone 1) are NOT
+comparable.
 
-Failing because they need the owner's real config.json / database (expected in
-a clean worktree; re-run in the main checkout before calling them regressions):
-test_account_isolation_ui.py, test_account_switch.py, test_agent_tools.py,
-test_ai_attribution.py, test_ai_usage.py, test_asin_has_a_name.py,
-test_autofix_apply.py, test_backup.py, test_barcode_and_exemption.py,
-test_cogs_one_reader.py, test_genimage_buttons.py, test_handling_saved.py,
-test_hold_price.py, test_library.py, test_listings_store.py,
-test_listrow_data.py, test_miles_column_shift.py, test_product_type_fill.py,
-test_real_amazon_fee.py, test_seller_draft_e2e.py, test_stop_scope.py,
-test_store_merge.py.
+**Could not run** (exit 125, reported separately): test_library.py (needs the
+real sheelady_us credentials -- a live Amazon call), test_mockup_match.py (its
+`altascraper-listings-mockup.html` is not in git).
 
-**Watch out:** in a clean worktree test_barcode_and_exemption.py crashes
-(IndexError) on its data checks BEFORE it reaches its CLAUDE.md wording checks,
-so a clean-worktree run never tests CLAUDE.md. Check the wording separately
-(the `verify-change` skill says how) whenever CLAUDE.md changes.
+**Failing because they need the owner's real data** (12; not app faults, not
+re-run with real data): test_ai_attribution, test_asin_has_a_name,
+test_autofix_apply, test_barcode_and_exemption, test_cogs_one_reader,
+test_handling_saved, test_listings_store, test_listrow_data,
+test_miles_column_shift, test_product_type_fill, test_real_amazon_fee (its code
+pins were re-pinned in Milestone 1 and pass; only the data checks fail),
+test_seller_draft_e2e. Next step (Testing milestone): give each a fixture.
 
-Needs an untracked local file: test_mockup_match.py reads
-`altascraper-listings-mockup.html`, which exists only in the main checkout.
+**Watch out:** test_barcode_and_exemption.py crashes on its data checks BEFORE
+it reaches its CLAUDE.md wording checks, so a run never tests CLAUDE.md. Check
+the wording separately (the `verify-change` skill says how) whenever CLAUDE.md
+changes.
 
-Failing for reasons that look like code/test drift, not data (**not yet
-investigated**):
-- test_weekly_says_what_it_shows.py — `ReferenceError: WK_TREND_N is not defined`
-  when weekly.js runs in the sandbox.
-- test_brand_consistency.js — 8 checks on the "generate" screen header (the
-  Generate screen was retired on 26 Sep, 562b4d8).
-- test_live_counts.js — "the drafts view keeps tiles of its own".
-- test_orbit_layout.js — nav reachability (8 of 9 sections) and "no route or
-  endpoint appears in the CSS".
-- test_profit_follows_price.js — "but only when it has none of its own".
+Checks added in Milestones 1-3:
+- test_no_undefined_names.py -- pyflakes, "undefined name" only, over the app
+  code (it found and closed known-issues #2 `_state_account`).
+- test_no_undefined_js_calls.js -- a call in static/js or a template handler to
+  a function declared in no file. Lexical, so limited to camelCase/_prefixed
+  names and it treats `typeof f === "function"` guards as intentional. Proven to
+  catch a planted undefined call. Cannot see load order or a name declared in
+  another file (stated in the test).
+- test_guard_every_account.py, test_security_basics.py,
+  test_bulk_account_pinned.js, test_no_esc_in_handlers.js,
+  test_defaults_carry_no_identity.py -- Milestone 2; each shown to fail on the
+  old code where that could be run (bulk: acct_A,acct_B,acct_B; esc: 46 sites
+  in the old listings.js).
+- test_helpers.js now exports the page's own `jsArg` for sandboxed tests.
 
-Which of the 28 are data-dependent vs drift was classified from their output
-text; the data ones were not re-run with real data in this pass.
+Fixed in Milestone 1 (were failing): the two CRLF tests
+(test_weekly_says_what_it_shows, test_profit_follows_price) now normalise line
+endings; test_brand_consistency / test_live_counts / test_orbit_layout were
+re-pinned to the deliberate 26 Sep changes (Generate screen retired 562b4d8,
+"Generated" tile renamed "Drafts") and orbit_layout's CSS check no longer reads
+CSS comments.

@@ -20,7 +20,7 @@
  */
 const fs = require("fs");
 const path = require("path");
-const ROOT = "D:\\AltaScraper";
+const ROOT = __dirname;
 
 let fails = 0;
 function check(label, got, want) {

@@ -75,10 +75,13 @@ if not node:
     FAILS.append("node")
     print("  FAIL  node not found")
 else:
-    js = ("const esc=s=>String(s==null?'':s);\n" + GEN
+    js = ("const esc=s=>String(s==null?'':s);\n"
+          # the page's own jsArg (users.js) -- handlers use it (Milestone 2)
+          + "const jsArg=require(require('path').join(process.cwd(),'test_helpers.js')).jsArg;\n"
+          + GEN
           + '\nconsole.log(pdpImgGenSection({sku:"X",title:"t"}));\n')
     js = js.replace("setTimeout(_pdpigLoadModel, 0);", "")
-    p = subprocess.run([node, "-e", js], capture_output=True, text=True)
+    p = subprocess.run([node, "-e", js], capture_output=True, text=True, cwd=HERE)
     out = p.stdout
     for label in ("Main image", "3 variations", "Secondary set", "A+ content"):
         check("the %s button is drawn" % label, label in out, True)

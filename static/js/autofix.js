@@ -66,11 +66,11 @@ async function suggestFields(sku){
         '<div class="sghead"><span class="sgfield">'+esc(s.field)+'</span>'+_srcBadge(s.source)+_confBadge(s.confidence)+'</div>'+
         '<textarea class="ed sgval" id="sgval_'+sidv+'">'+esc(s.value||'')+'</textarea>'+
         (s.note?'<div class="sgnote">'+esc(s.note)+'</div>':'')+
-        '<div class="sgacts"><button class="sgapply" onclick="applySuggestion(\''+esc(sku)+'\',\''+esc(s.field)+'\',\''+sidv+'\')">Apply this</button></div>'+
+        '<div class="sgacts"><button class="sgapply" onclick="applySuggestion(' + jsArg(sku) + ',' + jsArg(s.field) + ',' + jsArg(sidv) + ')">Apply this</button></div>'+
       '</div>';
     }).join('');
     box.innerHTML='<div class="sgtop"><b>Suggested values</b> <span class="cc">each tagged with where it came from</span>'+
-      '<button class="sgall" onclick="applyAllSuggestions(\''+esc(sku)+'\')">Apply all</button></div>'+rows;
+      '<button class="sgall" onclick="applyAllSuggestions(' + jsArg(sku) + ')">Apply all</button></div>'+rows;
   }catch(e){ box.innerHTML='<div class="gendiag bad">\u2717 '+esc(String(e))+'</div>'; }
 }
 async function applySuggestion(sku, field, sidv){
@@ -171,7 +171,8 @@ async function _afStart(skus){
   try{
     const j = await (await fetch("/autofix/start", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({skus: skus})})).json();
+      // Names the account (known-issues #4).
+      body: JSON.stringify(acctBody({skus: skus}))})).json();
     if(!j.ok){
       if(j.running){ toast("An auto-fix run is already going — showing it."); _afAttach(); return; }
       toast("Could not start auto-fix: " + (j.error || "unknown"));
@@ -463,7 +464,8 @@ function _afCopyTrace(){
 // for that round.
 function _autoFixPreview(sku, panel, roundEntry){
   return new Promise(function(resolve){
-    const url = '/run/api?skus='+encodeURIComponent(sku)+_minParam();
+    // Names the account (known-issues #4).
+    const url = acctUrl('/run/api?skus='+encodeURIComponent(sku)+_minParam());
     const es = new EventSource(url);
     let verdict = null;
     let errorFields = [];
@@ -847,7 +849,7 @@ function productTypeCell(sku, r){
   if(curPT) opts.push(curPT);
   (PTYPES||[]).forEach(p=>{ if(p && opts.indexOf(p)<0) opts.push(p); });
   const wid="pt_"+sid(sku);
-  let h=`<select id="${wid}" class="ed" onchange="onProductTypeChange(this,'${esc(sku)}','${esc(curPT)}')">`;
+  let h=`<select id="${wid}" class="ed" onchange="onProductTypeChange(this,${jsArg(sku)},${jsArg(curPT)})">`;
   if(!curPT) h+=`<option value="" selected>—</option>`;
   opts.forEach(o=>{
     h+=`<option value="${esc(o)}"${o===curPT?" selected":""}>${esc(o)}${o===curPT?" (current)":""}</option>`;
@@ -893,11 +895,11 @@ function editCell(sku,target,key,value,opts,multiline,inline){
   if(isBrowseNode){
     const def=(typeof PT_NODE_DEFAULT==="function")?PT_NODE_DEFAULT():"";
     const ph = def?("e.g. "+def+" (suggested for this type) — optional"):"e.g. 66280031 — optional";
-    return `<input class="ed" value="${esc(cur)}" placeholder="${esc(ph)}" onchange="saveEdit(this,'${esc(sku)}','${target}','${esc(key)}')">`
-      + (def&&!cur?`<div class="cc" style="font-size:11px;margin-top:3px">Leave blank to let Amazon auto-assign the category, or use the suggested node <a href="#" onclick="(function(e){e.preventDefault();var i=e.target.closest('td').querySelector('input');i.value='${esc(def)}';i.dispatchEvent(new Event('change'));})(event)">${esc(def)}</a>.</div>`:"");
+    return `<input class="ed" value="${esc(cur)}" placeholder="${esc(ph)}" onchange="saveEdit(this,${jsArg(sku)},${jsArg(target)},${jsArg(key)})">`
+      + (def&&!cur?`<div class="cc" style="font-size:11px;margin-top:3px">Leave blank to let Amazon auto-assign the category, or use the suggested node <a href="#" onclick="(function(e){e.preventDefault();var i=e.target.closest('td').querySelector('input');i.value=${jsArg(def)};i.dispatchEvent(new Event('change'));})(event)">${esc(def)}</a>.</div>`:"");
   }
   if(opts&&opts.length){
-    let h=`<select class="ed" onchange="saveEdit(this,'${esc(sku)}','${target}','${esc(key)}')">`;
+    let h=`<select class="ed" onchange="saveEdit(this,${jsArg(sku)},${jsArg(target)},${jsArg(key)})">`;
     h+=`<option value=""${cur===""?" selected":""}>—</option>`;
     if(cur&&!opts.includes(cur)) h+=`<option value="${esc(cur)}" selected>${esc(cur)} (current)</option>`;
     opts.forEach(o=>{h+=`<option value="${esc(o)}"${o===cur?" selected":""}>${esc(o)}</option>`;});
@@ -910,12 +912,12 @@ function editCell(sku,target,key,value,opts,multiline,inline){
     return `<span class="dw2-cv-in${cur.trim()?"":" empty"}" contenteditable="true" spellcheck="false"`
          + ` data-orig="${esc(cur)}"`
          + ` onpaste="dwPastePlain(event)" onkeydown="dwEnterBlur(event)"`
-         + ` onblur="dwBlurSave(this,'${esc(sku)}','${target}','${esc(key)}')">${esc(cur)}</span>`;
+         + ` onblur="dwBlurSave(this,${jsArg(sku)},${jsArg(target)},${jsArg(key)})">${esc(cur)}</span>`;
   }
-  if(multiline) return `<textarea class="ed" rows="3" onchange="saveEdit(this,'${esc(sku)}','${target}','${esc(key)}')">${esc(cur)}</textarea>`;
-  return `<input class="ed" value="${esc(cur)}" onchange="saveEdit(this,'${esc(sku)}','${target}','${esc(key)}')">`;
+  if(multiline) return `<textarea class="ed" rows="3" onchange="saveEdit(this,${jsArg(sku)},${jsArg(target)},${jsArg(key)})">${esc(cur)}</textarea>`;
+  return `<input class="ed" value="${esc(cur)}" onchange="saveEdit(this,${jsArg(sku)},${jsArg(target)},${jsArg(key)})">`;
 }
-function edRow(label,ctrl,hint,prov,sub,req,softReq,del){ const provHtml = (typeof prov==='string') ? srcBadge(prov) : (prov?iBtnEntry(prov):""); const reqHtml = softReq ? '<span class="reqsoft" title="The schema lists this as required, but Amazon\u2019s last Preview accepted the listing WITHOUT it. Fill it only if a later Preview flags it.">\u2606 schema-listed</span>' : (req?'<span class="reqstar" title="Required by Amazon">\u2605</span>':""); const delHtml = !del ? "" : (del.locked ? `<button class="cdel afdel dis" disabled title="Amazon requires this field \u2014 it can\u2019t be deleted (deleting it would fail on Preview/Submit)">\u2715</button>` : `<button class="cdel afdel" title="Delete this field from the listing" onclick="clearField('${esc(del.sku)}','${del.target}','${esc(del.key)}')">\u2715</button>`); return `<tr class="${hint?'flaggedrow':''}${sub?' subrow':''}"><td class="k">${sub?'<span class="subarrow">\u21b3</span> ':''}${esc(_cleanLabel(label))}${reqHtml}${provHtml}${delHtml}${hint?` <span class="fixhint">\u26a0 ${esc(hint)}</span>`:""}</td><td class="v">${ctrl}</td></tr>`; }
+function edRow(label,ctrl,hint,prov,sub,req,softReq,del){ const provHtml = (typeof prov==='string') ? srcBadge(prov) : (prov?iBtnEntry(prov):""); const reqHtml = softReq ? '<span class="reqsoft" title="The schema lists this as required, but Amazon\u2019s last Preview accepted the listing WITHOUT it. Fill it only if a later Preview flags it.">\u2606 schema-listed</span>' : (req?'<span class="reqstar" title="Required by Amazon">\u2605</span>':""); const delHtml = !del ? "" : (del.locked ? `<button class="cdel afdel dis" disabled title="Amazon requires this field \u2014 it can\u2019t be deleted (deleting it would fail on Preview/Submit)">\u2715</button>` : `<button class="cdel afdel" title="Delete this field from the listing" onclick="clearField(${jsArg(del.sku)},${jsArg(del.target)},${jsArg(del.key)})">\u2715</button>`); return `<tr class="${hint?'flaggedrow':''}${sub?' subrow':''}"><td class="k">${sub?'<span class="subarrow">\u21b3</span> ':''}${esc(_cleanLabel(label))}${reqHtml}${provHtml}${delHtml}${hint?` <span class="fixhint">\u26a0 ${esc(hint)}</span>`:""}</td><td class="v">${ctrl}</td></tr>`; }
 function _cleanLabel(s){ s=String(s==null?"":s); s=s.replace(/&nbsp;/g,"").replace(/\u21b3/g,"").replace(/[._]/g," ").trim(); return s.charAt(0).toUpperCase()+s.slice(1); }
 function wideRow(label,ctrl){ return `<tr><td colspan="2" class="wcell"><div class="wlab">${esc(label)}</div>${ctrl}</td></tr>`; }
 function ccount(el, cid, limit){
@@ -982,7 +984,7 @@ function contentRow(label, sku, colKey, value, limit, opts){
   const warnmsg = opts.warnMsg && (warn||over) ? `<div class="cwarn">⚠ ${esc(opts.warnMsg)}</div>` : "";
   const rows = opts.rows||3;
   const tgt = opts.target||"col";
-  const ta=`<textarea class="ed" rows="${rows}" data-bkt="${esc(opts.bucket||'')}" data-bytes="${useBytes?1:0}" data-warn="${warnAt}" data-lim="${lim}" oninput="ccount(this,'${cid}',${lim});bulletMeter()" onchange="saveEdit(this,'${esc(sku)}','${tgt}','${esc(colKey)}')">${esc(cur)}</textarea>`;
+  const ta=`<textarea class="ed" rows="${rows}" data-bkt="${esc(opts.bucket||'')}" data-bytes="${useBytes?1:0}" data-warn="${warnAt}" data-lim="${lim}" oninput="ccount(this,${jsArg(cid)},${lim});bulletMeter()" onchange="saveEdit(this,${jsArg(sku)},${jsArg(tgt)},${jsArg(colKey)})">${esc(cur)}</textarea>`;
   return `<tr><td colspan="2" class="wcell"><div class="wlab">${esc(label)} ${counter} ${idx}${opts.controls?(' '+opts.controls):''}</div>${warnmsg}${ta}</td></tr>`;
 }
 function edRowReq(label,ctrl,hint){ return `<tr class="reqrow"><td class="k"><span class="klabel">${esc(label)}<span class="reqstar" title="Required by Amazon">\u2605</span></span> <span class="reqtag">needs value</span>${hint?`<span class="fixhint">\u26a0 ${esc(hint)}</span>`:""}</td><td class="v">${ctrl}</td></tr>`; }
@@ -1300,9 +1302,9 @@ async function _saveBullets(sku, bullets){
   if(r) r.bullets=arr;
 }
 function bulletControls(sku, i, total){
-  const up   = i>0        ? `<button class="bctl" title="Move up" onclick="moveBullet('${esc(sku)}',${i},-1)">↑</button>` : `<button class="bctl dis" disabled>↑</button>`;
-  const down = i<total-1  ? `<button class="bctl" title="Move down" onclick="moveBullet('${esc(sku)}',${i},1)">↓</button>`  : `<button class="bctl dis" disabled>↓</button>`;
-  const del  = `<button class="bctl del" title="Delete this bullet" onclick="removeBullet('${esc(sku)}',${i})">✕</button>`;
+  const up   = i>0        ? `<button class="bctl" title="Move up" onclick="moveBullet(${jsArg(sku)},${i},-1)">↑</button>` : `<button class="bctl dis" disabled>↑</button>`;
+  const down = i<total-1  ? `<button class="bctl" title="Move down" onclick="moveBullet(${jsArg(sku)},${i},1)">↓</button>`  : `<button class="bctl dis" disabled>↓</button>`;
+  const del  = `<button class="bctl del" title="Delete this bullet" onclick="removeBullet(${jsArg(sku)},${i})">✕</button>`;
   return `<span class="bctls">${up}${down}${del}</span>`;
 }
 async function addBullet(sku){
@@ -1357,8 +1359,8 @@ function schemaDiag(pt, nEnum, nAttrs, nSubs, missing, flagged, a){
     <b>⚠ Amazon's value lists for “${esc(pt)}” haven't loaded in this view.</b>
     That's why flagged fields show as plain boxes without dropdowns. The listing data is still editable, but the allowed-value menus are missing.
     <div style="margin-top:6px">
-      <button class="ghost" onclick="reloadSchemaNow('${esc(pt)}')"><i class="ti ti-refresh"></i> Reload Amazon values now</button>
-      <button class="ghost" onclick="dumpSchemaState('${esc(pt)}')"><i class="ti ti-bug"></i> Show what loaded</button>
+      <button class="ghost" onclick="reloadSchemaNow(${jsArg(pt)})"><i class="ti ti-refresh"></i> Reload Amazon values now</button>
+      <button class="ghost" onclick="dumpSchemaState(${jsArg(pt)})"><i class="ti ti-bug"></i> Show what loaded</button>
     </div>
     <div id="schemadump_${sid(pt)}" style="font-size:11px;color:var(--ink2);margin-top:6px;white-space:pre-wrap"></div>
   </div>`;
@@ -1666,7 +1668,7 @@ function _fullDataParts(r){
            '<input id="' + id + '" class="ed" type="number" min="0" max="30" step="1"'
          + ' style="width:70px" value="' + esc(cur) + '" data-_was="' + esc(cur) + '">'
          + ' <button class="btn" style="margin-left:6px"'
-         + ' onclick="setHandlingFromBox(\'' + esc(sku) + '\',\'' + id + '\')">'
+         + ' onclick="setHandlingFromBox(' + jsArg(sku) + ',' + jsArg(id) + ')">'
          + 'Send to Amazon</button>',
            {hint: "This app holds no draft of this listing, so there is nowhere "
                 + "here to record a handling time — the change goes straight to "
@@ -2057,7 +2059,7 @@ function _fullDataParts(r){
   const addable=allAttrs.filter(k=>!(k in a) && !missing.includes(k) && !EXCLUDE_REQ.has(k) && !k.endsWith("_image_locator")).sort();
   const sidv=sid(sku);
   const addCtrl = addable.length ? `<div class="addfield">
-      <select class="ed" onchange="addField('${esc(sku)}','${esc(r.product_type)}',this)">
+      <select class="ed" onchange="addField(${jsArg(sku)},${jsArg(r.product_type)},this)">
         <option value="">+ Show ${addable.length} more field(s) / add optional…</option>
         ${addable.map(k=>`<option value="${esc(k)}">${esc(lbl(k))}</option>`).join("")}
       </select>
@@ -2080,7 +2082,7 @@ function _fullDataParts(r){
   const backendOpts={ bytes:true, warnAt:249, warnMsg:"Backend search terms are measured in BYTES. One byte over 249 silently de-indexes the ENTIRE field — keep it at or under 249.", indexNote:"249-byte cap · de-index risk", indexTip:"Counted in bytes, not characters. Going one byte over 249 removes the whole field from search." };
   const _highlightVal = (function(){ try{ return (r.attributes||{}).item_highlights || r.item_highlights || ""; }catch(e){ return ""; } })();
   // ✕ delete control for a content field (blanks the cell; bullets get their own controls)
-  const cDel=(target,key)=>`<button class="cdel" title="Delete this field" onclick="clearField('${esc(sku)}','${target}','${esc(key)}')">✕</button>`;
+  const cDel=(target,key)=>`<button class="cdel" title="Delete this field" onclick="clearField(${jsArg(sku)},${jsArg(target)},${jsArg(key)})">✕</button>`;
   /* THE COPY, AS FOUR SECTIONS INSTEAD OF ONE TABLE.
    *
    * The limits, the byte-vs-character distinction and every warning above are
@@ -2139,7 +2141,7 @@ function _fullDataParts(r){
     : "";
   const _imgActions = imgUrls.length
     ? `<div style="margin-top:6px;display:flex;gap:8px">
-         <button class="suggestbtn" style="background:var(--red-bg);border-color:var(--red-line);color:var(--red)" onclick="clearMainImage('${esc(sku)}')" title="Remove the main image URL so the listing can be created without an image (add one later in Seller Central)"><i class="ti ti-photo-off"></i> Remove main image</button>
+         <button class="suggestbtn" style="background:var(--red-bg);border-color:var(--red-line);color:var(--red)" onclick="clearMainImage(${jsArg(sku)})" title="Remove the main image URL so the listing can be created without an image (add one later in Seller Central)"><i class="ti ti-photo-off"></i> Remove main image</button>
        </div>`
     : "";
   // THE STRIP, AND THE GENERATOR BEHIND A FOLD. Two different jobs: what this
@@ -2152,7 +2154,7 @@ function _fullDataParts(r){
         : '<span class="dw2-tag warn"><i class="ti ti-alert-triangle"></i> competitor source</span>')
       + '<span class="dw2-count">' + imgUrls.length + '</span>',
       (imgUrls.length
-        ? `<div class="imgrow">${imgUrls.map((u,i)=>`<div class="thumbwrap"><a href="${esc(u)}" target="_blank" title="${i===0?'MAIN image':'additional #'+i}"><img class="thumb" src="${esc(u)}" loading="lazy"><span class="thumbcap">${i===0?'main':'#'+i}</span></a><button class="thumbedit" title="Edit this image (AI changes only what you ask)" onclick="editListingImage('${esc(sku)}','${esc(u)}',${i})"><i class="ti ti-wand"></i></button></div>`).join("")}</div>${_imgWarn}${_imgActions}`
+        ? `<div class="imgrow">${imgUrls.map((u,i)=>`<div class="thumbwrap"><a href="${esc(u)}" target="_blank" title="${i===0?'MAIN image':'additional #'+i}"><img class="thumb" src="${esc(u)}" loading="lazy"><span class="thumbcap">${i===0?'main':'#'+i}</span></a><button class="thumbedit" title="Edit this image (AI changes only what you ask)" onclick="editListingImage(${jsArg(sku)},${jsArg(u)},${i})"><i class="ti ti-wand"></i></button></div>`).join("")}</div>${_imgWarn}${_imgActions}`
         : `<div class="dw2-note">No image captured for this row. (${esc(imgLabel)})</div>`));
   const genBlock = `<div class="genimg" id="genimg_${sidv}">
         <div class="genpanel" id="genpanel_${sidv}" style="display:block">
@@ -2164,7 +2166,7 @@ function _fullDataParts(r){
                    placeholder="${isBrandRow?'brand/product image URL':'eBay source image (auto)'}">
             <label class="uploadbtn" title="Upload a reference image from your computer">
               <i class="ti ti-upload"></i> Upload
-              <input type="file" accept="image/*" style="display:none" onchange="uploadRef(this,'${esc(sku)}','${sidv}')">
+              <input type="file" accept="image/*" style="display:none" onchange="uploadRef(this,${jsArg(sku)},${jsArg(sidv)})">
             </label>
           </div>
           ${isBrandRow?`<label class="cc"><input type="checkbox" id="genusebrand_${sidv}"> use brand-saved reference image instead</label>`:''}
@@ -2178,7 +2180,7 @@ function _fullDataParts(r){
             <a class="browsemodels sm" href="https://openrouter.ai/models?output_modalities=image" target="_blank" rel="noopener" title="See all image models on OpenRouter"><i class="ti ti-external-link"></i> all image models</a>
           </div>
           <div class="genrow">
-            <button class="genimgbtn" id="genbtn_${sidv}" onclick="doGen('${esc(sku)}','${sidv}')">Generate</button>
+            <button class="genimgbtn" id="genbtn_${sidv}" onclick="doGen(${jsArg(sku)},${jsArg(sidv)})">Generate</button>
             <span class="cc" id="genstatus_${sidv}"></span>
           </div>
           <details id="genpromptwrap_${sidv}" style="display:none"><summary class="cc">view detailed prompt the AI wrote</summary><pre class="genprompt" id="genprompt_${sidv}"></pre></details>
@@ -2239,7 +2241,7 @@ function _fullDataParts(r){
       + (hasAttrs ? dwGrid(attrRows) : '<div class="dw2-note">No attributes yet.</div>')
       + plainNoteBlock + reqNote + addCtrl
       + ((aKeys.length||missing.length)
-          ? `<button class="dw2-remember" onclick="saveDefault('${esc(sku)}','${esc(r.product_type)}',this)"><i class="ti ti-star"></i> Remember these as defaults for all ${esc(r.product_type||"this type")} listings</button>`
+          ? `<button class="dw2-remember" onclick="saveDefault(${jsArg(sku)},${jsArg(r.product_type)},this)"><i class="ti ti-star"></i> Remember these as defaults for all ${esc(r.product_type||"this type")} listings</button>`
           : ""));
   /* THE BLOCKS, NAMED -- AND THE DRAWER'S ORDER AS ONE ARRANGEMENT OF THEM.
    *
@@ -2281,7 +2283,7 @@ function _fullDataParts(r){
   const _subFold = dwFold("Submission data",
         '<span class="dw2-count">'+allSubKeys.length+' fields · read-only</span>',
         fullSubBlock
-        + `<span class="rawtoggle" onclick="var e=document.getElementById('${rid}');e.style.display=(e.style.display==='block'?'none':'block')">show / hide raw JSON</span>`
+        + `<span class="rawtoggle" onclick="var e=document.getElementById(${jsArg(rid)});e.style.display=(e.style.display==='block'?'none':'block')">show / hide raw JSON</span>`
         + `<pre class="raw" id="${rid}">${esc(JSON.stringify(a,null,2))}</pre>`);
   const _otherTools =
       (milesBlock ? dwFold("Miles template", "", milesBlock) : "")
@@ -2424,7 +2426,7 @@ async function doGen(sku, sidv){
       out.innerHTML='<div class="genpreview"><img src="'+j.data_url+'">'+_meta+
         '<div class="cc" id="gendrive_'+sidv+'" style="margin:2px 0;color:var(--ok)"></div>'+
         '<div class="genrow">'+
-        '<button class="genimgbtn apply" onclick="applyGen(\''+esc(sku)+'\',\''+sidv+'\')">Use as main image</button>'+
+        '<button class="genimgbtn apply" onclick="applyGen(' + jsArg(sku) + ',' + jsArg(sidv) + ')">Use as main image</button>'+
         '<button class="genimgbtn" onclick="document.getElementById(\'genresult_'+sidv+'\').innerHTML=\'\'">Discard</button></div></div>';
       out.dataset.img=j.data_url;
     }

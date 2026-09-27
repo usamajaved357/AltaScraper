@@ -4,12 +4,17 @@ The existing tests assert what the route's SOURCE says. That proves the code was
 written; it does not prove it executes. This calls the real endpoint with eBay
 stubbed and a throwaway database, and then looks at what landed.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json, os, sys, tempfile, shutil
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 TMP = tempfile.mkdtemp()
 CFG = os.path.join(TMP, "config.json")
-real = json.load(open(r"D:\AltaScraper\config.json", encoding="utf-8"))
+real = json.load(open(_os_repo.path.join(_REPO, r"config.json"), encoding="utf-8"))
 json.dump({"accounts": real.get("accounts", [])[:1],
            "db_path": os.path.join(TMP, "e2e.db"),
            "storage": "DB",

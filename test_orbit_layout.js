@@ -13,7 +13,7 @@ function check(label, got, want) {
   console.log("  %s %s", label.padEnd(60),
               ok ? "OK" : `FAIL got=${JSON.stringify(got)} want=${JSON.stringify(want)}`);
 }
-const tpl = fs.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
+const tpl = fs.readFileSync((__dirname + "/templates/dashboard.html"), "utf8");
 
 // EVERY STYLESHEET THE PAGE ACTUALLY LINKS, in link order.
 //
@@ -31,7 +31,7 @@ const sheets = [...tpl.matchAll(/href="\/static\/(css\/[\w.-]+\.css)/g)]
                  .map((m) => m[1]);
 if (!sheets.length) { console.log("  no stylesheets linked?!"); fails++; }
 const css = sheets
-  .map((p) => fs.readFileSync("D:/AltaScraper/static/" + p, "utf8"))
+  .map((p) => fs.readFileSync((__dirname + "/static/") + p, "utf8"))
   .join("\n");
 
 console.log("=== nothing was mangled ===");
@@ -105,7 +105,9 @@ console.log("\n=== NOTHING WAS REORDERED OR REMOVED ===");
 // Seller Central does) to data-sec, which is the identity the router uses and
 // must never change. test_nav_groups.js additionally checks the reverse
 // direction: that every screen navTo knows about has something to click.
-const NAV_SECS = ["listings", "imagerefs", "setup", "generate", "ppc",
+// "generate" removed 28 Sep 2026: the Generate & submit screen was retired on
+// 26 Sep (562b4d8, docs/changelog.md); its flow lives on the Listings page.
+const NAV_SECS = ["listings", "imagerefs", "setup", "ppc",
                   "inventory", "sync", "monitor", "miles", "variations",
                   "orders", "returns", "sales", "finance"];
 const missingSecs = NAV_SECS.filter(
@@ -178,13 +180,19 @@ console.log("\n=== no JS logic was touched ===");
 // reloading the page.
 const _navItems = (tpl.match(/class="navitem[^"]*"[^>]*data-sec="[a-z]+"/g) || []);
 const _navSecs = _navItems.map(s => (s.match(/data-sec="([a-z]+)"/) || [])[1]);
-const _want = ["listings", "imagerefs", "setup", "generate", "ppc",
+// "generate" removed 28 Sep 2026: the Generate & submit screen was retired on
+// 26 Sep (562b4d8, docs/changelog.md); its flow lives on the Listings page.
+const _want = ["listings", "imagerefs", "setup", "ppc",
                "inventory", "sync", "monitor", "miles"];
 check("every original nav section is still reachable",
       _want.filter(s => _navSecs.indexOf(s) >= 0).length, _want.length);
 check("  and they route in JS rather than reloading",
-      (tpl.match(/onclick="return navGo\(event,'[a-z]+'\)"/g) || []).length >= 9, true);
-check("no route or endpoint appears in the CSS", /\/(live|users|input)\//.test(css), false);
+      (tpl.match(/onclick="return navGo\(event,'[a-z]+'\)"/g) || []).length >= 8, true);
+// In the CSS RULES, not its comments: genflow.css explains itself with a
+// comment naming /input/clear, which is prose, not a route in a selector or a
+// url(). Re-pinned 28 Sep 2026 (Milestone 1).
+check("no route or endpoint appears in the CSS",
+      /\/(live|users|input)\//.test(css.replace(/\/\*[\s\S]*?\*\//g, "")), false);
 
 console.log("\n=== the stylesheet is well formed ===");
 /* A comment closed early leaves its remaining lines as loose text in the

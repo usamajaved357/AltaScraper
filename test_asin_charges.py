@@ -13,9 +13,14 @@ The rules being tested: charges are per unit and named, a SKU beats an ASIN, a
 dated change does not rewrite history, and there is no bulk sheet upload
 (deliberately -- it would flatten the per-order detail the repricer exists for).
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from flask import Flask
 import domain.asin_charges as ac
@@ -131,7 +136,7 @@ j4 = c.post("/charges/save", json={"account_id": WS, "marketplace": MKT,
 check("a bad save is a plain 400, not a crash", j4["ok"], False)
 check_true("  saying what was wrong", "needs a name" in j4["error"])
 
-src = open(r"D:\AltaScraper\routes\asin_charges_routes.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"routes\asin_charges_routes.py"), encoding="utf-8").read()
 # Checked on the ROUTES, not on the prose -- the file explains at length WHY
 # there is no upload, and grepping for the word found the explanation.
 import re

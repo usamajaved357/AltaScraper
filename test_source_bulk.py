@@ -16,9 +16,14 @@ that matches nothing, a link nothing can read, an ASIN that matches SEVERAL of
 our SKUs. A bulk import that reports a total and nothing else is how twelve
 silently-skipped rows become "the repricer is not working" a fortnight later.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json, os, sys, tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):

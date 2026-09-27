@@ -36,16 +36,43 @@ from listing import pricing as _pricing
 _ACCOUNT = object()      # "use the account's own VAT setting"
 
 
-def account_vat_rate(config_path, workspace_id):
-    """The VAT rate set on the account, or None when nobody has said."""
+def account_vat_status(config_path, workspace_id):
+    """(rate, known) for the account's VAT setting.
+
+    known is False ONLY when config.json exists and could not be read -- a torn
+    write, a bad edit, a locked file. That is not the same answer as "no rate
+    set": treating it as "not registered" made the repricer price a
+    VAT-registered account a sixth too low (audit, 28 Sep 2026). A missing file
+    (tests, a fresh install) or an account with no rate is known: None.
+    """
+    import json as _json
+    import os as _os
     try:
         from config import settings as _settings
         from domain import sales_data as _sd
-        raw = (_settings.read_raw(config_path) if config_path
-               else _settings.read_raw())          # the app's own config.json
-        return _sd.vat_rate_for(raw or {}, workspace_id)
     except Exception:
-        return None
+        return None, False
+    path = config_path or _settings.CONFIG_PATH
+    if not _os.path.exists(path):
+        return None, True
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = _json.load(fh)
+    except Exception:
+        return None, False
+    if not isinstance(raw, dict):
+        return None, False
+    try:
+        return _sd.vat_rate_for(raw, workspace_id), True
+    except Exception:
+        return None, False
+
+
+def account_vat_rate(config_path, workspace_id):
+    """The VAT rate set on the account, or None when nobody has said -- or
+    when it could not be read; callers that must tell those apart (the
+    repricer) use account_vat_status."""
+    return account_vat_status(config_path, workspace_id)[0]
 
 
 def at_price(config_path, workspace_id, marketplace, sku, asin, price, cost,

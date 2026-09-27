@@ -31,10 +31,15 @@ Verified live, generating a real image for 10.99_3Days_B0GGSCK998:
     after    50 rows, 2 images, feature "image: generate",
              sku 10.99_3Days_B0GGSCK998, cost 0.04 from OpenRouter itself
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -46,9 +51,9 @@ def falsy(l, g): check(l, bool(g), False)
 
 from domain import ai_usage as U
 
-P = open(r"D:\AltaScraper\domain\ai_providers.py", encoding="utf-8").read()
-A = open(r"D:\AltaScraper\domain\ai_usage.py", encoding="utf-8").read()
-D = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+P = open(_os_repo.path.join(_REPO, r"domain\ai_providers.py"), encoding="utf-8").read()
+A = open(_os_repo.path.join(_REPO, r"domain\ai_usage.py"), encoding="utf-8").read()
+D = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8").read()
 
 print("=== every call is recorded, whichever endpoint it used ===")
 falsy("the chat-only condition is gone from the recorder",

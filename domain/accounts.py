@@ -69,6 +69,20 @@ def migrate_legacy(cfg: dict) -> list:
     return accts
 
 
+def _write_config(raw: dict, config_path: str) -> None:
+    """Write config.json ATOMICALLY, and raise if it could not be written.
+
+    These used to do json.dump(raw, open(path, "w")), which empties config.json
+    before writing a byte -- a crash in between loses every credential, and the
+    file is git-ignored so there is no copy (Milestone 1, 28 Sep 2026). The one
+    atomic writer is config/settings.write_raw; it returns False rather than
+    raising, so this raises to keep the old "a failed save is an error" meaning.
+    """
+    from config import settings as _settings
+    if not _settings.write_raw(raw, config_path):
+        raise OSError("could not write %s" % config_path)
+
+
 def load_accounts(cfg: dict, config_path: str = None, persist: bool = True) -> list:
     """Return the accounts list, auto-migrating + persisting from legacy if absent."""
     accts = cfg.get("accounts")
@@ -80,8 +94,7 @@ def load_accounts(cfg: dict, config_path: str = None, persist: bool = True) -> l
             raw = json.load(open(config_path, encoding="utf-8"))
             if not raw.get("accounts"):
                 raw["accounts"] = accts
-                json.dump(raw, open(config_path, "w", encoding="utf-8"),
-                          indent=2, ensure_ascii=False)
+                _write_config(raw, config_path)
         except Exception:
             pass
     return accts
@@ -353,7 +366,7 @@ def save_account(cfg: dict, config_path: str, account: dict) -> dict:
     if not found:
         accts.append(account)
     raw["accounts"] = accts
-    json.dump(raw, open(config_path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+    _write_config(raw, config_path)
     return account
 
 
@@ -362,7 +375,7 @@ def delete_account(cfg: dict, config_path: str, account_id: str) -> bool:
     accts = raw.get("accounts") or []
     new = [a for a in accts if a.get("id") != account_id]
     raw["accounts"] = new
-    json.dump(raw, open(config_path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+    _write_config(raw, config_path)
     return len(new) != len(accts)
 
 

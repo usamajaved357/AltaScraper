@@ -371,7 +371,11 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                               "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
                 "Accept-Language": "en-US,en;q=0.9"})
-            raw = urllib.request.urlopen(req, timeout=20).read()
+            # A page address from the request: through the URL policy, and
+            # capped (master audit, 28 Sep 2026 -- domain/url_policy.py).
+            from domain import url_policy as _urlp
+            with _urlp.urlopen(req, timeout=20) as _r:
+                raw = _r.read(5_000_000)
             if raw[:2] == b"\x1f\x8b":
                 raw = gzip.decompress(raw)
             html = raw.decode("utf-8", "replace")

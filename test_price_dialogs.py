@@ -26,11 +26,16 @@ Two separate faults, and this pins both.
        the decimal point", on a deliberate price RISE, which is the ordinary
        thing this screen is for.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import io
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 
@@ -50,8 +55,8 @@ def falsy(label, got):
     check(label, bool(got), False)
 
 
-JS = io.open(r"D:\AltaScraper\static\js\priceedit.js", encoding="utf-8").read()
-PY = io.open(r"D:\AltaScraper\routes\price_routes.py", encoding="utf-8").read()
+JS = io.open(_os_repo.path.join(_REPO, r"static\js\priceedit.js"), encoding="utf-8").read()
+PY = io.open(_os_repo.path.join(_REPO, r"routes\price_routes.py"), encoding="utf-8").read()
 
 # Comments in both files describe the dialogs they replaced, by name. Matching
 # on the raw text would find those and pass -- or fail -- on the explanation

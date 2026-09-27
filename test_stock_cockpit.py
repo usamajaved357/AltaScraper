@@ -27,11 +27,16 @@ permanently empty columns and a fourth whose heading lies. The question becomes
 "can it be sourced before the promise breaks", which the repricer's supplier
 dispatch times can actually answer -- and Orbit cannot ask at all.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import datetime as dt
 import io
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 
@@ -165,7 +170,7 @@ print("\n--- the review queue is Orbit's idea, with our gaps ---")
 check("rows with something missing", c["review_queue"], 2)
 
 print("\n=== velocity: divided by the WINDOW, never by days-since-first-sale ===")
-src = io.open(r"D:\AltaScraper\domain\inventory_view.py", encoding="utf-8").read()
+src = io.open(_os_repo.path.join(_REPO, r"domain\inventory_view.py"), encoding="utf-8").read()
 check("the window is Orbit's 30 days", IV.WINDOW_DAYS, 30)
 truthy("a SKU whose whole history is inside the window is flagged provisional",
        '"provisional"' in src)

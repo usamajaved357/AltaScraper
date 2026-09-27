@@ -46,7 +46,22 @@ function acctId(){
  * did before -- the server treats a missing account as "said nothing" and
  * serves it. An account that IS named and disagrees is refused. */
 function acctBody(obj){
-  const id = acctId();
+  return acctBodyFor(obj, acctId());
+}
+
+/* Stamp a POST body with a GIVEN account -- the one a bulk action started in.
+ *
+ *     const pin = acctId();                 // once, before the loop
+ *     for(...){
+ *       if(acctId() !== pin) break;         // switched part-way: stop
+ *       fetch(url, {body: JSON.stringify(acctBodyFor({sku}, pin))});
+ *     }
+ *
+ * acctBody() reads the account afresh on every call, so a loop built on it
+ * sent every SKU after an account switch to the NEW account's same-SKU rows --
+ * a GTIN declaration, an arm, a delete on Amazon (master audit S1, 28 Sep
+ * 2026). A loop takes the account once and names it on every request. */
+function acctBodyFor(obj, id){
   if(!id) return obj || {};
   return Object.assign({}, obj || {}, {account: id});
 }
@@ -61,5 +76,8 @@ function acctUrl(url){
   const id = acctId();
   if(!id) return url;
   const u = String(url || "");
+  // Already names one: leave it -- that caller chose deliberately, and two
+  // account= values would be read differently by different routes.
+  if(/[?&]account=/.test(u)) return u;
   return u + (u.indexOf("?") >= 0 ? "&" : "?") + "account=" + encodeURIComponent(id);
 }

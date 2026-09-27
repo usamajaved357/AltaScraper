@@ -6,8 +6,13 @@ every workspace on the home screen, with each one's label, seller id, brands,
 marketplaces, sheet links and LWA client id. Not a cosmetic difference: the whole
 shape of the business, handed to someone deliberately scoped away from it.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 from flask import Flask
 from auth import users
 
@@ -110,7 +115,7 @@ check("NOT supplying the field at all still defaults to everything",
 
 
 print("\n=== one implementation, not two (Rule 12) ===")
-s = open(r"D:\AltaScraper\routes\accounts_routes.py", encoding="utf-8").read()
+s = open(_os_repo.path.join(_REPO, r"routes\accounts_routes.py"), encoding="utf-8").read()
 check("the list calls the shared rule", "users.visible_accounts" in s, True)
 check("  via a single helper", s.count("def _visible_accounts("), 1)
 check("  used by the list route", s.count("_visible_accounts(al)"), 1)
@@ -127,13 +132,13 @@ print("\n=== EVERY list of accounts is scoped, not just the home screen ===")
 #   "why is one user able to see the information of another user, every account
 #    is separate ... i am concerned that when i give this tool out to random
 #    people to test and use they will be able to see other people information"
-_sync_src = open(r"D:\AltaScraper\routes\sync_routes.py", encoding="utf-8").read()
+_sync_src = open(_os_repo.path.join(_REPO, r"routes\sync_routes.py"), encoding="utf-8").read()
 check("sync/capabilities filters before it lists",
       "_users.visible_accounts(" in _sync_src, True)
 check("  and never loops the raw account list",
       "for a in _acc.load_accounts(" in _sync_src, False)
 
-_dash_src = open(r"D:\AltaScraper\routes\dashboard_routes.py", encoding="utf-8").read()
+_dash_src = open(_os_repo.path.join(_REPO, r"routes\dashboard_routes.py"), encoding="utf-8").read()
 check("the home screen's account list is scoped too",
       "_users.visible_accounts(" in _dash_src, True)
 # AND ITS CACHE IS KEYED BY WHO IS ASKING. /dashboard/summary held a single

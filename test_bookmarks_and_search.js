@@ -30,10 +30,10 @@ function check(label, got, want) {
 }
 function truthy(label, got) { check(label, !!got, true); }
 
-const L = fs.readFileSync("D:/AltaScraper/static/js/listings.js", "utf8");
-const B = fs.readFileSync("D:/AltaScraper/static/js/bookmarks.js", "utf8");
-const H = fs.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
-const S = fs.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8");
+const L = fs.readFileSync((__dirname + "/static/js/listings.js"), "utf8");
+const B = fs.readFileSync((__dirname + "/static/js/bookmarks.js"), "utf8");
+const H = fs.readFileSync((__dirname + "/templates/dashboard.html"), "utf8");
+const S = fs.readFileSync((__dirname + "/static/js/shell.js"), "utf8");
 
 console.log("== the box says what it can actually do ==");
 truthy("the placeholder offers name first",
@@ -100,7 +100,7 @@ truthy("  the page you are on is marked in the bar",
 // WHAT THE REMOVAL MUST NOT HAVE BROKEN. The button was the only visible way
 // into the palette; the palette itself is untouched, and these two are the
 // difference between "harder to discover" and "gone".
-const P = fs.readFileSync("D:/AltaScraper/static/js/palette.js", "utf8");
+const P = fs.readFileSync((__dirname + "/static/js/palette.js"), "utf8");
 truthy("Ctrl+K still opens the palette from anywhere",
        /function palOpen/.test(P)
        && /ev\.ctrlKey \|\| ev\.metaKey/.test(P)

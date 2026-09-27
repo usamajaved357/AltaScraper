@@ -39,6 +39,11 @@ list gets NO CPSR flag -- a false negative on a legal requirement, which is the
 one direction this must not fail in. The blacklist reaches the same result for
 the case reported (a tripod stops getting cosmetics rules) without that risk.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import io
 import json
 import os
@@ -214,7 +219,7 @@ print("\n== NO PRODUCT TYPE: the check still runs ==")
 import json as _json                                          # noqa: E402
 import amazon_listing_generator as _g                          # noqa: E402
 
-_RULES = _json.load(open(r"D:\AltaScraper\compliance_rules.json", encoding="utf-8"))
+_RULES = _json.load(open(_os_repo.path.join(_REPO, r"compliance_rules.json"), encoding="utf-8"))
 _LED = {"bullets": [], "description": ""}
 _TITLE = "LED Strip Light 240v Mains Powered"
 

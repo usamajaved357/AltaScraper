@@ -5,8 +5,13 @@ it, so /genimage/jobs_active returned every running job on the server. The
 floating status bar polls it every two seconds on every page, so the owner
 watched their VA's image generation. Stop All stopped everyone's work.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, tempfile, shutil, threading
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 from flask import Flask, jsonify, session
 from domain import job_owner as jo
 from auth import users

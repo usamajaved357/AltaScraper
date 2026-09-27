@@ -329,7 +329,7 @@ function lvBelow(sku, key, localVal){
        + '<button class="lv-use" title="Copy Amazon’s value into this listing, so '
        + 'what Submit sends matches what is in the box. Saves to the app only — '
        + 'nothing is sent to Amazon until you press Submit."'
-       + ' onclick="lvUse(\'' + esc(sku) + '\',\'' + esc(key) + '\')">use Amazon’s</button>'
+       + ' onclick="lvUse(' + jsArg(sku) + ',' + jsArg(key) + ')">use Amazon’s</button>'
        + '</div>';
 }
 
@@ -490,12 +490,12 @@ function lvBanner(r){
   if(L.state === "gone")
     return '<div class="lv-bar gone">Amazon has no listing with this SKU on this account, '
          + 'so there is nothing live to compare. The values below are this app’s own.'
-         + '<button class="lv-refresh" onclick="lvRefresh(\'' + esc(sku) + '\')">check again</button></div>';
+         + '<button class="lv-refresh" onclick="lvRefresh(' + jsArg(sku) + ')">check again</button></div>';
   if(L.state === "error")
     return '<div class="lv-bar err">Could not read this listing from Amazon: '
          + esc(L.error||"") + '. The values below are this app’s own — they are '
          + 'not wrong, they are just not confirmed against Amazon.'
-         + '<button class="lv-refresh" onclick="lvRefresh(\'' + esc(sku) + '\')">try again</button></div>';
+         + '<button class="lv-refresh" onclick="lvRefresh(' + jsArg(sku) + ')">try again</button></div>';
 
   const a = r.attributes || {};
   const vals = L.values || {};
@@ -523,16 +523,16 @@ function lvBanner(r){
     + '<span class="lv-dot"></span><b>Live on Amazon</b>'
     + (L.amazon_status ? '<span class="lv-status">' + esc(L.amazon_status) + '</span>' : "")
     + bits.join("")
-    + (only ? '<button class="lv-fill" onclick="lvFillEmpty(\'' + esc(sku) + '\')">'
+    + (only ? '<button class="lv-fill" onclick="lvFillEmpty(' + jsArg(sku) + ')">'
               + 'Fill ' + only + ' empty field(s) from Amazon</button>' : "")
     // THE REVERSE, which never existed. "Fill from Amazon" has always been here;
     // there was no way to send the other way, so an edit to a live listing sat
     // in this app indefinitely with nothing saying so.
-    + (_unsent ? '<button class="lv-push" onclick="lvPushChanges(\'' + esc(sku) + '\')"'
+    + (_unsent ? '<button class="lv-push" onclick="lvPushChanges(' + jsArg(sku) + ')"'
               + ' title="Patch these fields on the live Amazon listing. Only the '
               + 'ones that differ are sent, and you see each one before it goes.">'
               + 'Send ' + _unsent + ' change(s) to Amazon</button>' : "")
-    + '<button class="lv-refresh" onclick="lvRefresh(\'' + esc(sku) + '\')">refresh</button>'
+    + '<button class="lv-refresh" onclick="lvRefresh(' + jsArg(sku) + ')">refresh</button>'
     + '</div>'
     + lvShapeBar(L)
     + (issues.length

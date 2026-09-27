@@ -6,8 +6,13 @@ what is being spent on it, and would look entirely convincing. And a product wit
 uncosted units gets no contribution at all, for the same reason the dashboard
 withholds profit: a partial cost only ever flatters.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -89,13 +94,21 @@ r3 = by[A3]
 check("net = 30 - 4.50 - 10", r3["net_proceeds"], 15.5)
 check("contribution = 15.50 - 8", r3["contribution"], 7.5)
 
-print("\n=== a product with uncosted units reports NOTHING ===")
+# RE-PINNED 28 Sep 2026 (profit-accuracy work). This pinned "reports NOTHING".
+# The owner's rule -- "if no cogs are added show profit as wrong ... the user
+# should know he needs to add cogs" -- already governed the Sales card and the
+# P&L; Finance now follows it, so the three screens agree. The figure is SHOWN,
+# counting the uncosted unit as costing nothing, and flagged as too high.
+print("\n=== a product with uncosted units is SHOWN, flagged ===")
 r2 = by[A2]
 check("two units shipped", r2["units"], 2)
 check("  only one costed", r2["cogs_units"], 1)
 check("  so one is uncosted", r2["uncosted_units"], 1)
-check("no contribution", r2["contribution"], None)
-check("  and no margin", r2["margin_pct"], None)
+check("its contribution is stated: 18.50 + the 12.00 not subtracted",
+      r2["contribution"], 30.5)
+check("  and its margin, over sales after VAT", r2["margin_pct"], 61.0)
+truthy("  and the screen says it is too high",
+       any("HIGHER" in n for n in _texts(C.notes(rows, totals))))
 check("  but its cost so far is still shown", r2["cogs"], 12.0)
 check("  and its revenue", r2["revenue"], 50.0)
 
@@ -175,9 +188,11 @@ check("  and the total is no longer blank", totals2["ad_spend"], 12.5)
 print("\n=== the total is recomputed, not summed ===")
 # A1 45.00 + A3 7.50 = 52.50 if you sum the column. That would silently drop A2's
 # revenue and fees entirely and present the rest as the whole period.
-check("the period contains an uncosted unit, so the total is withheld",
-      totals["contribution"], None)
-check("  and so is its margin", totals["margin_pct"], None)
+# Re-pinned 28 Sep 2026, same rule: the total is stated, too high by A2's
+# missing cost, and the notes say so (checked above).
+check("the period contains an uncosted unit, so the total is too high",
+      totals["contribution"], 83.0)
+check("  and so is its margin", totals["margin_pct"], 46.11)
 check("  but the parts still add up: revenue", totals["revenue"], 180.0)
 check("  fees", totals["fees"], 27.0)          # 15.00 + 7.50 + 4.50
 check("  units", totals["units"], 5)
@@ -190,7 +205,7 @@ b3 = {r["asin"]: r for r in rows3}
 check("the product reports now", b3[A2]["contribution"], 18.5)
 check("  and so does the period", totals3["contribution"], 71.0)
 truthy("  with no 'uncosted' warning left",
-       not any("no known cost" in n for n in _texts(C.notes(rows3, totals3))))
+       not any("no cost recorded" in n for n in _texts(C.notes(rows3, totals3))))
 
 print("\n=== the endpoint ===")
 from flask import Flask
@@ -230,7 +245,11 @@ check("  and a contribution the screen can show", j["totals"]["contribution"], 7
 o = c.get("/finance/contribution?start=2026-08-01&end=2026-08-31"
           "&basis=orders").get_json()
 check("  the order calendar answers separately", o["basis"], "orders")
-check("  and finds nothing, because no orders are stored", len(o["rows"]), 0)
+# Re-pinned 28 Sep 2026: refunds count on the day the money went back (owner's
+# rule), so the order calendar now carries this window's refund on its own
+# product row even with no orders stored -- and nothing else.
+check("  and finds only refund money, because no orders are stored",
+      all(r["units"] == 0 and r["revenue"] == 0 for r in o["rows"]), True)
 # An unknown basis must not silently become one of them without saying so.
 d = c.get("/finance/contribution?start=2026-08-01&end=2026-08-31"
           "&basis=nonsense").get_json()

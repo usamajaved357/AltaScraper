@@ -107,8 +107,11 @@ def _load_image(src):
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             req = urllib.request.Request(s, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
-                return Image.open(io.BytesIO(r.read())).convert("RGBA")
+            # Public addresses only (domain/url_policy.py, Milestone 2); the
+            # certificate exception is for broken supplier certs and stays.
+            from domain import url_policy as _urlp
+            with _urlp.urlopen(req, timeout=30, context=ctx) as r:
+                return Image.open(io.BytesIO(r.read(40 * 1024 * 1024))).convert("RGBA")
         p = Path(s)
         if p.exists():
             return Image.open(p).convert("RGBA")

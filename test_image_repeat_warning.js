@@ -26,7 +26,7 @@ function check(label, got, want) {
 }
 function truthy(label, got) { check(label, !!got, true); }
 
-const G = fs.readFileSync("D:/AltaScraper/static/js/genimage.js", "utf8");
+const G = fs.readFileSync((__dirname + "/static/js/genimage.js"), "utf8");
 
 console.log("== every way in asks first ==");
 // Five call sites, one definition.
@@ -118,7 +118,7 @@ truthy("  with the reason recorded",
 check("A+: the tier's own module count", /_tier==="premium" \? 7 : 5/.test(G), true);
 
 console.log("\n== the timestamp it relies on is actually served ==");
-const M = fs.readFileSync("D:/AltaScraper/routes/media_routes.py", "utf8");
+const M = fs.readFileSync((__dirname + "/routes/media_routes.py"), "utf8");
 truthy("/media/list returns made_at", /"made_at": _made/.test(M));
 truthy("  from the file's own mtime", /_made = int\(_st\.st_mtime\)/.test(M));
 // Parsing the name would be blank for uploads; a column right for some images

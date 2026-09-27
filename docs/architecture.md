@@ -79,15 +79,25 @@ for generate, retry, export, regen, api (preview), api submit and api verify.
 ## 4. Auth and permissions
 
 - `auth/guard.py make_doorman()` runs before every request:
+  0. a write (or a GET that does work, `WORK_OVER_GET`) whose Origin / Referer /
+     Sec-Fetch-Site says another site, or `Origin: null`, is refused
+     (`cross_site_refusal`); session cookie SameSite=Lax (`harden_session`)
   1. public endpoints pass (`_login, _healthz, static, _pubimg, invite_*,
      oauth_*, privacy_page, terms_page`)
-  2. not signed in: JSON 401 for API calls, redirect to `/login?next=` for pages
-  3. a workspace named in the query/body must be one the user may access
-     (exempt prefixes include `/input/`, `/listing/`, `/row`, `/genimage`)
+  2. not signed in: JSON 401 for API calls, redirect to `/login?next=` for
+     pages. With no password and no users: open locally, 503 when hosted
+     (`open_gate_allowed`, `config/hosting.py`)
+  3. EVERY account named anywhere -- query, the body whatever its type
+     (`request_body_for_check`), form fields, each row of each list -- must be
+     one the user may access (`named_workspaces`). Only `id` is ever exempt, on
+     the record-id paths in `ID_NOT_AN_ACCOUNT` / `_EXACT` / `_EXCEPT`
   4. feature area level (none / view / edit); a GET at view level passes
-     without consulting RULES
-  5. `RULES` table, first prefix match wins; unlisted GET needs nothing,
-     unlisted write needs "edit"
+     without consulting RULES -- unless it is `WORK_OVER_GET` (the streamed
+     `/run/*`), which is judged as a write
+  5. `WRITE_RULES` (write-only rules), then `RULES` (first prefix match wins;
+     unlisted GET needs nothing, unlisted write needs "edit"), then
+     `BODY_RULES` (e.g. `/preview/enqueue` with `mode: api_submit` needs
+     "publish")
 - Roles (`auth/users.py`): owner (everything), manager (edit, upload_images,
   approve_delete, publish, ppc), lister (edit, upload_images), viewer (none).
 - **A new route that publishes, spends money, deletes or exposes credentials
@@ -120,7 +130,9 @@ for generate, retry, export, regen, api (preview), api submit and api verify.
   deliberately). So the seven `_wrong_account` wrappers in route files are
   no-ops, and named-account safety rests on guard step 3 plus `store_for`.
 - Browser: `static/js/reqscope.js` `acctId() / acctBody() / acctUrl()` add
-  `account=`; `static/js/scopeq.js scopeQs()` adds `account` + `marketplace`
+  `account=`; a BULK loop takes `acctId()` once before its question and uses
+  `acctBodyFor(obj, pin)`, stopping if `acctId()` changes (the repricer screen's
+  equivalent is `_srcScopeNow()` / `_srcStillIn()`); `static/js/scopeq.js scopeQs()` adds `account` + `marketplace`
   and drops `__all__`. With no account open they add nothing and the server
   uses `_state`.
 - **SKUs are not unique across accounts.** The owner runs the same product on
@@ -158,7 +170,11 @@ On an app row, `r.asin` is the **competitor reference** parsed from the SKU
   run_status.json, image_url_key and others. Some are written atomically
   (`domain/jsonstore.write_json_atomic`); several are truncated then rewritten.
 - **config.json:** `config/settings.py` `read_raw` / `write_raw` (atomic) is the
-  intended single reader/writer. Direct writers remain (see known-issues).
+  single writer (the last direct writers -- accounts, known sellers, brand
+  connection, settings routes -- moved onto it in Milestone 1).
+- **attribute_defaults.json** (shared by every account): never holds brand,
+  title, identifiers, offer or pictures -- `listing/attribute_defaults.py`,
+  applied on save and on load (CLAUDE.md Rule 1).
 - **Media:** `<config dir>/media/_acct/<account>/<sku>/`.
 
 ## 8. Data facts that are easy to get wrong
@@ -238,6 +254,10 @@ Active live listings auto-enrol in dry run; drafts never. Floor price and
 only, never PUTs a listing.
 
 ## 10. External APIs
+
+- A URL that came from a user is fetched only through
+  `domain/url_policy.urlopen` (http/https, public addresses only, re-checked on
+  redirect). "Is this hosted, and where?" is `config/hosting.py`.
 
 | Service | Where | Notes |
 |---|---|---|
@@ -365,8 +385,21 @@ only, never PUTs a listing.
 
 ## 14. Tests
 
-About 355 standalone scripts at the repo root (`test_*.py`, `test_*.js`), run
+About 362 standalone scripts at the repo root (`test_*.py`, `test_*.js`), run
 by `run_tests.py` (each file its own subprocess; `probe_*.py` live-API scripts
-skipped; lock file against two runs; TMP redirected). About 70% assert source
-text; about 20 need the owner's real config.json or database. No CI.
-Details and the baseline list: docs/known-issues.md "Tests".
+skipped; lock file against two runs; TMP redirected). No CI.
+
+Since Milestone 1 (28 Sep 2026):
+- **A test tests the tree it lives in.** Python tests resolve paths from
+  `_REPO` (their own folder); JS tests from `__dirname`. No test may name
+  `D:\AltaScraper` -- 141 did, and silently tested the main checkout.
+- **Safe by default.** The runner gives every test file its own empty database
+  (`ALTASCRAPER_DB`) and a config path that does not exist (`CONFIG_PATH`),
+  under the run's scratch folder. A test that sets these itself still wins.
+- A test that cannot start without a config.json is reported as "could not
+  run", by name, not as a failure. Exit code 125 means "could not run".
+- Undefined-name guards: `test_no_undefined_names.py` (Python, pyflakes) and
+  `test_no_undefined_js_calls.js` (browser calls to functions defined nowhere).
+
+Many tests still assert source text rather than behaviour; about 11 need the
+owner's real data. Details and the baseline: docs/known-issues.md "Tests".

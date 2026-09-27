@@ -5,8 +5,13 @@ sequence (the second product did not start until the first had fully finished),
 and the status bar reported a single "0/16" that said nothing about which item
 was where.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys, time, threading
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(label, got, want):
@@ -14,7 +19,7 @@ def check(label, got, want):
     if not ok: fails.append(label)
     print("  %-62s %s" % (label, "OK" if ok else "FAIL got=%r want=%r" % (got, want)))
 
-src = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8").read()
 
 print("=== the worker is no longer one long queue ===")
 check("a parallel dispatcher exists", "_run_img_jobs_parallel" in src, True)
@@ -87,12 +92,12 @@ check("  and B's failure is counted", p[1]["failed"], 1)
 check("the totals still add up to the old number",
       sum(x["total"] for x in p), 16)
 
-gsrc = open(r"D:\AltaScraper\routes\genimage_routes.py", encoding="utf-8").read()
+gsrc = open(_os_repo.path.join(_REPO, r"routes\genimage_routes.py"), encoding="utf-8").read()
 check("job_status reports the breakdown", '"products": _by_product(j)' in gsrc, True)
 check("jobs_active reports it too", '"products": _by_product(j)' in gsrc, True)
 check("_by_product is defined once", gsrc.count("def _by_product("), 1)
 
-jsrc = open(r"D:\AltaScraper\static\js\settings.js", encoding="utf-8").read()
+jsrc = open(_os_repo.path.join(_REPO, r"static\js\settings.js"), encoding="utf-8").read()
 check("the status bar names the product count", '" · "+products.length+" products"' in jsrc, True)
 check("  and a single product by SKU", 'products[0].sku' in jsrc, True)
 

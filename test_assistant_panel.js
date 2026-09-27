@@ -25,7 +25,7 @@ function check(label, got, want){
 function truthy(label, got){ check(label, !!got, true); }
 function falsy(label, got){ check(label, !!got, false); }
 
-const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const read = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 const A = read("static/js/assistant.js");
 
 console.log("== it draws the receipts ==");

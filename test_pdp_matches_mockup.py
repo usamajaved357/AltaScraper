@@ -146,7 +146,8 @@ check("only the two identity columns can be locked", _locked_cols, ["Brand", "UP
 # The title is edited in the hero (drawer.js dwTitleParts), the price and
 # handling in the offer rows -- none of them passes through _lockOn at all.
 yes("  the title editor is untouched by it",
-    'dwBlurSave(this,\\\'\' + esc(r.sku) + \'\\\',\\\'col\\\',\\\'Title\\\')'
+    # jsArg for the SKU since Milestone 2 (the handler-argument XSS fix)
+    'dwBlurSave(this,\' + jsArg(r.sku) + \',\\\'col\\\',\\\'Title\\\')'
     in read("static", "js", "drawer.js")
     or "'col','Title'" in read("static", "js", "drawer.js"))
 yes("  and the price and handling boxes are still editCell",

@@ -14,7 +14,7 @@ function check(label, got, want) {
   console.log("  %s %s", label.padEnd(62),
               ok ? "OK" : `FAIL got=${JSON.stringify(got)} want=${JSON.stringify(want)}`);
 }
-const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const read = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 const js = read("static/js/sales.js");
 const shell = read("static/js/shell.js");
 const tpl = read("templates/dashboard.html");
@@ -82,7 +82,7 @@ check("  and the menu offers it, which is what the server reads",
       /data-sec="traffic"/.test(tpl), true);
 check("and the route is registered on the app",
       /_traffic_routes\.register\(app/.test(
-        require("fs").readFileSync("D:/AltaScraper/dashboard.py", "utf8")), true);
+        require("fs").readFileSync((__dirname + "/dashboard.py"), "utf8")), true);
 
 console.log("\n=== the product filter actually filters ===");
 // It was wired to salesReload(), which rebuilds the query from SALES.asin --

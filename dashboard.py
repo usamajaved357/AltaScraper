@@ -185,6 +185,8 @@ def _public_media_url(media_url: str) -> str:
 # auth/guard.py, which holds the whole policy in one readable table. Nothing about
 # who-may-do-what is decided in this file.
 from auth.guard import make_doorman as _make_doorman
+from auth.guard import harden_session as _harden_session
+_harden_session(app)
 app.before_request(_make_doorman(CONFIG_PATH, _APP_PASSWORD))
 
 
@@ -2576,9 +2578,10 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                         elif re.match(r"^https?://", du.strip(), re.I):
                             try:
                                 import urllib.request as _ur
+                                from domain import url_policy as _urlp   # public only (M2)
                                 _rq = _ur.Request(du.strip(), headers={"User-Agent": "Mozilla/5.0"})
-                                with _ur.urlopen(_rq, timeout=30) as _rr:
-                                    raw_bytes = _rr.read()
+                                with _urlp.urlopen(_rq, timeout=30) as _rr:
+                                    raw_bytes = _rr.read(40 * 1024 * 1024)
                                     _ct = _rr.headers.get("Content-Type", "") if hasattr(_rr, "headers") else ""
                                 if "jpeg" in _ct or "jpg" in _ct: ext = "jpg"
                                 elif "webp" in _ct: ext = "webp"
@@ -4815,8 +4818,8 @@ def build_app(backend=None):
     # invisible until the app was restarted -- which looks exactly like "the
     # change didn't work". Re-checked at most once every few seconds, which is
     # cheap and only happens off-server.
-    _paas = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER")
-                 or os.environ.get("DYNO"))
+    from config import hosting as _hosting          # one list of markers
+    _paas = _hosting.is_hosted()
     _av = {"ts": 0.0}
 
     # AND THE TEMPLATE ITSELF.

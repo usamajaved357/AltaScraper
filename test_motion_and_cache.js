@@ -64,8 +64,8 @@ const sandbox = {
 };
 sandbox.window.document = dom.document;
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync("D:/AltaScraper/static/js/screenstate.js", "utf8"), sandbox);
-vm.runInContext(fs.readFileSync("D:/AltaScraper/static/js/motion.js", "utf8"), sandbox);
+vm.runInContext(fs.readFileSync((__dirname + "/static/js/screenstate.js"), "utf8"), sandbox);
+vm.runInContext(fs.readFileSync((__dirname + "/static/js/motion.js"), "utf8"), sandbox);
 
 console.log("=== a screen loads once, then is instant ===");
 check("the first visit loads", sandbox.screenNeedsLoad("sales"), true);
@@ -167,10 +167,10 @@ dom.els.finbody.innerHTML = "";
 truthy("but it fills an empty one", sandbox.altaSkeletonInto("finbody", {}));
 
 console.log("\n=== the motion respects a system preference ===");
-const CSS = fs.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
+const CSS = fs.readFileSync((__dirname + "/static/css/dashboard.css"), "utf8");
 truthy("reduced motion is honoured in CSS", CSS.indexOf("prefers-reduced-motion") >= 0);
 truthy("  and by the counting numbers, which CSS cannot reach",
-       fs.readFileSync("D:/AltaScraper/static/js/motion.js", "utf8")
+       fs.readFileSync((__dirname + "/static/js/motion.js"), "utf8")
          .indexOf("prefers-reduced-motion") >= 0);
 // MEASURED: Orbit does NOT animate a section switch. Its content area reported
 // `animation: none, 0s` at 0, 80, 160, 320, 640 and 1200ms across three tab
@@ -209,7 +209,7 @@ console.log("\n=== a chart below the fold keeps its motion until you reach it ==
  * the fold finish playing before anyone scrolls to them.
  */
 {
-  const motion = fs.readFileSync("D:/AltaScraper/static/js/motion.js", "utf8");
+  const motion = fs.readFileSync((__dirname + "/static/js/motion.js"), "utf8");
   const rules = CSS.replace(/\/\*[\s\S]*?\*\//g, "");
   truthy("charts below the fold are held", /function altaChartsInView/.test(motion));
   truthy("  by pausing, not by hiding -- a hidden chart reflows on release",
@@ -242,7 +242,7 @@ console.log("\n=== a chart below the fold keeps its motion until you reach it ==
            /prefers-reduced-motion/.test(body) && /\.matches\)\s*return;/.test(body));
   }
   // And it is actually called after the charts are drawn.
-  const sales = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
+  const sales = fs.readFileSync((__dirname + "/static/js/sales.js"), "utf8");
   check("the sales screen asks for it after drawing",
         (sales.match(/altaChartsInView\(host\)/g) || []).length >= 2, true);
 }

@@ -558,8 +558,8 @@ function pdpHero(r){
     +       'inputmode="numeric" autocomplete="off" spellcheck="false" '
     // esc() with explicit quotes, which is this file's convention -- jsArg is
     // declared in shell.js and is not in scope here.
-    +       'oninput="pdpBarcodeTyped(\'' + esc(r.sku) + '\', this.value)" '
-    +       'onchange="pdpBarcodeSave(\'' + esc(r.sku) + '\', this.value)">'
+    +       'oninput="pdpBarcodeTyped(' + jsArg(r.sku) + ', this.value)" '
+    +       'onchange="pdpBarcodeSave(' + jsArg(r.sku) + ', this.value)">'
     // THE STARTING VERDICT, from what the row already knows (r.identifier,
     // routes/listing_routes._attach_identifier) -- the mockup's "✓ unique".
     // Typing replaces it with /barcode/check's live answer, as before.
@@ -642,7 +642,7 @@ function pdpTabBar(r){
   if(!tabs.some(function(t){ return t.key === PDP_TAB; })) PDP_TAB = "details";
   return '<div class="pdp-tabs">' + tabs.map(function(t){
     return '<div class="pdp-tab' + (PDP_TAB === t.key ? " active" : "") + '"'
-         + ' onclick="pdpTab(\'' + t.key + '\')">' + esc(t.label) + '</div>';
+         + ' onclick="pdpTab(' + jsArg(t.key) + ')">' + esc(t.label) + '</div>';
   }).join("") + '</div>';
 }
 
@@ -653,7 +653,7 @@ function pdpSidebar(r){
   const live = (typeof isAmazonLive === "function") ? isAmazonLive(r) : false;
   const ownAsin = (typeof ownLiveAsin === "function") ? ownLiveAsin(r) : "";
   const chk = function(cls, icon, label, tab){
-    return '<div class="pdp-ck ' + cls + '" onclick="pdpTab(\'' + tab + '\')">'
+    return '<div class="pdp-ck ' + cls + '" onclick="pdpTab(' + jsArg(tab) + ')">'
          + '<i class="ti ' + icon + '"></i> ' + esc(label) + '</div>';
   };
 
@@ -696,7 +696,7 @@ function pdpSidebar(r){
   };
   return '<div class="pdp-side">'
     + (live && ownAsin
-        ? '<button class="pdp-sbbtn" onclick="optimizeLive(\'' + esc(ownAsin) + '\',\'' + esc(sku) + '\')">'
+        ? '<button class="pdp-sbbtn" onclick="optimizeLive(' + jsArg(ownAsin) + ',' + jsArg(sku) + ')">'
           + '<i class="ti ti-sparkles"></i> Optimize live copy</button>'
         : "")
     + '<div class="pdp-sbsec"><div class="pdp-sblabel">Quick actions</div>'
@@ -706,7 +706,7 @@ function pdpSidebar(r){
     // Images tab already carries the same generator (pdpGenSection), so the
     // rail takes you there instead.
     +   '<div class="pdp-sbitem" onclick="pdpOpenGenerator()"><i class="ti ti-photo-edit"></i> Image studio</div>'
-    +   '<div class="pdp-sbitem" onclick="askAbout(\'' + esc(sku) + '\')"><i class="ti ti-message-circle"></i> Ask Claude</div>'
+    +   '<div class="pdp-sbitem" onclick="askAbout(' + jsArg(sku) + ')"><i class="ti ti-message-circle"></i> Ask Claude</div>'
     // RAW DATA OPENS THE SUBMISSION DATA, not just the tab it is on.
     +   '<div class="pdp-sbitem" onclick="pdpOpenRaw()"><i class="ti ti-code"></i> Raw data</div>'
     + '</div>'
@@ -967,8 +967,8 @@ function pdpAttrRows(m){
               + (multi ? ' <span class="pdp-dim">(' + multi + ' values)</span>' : '')
               + (canUse ? ' <button class="pdp-ause" title="Copy Amazon’s value '
                  + 'into this listing. Saves to the app only — nothing is sent '
-                 + 'to Amazon until you press Submit." onclick="lvUse(\''
-                 + esc(sku) + '\',\'' + esc(k) + '\')">use</button>' : "")
+                 + 'to Amazon until you press Submit." onclick="lvUse('
+                 + jsArg(sku) + ',' + jsArg(k) + ')">use</button>' : "")
               + '</div>'
             : "")
       +   ctrl + said
@@ -977,7 +977,7 @@ function pdpAttrRows(m){
 
   const fbtn = (key, label, n) =>
     '<button class="pdp-af' + (PDP_ATTR_FILTER === key ? " active" : "") + '"'
-    + ' onclick="pdpAttrFilter(\'' + key + '\')">' + esc(label)
+    + ' onclick="pdpAttrFilter(' + jsArg(key) + ')">' + esc(label)
     + (n == null ? "" : ' <b>' + n + '</b>') + '</button>';
 
   const noLive = !L || L.state !== "ok";
@@ -1001,10 +1001,9 @@ function pdpAttrRows(m){
     +   fbtn("differs", "Differs", nDiff) + fbtn("amazon", "Only Amazon", nOnlyAmz)
     +   fbtn("empty", "Empty") + '</div>'
     + '<div class="pdp-attrs">' + rows + empty + '</div>'
-    + (nOnlyAmz ? '<div class="pdp-more" onclick="lvFillEmpty(\'' + esc(sku) + '\')">'
+    + (nOnlyAmz ? '<div class="pdp-more" onclick="lvFillEmpty(' + jsArg(sku) + ')">'
         + '<i class="ti ti-arrow-down"></i> Fill ' + nOnlyAmz + ' empty field(s) from Amazon</div>' : "")
-    + (m.productType ? '<div class="pdp-more amber" onclick="saveDefault(\'' + esc(sku) + '\',\''
-        + esc(m.productType) + '\',this)"><i class="ti ti-star"></i> Remember these as defaults for all '
+    + (m.productType ? '<div class="pdp-more amber" onclick="saveDefault(' + jsArg(sku) + ',' + jsArg(m.productType) + ',this)"><i class="ti ti-star"></i> Remember these as defaults for all '
         + esc(m.productType) + ' listings</div>' : "");
 }
 
@@ -1100,18 +1099,18 @@ function pdpMvCell(sku, key, val, max){
       // class "ed" is the app's own input, styled once in the shared sheet --
       // a second class here would be a second look for the same control.
       '<input class="ed pdp-mv" value="' + esc(p) + '"'
-    + ' onchange="pdpMvSave(\'' + esc(id) + '\',\'' + esc(sku) + '\',\'' + esc(key) + '\')">'
+    + ' onchange="pdpMvSave(' + jsArg(id) + ',' + jsArg(sku) + ',' + jsArg(key) + ')">'
   ).join("");
 
   // "Add More" disappears at the ceiling; "Remove Last" only exists once there
   // is a second box to remove.
   const canAdd = (max === 0) || (parts.length < max);
   const links = '<div class="pdp-addmore">'
-    + (canAdd ? '<a onclick="pdpMvAdd(\'' + esc(id) + '\')">Add More</a>' : "")
+    + (canAdd ? '<a onclick="pdpMvAdd(' + jsArg(id) + ')">Add More</a>' : "")
     + (canAdd && parts.length > 1 ? '<span>|</span>' : "")
     + (parts.length > 1
-        ? '<a class="remove" onclick="pdpMvRemove(\'' + esc(id) + '\',\''
-          + esc(sku) + '\',\'' + esc(key) + '\')">Remove Last</a>' : "")
+        ? '<a class="remove" onclick="pdpMvRemove(' + jsArg(id) + ','
+          + jsArg(sku) + ',' + jsArg(key) + ')">Remove Last</a>' : "")
     + (max ? '<span class="pdp-mvcap">' + parts.length + '/' + max + '</span>'
            : '<span class="pdp-mvcap">' + parts.length + '</span>')
     + '</div>';
@@ -1360,7 +1359,7 @@ function pdpApiIssues(r){
   // Attributes tab and scrolls to that row.
   const chips = i => (i.fields || []).map(f =>
       '<button class="pdp-errfield" title="Go to this field"'
-      + ' onclick="pdpGoToField(\'' + esc(f) + '\')">' + esc(f) + '</button>').join("");
+      + ' onclick="pdpGoToField(' + jsArg(f) + ')">' + esc(f) + '</button>').join("");
 
   const line = (i, cls) => {
     const done = answered(i);
@@ -1716,7 +1715,7 @@ function pdpCatalogueNote(r){
       + '. The empty fields mean <b>nobody could look</b>, not that the listing '
       + 'has none. If it keeps happening, run the diagnostics.'
       + '</div>'
-      + '<button class="pdp-tb" onclick="lvRefresh(\'' + esc(r.sku) + '\')">'
+      + '<button class="pdp-tb" onclick="lvRefresh(' + jsArg(r.sku) + ')">'
       + '<i class="ti ti-refresh"></i> Try again</button>'
       // Here, not "on the listings page" -- that button is behind this overlay
       // (and in the ⋯ menu now). Its dialog opens above the page.
@@ -1741,7 +1740,7 @@ function pdpCatalogueNote(r){
     + '. Editing needs a draft to save into: press Sync to pull this listing in, '
     + 'and it then behaves like any other.'
     + '</div>'
-    + '<button class="pdp-tb" onclick="pdpSyncThis(\'' + esc(r.sku) + '\')">'
+    + '<button class="pdp-tb" onclick="pdpSyncThis(' + jsArg(r.sku) + ')">'
     + '<i class="ti ti-refresh"></i> Sync this listing</button>'
     + '</div>';
 }
@@ -1934,13 +1933,13 @@ function pdpRender(){
     + '<a class="pdp-back" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
     // THE SAME THREE ACTIONS THE DRAWER'S FOOTER RUNS, calling the same
     // functions. Nothing here is reimplemented.
-    + '<button class="pdp-tb" onclick="previewOne(\'' + esc(sku) + '\')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>'
-    + '<button class="pdp-tb accent" onclick="autoFixLoop(\'' + esc(sku) + '\')" title="Suggest, apply, preview — repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>'
+    + '<button class="pdp-tb" onclick="previewOne(' + jsArg(sku) + ')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>'
+    + '<button class="pdp-tb accent" onclick="autoFixLoop(' + jsArg(sku) + ')" title="Suggest, apply, preview — repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>'
     + (ro
       ? '<span class="pdp-rolock"><i class="ti ti-lock"></i> Read-only workspace</span>'
-      : '<button class="pdp-tb success" onclick="submitOne(\'' + esc(sku) + '\')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>')
+      : '<button class="pdp-tb success" onclick="submitOne(' + jsArg(sku) + ')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>')
     + '<span class="pdp-spacer"></span>'
-    + '<button class="pdp-tb" onclick="drawerMore(event,\'' + esc(sku) + '\',' + (r.row||0) + ','
+    + '<button class="pdp-tb" onclick="drawerMore(event,' + jsArg(sku) + ',' + (r.row||0) + ','
       + ((typeof isAmazonLive === "function" && isAmazonLive(r)) ? 'true' : 'false')
       + ')" title="Everything else"><i class="ti ti-dots"></i></button>'
     + '</div>';

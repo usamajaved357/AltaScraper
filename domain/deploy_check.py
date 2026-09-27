@@ -70,8 +70,8 @@ def check(config_path, in_use=None):
     app_dir = os.path.dirname(os.path.abspath(__file__))
     app_root = os.path.dirname(app_dir)
     looks_ephemeral = os.path.normcase(data_dir).startswith(os.path.normcase(app_root))
-    on_paas = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER")
-                   or os.environ.get("DYNO"))
+    from config import hosting as _hosting          # one list of markers
+    on_paas = _hosting.is_hosted()
     if looks_ephemeral and on_paas:
         add("State survives a deploy", False,
             "state is inside the app folder (%s) -- this is WIPED on every deploy"

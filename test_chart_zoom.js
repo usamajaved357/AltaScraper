@@ -31,7 +31,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const read = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 const CHARTS = read("static/js/salescharts.js");
 const SALES = read("static/js/sales.js");
 const TRAF = read("static/js/traffic.js");

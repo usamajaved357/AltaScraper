@@ -46,10 +46,19 @@ this file. Claude updates it after a `security-review`; the owner reviews change
 
 - `routes/dash_auth_routes.py` `/login`: email + password for real users
   (`auth/users.authenticate`); the shared `APP_PASSWORD` only while no admin
-  user exists (bootstrap). No users and no password = no login (local dev).
+  user exists (bootstrap). No users and no password = no login -- locally
+  only. On a hosting platform (config/hosting.py) the same blanks now FAIL
+  CLOSED with a 503 until APP_PASSWORD is set, unless ALTASCRAPER_ALLOW_OPEN=1
+  says otherwise on purpose (Milestone 2, 28 Sep 2026).
 - Sessions are permanent for 30 days, signed with `APP_SECRET_KEY`. Without that
   env var every restart logs everyone out.
-- `next=` is checked against open redirects.
+- `next=` is checked against open redirects, including the backslash and
+  tab/newline forms browsers rewrite into `//other.site` (Milestone 2).
+- Cross-site requests (CSRF): the session cookie is `SameSite=Lax`,
+  `HttpOnly`, and `Secure` when hosted; any write whose Origin/Referer names
+  another site is refused before anything else (`guard.cross_site_refusal`).
+  No per-form token -- a request with neither header is left to the sign-in
+  check (Milestone 2).
 - Multi-tenant Amazon OAuth: single-use nonce, 15-minute expiry, constant-time
   compare (`routes/auth_oauth_routes.py`).
 
@@ -64,9 +73,16 @@ this file. Claude updates it after a `security-review`; the owner reviews change
   `/sync/push`, `/listing/push_image`, `/listing/image_push`,
   `/handling/bulk_update`, `/stock/bulk_update`, `/listing/price/apply`,
   `/listing/price/percent_apply`, `/variations/apply`, `/sourcing`.
-- **Known gap (unverified):** the real submit paths `/run/api_submit` and
-  `/preview/enqueue` need only "edit"; `_require_publish()` checks the
-  workspace, not the user (docs/known-issues.md #1).
+- Submitting needs `publish` whichever way it is started: `/run/api_submit`
+  (RULES) and `/preview/enqueue` with `mode: api_submit` (BODY_RULES). Closed in
+  Milestone 2 (was known-issues #1).
+- Work done over GET (`WORK_OVER_GET`, the streamed `/run/*`) is judged as a
+  write: a view-only user cannot start one.
+- `WRITE_RULES`: `/ai/settings` and `/admin/logic_settings` may be read by
+  anyone signed in, changed only with `manage_accounts`. `/jobs/run/*` and
+  `/media/recover/move` need `manage_accounts`.
+- Preview jobs: `/preview/job` shows only jobs the caller may see and, by SKU,
+  only the open account's; `/preview/stop` stops only the caller's own.
 
 ## 4. Public endpoints (no login)
 
@@ -77,9 +93,21 @@ Any addition to `PUBLIC_ENDPOINTS` is a security change: owner approval.
 
 ## 5. Account isolation
 
-- A user may only name workspaces they have access to (guard step: named
-  workspace), except under exempt prefixes (`/users`, `/media`, `/input/`,
-  `/listing/`, `/row`, `/genimage`, `/aplus`, `/drive`, ...).
+- A user may only name workspaces they have access to. Since Milestone 2 the
+  guard checks EVERY account a request names (`guard.named_workspaces`): all
+  six fields, in the query, the body whatever its Content-Type (JSON sent as
+  text/plain included), form fields, and every row of every list. Only the
+  field `id` is ever exempt, and only on paths where it is a record id
+  (`ID_NOT_AN_ACCOUNT`, `_EXACT`, `_EXCEPT` -- found by sweeping every caller).
+  `/listing/` and `/trackers/watch` are no longer exempt.
+- Browser bulk actions (GTIN exemption, arm/rule on the repricer, Delete,
+  Approve) take the account ONCE before the loop, name it on every request
+  (`acctBodyFor` in reqscope.js) and stop if the account changes part-way.
+  Ticks are cleared on every account switch. `/approve` honours the named
+  account like `/delete`.
+- All-account lists (`/backup/verify`, `/migrate/status`, `/aiusage/*`) show
+  only accounts the caller may open (`users.caller_may_see`,
+  `caller_sees_every_account`).
 - `_wrong_account` checks are disabled (`account_scope.is_mismatch` returns
   False). Requests that name no account act on the session's selection; the
   shared-password owner and background threads share one process-wide value.
@@ -89,14 +117,22 @@ Any addition to `PUBLIC_ENDPOINTS` is a security change: owner approval.
 ## 6. Output escaping (XSS)
 
 HTML is built as strings. Text goes through `esc()`; data inside inline JS
-handlers must go through `jsArg()`. The `'${esc(x)}'` pattern in several core
-files is unsafe (known-issues).
+handlers goes through `jsArg()` (users.js) -- the one escaper; the private
+copies (`_sarg`, `_sarg2`, `_dsArg`, `_pdpiArg`) now call it. In Milestone 2
+about 260 handler arguments were converted: `'${esc(x)}'`, the concatenated
+`\'' + esc(x) + '\'`, and raw unescaped `'${x}'` / `\'' + x + '\'`.
+test_no_esc_in_handlers.js fails on any of the three shapes coming back
+(multi-line handlers are the one shape it cannot see).
 
 ## 7. External APIs
 
 - Timeouts are set per client (eBay 15 s, 17TRACK 20 s, Slack 12 s).
 - The Ads client can only read (no bid/budget calls; test_ads_connect.py).
 - Slack webhooks are accepted only on hooks.slack.com.
+- A URL that came from a user (an image link, a supplier page, a page to
+  optimise from) is fetched through `domain/url_policy.urlopen`: http/https
+  only, every resolved address public, re-checked on each redirect, and size
+  capped. Not closed: DNS rebinding between the check and the connection.
 - Credentials must not appear in logs or in the streamed run output.
 
 ## 8. Deployment

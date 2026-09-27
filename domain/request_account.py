@@ -60,6 +60,19 @@ allowed it -- that is auth/guard.py's job and it still runs.
 ACCOUNT_KEYS = ("account", "account_id")
 
 
+def _json_body(request):
+    """The JSON body WHATEVER ITS Content-Type says -- the routes parse with
+    force=True, so a fetch() with no header (text/plain) is still read by the
+    route and must be read here too (the guard had the same blind spot;
+    Milestone 2). A form body is never touched: reading its raw stream here
+    would empty request.files for the route."""
+    ct = str(getattr(request, "content_type", "") or "").lower()
+    if ct.startswith(("multipart/form-data", "application/x-www-form-urlencoded")):
+        return {}
+    got = request.get_json(force=True, silent=True)
+    return got if isinstance(got, dict) else {}
+
+
 def named(request):
     """The account id the calling page says it is displaying, or "".
 
@@ -75,7 +88,7 @@ def named(request):
             return str(v).strip()
     for key in ACCOUNT_KEYS:
         try:
-            v = (request.get_json(silent=True) or {}).get(key)
+            v = _json_body(request).get(key)
         except Exception:
             v = None
         if v and str(v).strip():
@@ -104,7 +117,7 @@ def named_any(request):
         v = None
     if not v:
         try:
-            v = (request.get_json(silent=True) or {}).get("id")
+            v = _json_body(request).get("id")
         except Exception:
             v = None
     return str(v or "").strip()

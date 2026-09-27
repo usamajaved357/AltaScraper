@@ -65,7 +65,7 @@ function pdpImgGenSection(r){
     + '<div class="pdpi-sechead"><span class="pdpi-sect">Image Studio</span>'
     +   '<span class="pdpi-secsub">one click generates</span></div>'
     + '<div class="pdpig-presets">' + PDPIG_PRESETS.map(function(p){
-        return '<button class="pdpig-btn" onclick="pdpImgGenRun(\'' + p.key + '\')"'
+        return '<button class="pdpig-btn" onclick="pdpImgGenRun(' + jsArg(p.key) + ')"'
              + (busy ? " disabled" : "") + '><i class="ti ' + p.icon + '"></i> '
              + esc(p.label) + '</button>';
       }).join("") + '</div>'

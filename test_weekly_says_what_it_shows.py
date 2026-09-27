@@ -48,6 +48,7 @@ def truthy(label, got):
 
 PROBE = r"""
 const fs = require("fs"), vm = require("vm");
+globalThis.jsArg=require(require("path").join(process.cwd(),"test_helpers.js")).jsArg;  // the page's own (Milestone 2)
 globalThis.window = globalThis;
 globalThis.addEventListener = function(){};
 globalThis.WK = {week: null, weeks: [], trendMetric: "total_sales", fellBack: ""};
@@ -56,7 +57,9 @@ globalThis._wkEsc = s => String(s == null ? "" : s)
 let BOX = "";
 globalThis.document = {getElementById: id => (id === "wk_week" ? {value: BOX} : null)};
 
-const src = fs.readFileSync("static/js/weekly.js", "utf8");
+// Line endings normalised: a Windows checkout has CRLF (core.autocrlf) and the
+// slicing below looks for ";\n" (Milestone 1, 28 Sep 2026).
+const src = fs.readFileSync("static/js/weekly.js", "utf8").replace(/\r\n/g, "\n");
 const grab = function(name){
   const i = src.indexOf("function " + name + "(");
   if(i < 0) throw new Error("missing " + name);

@@ -18,7 +18,10 @@ function _streamRun(url, doneMsg){
   }else if(log){
     log.style.display="block"; log.textContent="";
   }
-  ES=new EventSource(url);
+  // NAMES THE ACCOUNT (known-issues #4): with none named the server ran it
+  // for whatever it last had selected, and mismatch_for_write can only
+  // refuse a disagreement it is told about.
+  ES=new EventSource(typeof acctUrl === "function" ? acctUrl(url) : url);
   ES.onmessage=e=>{
     if(hasUI){ genuiLine(e.data); return; }
     if(!log) return;
@@ -81,7 +84,10 @@ function _streamRunPanel(url, sku, mode){
   // summary cannot. If a submit reports ok:0, nothing was published -- full stop.
   let summary=null;          // {ok, errors, skipped}
   let notSubmitted=[];       // the generator's "none of the requested SKU(s)…" explanation
-  ES=new EventSource(url);
+  // NAMES THE ACCOUNT (known-issues #4): with none named the server ran it
+  // for whatever it last had selected, and mismatch_for_write can only
+  // refuse a disagreement it is told about.
+  ES=new EventSource(typeof acctUrl === "function" ? acctUrl(url) : url);
   ES.onmessage=e=>{
     const d=e.data||"";
     lines.push(d);
@@ -665,7 +671,7 @@ async function sendChat(){
 async function saveDefault(sku, pt, btn){
   btn.disabled=true; const orig=btn.textContent; btn.textContent="Saving…";
   try{
-    const res=await fetch("/save_default",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sku:sku})});
+    const res=await fetch("/save_default",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(acctBody({sku:sku}))});   // names the account (change review, M2)
     const j=await res.json();
     if(j.ok){ btn.textContent="★ Saved "+j.count+" default(s) for "+(j.pt||pt); toast("Defaults saved for "+(j.pt||pt)+" — future "+(j.pt||pt)+" listings will prefill these"); setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},2800); }
     else{ btn.textContent=orig; btn.disabled=false; toast("Save failed: "+(j.error||"")); }

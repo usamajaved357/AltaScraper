@@ -500,7 +500,7 @@ function refPickerHTML(){
   // auto-pick the first as default reference if not chosen yet
   if(!STUDIO.chosenRef || imgs.indexOf(STUDIO.chosenRef)<0){ STUDIO.chosenRef = imgs[0]; }
   const thumbs = imgs.map((u,i)=>`
-    <div class="refthumb${u===STUDIO.chosenRef?' on':''}" onclick="pickRef('${esc(u)}')" title="Use this image as the AI reference">
+    <div class="refthumb${u===STUDIO.chosenRef?' on':''}" onclick="pickRef(${jsArg(u)})" title="Use this image as the AI reference">
       <img src="${esc(u)}" loading="lazy">
       ${u===STUDIO.chosenRef?'<span class="refbadge">reference</span>':''}
     </div>`).join("");
@@ -869,13 +869,13 @@ function _aplusAddResult(job, j, grid){
   }
   let inner;
   if(j&&j.ok&&j.data_url){
-    inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
+    inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
       <div class="srescap">${esc(job.sku)} · ${esc(job.modName)} <span class="apdim">${dim}</span>${scr}</div>
       ${copyHtml}
       <div class="sresacts">
-        <button class="ib" onclick="studioSave('${cardId}','${esc(job.sku)}')"><i class="ti ti-device-floppy"></i> Save</button>
-        <button class="ib" onclick="studioDownload('${cardId}','${esc(job.sku)}')"><i class="ti ti-download"></i></button>
-        <button class="ib" onclick="studioToDrive('${cardId}','${esc(job.sku)}')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+        <button class="ib" onclick="studioSave(${jsArg(cardId)},${jsArg(job.sku)})"><i class="ti ti-device-floppy"></i> Save</button>
+        <button class="ib" onclick="studioDownload(${jsArg(cardId)},${jsArg(job.sku)})"><i class="ti ti-download"></i></button>
+        <button class="ib" onclick="studioToDrive(${jsArg(cardId)},${jsArg(job.sku)})" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
       </div>`;
     // The purpose is carried on the result so Save files it correctly. The
     // viewport on the RESPONSE is the truth about which one this is: a premium

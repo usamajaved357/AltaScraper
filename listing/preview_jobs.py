@@ -208,13 +208,24 @@ def get(jid):
         return _public(j) if j else None
 
 
-def by_sku(sku):
-    """Most recent job for a SKU (so reopening a drawer re-attaches to its run)."""
+def by_sku(sku, account_id=None):
+    """Most recent job for a SKU (so reopening a drawer re-attaches to its run).
+
+    A SKU DOES NOT NAME AN ACCOUNT -- the same SKU can exist on two of them --
+    so given an account, a job recorded against a different one is not this
+    SKU's job (Milestone 2, 28 Sep 2026: the drawer could re-attach to another
+    account's run and show its log).
+    """
     with _LOCK:
         for jid in reversed(_ORDER):
             j = _JOBS.get(jid)
-            if j and str(j.get("sku")) == str(sku):
-                return _public(j)
+            if not j or str(j.get("sku")) != str(sku):
+                continue
+            # A job recorded with NO account is not this account's either,
+            # once an account is given (account-scope review).
+            if account_id and str(j.get("account_id") or "") != str(account_id):
+                continue
+            return _public(j)
     return None
 
 

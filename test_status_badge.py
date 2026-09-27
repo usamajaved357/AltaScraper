@@ -23,12 +23,17 @@ urgent -- and the spec's own suggestion of four badges is NOT implemented,
 because it would make QUEUED (nothing generated yet, Submit can do nothing)
 indistinguishable from a row that is ready to send.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-LS = r"D:\AltaScraper\static\js\liststatus.js"
-LR = r"D:\AltaScraper\static\js\listrow_detailed.js"
-LI = r"D:\AltaScraper\static\js\listings.js"
+LS = _os_repo.path.join(_REPO, r"static\js\liststatus.js")
+LR = _os_repo.path.join(_REPO, r"static\js\listrow_detailed.js")
+LI = _os_repo.path.join(_REPO, r"static\js\listings.js")
 ls, lr, li = (open(p, encoding="utf-8").read() for p in (LS, LR, LI))
 fails = []
 

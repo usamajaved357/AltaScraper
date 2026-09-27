@@ -23,9 +23,14 @@ Traffic summed the per-ASIN rows. Sales read the account row. Neither was
 computing anything wrongly; they were answering different questions under the
 same name.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -38,7 +43,7 @@ def falsy(l, g): check(l, bool(g), False)
 from domain import traffic_view as TV
 
 print("=== the account's revenue is the account's revenue ===")
-T = open(r"D:\AltaScraper\domain\traffic_view.py", encoding="utf-8").read()
+T = open(_os_repo.path.join(_REPO, r"domain\traffic_view.py"), encoding="utf-8").read()
 truthy("there is one function that answers it", "def account_revenue(" in T)
 truthy("  and it asks sales_data.totals, the same place Sales asks",
        "sales_data as _sd" in T and "_sd.totals(" in T)
@@ -96,7 +101,7 @@ print("\n--- one day behind is normal and is not nagged about ---")
 truthy("a gap of one is silent", "if gap < 2:" in T)
 truthy("  and a full window says nothing at all", "if not last or last >= end:" in T)
 
-J = open(r"D:\AltaScraper\static\js\traffic.js", encoding="utf-8").read()
+J = open(_os_repo.path.join(_REPO, r"static\js\traffic.js"), encoding="utf-8").read()
 truthy("the screen shows it above the tiles", "d.freshness" in J)
 truthy("  because every tile divides by it", "_fr.note" in J)
 truthy("and the revenue tile carries its own explanation", "k.note" in J)

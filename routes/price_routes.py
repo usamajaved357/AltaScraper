@@ -170,6 +170,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                       mkt, sku)
             except Exception:
                 rule = None
+            if (rule or {}).get("vat_unknown"):
+                return None, ("This account's settings could not be read just "
+                              "now, so whether its prices carry VAT is not "
+                              "known and there is no floor to check against.")
             floor = _sourcing.floor_price(cost, rule)
             if floor is None:
                 return None, ("This account has no profit requirement set, so "

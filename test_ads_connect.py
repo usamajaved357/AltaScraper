@@ -32,10 +32,15 @@ WHAT THIS FILE PINS
   3. Nothing is guessed. Four credentials are needed; the test says which are
      missing rather than failing with a network error.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from api import amazon_ads as _ads          # noqa: E402
 
@@ -109,7 +114,7 @@ check("  and nothing is claimed to be missing", r2["missing"], [])
 truthy("  Amazon's own words are passed through", r2.get("error"))
 
 print("\n== IT CANNOT WRITE (Rule 8) ==")
-SRC = open(r"D:\AltaScraper\api\amazon_ads.py", encoding="utf-8-sig").read()
+SRC = open(_os_repo.path.join(_REPO, r"api\amazon_ads.py"), encoding="utf-8-sig").read()
 BODY = re.sub(r'"""[\s\S]*?"""', "", SRC)
 BODY = "\n".join(re.sub(r"#.*$", "", ln) for ln in BODY.split("\n"))
 
@@ -174,7 +179,7 @@ check("a metric Amazon did not send is None, not 0", _row["spend"], None)
 check("  and one it did send is read", _row["clicks"], 3.0)
 
 print("\n== the settings route keeps secrets secret ==")
-RT = open(r"D:\AltaScraper\routes\settings_routes.py", encoding="utf-8-sig").read()
+RT = open(_os_repo.path.join(_REPO, r"routes\settings_routes.py"), encoding="utf-8-sig").read()
 truthy("there is a route to set them", '"/settings/ads"' in RT)
 truthy("  and one that tests the connection", '"/settings/ads/test"' in RT)
 # GET returns whether a secret is stored and its tail, never the value.
@@ -195,14 +200,14 @@ truthy("credentials are written through the one atomic writer",
        "_settings.write_raw(" in body)
 
 print("\n== it is guarded ==")
-G = open(r"D:\AltaScraper\auth\guard.py", encoding="utf-8-sig").read()
+G = open(_os_repo.path.join(_REPO, r"auth\guard.py"), encoding="utf-8-sig").read()
 # /settings/ads sits under the /settings prefix, which already requires
 # manage_accounts. Pinned because the prefix rule is easy to move.
 truthy("/settings requires manage_accounts",
        re.search(r'\("/settings",\s*"manage_accounts"\)', G))
 
 print("\n== the screen can connect it ==")
-JS = open(r"D:\AltaScraper\static\js\settings.js", encoding="utf-8-sig").read()
+JS = open(_os_repo.path.join(_REPO, r"static\js\settings.js"), encoding="utf-8-sig").read()
 truthy("there is a form", "saveAdsSettings" in JS)
 truthy("  and a test button", "testAdsSettings" in JS)
 truthy("  which lists the profiles this login can see", "useAdsProfile" in JS)

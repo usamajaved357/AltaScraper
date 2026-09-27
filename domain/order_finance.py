@@ -470,7 +470,9 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
                 # as "we checked and it is nothing". Counted separately so the
                 # screen can say how much of the window is uncosted.
                 flags["orders_fee_unknown"] = 1
-                o["revenue_fee_unknown"] += net
+                # What the buyer PAID, the same base the estimate below is
+                # charged on, so "revenue not yet itemised" adds up across both.
+                o["revenue_fee_unknown"] += gross
             else:
                 # ON WHAT THE BUYER PAID. The rate is measured over the
                 # VAT-inclusive figure (order_profit.fee_rate), because that is

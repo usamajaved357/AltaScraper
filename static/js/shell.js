@@ -420,6 +420,16 @@ async function enterAccount(accountId){
   // listings are not known yet, and the previous account's are not an
   // approximation of them.
   ROWS=[]; if(typeof TABS!=="undefined") TABS=[];
+  // AND THE TICKS. A ticked SKU is a SKU in the account it was ticked in, and
+  // the same SKU can exist in the next one -- so a selection carried across
+  // this line made the next bulk Delete/Approve/GTIN act on the NEW account's
+  // rows (master audit S2, 28 Sep 2026). enterWorkspace cleared it; this, the
+  // way the account switcher comes in, did not.
+  if(typeof SELECTED !== "undefined" && SELECTED && SELECTED.clear){
+    SELECTED.clear();
+    if(typeof updateSelBar === "function"){ try{ updateSelBar(); }catch(e){} }
+  }
+  if(typeof SRC_SEL !== "undefined"){ try{ SRC_SEL = new Set(); }catch(e){} }
   // ...and this account's drafts are not loaded either. Without clearing it, the
   // previous account's "loaded" would let the new account's empty grid claim
   // "no listings" before a single row had been asked for.
@@ -818,9 +828,9 @@ function openAccountEditor(id){
     <input type="hidden" id="ac_id" value="${esc(a.id||'')}">
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="primary" onclick="saveAccount()">Save account</button>
-      ${id?`<button onclick="detectFromEditor('${esc(id)}')"><i class="ti ti-radar"></i> Detect marketplaces</button>`:''}
-      ${id?`<button onclick="detectBrandsFromEditor('${esc(id)}')"><i class="ti ti-tags"></i> Detect brands</button>`:''}
-      ${id?`<button class="del" onclick="deleteAccount('${esc(id)}')">Delete</button>`:''}
+      ${id?`<button onclick="detectFromEditor(${jsArg(id)})"><i class="ti ti-radar"></i> Detect marketplaces</button>`:''}
+      ${id?`<button onclick="detectBrandsFromEditor(${jsArg(id)})"><i class="ti ti-tags"></i> Detect brands</button>`:''}
+      ${id?`<button class="del" onclick="deleteAccount(${jsArg(id)})">Delete</button>`:''}
       <button onclick="closeAccountEditor()">Cancel</button>
     </div>
     ${typeof howWorks==="function"?(howWorks('acct_connect')+howWorks('acct_marketplaces')+howWorks('acct_brands')):""}

@@ -17,10 +17,15 @@ else estimate on order date".
 
 Amazon is stood in for. What is being tested is the shape of the answer.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
 import datetime as dt
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from data import db as _db
 from domain import sales_data as _sd
@@ -111,7 +116,10 @@ check("  which is not counted as an estimate", unk["orders_estimated"], 0)
 # The gap is COUNTED, so a screen can say how much of the window has no fee in
 # it. Left uncounted, "estimated 0.00" reads as "we checked and it is nothing".
 check("  it is counted as unknown instead", unk["orders_fee_unknown"], 1)
-check("  with the revenue it applies to", unk["revenue_fee_unknown"], 30.0)
+# Re-pinned 28 Sep 2026 (Milestone 1): counted at what the buyer PAID, 36.00
+# with VAT, the same base the fee rate and every estimate now use -- so
+# "revenue not yet itemised" adds up with the estimated part beside it.
+check("  with the revenue it applies to", unk["revenue_fee_unknown"], 36.0)
 # The money is still right -- only the fee is missing.
 check("the sales are unaffected", unk["principal"], 60.0)
 

@@ -307,9 +307,17 @@ def asin_monitor_check(workspace_id=None):
     which is precisely the bug the throttle was added for.
     """
     from monitor import checker as _checker
+    from monitor import schedule as _sched
     _, config_path, cfg = _need("app", "config_path", "cfg")
-    res = _checker.check_all(cfg() if callable(cfg) else cfg, config_path,
-                             log=lambda m: None)
+    _cfg_now = cfg() if callable(cfg) else cfg
+    # THE OWNER'S CLOCK, NOT THIS ONE. monitor/schedule.py says automatic
+    # checking is OFF unless someone turns it on (the owner, 18 Aug 2026: "i
+    # dont want the asin monitor to be working always"), and its header names
+    # this job as one of the two things that must obey it. It did not: it swept
+    # every 4 hours whatever the setting said (known-issues #3; Milestone 3).
+    if not _sched.is_on(_cfg_now):
+        return {"skipped": "automatic checking is off (monitor schedule)"}
+    res = _checker.check_all(_cfg_now, config_path, log=lambda m: None)
     return res if isinstance(res, dict) else {"result": str(res)[:400]}
 
 

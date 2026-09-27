@@ -64,7 +64,7 @@ function trkTabs() {
   Object.keys(ms).forEach(function (k) {
     const m = ms[k];
     const on = (TRK.metric === k) ? " on" : "";
-    html += '<div class="stk-tab' + on + '" onclick="trkTab(\'' + k + '\')">' +
+    html += '<div class="stk-tab' + on + '" onclick="trkTab(' + jsArg(k) + ')">' +
             esc(m.tracker || k) + "</div>";
   });
   box.innerHTML = html;
@@ -145,8 +145,8 @@ function trkRender() {
       "<td>" + trkStatus(r.status) + "</td>" +
       '<td class="cc" style="font-size:11px">' + esc(r.last_at || "never") +
       (r.points ? ' <span class="cc">(' + r.points + ")</span>" : "") + "</td>" +
-      '<td><button class="ib" title="Stop tracking this" onclick="trkStop(\'' +
-      r.asin + "','" + r.metric + "')\"><i class=\"ti ti-x\"></i></button></td>" +
+      '<td><button class="ib" title="Stop tracking this" onclick="trkStop(' +
+      jsArg(r.asin) + "," + jsArg(r.metric) + ")\"><i class=\"ti ti-x\"></i></button></td>" +
       "</tr>";
   });
   html += "</tbody></table></div></div>";

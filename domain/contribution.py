@@ -356,8 +356,13 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
             net = round(_f(d.get("principal")), 2)
         est = _f(d.get("fees_estimated"))
         actual_fee_total += fees - est
+        # THE REVENUE AMAZON HAS NOT SETTLED -- priced at the measured rate, or
+        # carrying no fee because none could be measured. Both are unsettled;
+        # counting only the first read "0.00 estimated" on exactly the accounts
+        # with nothing settled (found by Milestone 1, 28 Sep 2026).
         if rate:
             est_rev_total += est / float(rate)
+        est_rev_total += _f(d.get("revenue_fee_unknown"))
         fee_unknown = int(d.get("orders_fee_unknown") or 0) > 0
         if fee_unknown:
             unknown_fee_rev += _f(d.get("revenue_fee_unknown"))
@@ -455,9 +460,9 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
     totals["fee_rate_detail"] = rate_detail
     totals["fees_actual"] = round(actual_fee_total, 2)
     totals["estimated_revenue"] = round(est_rev_total, 2)
-    # The revenue carrying NO fee at all, because none could be measured. A
-    # different thing from estimated_revenue, which has a fee with a stated
-    # method behind it, and worth its own line: those products show no
+    # The revenue carrying NO fee at all, because none could be measured. It is
+    # INSIDE estimated_revenue (all unsettled revenue is, since Milestone 1) and
+    # also reported on its own here, because those products show no
     # contribution rather than a flattering one, and the screen should say why.
     totals["unpriced_fee_revenue"] = round(unknown_fee_rev, 2)
     totals["unpriced_fee_products"] = unknown_fee_rows

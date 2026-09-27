@@ -232,16 +232,16 @@ function _studioAddResult(job, j, grid){
              title="${esc(j.detailed_prompt||'')}">Brief reworded to pass the image
              filter — hover to read the wording used</div>`
       : "";
-    inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
+    inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
       <div class="srescap">${label}</div>
       ${_softLine}
       ${_driveLine}
       <div class="sresacts">
-        <button class="ib" onclick="studioSave('${cardId}','${esc(job.sku)}')"><i class="ti ti-device-floppy"></i> Save to media</button>
-        <button class="ib" onclick="studioDownload('${cardId}','${esc(job.sku)}')"><i class="ti ti-download"></i></button>
-        <button class="ib" onclick="studioToDrive('${cardId}','${esc(job.sku)}')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
-        ${canReroll?`<button class="ib" onclick="studioReroll('${cardId}')" title="Generate this one again (e.g. if a detail came out wrong)"><i class="ti ti-refresh"></i> Redo this</button>`:''}
-        ${canReroll?`<button class="ib" onclick="studioRefine('${cardId}')" title="Tell the AI a small change to make to THIS image"><i class="ti ti-wand"></i> Refine…</button>`:''}
+        <button class="ib" onclick="studioSave(${jsArg(cardId)},${jsArg(job.sku)})"><i class="ti ti-device-floppy"></i> Save to media</button>
+        <button class="ib" onclick="studioDownload(${jsArg(cardId)},${jsArg(job.sku)})"><i class="ti ti-download"></i></button>
+        <button class="ib" onclick="studioToDrive(${jsArg(cardId)},${jsArg(job.sku)})" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+        ${canReroll?`<button class="ib" onclick="studioReroll(${jsArg(cardId)})" title="Generate this one again (e.g. if a detail came out wrong)"><i class="ti ti-refresh"></i> Redo this</button>`:''}
+        ${canReroll?`<button class="ib" onclick="studioRefine(${jsArg(cardId)})" title="Tell the AI a small change to make to THIS image"><i class="ti ti-wand"></i> Refine…</button>`:''}
       </div>`;
     // WHAT IT IS FOR, carried to the Save button. Without this every image --
     // hero, lifestyle, A+ header -- was written into one flat folder as
@@ -280,13 +280,13 @@ async function studioReroll(cardId){
                                 kind:r.kind||"main",
                                 tier:(r.payload&&r.payload.tier)||"",
                                 variant:((r.payload&&r.payload.viewport)==="mobile"?"mobile":"desktop")};
-        card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
+        card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
           <div class="srescap">${esc(r.label)} · redone</div>
           <div class="sresacts">
-            <button class="ib" onclick="studioSave('${cardId}','')"><i class="ti ti-device-floppy"></i> Save to media</button>
-            <button class="ib" onclick="studioDownload('${cardId}','')"><i class="ti ti-download"></i></button>
-            <button class="ib" onclick="studioToDrive('${cardId}','')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
-            <button class="ib" onclick="studioReroll('${cardId}')"><i class="ti ti-refresh"></i> Redo this</button>
+            <button class="ib" onclick="studioSave(${jsArg(cardId)},'')"><i class="ti ti-device-floppy"></i> Save to media</button>
+            <button class="ib" onclick="studioDownload(${jsArg(cardId)},'')"><i class="ti ti-download"></i></button>
+            <button class="ib" onclick="studioToDrive(${jsArg(cardId)},'')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+            <button class="ib" onclick="studioReroll(${jsArg(cardId)})"><i class="ti ti-refresh"></i> Redo this</button>
           </div>`;
       }
     } else {
@@ -327,13 +327,13 @@ async function studioRefine(cardId){
       // keep refine available so you can iterate (refine the refined image)
       if(j._kind&&j._payload){ STUDIO._reroll[cardId]={kind:j._kind, payload:j._payload, label:(STUDIO._reroll[cardId]?STUDIO._reroll[cardId].label:cur.sku)}; }
       if(card){
-        card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
+        card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
           <div class="srescap">refined: ${esc(instruction.trim()).slice(0,40)}</div>
           <div class="sresacts">
-            <button class="ib" onclick="studioSave('${cardId}','${esc(cur.sku||'')}')"><i class="ti ti-device-floppy"></i> Save to media</button>
-            <button class="ib" onclick="studioDownload('${cardId}','${esc(cur.sku||'')}')"><i class="ti ti-download"></i></button>
-            <button class="ib" onclick="studioToDrive('${cardId}','${esc(cur.sku||'')}')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
-            <button class="ib" onclick="studioRefine('${cardId}')" title="Make another small change"><i class="ti ti-wand"></i> Refine…</button>
+            <button class="ib" onclick="studioSave(${jsArg(cardId)},${jsArg(cur.sku||'')})"><i class="ti ti-device-floppy"></i> Save to media</button>
+            <button class="ib" onclick="studioDownload(${jsArg(cardId)},${jsArg(cur.sku||'')})"><i class="ti ti-download"></i></button>
+            <button class="ib" onclick="studioToDrive(${jsArg(cardId)},${jsArg(cur.sku||'')})" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+            <button class="ib" onclick="studioRefine(${jsArg(cardId)})" title="Make another small change"><i class="ti ti-wand"></i> Refine…</button>
           </div>`;
       }
     } else {

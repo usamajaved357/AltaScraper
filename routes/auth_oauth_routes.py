@@ -172,15 +172,9 @@ def register(app, *, _cfg, CONFIG_PATH):
             "ALTA_OAUTH_REDIRECT_URI": _set("ALTA_OAUTH_REDIRECT_URI"),
         }
         # Which platform is actually running this. Each injects its own marker.
-        host = "unknown"
-        if os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"):
-            host = "render"
-        elif os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_SERVICE_ID"):
-            host = "railway"
-        elif os.environ.get("WEBSITE_INSTANCE_ID"):
-            host = "azure"
-        elif os.environ.get("DYNO"):
-            host = "heroku"
+        # (One list of markers, in config/hosting.py.)
+        from config import hosting as _hosting
+        host = _hosting.platform() or "unknown"
 
         ready = all(required.values())
         notes = []

@@ -483,7 +483,7 @@ function _pdpiStatusLine(){
   const assigned = _pdpiAssignedNow();
   const filled = all.filter(function(s){ return assigned[s.key] || s.current; }).length;
   const push = PDPI.live
-    ? '<button class="pdpi-btn" onclick="pushImageLive(\'' + esc(PDPI.sku) + '\',this)"'
+    ? '<button class="pdpi-btn" onclick="pushImageLive(' + jsArg(PDPI.sku) + ',this)"'
       + ' title="Send the main image to the live Amazon listing now — the image only, no resubmit">'
       + '<i class="ti ti-cloud-upload"></i> Push to Amazon</button>'
     : "";
@@ -522,7 +522,7 @@ function _pdpiSlotsHtml(){
     const onlyLive = !draft && !!liveUrl;
     return '<div class="pdpi-slot' + (url ? " filled" : "") + '"'
       + ' ondragover="pdpImgDragOver(event)" ondragleave="pdpImgDragLeave(event)"'
-      + ' ondrop="pdpImgDrop(event,\'' + esc(s.key) + '\')">'
+      + ' ondrop="pdpImgDrop(event,' + jsArg(s.key) + ')">'
       + '<div class="pdpi-slotimg">'
       +   (url ? '<img src="' + esc(url) + '" loading="lazy" onerror="this.remove()">'
                : '<i class="ti ti-plus"></i><span class="pdpi-empty">empty</span>')
@@ -533,16 +533,15 @@ function _pdpiSlotsHtml(){
       // image" button). Only on a draft value: Amazon's own picture is not the
       // draft's to clear -- a new one in the slot replaces it on Submit.
       + (draft ? '<button class="pdpi-slotx" title="Take this picture out of the slot"'
-                 + ' onclick="pdpImgClear(\'' + esc(s.key) + '\')"><i class="ti ti-x"></i></button>' : "")
+                 + ' onclick="pdpImgClear(' + jsArg(s.key) + ')"><i class="ti ti-x"></i></button>' : "")
       + '</div>';
   }).join("") + '</div>';
 }
 
 /* A URL inside an onclick attribute, quoted safely. */
-function _pdpiArg(s){
-  return "'" + String(s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'")
-                              .replace(/"/g, "&quot;") + "'";
-}
+// ONE escaper for a value inside an inline handler: jsArg, in users.js (Rule 12,
+// Milestone 2). This name is kept for its callers.
+function _pdpiArg(s){ return jsArg(s || ""); }
 
 /* One ~72px picture in the strip. Click fills the next empty slot; it can also
  * be dragged onto a particular slot. No caption -- the long filenames went. */
@@ -563,7 +562,7 @@ function _pdpiStripHtml(){
                 ["library", "Library", (PDPI.library || []).length]];
   const tabHtml = '<div class="pdpi-tabs">' + tabs.map(function(t){
     return '<button class="pdpi-tab' + (PDPI.compTab === t[0] ? " on" : "") + '"'
-         + ' onclick="pdpImgCompTab(\'' + t[0] + '\')">' + t[1]
+         + ' onclick="pdpImgCompTab(' + jsArg(t[0]) + ')">' + t[1]
          + ' <span class="pdpi-tabn">' + (PDPI.compLoading && t[0] !== "library" ? "…" : t[2]) + '</span></button>';
   }).join("") + '<span class="pdpi-grow"></span>'
     + '<button class="pdpi-btn" onclick="pdpImgFillAll()" title="Put these pictures into the empty slots, in order">'

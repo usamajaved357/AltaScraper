@@ -31,8 +31,8 @@ function ptSearchBox(sku, r){
   return '<div class="ptsx" style="margin-top:6px">'
     + '<input id="' + id + '" class="ed" type="text" autocomplete="off" style="width:100%"'
     + ' placeholder="Search Amazon’s product types (click for suggestions from the title)"'
-    + ' onfocus="ptSearchFocus(\'' + esc(sku) + '\')"'
-    + ' oninput="ptSearchInput(\'' + esc(sku) + '\')">'
+    + ' onfocus="ptSearchFocus(' + jsArg(sku) + ')"'
+    + ' oninput="ptSearchInput(' + jsArg(sku) + ')">'
     + '<div id="' + id + '_out" class="cc" style="font-size:12px;margin-top:4px"></div>'
     + '</div>';
 }
@@ -79,7 +79,7 @@ async function _ptSearch(sku, title, q){
     + j.types.slice(0, 30).map(t =>
         '<button type="button" class="db-chip' + (t.name === cur ? " go" : "") + '"'
         + ' style="margin:2px 4px 2px 0" title="' + esc(t.display_name) + '"'
-        + ' onclick="ptPick(\'' + esc(sku) + '\',\'' + esc(t.name) + '\')">'
+        + ' onclick="ptPick(' + jsArg(sku) + ',' + jsArg(t.name) + ')">'
         + esc(t.name) + (t.name === cur ? " ✓" : "") + '</button>'
       ).join("");
 }

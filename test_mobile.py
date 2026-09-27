@@ -34,13 +34,18 @@ from those measurements, so that a later change cannot quietly undo one:
   3. the drawer state cannot survive the drawer disappearing
   4. wide tables scroll inside their own box instead of being clipped
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-CSS = r"D:\AltaScraper\static\css\mobile.css"
-BASE_CSS = r"D:\AltaScraper\static\css\dashboard.css"
-JS = r"D:\AltaScraper\static\js\mobilenav.js"
-HTML = r"D:\AltaScraper\templates\dashboard.html"
+CSS = _os_repo.path.join(_REPO, r"static\css\mobile.css")
+BASE_CSS = _os_repo.path.join(_REPO, r"static\css\dashboard.css")
+JS = _os_repo.path.join(_REPO, r"static\js\mobilenav.js")
+HTML = _os_repo.path.join(_REPO, r"templates\dashboard.html")
 
 fails = []
 

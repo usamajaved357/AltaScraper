@@ -158,8 +158,8 @@ async function loadMediaLibrary(){
           return '<div class="mediacell"><img src="'+esc(typeof thumbUrl==="function"?thumbUrl(im.url,160):im.url)+'" loading="lazy" '+
             'title="Click to view it full size" style="cursor:zoom-in" '+
             'onclick="'+esc(_open)+'">'+_grp+
-            '<button class="mediadel" title="Delete" onclick="delMedia(\''+esc(im.url)+'\')"><i class="ti ti-x"></i></button>'+
-            '<button class="mediaedit" title="Edit this image (AI changes only what you ask, keeps the rest)" onclick="editMediaImage(\''+esc(im.url)+'\',\''+esc(f.sku)+'\')"><i class="ti ti-wand"></i> Edit</button>'+
+            '<button class="mediadel" title="Delete" onclick="delMedia(' + jsArg(im.url) + ')"><i class="ti ti-x"></i></button>'+
+            '<button class="mediaedit" title="Edit this image (AI changes only what you ask, keeps the rest)" onclick="editMediaImage(' + jsArg(im.url) + ',' + jsArg(f.sku) + ')"><i class="ti ti-wand"></i> Edit</button>'+
             '<button class="mediadl" title="Download this image" onclick="event.stopPropagation();'+
               (typeof ilDownloadOne === 'function'
                 ? esc('ilDownloadOne(' + jsArg(im.url) + ',' + jsArg(_nm) + ')')

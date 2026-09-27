@@ -739,7 +739,7 @@ function lrProduct(r){
         // already clickable, so the one thing that looks like the product's
         // name was the one thing that did not behave like a link.
     +   '<div class="prod-title" title="' + esc(r.title || "") + '"'
-    +     ' onclick="event.stopPropagation();openListing(\'' + esc(r.sku) + '\')">'
+    +     ' onclick="event.stopPropagation();openListing(' + jsArg(r.sku) + ')">'
     +     (esc(r.title || "") || '<span class="prod-dim">(no title)</span>') + '</div>'
     +   '<div class="prod-meta">' + asinBit
     +     '<br>SKU <span class="sku">' + esc(r.sku || "") + '</span>'
@@ -1202,7 +1202,7 @@ function lrRuleBox(r, key, label, title){
        +   esc(v == null ? "" : String(v)) + '"'
        +   ' onclick="event.stopPropagation()"'
        +   ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
-       +   ' onchange="lrSaveRule(\'' + esc(r.sku) + '\',\'' + key + '\',this)">'
+       +   ' onchange="lrSaveRule(' + jsArg(r.sku) + ',' + jsArg(key) + ',this)">'
        + '</div>';
 }
 
@@ -1390,9 +1390,8 @@ function lrFees(r){
     // lose the list, the filter and the scroll to read four numbers, then have
     // to find your way back to compare it with the row beneath. The price is
     // passed so the panel opens on the price you were looking at.
-    + '<span class="fee-link" onclick="event.stopPropagation();revOpen(\''
-    + esc(r.sku) + '\',\'' + esc(String(r.price == null ? "" : r.price)
-                                   .replace(/[^0-9.]/g, "")) + '\')"'
+    + '<span class="fee-link" onclick="event.stopPropagation();revOpen(' + jsArg(r.sku) + ',' + jsArg(String(r.price == null ? "" : r.price)
+                                   .replace(/[^0-9.]/g, "")) + ')"'
     + ' title="What this unit earns at a given price — Amazon’s cut and the '
     + 'stock cost, without leaving the list">Calculate revenue</span>';
 }
@@ -1405,7 +1404,7 @@ function detailedRow(r, isChild){
   const sel = (typeof SELECTED !== "undefined") && SELECTED.has(String(r.sku));
   return '<tr class="inv-row' + (sel ? " sel" : "") + (isChild ? " var-child" : "")
     + '" data-sku="' + esc(r.sku) + '"'
-    + ' onclick="openListing(\'' + esc(r.sku) + '\')">'
+    + ' onclick="openListing(' + jsArg(r.sku) + ')">'
     + '<td class="col-cb" onclick="event.stopPropagation()">'
     +   ((typeof rowSelectBox === "function") ? rowSelectBox(r) : "") + '</td>'
     + '<td class="col-status">' + lrStatus(r) + '</td>'
@@ -1427,7 +1426,7 @@ function detailedRow(r, isChild){
         // already holds these actions, so nothing is reimplemented (Rule 12).
     + '<td class="col-actions" onclick="event.stopPropagation()">'
     +   '<i class="ti ti-dots act-dots" title="Everything else"'
-    +   ' onclick="drawerMore(event,\'' + esc(r.sku) + '\',' + (r.row || 0) + ','
+    +   ' onclick="drawerMore(event,' + jsArg(r.sku) + ',' + (r.row || 0) + ','
     +   ((typeof isAmazonLive === "function" && isAmazonLive(r)) ? "true" : "false")
     +   ')"></i></td>'
     + '</tr>';
@@ -1616,7 +1615,7 @@ function lrFamilyRow(g){
   // The parent spans the data columns rather than filling them with dashes: it
   // is a container, not a product, and Amazon draws it the same way.
   return '<tr class="var-parent' + (open ? " open" : "") + '"'
-    + ' onclick="lrToggleFamily(\'' + esc(g.parent_sku) + '\')">'
+    + ' onclick="lrToggleFamily(' + jsArg(g.parent_sku) + ')">'
     + '<td class="col-cb" onclick="event.stopPropagation()"></td>'
     + '<td class="col-status">'
     +   '<span class="var-toggle' + (open ? " open" : "") + '">'

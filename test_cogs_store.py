@@ -33,12 +33,17 @@ the SKU prefix. Worse than blank: for a SKU whose name carries a number the cell
 then showed THAT, so a hand-typed override looked as though it had been thrown
 away -- on the very screen it was typed on.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -93,7 +98,7 @@ check("a reference taken earlier sees the new cost", held.get("a::S5"), 3.25)
 CS.load(CFG, force=True)
 check("  and still does after a reload", held is CS.all_overrides(CFG), True)
 check("  with the value intact", held.get("a::S5"), 3.25)
-S = open(r"D:\AltaScraper\domain\cogs_store.py", encoding="utf-8").read()
+S = open(_os_repo.path.join(_REPO, r"domain\cogs_store.py"), encoding="utf-8").read()
 truthy("loading mutates in place", "_OVERRIDES.clear()" in S and "_OVERRIDES.update(" in S)
 truthy("  and the reason is written down", "would leave it pointing at the old one" in S)
 
@@ -108,13 +113,13 @@ def _code_lines(src):
 
 for f in ("routes/sales_routes.py", "routes/orders_routes.py",
           "routes/cogs_routes.py"):
-    src = open(os.path.join(r"D:\AltaScraper", f), encoding="utf-8").read()
+    src = open(os.path.join(_REPO, f), encoding="utf-8").read()
     live = "\n".join(l for l in _code_lines(src)
                      if l.strip().startswith(("import ", "from ")))
     falsy("%-28s never imports dashboard" % f, "dashboard" in live)
     truthy("  it asks the store instead", "cogs_store" in src)
 
-D = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+D = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8").read()
 truthy("dashboard's own dict IS the store's dict",
        "_COGS_OVERRIDE = _cogs_store_mod.all_overrides()" in D)
 _loader = D.split("def _load_cogs_overrides")[1].split("\ndef ")[0]

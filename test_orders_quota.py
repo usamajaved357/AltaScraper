@@ -16,9 +16,14 @@ cache window, and that today+yesterday now come from ONE read.
 
 Amazon is stood in for -- what matters is how often we would call it.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys, time
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 import domain.orders_live as ol
 
@@ -208,7 +213,7 @@ check("  which is not true of a marketplace on an account that HAS traded",
 shutil.rmtree(_TMP, ignore_errors=True)
 
 print("\n== a quota refusal reads as waiting, not as a fault ==")
-js = open(r"D:\AltaScraper\static\js\sales.js", encoding="utf-8").read()
+js = open(_os_repo.path.join(_REPO, r"static\js\sales.js"), encoding="utf-8").read()
 check_true("the screen recognises a throttle", "quotaexceeded" in js.lower())
 check_true("  and says nothing is wrong with the figures",
            "Nothing is wrong with your figures" in js)

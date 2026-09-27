@@ -31,10 +31,15 @@ universal number for "PPC spend is too high today". Where no line exists the
 figure is reported without a verdict, because a made-up target presented as a
 judgement is how a page like this stops being believed.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import datetime as _dt
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import daily_check as _dc      # noqa: E402
 
@@ -207,13 +212,13 @@ check("  the counts add up", out["n_off"] + out["n_ok"] + out["n_unknown"],
 
 print("\n== nothing here reaches out or changes anything ==")
 import re                                                        # noqa: E402
-SRC = open(r"D:\AltaScraper\domain\daily_check.py", encoding="utf-8-sig").read()
+SRC = open(_os_repo.path.join(_REPO, r"domain\daily_check.py"), encoding="utf-8-sig").read()
 BODY = re.sub(r'"""[\s\S]*?"""', "", SRC)
 BODY = "\n".join(re.sub(r"#.*$", "", ln) for ln in BODY.split("\n"))
 for banned in ("requests.", "urllib", "INSERT", "UPDATE", "DELETE", "commit("):
     check("the round never %r" % banned, banned in BODY, False)
 # One broken feed must not turn twelve checks green.
-RT = open(r"D:\AltaScraper\routes\daily_routes.py", encoding="utf-8-sig").read()
+RT = open(_os_repo.path.join(_REPO, r"routes\daily_routes.py"), encoding="utf-8-sig").read()
 truthy("every source is fetched in its own try", RT.count("except Exception") >= 5)
 truthy("  and a failure leaves the key ABSENT rather than empty",
        "leaves its key ABSENT" in RT)

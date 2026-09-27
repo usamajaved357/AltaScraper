@@ -39,12 +39,17 @@ stand that this is third party lab tested" -- so pinning an expected concept
 would be hardcoding the very thing being removed. It pins the MACHINERY that
 lets the content vary, and the arithmetic that stops text being destroyed.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import base64
 import io
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import ai_providers as _ai       # noqa: E402
 
@@ -77,7 +82,7 @@ for k, v in roles.items():
 # not have them; both produced a benefit infographic instead.
 for k in ("detail", "usecase"):
     truthy("%s exists server-side now" % k, k in roles)
-JS = open(r"D:\AltaScraper\static\js\genimage.js", encoding="utf-8-sig").read()
+JS = open(_os_repo.path.join(_REPO, r"static\js\genimage.js"), encoding="utf-8-sig").read()
 # Scoped to the secondary roles array. Matching the whole file also catches the
 # MAIN-image recipe triples, which are a different list entirely -- and a test
 # that fails on an unrelated list is a test nobody reads.
@@ -111,9 +116,9 @@ print("\n== the instruction and the attachment agree ==")
 # needed the same ones -- a second copy is how the two paths drifted apart in
 # the first place (CLAUDE.md Rule 12). What is asserted below did not change;
 # only where it lives did, so both files are read as one body of text.
-RT = (open(r"D:\AltaScraper\routes\genimage_routes.py", encoding="utf-8-sig").read()
+RT = (open(_os_repo.path.join(_REPO, r"routes\genimage_routes.py"), encoding="utf-8-sig").read()
       + "\n"
-      + open(r"D:\AltaScraper\domain\image_rules.py", encoding="utf-8-sig").read())
+      + open(_os_repo.path.join(_REPO, r"domain\image_rules.py"), encoding="utf-8-sig").read())
 truthy("there is a rule per presence", "_PRESENCE_RULES" in RT)
 truthy("  and 'none' forbids the product outright",
        "DO NOT SHOW THE PRODUCT IN THIS IMAGE AT ALL" in RT)
@@ -128,7 +133,7 @@ truthy("a product-free concept is not refused for lacking a reference",
 print("\n== the strategist decides it per product ==")
 # A fixed rota would be the same generic list the prompt already warns against:
 # a bench needs scale against a person, a supplement needs its facts panel.
-AI = open(r"D:\AltaScraper\domain\ai_providers.py", encoding="utf-8-sig").read()
+AI = open(_os_repo.path.join(_REPO, r"domain\ai_providers.py"), encoding="utf-8-sig").read()
 truthy("the model is asked for a presence per concept", "_PRESENCE_BRIEF" in AI)
 truthy("  and returns it in the JSON", '"product_presence"' in AI)
 truthy("  told not to make them all hero", "DO NOT make every concept" in AI)
@@ -304,7 +309,7 @@ truthy("every presence rule carries the canvas",
 print("\n== a phone gets its own composition, not the desktop squeezed ==")
 #     "in premium aplus content there is mobile version and desktop version but
 #      app is not making separate diensions content"
-AP = open(r"D:\AltaScraper\routes\aplus_routes.py", encoding="utf-8-sig").read()
+AP = open(_os_repo.path.join(_REPO, r"routes\aplus_routes.py"), encoding="utf-8-sig").read()
 _prem = {m["id"]: m for m in (_dash._APLUS_MODULES.get("premium") or [])}
 truthy("the full-width premium banner declares a mobile size",
        (_prem.get("premium_full") or {}).get("mobile"))
@@ -325,7 +330,7 @@ truthy("  and the result says which screen it is for", 'gen["viewport"]' in AP)
 # RULE 4: the desktop figures are Amazon's; the mobile default is ours, and
 # saying so is the difference between a default and a claim.
 truthy("the mobile size is declared an assumption, not an Amazon figure",
-       "APLUS_MOBILE_IS_ASSUMED" in open(r"D:\AltaScraper\dashboard.py",
+       "APLUS_MOBILE_IS_ASSUMED" in open(_os_repo.path.join(_REPO, r"dashboard.py"),
                                          encoding="utf-8-sig").read())
 truthy("  and that is sent to the screen", "mobile_size_note" in AP)
 

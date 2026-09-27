@@ -472,14 +472,10 @@ function featureRows(prefix, current){
         + (feats.length !== 1 ? 's' : '') + '</span>'
         + '<span class="permgrp-set">'
         + '<span class="cc">set all:</span>'
-        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
-        +   gid + '\',\'none\')">No access</button>'
-        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
-        +   gid + '\',\'view\')">View</button>'
-        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
-        +   gid + '\',\'edit\')">Edit</button>'
-        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
-        +   gid + '\',\'\')" title="Let every page in this group follow its area again">Inherit</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(' + jsArg(gid) + ',\'none\')">No access</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(' + jsArg(gid) + ',\'view\')">View</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(' + jsArg(gid) + ',\'edit\')">Edit</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(' + jsArg(gid) + ',\'\')" title="Let every page in this group follow its area again">Inherit</button>'
         + '</span></div>';
       return '<div class="permgroup" data-gid="' + gid + '">' + head + rows + '</div>';
     }).join("");

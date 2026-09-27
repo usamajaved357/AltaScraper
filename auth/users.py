@@ -554,20 +554,42 @@ def visible_accounts(config_path, accounts):
     shared-password owner who is the only user). That is the same rule
     auth/guard.py applies, not a shortcut.
     """
+    return [a for a in accounts
+            if caller_may_see(config_path, str(a.get("id") or ""))]
+
+
+def _caller(config_path):
+    """The signed-in user, or None when there is nobody to scope to."""
     try:
         from flask import session
         uid = session.get("uid")
-        if not uid:
-            return accounts
-        u = get_user(config_path, uid)
-        if not u:
-            return accounts
-        return [a for a in accounts
-                if can_access_workspace(u, str(a.get("id") or ""))]
+        return get_user(config_path, uid) if uid else None
+    except Exception:
+        return None
+
+
+def caller_may_see(config_path, workspace_id):
+    """May the CALLER see this workspace's data? The per-id form of
+    visible_accounts(), for lists keyed by workspace id rather than built from
+    account records (usage ledgers, backup checks). Same fall-open rule."""
+    u = _caller(config_path)
+    if u is None:
+        return True
+    try:
+        return can_access_workspace(u, str(workspace_id or ""))
     except Exception:
         # A permissions lookup that fails must not empty somebody's screen; the
         # doorman still refuses anything they may not open.
-        return accounts
+        return True
+
+
+def caller_sees_every_account(config_path):
+    """Is the caller allowed every account? (Only then may an all-accounts
+    TOTAL be shown to them: filtering its rows would leave the total wrong.)"""
+    u = _caller(config_path)
+    if u is None:
+        return True
+    return ALL_WORKSPACES in [str(a) for a in (u.get("workspaces") or [])]
 
 
 # ---- mutations -----------------------------------------------------------

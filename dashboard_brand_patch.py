@@ -166,9 +166,12 @@ def register(app, _cfg, _ws, _records, _run_lock, _running, _ANSI, SCRIPT, sysmo
         conn.update({k: v for k, v in body.items() if k in conn})
         cfg["connection"] = conn
         # persist back to config.json (same file the app already uses)
+        # ATOMICALLY: open(path, "w") empties config.json before writing a
+        # byte, and a crash in between loses every credential (Milestone 1).
         try:
-            json.dump(cfg, open(CONFIG_PATH, "w", encoding="utf-8"),
-                      ensure_ascii=False, indent=2)
+            from config import settings as _settings
+            if not _settings.write_raw(cfg, CONFIG_PATH):
+                raise OSError("could not write config.json")
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:160]}), 500
         return jsonify({"ok": True, "connection": conn})

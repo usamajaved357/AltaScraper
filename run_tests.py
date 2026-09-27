@@ -95,12 +95,57 @@ def _tmp_cleanup():
     return freed
 
 
-def _run(cmd, cwd=ROOT, timeout=900):
+def _safe_env(name):
+    """The scratch environment, plus a DATABASE and CONFIG of the test's own.
+
+    SAFE BY DEFAULT (Milestone 1, 28 Sep 2026). Without these, a test that
+    opened the database or config by the default path used whatever sat beside
+    the code -- in the main checkout that is the owner's real altascraper.db and
+    the real config.json with live credentials; in a worktree it left an
+    altascraper.db and cogs_overrides.json in the repo folder. Each test file now
+    gets an empty database and a config path that does not exist, in its own
+    folder under the run's scratch directory. A test that sets these itself
+    still wins, because it sets them in its own process.
+    """
+    env = _tmp_env()
+    d = os.path.join(_TMP_ROOT, "t_" + name.replace(".", "_"))
+    os.makedirs(d, exist_ok=True)
+    env["ALTASCRAPER_DB"] = os.path.join(d, "altascraper.db")
+    cfg = os.path.join(d, "config.json")
+    # A STAND-IN CONFIG, NOT NO CONFIG. With no file at all, every test that
+    # builds the app stopped part-way at "config.json not found" -- including
+    # the account-isolation tests -- so their later checks never ran anywhere.
+    # This one satisfies config/settings.load_settings with values that are
+    # plainly not credentials, and names one test account with no SP-API
+    # details, so nothing can reach Amazon, Google or Anthropic with it.
+    # (Milestone 1, after the change review.)
+    import json as _json
+    with open(cfg, "w", encoding="utf-8") as fh:
+        _json.dump(TEST_CONFIG, fh, indent=2)
+    env["CONFIG_PATH"] = cfg
+    return env
+
+
+# The stand-in config every test run gets. NOT A SECRET AND NOT A CREDENTIAL:
+# every value is a visible placeholder, and the one account has no SP-API keys.
+TEST_CONFIG = {
+    "anthropic_api_key": "test-placeholder-not-a-real-key",
+    "google_spreadsheet_id": "test-placeholder-sheet",
+    "google_service_account_json": "test-placeholder-service-account.json",
+    "accounts": [{"id": "test_account", "name": "Test account",
+                  "marketplace": "UK"}],
+    # Background work stays off in a test run.
+    "repricer_enabled": False,
+    "asin_monitor_enabled": False,
+}
+
+
+def _run(cmd, cwd=ROOT, timeout=900, name=None):
     t0 = time.time()
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                            timeout=timeout, encoding="utf-8", errors="replace",
-                           env=_tmp_env())
+                           env=(_safe_env(name) if name else _tmp_env()))
         return p.returncode, (p.stdout or "") + (p.stderr or ""), time.time() - t0
     except subprocess.TimeoutExpired:
         return 124, "TIMED OUT after %ss" % timeout, time.time() - t0
@@ -199,13 +244,15 @@ def main():
     print("Running %d test files%s\n" % (len(jobs), (" matching %r" % only) if only else ""))
     failed, skipped, slow = [], [], []
     for name, cmd in jobs:
-        code, out, secs = _run(cmd)
+        code, out, secs = _run(cmd, name=name)
         if secs > 20:
             slow.append((name, secs))
         if code == 0:
             print("  %-34s ok    %5.1fs" % (name, secs))
         elif code == 125:
-            skipped.append((name, out.strip()[:120]))
+            # The LAST line says why; the first is often a banner.
+            _why = [l for l in out.strip().splitlines() if l.strip()]
+            skipped.append((name, (_why[-1] if _why else "")[:120]))
             print("  %-34s SKIP  %5.1fs  %s" % (name, secs, out.strip()[:60]))
         else:
             failed.append((name, code, out))
@@ -215,6 +262,8 @@ def main():
     print("%d files, %d passed, %d failed%s"
           % (len(jobs), len(jobs) - len(failed) - len(skipped), len(failed),
              (", %d could not run" % len(skipped)) if skipped else ""))
+    for name, why in skipped:
+        print("  could not run: %-34s %s" % (name, why[:90]))
     probes = _find("probe_", ".py")
     if probes and not only:
         print("(%d probe_*.py scripts were not run: they call the live Amazon API "

@@ -245,8 +245,8 @@ def disk_evidence(data_dir, on_paas=None):
     """
     data_dir = os.path.abspath(str(data_dir))
     if on_paas is None:
-        on_paas = bool(os.environ.get("RENDER") or os.environ.get("RAILWAY_ENVIRONMENT")
-                       or os.environ.get("DYNO"))
+        from config import hosting as _hosting      # one list of markers
+        on_paas = _hosting.is_hosted()
     mount = _nearest_mount(data_dir)
     # On Windows every path resolves to a drive root, and there is no PaaS to
     # wipe it -- so the mount reading only carries meaning on a hosted Linux box.

@@ -27,11 +27,11 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const JS = fs.readFileSync("D:/AltaScraper/static/js/sourcing.js", "utf8");
-const CSS = fs.readFileSync("D:/AltaScraper/static/css/repricer.css", "utf8");
-const PY = fs.readFileSync("D:/AltaScraper/domain/sourcing.py", "utf8");
-const DR = fs.readFileSync("D:/AltaScraper/domain/source_drift.py", "utf8");
-const RT = fs.readFileSync("D:/AltaScraper/routes/sourcing_routes.py", "utf8");
+const JS = fs.readFileSync((__dirname + "/static/js/sourcing.js"), "utf8");
+const CSS = fs.readFileSync((__dirname + "/static/css/repricer.css"), "utf8");
+const PY = fs.readFileSync((__dirname + "/domain/sourcing.py"), "utf8");
+const DR = fs.readFileSync((__dirname + "/domain/source_drift.py"), "utf8");
+const RT = fs.readFileSync((__dirname + "/routes/sourcing_routes.py"), "utf8");
 
 console.log("=== the drift is visible without expanding anything ===");
 // THE FLAG MOVED, AND THAT IS THE POINT OF THE REDESIGN.

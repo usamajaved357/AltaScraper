@@ -451,7 +451,7 @@ function showSecondaryResults(images, skus, live){
     + '<b style="font-size:13px">Secondary images ('+images.length+')</b>'
     + '<button onclick="document.getElementById(\'secresults\').remove()" style="background:none;border:none;color:var(--accent2);cursor:pointer;font-size:16px">✕</button></div>'
     + '<div style="font-size:11px;color:var(--ink2);margin-bottom:10px">'+note+'</div>'
-    + images.map((u,i)=>'<div style="margin-bottom:10px"><img src="'+u+'" style="width:100%;border-radius:8px;border:1px solid var(--line,var(--accent-line))"><a href="#" onclick="_downloadAsJpeg(\''+u+'\',\'secondary_'+(i+1)+'\');return false;" style="display:inline-block;margin-top:4px;font-size:12px;color:var(--accent2)">⬇ Download image '+(i+1)+'</a></div>').join("");
+    + images.map((u,i)=>'<div style="margin-bottom:10px"><img src="'+u+'" style="width:100%;border-radius:8px;border:1px solid var(--line,var(--accent-line))"><a href="#" onclick="_downloadAsJpeg(' + jsArg(u) + ',\'secondary_'+(i+1)+'\');return false;" style="display:inline-block;margin-top:4px;font-size:12px;color:var(--accent2)">⬇ Download image '+(i+1)+'</a></div>').join("");
 }
 async function loadBrandPanel(){
   const host=document.getElementById('brandpanel');
@@ -1670,7 +1670,7 @@ function _priceCell(r, cls, liveOverride){
   if(!live) return `<span class="${cls}" title="This listing is not live on Amazon, so there is no selling price to change yet">${txt}</span>`;
   const n = Number(raw.replace(/[^0-9.]/g,'')) || 0;
   return `<span class="${cls} pricehot" title="Click to change this selling price on Amazon"
-      onclick="event.stopPropagation();priceEdit('${esc(r.sku)}',${n},'${esc(r.title||'')}')">${txt}<i class="ti ti-pencil"></i></span>`;
+      onclick="event.stopPropagation();priceEdit(${jsArg(r.sku)},${n},${jsArg(r.title||'')})">${txt}<i class="ti ti-pencil"></i></span>`;
 }
 
 /* THE BRAND, ALWAYS.
@@ -2146,7 +2146,7 @@ function card(r){
   const _isDup=(typeof isDuplicate==="function") && isDuplicate(r);   // same SKU on another card/tab
   const _dupOther=_isDup?dupOtherTabs(r):[];
   return `<div class="tile ${selected?'sel':''} ${_isDup?'dup':''} ${flagRed?'flag':(realIssue?'flagamber':'')}" data-sku="${esc(r.sku)}">
-    <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openListing('${esc(r.sku)}')">
+    <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openListing(${jsArg(r.sku)})">
       ${thumb}
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(_st||r.status||'')}"></span>
       ${rowSelectBox(r, "tilesel")}
@@ -2158,7 +2158,7 @@ function card(r){
       ${_inactiveChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
     </div>
-    <div class="tilebody" onclick="openListing('${esc(r.sku)}')">
+    <div class="tilebody" onclick="openListing(${jsArg(r.sku)})">
       <div class="tiletitle pii">${esc(r.title)||'<span class="cc">(no title)</span>'}</div>
       <div class="tilemeta">
         ${_priceCell(r, "tileprice pii")}
@@ -2171,7 +2171,7 @@ function card(r){
 
       ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">
         <span class="tiledup-lbl"><i class="ti ti-copy"></i> Duplicate SKU${_dupOther.length?` — also on ${esc(_dupOther.join(', '))}`:` — appears ${dupCopies(r).length}×`}</span>
-        <button class="tiledup-del" title="Delete this copy from this app only (other copies stay, and nothing is sent to Amazon)" onclick="event.stopPropagation();delDuplicate('${esc(String(r.sku))}',${r.row||0},'${esc(String(r.tab||''))}',this)"><i class="ti ti-trash"></i> Delete this copy</button>
+        <button class="tiledup-del" title="Delete this copy from this app only (other copies stay, and nothing is sent to Amazon)" onclick="event.stopPropagation();delDuplicate(${jsArg(String(r.sku))},${r.row||0},${jsArg(String(r.tab||''))},this)"><i class="ti ti-trash"></i> Delete this copy</button>
       </div>`:''}
       ${ownAsin?`<div class="tileasin" title="Your own live ASIN on Amazon (from the live catalogue)"><i class="ti ti-brand-amazon"></i> <a href="${_dpUrl(ownAsin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(ownAsin)}</a></div>`:''}
     </div>
@@ -2361,7 +2361,7 @@ function _dwStatusBlock(r){
     ? `<details class="findingsbox"><summary class="findsum neutral">\u2139 ${esc(reason)}</summary>
         <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">${esc(_fbNote)}</div>
         <div class="findings neutral">${formatFindings(findings, r)}</div>
-        <button class="linkbtn" style="margin-top:6px" onclick="locateFlags('${esc(r.sku)}',this)">\ud83d\udd0d Locate flagged terms</button>
+        <button class="linkbtn" style="margin-top:6px" onclick="locateFlags(${jsArg(r.sku)},this)">\ud83d\udd0d Locate flagged terms</button>
         <div class="locout" id="loc_${sid(r.sku)}"></div></details>`
     : "";
   return statusBlock;
@@ -2451,14 +2451,14 @@ function _dwShell(r, urls, priceStr, risks){
       ${risks.join("")}
       ${asinBit}
       <span class="dw2-spacer"></span>
-      <button class="dw2-ib" onclick="previewOne('${esc(r.sku)}')" title="Preview \u2014 check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i></button>
-      <button class="dw2-ib accent" onclick="autoFixLoop('${esc(r.sku)}')" title="Auto-fix \u2014 suggest, apply, preview, repeatedly, until there are no errors left (max 8 rounds)"><i class="ti ti-wand"></i></button>
+      <button class="dw2-ib" onclick="previewOne(${jsArg(r.sku)})" title="Preview \u2014 check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i></button>
+      <button class="dw2-ib accent" onclick="autoFixLoop(${jsArg(r.sku)})" title="Auto-fix \u2014 suggest, apply, preview, repeatedly, until there are no errors left (max 8 rounds)"><i class="ti ti-wand"></i></button>
       ${ro ? `<button class="dw2-ib" disabled title="Read-only workspace \u2014 cannot publish"><i class="ti ti-lock"></i></button>`
-           : `<button class="dw2-ib success" onclick="submitOne('${esc(r.sku)}')" title="Submit \u2014 publish ONLY this listing live"><i class="ti ti-upload"></i></button>`}
-      <button class="dw2-ib ${st==='APPROVED'?'on-approve':''}" onclick="setStatus('${esc(r.sku)}','APPROVED',this)" title="${st==='APPROVED'?'Already approved':'Approve \u2014 mark ready to send'}"><i class="ti ti-check"></i></button>
-      <button class="dw2-ib ${st==='NEEDS_REVIEW'?'on-hold':''}" onclick="setStatus('${esc(r.sku)}','NEEDS_REVIEW',this)" title="${st==='NEEDS_REVIEW'?'Already held':'Hold \u2014 keep it back'}"><i class="ti ti-hand-stop"></i></button>
-      <button class="dw2-ib" onclick="drawerMore(event,'${esc(r.sku)}',${r.row||0},${live?'true':'false'})" title="Everything else"><i class="ti ti-dots"></i></button>
-      <button class="dw2-ib" onclick="pdpOpen('${esc(r.sku)}')" title="Open full screen — the same listing with room for the description, the bullets and every attribute side by side"><i class="ti ti-arrows-diagonal"></i></button>
+           : `<button class="dw2-ib success" onclick="submitOne(${jsArg(r.sku)})" title="Submit \u2014 publish ONLY this listing live"><i class="ti ti-upload"></i></button>`}
+      <button class="dw2-ib ${st==='APPROVED'?'on-approve':''}" onclick="setStatus(${jsArg(r.sku)},'APPROVED',this)" title="${st==='APPROVED'?'Already approved':'Approve \u2014 mark ready to send'}"><i class="ti ti-check"></i></button>
+      <button class="dw2-ib ${st==='NEEDS_REVIEW'?'on-hold':''}" onclick="setStatus(${jsArg(r.sku)},'NEEDS_REVIEW',this)" title="${st==='NEEDS_REVIEW'?'Already held':'Hold \u2014 keep it back'}"><i class="ti ti-hand-stop"></i></button>
+      <button class="dw2-ib" onclick="drawerMore(event,${jsArg(r.sku)},${r.row||0},${live?'true':'false'})" title="Everything else"><i class="ti ti-dots"></i></button>
+      <button class="dw2-ib" onclick="pdpOpen(${jsArg(r.sku)})" title="Open full screen — the same listing with room for the description, the bullets and every attribute side by side"><i class="ti ti-arrows-diagonal"></i></button>
       <button class="dw2-ib bare" onclick="closeDrawer()" title="Close"><i class="ti ti-x" style="font-size:16px"></i></button>
     </div>`;
 
@@ -2517,10 +2517,10 @@ function _dwShell(r, urls, priceStr, risks){
   const alwaysOn = _on ? `<div class="dw2-alwayson">${_on}</div>` : "";
 
   const footer = `<div class="dw2-foot">
-      <button onclick="previewOne('${esc(r.sku)}')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>
-      <button class="primary" onclick="autoFixLoop('${esc(r.sku)}')" title="Suggest, apply, preview -- repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
+      <button onclick="previewOne(${jsArg(r.sku)})" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>
+      <button class="primary" onclick="autoFixLoop(${jsArg(r.sku)})" title="Suggest, apply, preview -- repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
       ${ro ? `<span class="ro"><i class="ti ti-lock"></i> Read-only workspace</span>`
-           : `<button class="success" onclick="submitOne('${esc(r.sku)}')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>`}
+           : `<button class="success" onclick="submitOne(${jsArg(r.sku)})" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>`}
     </div>`;
 
   return `<div class="dw2">
@@ -2542,9 +2542,9 @@ function _dwShell(r, urls, priceStr, risks){
       </div>
       <div id="fulldata_${sv}">${fullData(r)}</div>
       <div class="dw2-ask">
-        <button onclick="openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i> Image Studio</button>
-        ${live ? `<button onclick="optimizeLive('${esc(ownAsin)}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i> Optimize live copy</button>` : ""}
-        <button onclick="askAbout('${esc(r.sku)}')"><i class="ti ti-message-circle"></i> Ask Claude about this listing</button>
+        <button onclick="openStudioSingle(${jsArg(r.sku)})"><i class="ti ti-photo"></i> Image Studio</button>
+        ${live ? `<button onclick="optimizeLive(${jsArg(ownAsin)},${jsArg(r.sku)})"><i class="ti ti-sparkles"></i> Optimize live copy</button>` : ""}
+        <button onclick="askAbout(${jsArg(r.sku)})"><i class="ti ti-message-circle"></i> Ask Claude about this listing</button>
       </div>
     </div>
     ${footer}
@@ -2953,7 +2953,7 @@ function rowSelectBox(r, cls){
   return `<input type="checkbox" class="${cls || "rowsel"}" ${on}
       title="Select for batch actions"
       onclick="event.stopPropagation()"
-      onchange="toggleSelect('${esc(r.sku)}', this.checked)">`;
+      onchange="toggleSelect(${jsArg(r.sku)}, this.checked)">`;
 }
 
 /* THE ONE ACTION ROW, for every card in the app.
@@ -2980,7 +2980,7 @@ function rowActions(r, cls, opts){
   const live = opts.live === undefined ? isAmazonLive(r) : !!opts.live;
   return `
     ${live ? "" : `<button class="${cls}" title="Approve — mark this draft ready to send to Amazon"
-            onclick="event.stopPropagation();setStatus('${sku}','APPROVED',this)"><i class="ti ti-check"></i></button>`}
+            onclick="event.stopPropagation();setStatus(${jsArg(r.sku)},'APPROVED',this)"><i class="ti ti-check"></i></button>`}
     ${/* APPROVE IS FOR DRAFTS. It set the row's status to APPROVED, meaning
         * "ready to send". On a listing Amazon has already published there is
         * nothing to approve -- and on a catalogue-only card there is not even a
@@ -2989,15 +2989,15 @@ function rowActions(r, cls, opts){
         * in its place, below, which is what you actually do to a live listing.
         */""}
     <button class="${cls} gen" title="Image Studio (creative ideas, prompt &amp; image AI)"
-            onclick="event.stopPropagation();openStudioSingle('${sku}')"><i class="ti ti-photo"></i></button>
+            onclick="event.stopPropagation();openStudioSingle(${jsArg(r.sku)})"><i class="ti ti-photo"></i></button>
     <button class="${cls}" title="This listing's images — upload your own, pick one from the library, or set the main image"
-            onclick="event.stopPropagation();openImageLibrary('${sku}', ${live ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
+            onclick="event.stopPropagation();openImageLibrary(${jsArg(r.sku)}, ${live ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
     ${/* OUR asin, not the competitor reference in the SKU (see rowAsin). The
         * fetch keys off the SKU so this argument was not doing damage, but
         * passing a competitor ASIN into a function about OUR live listing is
         * how the next person to use that argument inherits the bug. */""}
     ${live ? `<button class="${cls}" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)"
-            onclick="event.stopPropagation();optimizeLive('${esc(rowAsin(r).own||'')}','${sku}')"><i class="ti ti-sparkles"></i></button>` : ""}
+            onclick="event.stopPropagation();optimizeLive(${jsArg(rowAsin(r).own||'')},${jsArg(r.sku)})"><i class="ti ti-sparkles"></i></button>` : ""}
     ${/* THESE TWO EXISTED ONLY IN THE LIVE TABLE ROW. The live TILE and the
         * live TABLE ROW are the same listing seen two ways, and they offered
         * different things to do to it -- exactly the drift that put two card
@@ -3006,9 +3006,9 @@ function rowActions(r, cls, opts){
         * disagree again. Live-only because there is nothing to compare a draft
         * against and no live listing to hang a variant off. */""}
     ${live ? `<button class="${cls}" title="Compare this listing with Amazon's live copy, field by field"
-            onclick="event.stopPropagation();syncForSku('${sku}')"><i class="ti ti-arrows-exchange"></i></button>` : ""}
+            onclick="event.stopPropagation();syncForSku(${jsArg(r.sku)})"><i class="ti ti-arrows-exchange"></i></button>` : ""}
     ${live ? `<button class="${cls}" title="Add another colour or size of this product, from an eBay link"
-            onclick="event.stopPropagation();addVariant('${sku}')"><i class="ti ti-binary-tree"></i></button>` : ""}
+            onclick="event.stopPropagation();addVariant(${jsArg(r.sku)})"><i class="ti ti-binary-tree"></i></button>` : ""}
     ${/* FOUR BUTTONS REMOVED FROM THE CARD (they all still exist, elsewhere):
         *
         *   Edit      -- "we can directly edit the listing by clicking on the
@@ -3027,7 +3027,7 @@ function rowActions(r, cls, opts){
         *                 on the green asin". The ASIN is the link now.
         */""}
     <button class="${cls} more" title="More"
-            onclick="event.stopPropagation();tileMenu(event,'${sku}',${r.row||0})"><i class="ti ti-dots"></i></button>`;
+            onclick="event.stopPropagation();tileMenu(event,${jsArg(r.sku)},${r.row||0})"><i class="ti ti-dots"></i></button>`;
 }
 /* PULL LIVE IMAGES: REMOVED.
  *
@@ -3231,7 +3231,7 @@ function tableRow(r){
     : (_a.source
         ? `<span class="cc" title="This listing is not live on Amazon yet, so it has no ASIN of its own. ${esc(_a.source)} is the competitor product it was researched from — not your listing.">not live yet <span class="srcasin">· from ${esc(_a.source)}</span></span>`
         : `<span class="cc">no ASIN</span>`);
-  return `<tr onclick="openListing('${esc(r.sku)}')" title="${esc(r.title||'')}"
+  return `<tr onclick="openListing(${jsArg(r.sku)})" title="${esc(r.title||'')}"
               data-sku="${esc(r.sku)}"
               class="${SELECTED.has(String(r.sku)) ? 'rowon' : ''}">
     <td class="selcol">${rowSelectBox(r)}</td>
@@ -3249,7 +3249,7 @@ function tableRow(r){
         : ''}</td>
     <td>${_compCell(r)}</td>
     <td><div class="acts">
-      <button class="btn primary" onclick="event.stopPropagation();openListing('${esc(r.sku)}')">Review</button>
+      <button class="btn primary" onclick="event.stopPropagation();openListing(${jsArg(r.sku)})">Review</button>
       ${rowActions(r, "dotb")}
     </div></td></tr>`;
 }
@@ -3307,7 +3307,7 @@ function liveTableRow(it){
   // openLiveListing sends it to the full-screen product page when this app has
   // a row for the SKU, and to optimizeLive when it does not -- see that
   // function for why both are needed.
-  const _open = `openLiveListing('${esc(it.asin||'')}','${esc(it.sku||'')}')`;
+  const _open = `openLiveListing(${jsArg(it.asin||'')},${jsArg(it.sku||'')})`;
   return `<tr style="cursor:pointer" title="${esc(it.title||'')}"
               data-sku="${esc(it.sku||'')}"
               class="${SELECTED.has(String(it.sku||'')) ? 'rowon' : ''}"
@@ -3426,7 +3426,9 @@ function identifierPanel(r){
 
 // The SKU as a JS string argument. listings.js has no _sarg of its own; the
 // repricer's is in sourcing.js and this file must not depend on that one.
-function _sarg2(s){ return "'" + String(s || "").replace(/'/g, "\\'") + "'"; }
+// ONE escaper for a value inside an inline handler: jsArg, in users.js (Rule 12,
+// Milestone 2). This name is kept for its callers.
+function _sarg2(s){ return jsArg(s || ""); }
 
 /* setGtinExemption MOVED TO static/js/gtin.js.
  *
@@ -3526,7 +3528,7 @@ function viabilityBadge(r){
   const names=(v.risks||[]).map(x=>x.label).join(", ");
   // Own class/position: .tileflag sits bottom-RIGHT (restricted) and .tileclaim
   // bottom-LEFT (claims), so a third badge reusing either would land on top of it.
-  return `<span class="tiledocs ${high?'red':'amber'}" title="Compliance: ${esc(names)} — ${docs} document(s) Amazon can request. Click to see the list." onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','compliance')"><i class="ti ti-file-text"></i>${docs}</span>`;
+  return `<span class="tiledocs ${high?'red':'amber'}" title="Compliance: ${esc(names)} — ${docs} document(s) Amazon can request. Click to see the list." onclick="event.stopPropagation();openListingAt(${jsArg(r.sku)},'compliance')"><i class="ti ti-file-text"></i>${docs}</span>`;
 }
 function viabilityPanel(r){
   const v = r.viability;
@@ -3630,7 +3632,7 @@ function needsCopy(r){
 }
 function needsCopyBadge(r){
   if(!needsCopy(r)) return "";
-  return `<span class="tilecopy" title="This draft has its source title and link but no copy yet — no bullets, no description, no product type. That is how Import Seller leaves things, so you can pick what is worth generating. Select it and press Regenerate copy, or open it and use Suggest." onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','details')"><i class="ti ti-pencil-off"></i></span>`;
+  return `<span class="tilecopy" title="This draft has its source title and link but no copy yet — no bullets, no description, no product type. That is how Import Seller leaves things, so you can pick what is worth generating. Select it and press Regenerate copy, or open it and use Suggest." onclick="event.stopPropagation();openListingAt(${jsArg(r.sku)},'details')"><i class="ti ti-pencil-off"></i></span>`;
 }
 // The same fact, as a sentence with the action attached, inside the drawer.
 function needsCopyPanel(r){
@@ -3641,7 +3643,7 @@ function needsCopyPanel(r){
     + `else — no bullets, no description, no product type. That is deliberate: `
     + `Import Seller leaves the writing until you have decided the item is worth `
     + `it. <button class="db-chip" style="margin-left:6px" `
-    + `onclick="event.stopPropagation();batchGenerateOne('${esc(r.sku)}')">`
+    + `onclick="event.stopPropagation();batchGenerateOne(${jsArg(r.sku)})">`
     + `<i class="ti ti-wand"></i> Write it now</button></div>`;
 }
 // One SKU through the same path the bulk button uses, so there is one way copy
@@ -3656,7 +3658,7 @@ function claimBadge(r){
   const red=f.some(x=>x.severity==="RED"); const lvl=red?"red":"amber";
   const rules=[...new Set(f.map(x=>x.rule+" ("+x.category+" category)"))].join("; ");
   const tip=f.length+" claim risk"+(f.length>1?"s":"")+": "+rules+" — click to review";
-  return `<span class="tileclaim ${lvl}" title="${esc(tip)}" onclick="event.stopPropagation();openListingAt('${esc(r.sku)}','compliance')"><i class="ti ti-alert-hexagon"></i>${f.length}</span>`;
+  return `<span class="tileclaim ${lvl}" title="${esc(tip)}" onclick="event.stopPropagation();openListingAt(${jsArg(r.sku)},'compliance')"><i class="ti ti-alert-hexagon"></i>${f.length}</span>`;
 }
 function claimBox(r){
   const f=r.claim_flags||[]; if(!f.length) return "";
@@ -3671,7 +3673,7 @@ function claimBox(r){
         <b>${esc(h.rule)}</b> <span class="cc">(${esc(h.category)} category) · in ${esc(_CLAIM_FLABEL[h.field]||h.field)}</span>
       </div>
       <div class="claimtext">${marked}</div>
-      ${h.swap?`<button class="linkbtn" onclick="toggleRewrite('${esc(r.sku)}',${i})">✎ Show safe rewrite</button>
+      ${h.swap?`<button class="linkbtn" onclick="toggleRewrite(${jsArg(r.sku)},${i})">✎ Show safe rewrite</button>
         <div class="rewrite" id="rw_${sid(r.sku)}_${i}" style="display:none"></div>`
         :`<div class="cc" style="margin-top:4px">No direct swap — rephrase or remove this wording.</div>`}
     </div>`;
@@ -3688,7 +3690,7 @@ function toggleRewrite(sku, i){
   box.style.display="block";
   box.innerHTML=`<div class="rwrow"><span class="rwlbl">Before</span><div class="rwbefore">${claimMarkField(r,h.field,before)}</div></div>
     <div class="rwrow"><span class="rwlbl">After</span><div class="rwafter">${esc(after)}</div></div>
-    <div class="rwacts"><button class="linkbtn ok" onclick="applyRewrite('${esc(sku)}',${i})">Apply this rewrite</button>
+    <div class="rwacts"><button class="linkbtn ok" onclick="applyRewrite(${jsArg(sku)},${i})">Apply this rewrite</button>
       <span class="cc">You accept it — nothing is changed until you click.</span></div>`;
 }
 async function applyRewrite(sku, i){
@@ -4033,10 +4035,10 @@ function tileMenu(ev, sku, row){
   closeTileMenu();
   const m=document.createElement("div"); m.className="tilemenu"; m.id="tilemenu";
   m.innerHTML=`
-    <button onclick="setStatus('${esc(sku)}','NEEDS_REVIEW',this);closeTileMenu()"><i class="ti ti-player-pause"></i> Hold</button>
-    <button onclick="askAbout('${esc(sku)}');closeTileMenu()"><i class="ti ti-message-circle"></i> Ask Claude</button>
-    <button onclick="openListing('${esc(sku)}');closeTileMenu()"><i class="ti ti-edit"></i> Edit details</button>
-    <button class="danger" onclick="delRow('${esc(sku)}',${row},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete</button>`;
+    <button onclick="setStatus(${jsArg(sku)},'NEEDS_REVIEW',this);closeTileMenu()"><i class="ti ti-player-pause"></i> Hold</button>
+    <button onclick="askAbout(${jsArg(sku)});closeTileMenu()"><i class="ti ti-message-circle"></i> Ask Claude</button>
+    <button onclick="openListing(${jsArg(sku)});closeTileMenu()"><i class="ti ti-edit"></i> Edit details</button>
+    <button class="danger" onclick="delRow(${jsArg(sku)},${row},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete</button>`;
   document.body.appendChild(m);
   const rect=ev.target.closest("button").getBoundingClientRect();
   m.style.top=(rect.bottom+4)+"px";
@@ -4130,27 +4132,27 @@ function drawerMore(ev, sku, row, isLive){
     // A menu item that opened a listing you did not ask for, or silently did
     // nothing, would be worse than its absence (Rule 4).
     (onItsOwnPage ? ""
-      : `<button onclick="closeTileMenu();openListing('${esc(sku)}')" title="Open this listing to edit it"><i class="ti ti-edit"></i> Edit listing</button>`)
+      : `<button onclick="closeTileMenu();openListing(${jsArg(sku)})" title="Open this listing to edit it"><i class="ti ti-edit"></i> Edit listing</button>`)
     + (ourAsin
-        ? `<button onclick="closeTileMenu();window.open('${esc(_dpUrl(ourAsin))}','_blank','noopener')" title="Open ${esc(ourAsin)} on Amazon in a new tab"><i class="ti ti-external-link"></i> View on Amazon</button>`
-          + `<button onclick="uiCopy('${esc(ourAsin)}','ASIN copied');closeTileMenu()" title="Copy ${esc(ourAsin)} to the clipboard"><i class="ti ti-copy"></i> Copy ASIN</button>`
+        ? `<button onclick="closeTileMenu();window.open(${jsArg(_dpUrl(ourAsin))},'_blank','noopener')" title="Open ${esc(ourAsin)} on Amazon in a new tab"><i class="ti ti-external-link"></i> View on Amazon</button>`
+          + `<button onclick="uiCopy(${jsArg(ourAsin)},'ASIN copied');closeTileMenu()" title="Copy ${esc(ourAsin)} to the clipboard"><i class="ti ti-copy"></i> Copy ASIN</button>`
         // NOT LIVE YET MEANS NO ASIN OF ITS OWN, and that is a fact worth
         // saying rather than two items quietly missing from the menu.
         : `<button disabled title="This listing is not on Amazon yet, so it has no ASIN of its own. The ASIN in the SKU is the competitor product it was researched from."><i class="ti ti-external-link"></i> No ASIN yet</button>`)
-    + `<button onclick="refreshSchemaFor('${esc(sku)}');closeTileMenu()" title="Re-fetch Amazon's allowed values for this product type. Use it when a dropdown is missing an option you know exists — it does NOT touch your listing's own data."><i class="ti ti-refresh"></i> Refresh dropdown options</button>`
-    + `<button onclick="openImageLibrary('${esc(sku)}', ${isLive ? "true" : "false"});closeTileMenu()" title="Every image this listing has: upload your own, pick the main one, push one live"><i class="ti ti-library-photo"></i> Image library</button>`
+    + `<button onclick="refreshSchemaFor(${jsArg(sku)});closeTileMenu()" title="Re-fetch Amazon's allowed values for this product type. Use it when a dropdown is missing an option you know exists — it does NOT touch your listing's own data."><i class="ti ti-refresh"></i> Refresh dropdown options</button>`
+    + `<button onclick="openImageLibrary(${jsArg(sku)}, ${isLive ? "true" : "false"});closeTileMenu()" title="Every image this listing has: upload your own, pick the main one, push one live"><i class="ti ti-library-photo"></i> Image library</button>`
     + (isLive
-        ? `<button onclick="pullLiveRow('${esc(sku)}',this);closeTileMenu()" title="Fetch this listing's real images from Amazon and replace the generation-time ones. Sync does this for every listing at once."><i class="ti ti-cloud-download"></i> Pull live images</button>`
-        + `<button onclick="pushImageLive('${esc(sku)}',this);closeTileMenu()" title="Send the current main image to the live Amazon listing — the image only, no resubmit"><i class="ti ti-cloud-upload"></i> Push main image live</button>`
+        ? `<button onclick="pullLiveRow(${jsArg(sku)},this);closeTileMenu()" title="Fetch this listing's real images from Amazon and replace the generation-time ones. Sync does this for every listing at once."><i class="ti ti-cloud-download"></i> Pull live images</button>`
+        + `<button onclick="pushImageLive(${jsArg(sku)},this);closeTileMenu()" title="Send the current main image to the live Amazon listing — the image only, no resubmit"><i class="ti ti-cloud-upload"></i> Push main image live</button>`
         : "")
     // THE MILES TEMPLATE, moved off the product page's Safety & Compliance tab
     // on the owner's redesign (niche, rarely used). Only where the workspace
     // has the harvest feature -- the same gate the fold had.
     + ((window.WS_FEATURES && window.WS_FEATURES.indexOf("harvest") >= 0
         && typeof milesTemplatePanel === "function")
-        ? `<button onclick="closeTileMenu();openMilesTemplate('${esc(sku)}')" title="The Miles Lubricants template for this listing"><i class="ti ti-template"></i> Miles template</button>`
+        ? `<button onclick="closeTileMenu();openMilesTemplate(${jsArg(sku)})" title="The Miles Lubricants template for this listing"><i class="ti ti-template"></i> Miles template</button>`
         : "")
-    + `<button class="danger" onclick="delRow('${esc(sku)}',${row||0},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete listing</button>`;
+    + `<button class="danger" onclick="delRow(${jsArg(sku)},${row||0},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete listing</button>`;
   document.body.appendChild(m);
   m.style.top = (rect.bottom + 4) + "px";
   // RIGHT-ALIGNED TO THE BUTTON. The drawer is pinned to the right edge, so a
