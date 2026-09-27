@@ -823,12 +823,33 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                         pass
             _attach_compliance(items, mkt)
             _attach_handling(items, aid, mkt)
+            # WHAT A UNIT EARNS, from the one per-unit answer the price editor
+            # and the cost editor use (domain/unit_profit.py): Amazon's fee from
+            # the three-tier resolver, VAT at the account's setting. This called
+            # _estimate_profit with no rate, which meant a flat 15% and VAT left
+            # in the profit -- so a Live row and the same listing's price editor
+            # disagreed about the same unit.
+            from domain import unit_profit as _up
+            _cur = ("USD" if mkt in ("US", "USA") else
+                    "EUR" if mkt in ("DE", "FR", "IT", "ES", "NL", "BE", "IE")
+                    else "GBP")
+            _vat = _up.account_vat_rate(CONFIG_PATH, aid)
             for it in (items or []):
                 cost, csrc = _resolve_cogs(aid, it.get("sku", ""))
                 if cost is not None:
                     it["cogs"] = cost
                     it["cogs_source"] = csrc
-                    prof = _estimate_profit(it.get("price", ""), cost)
+                    _p = str(it.get("price", "") or "").replace(",", "").strip()
+                    try:
+                        _p = float(_p) if _p else 0.0
+                    except ValueError:
+                        _p = 0.0
+                    prof = _up.as_estimate(_up.at_price(
+                        CONFIG_PATH, aid, mkt, it.get("sku", ""),
+                        it.get("asin", ""), _p, cost,
+                        is_fba=str(it.get("fulfillment") or it.get("fulfillment_channel")
+                                   or "").upper() in ("AMAZON", "AFN"),
+                        currency=_cur, vat_rate=_vat))
                     if prof:
                         it["profit"] = prof
             return items

@@ -347,7 +347,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                  ads_connected=bool(avail["ads"]["connected"]),
                                  ad_spend=cur.get("spend") or 0.0,
                                  revenue=cur.get("ordered_sales"),
-                                 units=cur.get("units"))
+                                 units=cur.get("units"),
+                                 # THE PRODUCT FILTER, when one is on: `cur`
+                                 # is then that product's figures, spend
+                                 # included, so the profit must be its too.
+                                 asin=(asin or None))
             est["cogs_mode"] = _mode
             # Profit is now built from the SAME revenue and unit count as the
             # cards, so there is no longer a period-coverage question to answer:

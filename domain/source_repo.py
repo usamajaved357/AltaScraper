@@ -638,6 +638,10 @@ _RULE_NOT_STORED = frozenset({
     "currency",
     # A safety constant, not a per-SKU preference.
     "confirm_gone_checks",
+    # THE ACCOUNT'S VAT RATE. A fact about the business, answered once on the
+    # account form -- never a per-SKU setting. rule_for reads it from the
+    # account every time, so changing it there moves every price at once.
+    "vat_rate",
 })
 
 
@@ -702,6 +706,18 @@ def rule_for(config_path, workspace_id, marketplace, sku):
         if r:
             out.update({k: v for k, v in dict(r).items()
                         if k in _RULE_COLS and v is not None})
+    # THE ACCOUNT'S VAT RATE, attached here because this is where every
+    # repricer rule starts. A price on a VAT-registered account includes VAT
+    # that goes to HMRC, so break-even and every margin target have to be
+    # worked out on what is left after it (listing/pricing._kept). Read from
+    # the account, the same reader every profit screen uses.
+    try:
+        from domain import unit_profit as _up
+        _v = _up.account_vat_rate(config_path, workspace_id)
+        if _v is not None:
+            out["vat_rate"] = _v
+    except Exception:
+        pass
     return out
 
 

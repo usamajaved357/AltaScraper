@@ -263,9 +263,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 if not price or price <= 0:
                     continue          # a fee is a share OF a price
                 asin = (_asins.get(sku) or m.get("asin") or "").strip().upper()
+                # WITH THE SKU, so the first tier -- what Amazon actually took
+                # on this product's settled sales -- is reached, exactly as the
+                # repricer and the price editor reach it.
                 bd = _af.breakdown_for(
                     CONFIG_PATH, wsid, mkt, asin, price,
-                    is_fba=bool(m.get("is_fba")), currency=_cur)
+                    is_fba=bool(m.get("is_fba")), currency=_cur, sku=sku)
                 if not bd:
                     continue
                 taken = bd.get("total")

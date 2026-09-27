@@ -1190,7 +1190,8 @@ def parts_for_display(fees, currency_symbol=""):
 
 
 def breakdown_for(config_path, workspace_id, marketplace, asin, price,
-                  is_fba=False, currency="GBP", rate=None, basis="", detail=""):
+                  is_fba=False, currency="GBP", rate=None, basis="", detail="",
+                  sku=""):
     """Every Amazon charge on ONE product at ONE price -- charged or not.
 
         "the fees of amazon reflecting in the details should be accurate and
@@ -1224,6 +1225,16 @@ def breakdown_for(config_path, workspace_id, marketplace, asin, price,
     rate_for_listing and prices with it, so this panel must show THAT rate and
     not go looking for its own. Resolving twice is how a panel comes to sit
     underneath a price it disagrees with (CLAUDE.md Rule 12).
+
+    WITHOUT ONE, IT ASKS rate_for_listing -- THE SAME THREE TIERS, IN THE SAME
+    ORDER -- with Amazon never called (allow_quote=False). It used to go
+    straight to the stored quote and then the account's average, skipping the
+    first tier: what Amazon actually took on THIS product's settled sales. So a
+    product with a sales history showed one fee in the price editor and on the
+    listing row and a different one in the repricer, and the stored quote was
+    used unscaled here while the repricer scaled it by what the settlements
+    show. Found 28 Sep 2026 (profit-accuracy work). `sku` is what finds the
+    first tier; without it the answer starts at the second, as before.
     """
     from data import db as _db
 
@@ -1232,6 +1243,15 @@ def breakdown_for(config_path, workspace_id, marketplace, asin, price,
     p = _f(price, 0.0)
     cur = str(currency or "GBP").upper()
     given_rate, given_basis, given_detail = rate, str(basis or ""), detail
+    if not given_rate and p > 0:
+        try:
+            _r, _b, _d = rate_for_listing(config_path, None, ws, mkt, None,
+                                          sku, a, p, is_fba=is_fba,
+                                          currency=cur, allow_quote=False)
+            if _r and _b in (ACTUAL, QUOTED):
+                given_rate, given_basis, given_detail = _r, _b, _d
+        except Exception:
+            pass      # the stored quote and the account's rate below still answer
 
     row = None
     if a:

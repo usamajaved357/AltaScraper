@@ -340,7 +340,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                    r.get("purchase_date") or r.get("date") or "",
                                    r.get("order_id") or "")
                 d = _ov.profit_detail(items, r.get("total"), _cf,
-                                      fees=_ff(r["order_id"], r.get("total")))
+                                      fees=_ff(r["order_id"], r.get("total")),
+                                      vat_rate=_vat_of(r["account_id"]))
                 r["profit"] = d["profit"]
                 r["margin_pct"] = d["margin_pct"]
                 r["roi_pct"] = d["roi_pct"]
@@ -478,6 +479,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             # function for one order. Told which, so the frozen costs it loaded
             # are the ones it finds.
             default_order_id=str(order_id or ""))
+
+    def _vat_of(account_id):
+        """The account's own VAT rate (None when nobody has said) -- the same
+        reader the per-listing profit uses (domain/unit_profit.account_vat_rate),
+        so an order and a listing cannot disagree about whether VAT comes out.
+        Read each time, not remembered: a rate changed on the account form must
+        apply to the next order drawn, not the next restart."""
+        from domain import unit_profit as _up
+        return _up.account_vat_rate(CONFIG_PATH, str(account_id or ""))
 
     def _fees_fn(account_id, marketplace):
         """(order_id, gross) -> what Amazon took. Real figure where it exists.
@@ -639,7 +649,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                or w.get("date") or "",
                                oid)
             d = _ov.profit_detail(items, w.get("total"), _cf,
-                                  fees=_ff(oid, w.get("total")))
+                                  fees=_ff(oid, w.get("total")),
+                                  vat_rate=_vat_of(aid))
             it = _ov.item_summary(items)
             it["img"] = _cat_look(pics, it).get("img") or ""
             out[oid] = {"item": it, "lines": len(items),
@@ -715,7 +726,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         _cf = _cost_fn_for(aid, mkt,
                            row.get("purchase_date") or row.get("date") or "",
                            row.get("order_id") or oid)
-        bd = _ov.line_breakdown(items, row.get("total"), _cf, fees=fees)
+        bd = _ov.line_breakdown(items, row.get("total"), _cf, fees=fees,
+                                vat_rate=_vat_of(aid))
         row["profit"] = bd["totals"]["profit"]
         row["margin_pct"] = bd["totals"]["margin_pct"]
         row["profit_note"] = bd["totals"]["note"]

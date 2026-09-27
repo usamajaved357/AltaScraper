@@ -76,8 +76,30 @@ has these until the owner merges):
   subtracts ad spend too; the Amazon account-level charge (subscription) comes
   off NET profit automatically unless recorded as an own cost; a multi-product
   order's fee/VAT/coupon is split by each line's share of the price.
-  **Not changed:** per-product figures (listing card, price editor, live rows,
-  repricer, Orders screen) — Stage 2.
+  **Stage 2 (28 Sep 2026), per-product figures.** One per-unit answer,
+  domain/unit_profit.at_price (price editor, Live rows, cost editor), on
+  listing/pricing.achieved (also the repricer, the Orders screen, order
+  sources, supplier drift): VAT out at the account's setting, margin over the
+  price after VAT. Measured: a jack_uk listing at 29.99 costing 15.10 now reads
+  5.30 (21.2%); the Live row used to say 10.39 (34.6%) -- flat 15%, VAT left in.
+  The account fee rate (order_profit.fee_rate) is now measured over what buyers
+  PAID (VAT included), the same base as the per-product and quoted tiers:
+  jack_uk 14.6%, not 17.5% of principal, which overcharged every listing priced
+  on the fallback by a fifth. breakdown_for now starts at the "actual" tier
+  (sku passed), so the price editor, listing row and repricer show one fee.
+  **The repricer's break-even and targets now include VAT** (for jack_uk only;
+  other accounts are vat_rate 0): prices it would set rise accordingly.
+  PPC: one ad_profit() (was 6 copies), VAT share out, cost rate = unit cost x
+  units over costed, non-cancelled lines only (it ignored units).
+  Review fixes (test_profit_review_fixes.py, 6 fail on b834412): PPC net profit
+  took ads off twice; any "...subscription" expense suppressed Amazon's charge;
+  account charge compared two calendars; per-product charges missing from grid
+  and Finance rows; Profit card ignored the product filter; settlement view
+  dropped coupon fees.
+  **Still not changed:** the generator's stored listing profit
+  (amazon_listing_generator.calculate_financials -- protected file; fee from
+  the competitor ASIN or flat 15%, VAT in) and its price floor; a single
+  order/unit with no cost stays blank (not shown as "too high").
 
 ## PDP (product page) — still open (27 Sep 2026)
 

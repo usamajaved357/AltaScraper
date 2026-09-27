@@ -156,13 +156,13 @@ check("a rate of 20% derives the tax", tv.get("basis"), "derived")
 # -- 16.67 of 100, not 20. Multiplying by the rate takes out a fifth too much.
 check("and takes it OUT of the gross rather than adding it on",
       tv.get("amount"), round(100.0 * 0.2 / 1.2, 2))
-# Lower by the VAT LESS the fee on it: this order is unsettled, so its fee is
-# estimated at the account's rate on sales AFTER VAT, and taking the VAT out
-# shrinks that estimate too. 16.67 - 16.67 x 15% = 14.17.
+# Lower by exactly the VAT. The unsettled order's fee is estimated on what the
+# buyer PAID, VAT included -- the base Amazon charges its fee on and the base
+# the account's fee rate is measured over -- so taking the VAT out does not
+# move the fee.
 _v = round(100.0 * 0.2 / 1.2, 2)
-check("and the profit is lower by that VAT, less the fee on it",
-      round(after["profit"] - twenty["profit"], 2),
-      round(_v - _v * float(twenty["fee_rate"]), 2))
+check("and the profit is lower by exactly that VAT",
+      round(after["profit"] - twenty["profit"], 2), _v)
 check("the statement carries it as its own line", twenty.get("vat_line"),
       round(100.0 * 0.2 / 1.2, 2))
 

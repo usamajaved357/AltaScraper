@@ -71,9 +71,12 @@ def line(oid, date, sku, asin, units, revenue, shipping, cogs, status="Shipped")
         cogs_source=(None if cogs is None else "sku"), status=status, currency="GBP")
 
 
-# ---- the fee rate this account pays: 18%, measured from July ------------
+# ---- the fee rate this account pays, measured from July -----------------
+# 180.00 of fees on 1000.00 of principal with 200.00 of VAT itemised beside it:
+# 15% of what buyers paid (18% of the principal alone). The rate is a share of
+# the VAT-INCLUSIVE price, the base Amazon charges its fee on.
 ins("finance_daily", workspace_id=WS, marketplace=MKT, date="2026-07-01", asin="*",
-    principal=1000.0, referral_fees=180.0, fba_fees=0.0, other_fees=0.0,
+    principal=1000.0, tax=200.0, referral_fees=180.0, fba_fees=0.0, other_fees=0.0,
     currency="GBP")
 
 # ---- orders placed in August ---------------------------------------------
@@ -116,7 +119,7 @@ conn.commit()
 #   sales charged to buyers  120 + 120 + 96                      = 336.00
 #   VAT                      20 (Amazon) + 20 (Amazon) + 96/6    =  56.00
 #   sales after VAT                                              = 280.00
-#   Amazon fees   O1 15+1+2 (coupon fee)  O2 18  O3 80 x 18%     =  50.40
+#   Amazon fees   O1 15+1+2 (coupon fee)  O2 18  O3 96 x 15%     =  50.40
 #   promotions you funded (O1)                                   =   5.00
 #   refunds in August (the July order's), less fee returned 3,
 #     plus a reimbursement of 4                                  =  17.00
@@ -134,7 +137,7 @@ check("profit", card.get("profit"), PROFIT)
 check("margin is profit over sales after VAT", card.get("margin_pct"), MARGIN)
 check("VAT comes out at the account's rate / Amazon's own figure", card.get("vat"), 56.0)
 check("sales after VAT", card.get("net_revenue"), 280.0)
-check("Amazon fees: settled where settled, 18% where not, coupon fee included",
+check("Amazon fees: settled where settled, 15% where not, coupon fee included",
       card.get("fees"), 50.4)
 check("refunds are August's by refund date, not the order's", card.get("refunds"), 24.0)
 check("the cancelled order is not a sale", card.get("revenue"), 336.0)
@@ -161,7 +164,7 @@ check("VAT across the products", tot.get("vat"), 56.0)
 check("fees across the products add up to the account's, split per order",
       tot.get("fees"), 50.4)
 check("B1 carries half of O2's fee, not all of it, plus its estimate",
-      (by.get("B1") or {}).get("fees"), round(18.0 / 2 + 80.0 * 0.18, 2))
+      (by.get("B1") or {}).get("fees"), round(18.0 / 2 + 96.0 * 0.15, 2))
 truthy("B1 is SHOWN despite its uncosted units",
        (by.get("B1") or {}).get("contribution") is not None)
 check("and says how many units have no cost", (by.get("B1") or {}).get("uncosted_units"), 2)
@@ -173,7 +176,7 @@ check("margin is over sales after VAT", tot.get("margin_pct"),
       (round(tot["contribution"] / tot["net_revenue"] * 100, 2) if tot.get("contribution") is not None and tot.get("net_revenue") else "n/a"))
 
 print("\nthe order-calendar money every screen draws on")
-money = _of.complete_by_order_date(None, WS, MKT, START, END, fee_rate=0.18,
+money = _of.complete_by_order_date(None, WS, MKT, START, END, fee_rate=0.15,
                                    vat_rate=VAT)
 check("August's refunds are the 24.00 paid on 25 Aug",
       round(sum(d.get("refunds") or 0 for d in money.values()), 2), 24.0)

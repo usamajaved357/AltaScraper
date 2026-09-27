@@ -141,19 +141,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _resolve_cogs):
             metrics = {}
 
         cur = _mkt_currency(mkt)
-        try:
-            fees = _fees.breakdown_for(CONFIG_PATH, wsid, mkt, asin, gross,
-                                       is_fba=is_fba, currency=cur)
-        except Exception as e:
-            return jsonify({"ok": False, "error": "fees: %s" % str(e)[:200]}), 500
-
+        # THE ONE PER-UNIT ANSWER (domain/unit_profit.py), shared with the Live
+        # rows and the cost editor. It used to be worked out here, and it left
+        # VAT in the profit and skipped the fee Amazon actually took on this
+        # product's settled sales -- so on jack_uk a sixth of every price read
+        # as profit, and the repricer showed a different fee for the same SKU.
+        from domain import unit_profit as _up
+        u = _up.at_price(CONFIG_PATH, wsid, mkt, sku, asin, price, cost,
+                         shipping=shipping, is_fba=is_fba, currency=cur)
+        fees = u.get("fees") or {}
+        if not fees and gross > 0:
+            return jsonify({"ok": False,
+                            "error": "fees: Amazon's cut could not be worked out"}), 500
         taken = _f(fees.get("total"), 0.0) or 0.0
-        net = round(gross - taken - (cost or 0.0), 2) if cost is not None else None
-        # MARGIN IS A SHARE OF WHAT THE BUYER PAID, which is the same base
-        # Amazon's referral fee uses -- so the two figures on this panel are
-        # measured against the same thing.
-        margin = (round(net / gross * 100.0, 1)
-                  if (net is not None and gross > 0) else None)
+        net = u.get("profit")
+        # MARGIN IS A SHARE OF WHAT THE BUYER PAID AFTER VAT -- the same
+        # definition as the Sales card, the P&L and Finance.
+        margin = u.get("margin_pct")
 
         return jsonify({
             "ok": True,
@@ -163,6 +167,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _resolve_cogs):
             "price": round(float(price), 2),
             "shipping": round(float(shipping), 2),
             "gross": gross,
+            # VAT, at the account's own setting, and what is left of the price
+            # after it -- so the panel can show the step, not just its result.
+            "vat": u.get("vat"),
+            "vat_rate": u.get("vat_rate"),
+            "net_price": u.get("net_price"),
+            "roi_pct": u.get("roi_pct"),
             "cost": cost,
             "cost_source": cost_source,
             "fees": fees,

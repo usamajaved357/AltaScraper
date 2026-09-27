@@ -61,6 +61,10 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         "  SUM(COALESCE(referral_fees,0))    referral_fees, "
         "  SUM(COALESCE(fba_fees,0))         fba_fees, "
         "  SUM(COALESCE(other_fees,0))       other_fees, "
+        # COUPON AND DEAL FEES, in their own column on rows the newer sync
+        # wrote. Not selected, net_proceeds_for never saw them here, while the
+        # Sales screen's money view -- reading every column -- took them off.
+        "  SUM(COALESCE(promo_fees,0))       promo_fees, "
         "  SUM(COALESCE(refunds,0))          refunds, "
         "  SUM(COALESCE(refund_units,0))     refund_units, "
         # THE FEE AMAZON GIVES BACK when an order is refunded. It was not
@@ -362,9 +366,11 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
 
         # The same rule as everywhere else, called not repeated -- with the
         # owner's allowance for units nobody has costed yet.
+        charges = round(_f(d.get("charges")), 2)
         contribution = _sd.profit_for([{
             "units_shipped": units, "cogs_units": costed,
-            "cogs": cogs, "net_proceeds": net}], allow_uncosted=True)
+            "cogs": cogs, "charges": charges, "net_proceeds": net}],
+            allow_uncosted=True)
         # AND ADVERTISING COMES OFF IT. Only when it is known: subtracting an
         # unknown ad spend as if it were nought makes every advertised product
         # look better than it is, by exactly what is being spent on it.
@@ -396,6 +402,9 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
             "cogs": cogs,
             "cogs_units": costed,
             "uncosted_units": max(0, units - costed),
+            # The owner's own per-unit charges (postage out, prep ...), taken
+            # off the contribution exactly as the Sales card takes them off.
+            "charges": charges,
             "net_proceeds": net,
             "ad_spend": (round(ad, 2) if ad is not None else None),
             "contribution": contribution,

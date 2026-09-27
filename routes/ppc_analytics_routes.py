@@ -206,7 +206,8 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             # period dont change the data".
             "trail": _pa.trail(CONFIG_PATH, aid, mkt, 7, start=start, end=end),
             "per_click": _pa.per_click_trend(days, rates.get("fee_rate"),
-                                             rates.get("cogs_rate")),
+                                             rates.get("cogs_rate"),
+                                             rates.get("vat_share") or 0.0),
             "efficiency": _pa.efficiency_trend(
                 days, rates.get("breakeven_acos_pct")),
             # With the brand words, so the panel can name what it matched on.
@@ -379,7 +380,8 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             # can be compared rather than silently disagreeing.
             "by_match_type": _pt.by_match_type(
                 CONFIG_PATH, aid, mkt, start, end,
-                rates.get("fee_rate"), rates.get("cogs_rate")),
+                rates.get("fee_rate"), rates.get("cogs_rate"),
+                rates.get("vat_share") or 0.0),
             "by_match_type_terms": _pa.by_group(terms, "match_type"),
             # The stacked area: one column per day, one lane per match type,
             # in the shape the app's own chart engine already takes.

@@ -109,6 +109,16 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
     #
     # A fixed monthly cost is a real cost and belongs in the P&L -- it is simply
     # not a RATE, and multiplying it by sales is not a way to charge it.
+    # OVER WHAT THE BUYER PAID, VAT INCLUDED -- principal plus the tax Amazon
+    # itemised beside it. Amazon charges its referral fee on the VAT-inclusive
+    # price, and the other two tiers of the fee rate are measured on that same
+    # base (amazon_fees.rate_from_orders: "15.0% of what the buyer paid and 18.0%
+    # of the principal, and only the first can be multiplied by a shelf price").
+    # This one divided by the principal alone, which on a VAT-registered account
+    # is the price WITHOUT VAT -- so jack_uk measured 17.5% where Amazon takes
+    # about 14.6% of the shelf price, and every listing priced on this fallback
+    # was charged a fifth too much in fees. Measured 28 Sep 2026. On accounts
+    # that are not VAT-registered the tax is nought and nothing changes.
     fees = principal = other = 0.0
     for r in (rows or {}).values():
         for k in ("referral_fees", "fba_fees"):
@@ -120,15 +130,16 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
             other += float(r.get("other_fees") or 0.0)
         except (TypeError, ValueError):
             pass
-        try:
-            principal += float(r.get("principal") or 0.0)
-        except (TypeError, ValueError):
-            pass
+        for k in ("principal", "tax"):
+            try:
+                principal += float(r.get(k) or 0.0)
+            except (TypeError, ValueError):
+                pass
 
     if principal >= MIN_PRINCIPAL_FOR_RATE and fees > 0:
         rate = round(fees / principal, 4)
         detail = ("%.1f%% -- referral and FBA fees Amazon actually charged this "
-                  "account on %.2f of settled sales since %s"
+                  "account on %.2f that buyers paid (VAT included) since %s"
                   % (rate * 100, principal, start.isoformat()))
         if other:
             # Named, not hidden. It is money that left the account and the owner
@@ -276,7 +287,7 @@ def for_lines(lines, rate, vat_rate=None, charge_of=None, promos_by_order=None):
 
 
 def period_money(config_path, workspace_id, marketplace, start, end, rate,
-                 vat_rate=None):
+                 vat_rate=None, asin=None):
     """The window's money on the ORDER calendar, summed. -> a dict.
 
     THE ONE PLACE A PERIOD'S MONEY IS ADDED UP. The Sales Profit card, the P&L
@@ -295,13 +306,23 @@ def period_money(config_path, workspace_id, marketplace, start, end, rate,
     from domain import order_finance as _of
     from domain import sales_data as _sd
 
-    days = _of.complete_by_order_date(config_path, workspace_id, marketplace,
-                                      start, end, fee_rate=rate,
-                                      vat_rate=vat_rate)
+    # ONE PRODUCT, when the screen is filtered to one: the same function cut by
+    # product, so a filtered Profit card is that product's figure -- its own
+    # orders, its own refunds -- rather than the account's minus that product's
+    # ad spend, which is what it read when the filter was ignored here.
+    if asin:
+        per = _of.complete_by_order_date(config_path, workspace_id, marketplace,
+                                         start, end, fee_rate=rate,
+                                         vat_rate=vat_rate, group="asin")
+        days = {asin: per[asin]} if asin in per else {}
+    else:
+        days = _of.complete_by_order_date(config_path, workspace_id, marketplace,
+                                          start, end, fee_rate=rate,
+                                          vat_rate=vat_rate)
     money_keys = ("referral_fees", "fba_fees", "other_fees", "promo_fees",
                   "principal", "tax", "refunds", "refund_tax",
                   "refund_fees_returned", "reimbursements", "promos",
-                  "fees_estimated", "revenue_fee_unknown")
+                  "fees_estimated", "revenue_fee_unknown", "charges")
     count_keys = ("refund_units", "orders_settled", "orders_estimated",
                   "orders_fee_unknown", "orders_vat_derived")
     tot = {k: 0.0 for k in money_keys}
@@ -356,7 +377,7 @@ def period_money(config_path, workspace_id, marketplace, start, end, rate,
 
 def for_period(config_path, workspace_id, marketplace, start, end,
                overrides=None, vat_rate=None, ads_connected=False,
-               ad_spend=0.0, revenue=None, units=None):
+               ad_spend=0.0, revenue=None, units=None, asin=None):
     """Profit on orders PLACED between two dates, from the seller's own costs.
 
     Returns the figure, how the fee rate was arrived at, and what it does not
@@ -381,8 +402,14 @@ def for_period(config_path, workspace_id, marketplace, start, end,
     longer used to recompute the figure: the money now comes from the same
     order rows the cards are built from. If they ever disagree, the reply says
     so instead of quietly re-basing the fees on a different set of trade.
+
+    `asin` narrows everything to one product, for a screen filtered to it --
+    and then `ad_spend` must be that product's spend, which is what the Sales
+    screen passes.
     """
     lines = lines_between(config_path, workspace_id, marketplace, start, end)
+    if asin:
+        lines = [L for L in lines if str(L.get("asin") or "") == str(asin)]
     rate, basis, detail = fee_rate(config_path, workspace_id, marketplace, end)
 
     def _charge_of(asin, sku, on_date):
@@ -395,11 +422,15 @@ def for_period(config_path, workspace_id, marketplace, start, end,
     # Their money arithmetic is not used -- period_money owns that.
     out = for_lines(lines, rate if rate is not None else 0.0,
                     vat_rate=vat_rate, charge_of=_charge_of)
+    lines_revenue = out["revenue"]     # what the order rows say buyers paid
     money = period_money(config_path, workspace_id, marketplace, start, end,
-                         rate, vat_rate)
+                         rate, vat_rate, asin=asin)
 
     ads = (round(float(ad_spend or 0), 2) if ads_connected else None)
-    profit = round(money["net_proceeds"] - out["cogs"] - out["charges"]
+    # The per-unit charges come from period_money, the same figure the Sales
+    # grid and the Finance rows subtract (order_finance works them out once).
+    out["charges"] = money["charges"]
+    profit = round(money["net_proceeds"] - out["cogs"] - money["charges"]
                    - (ads or 0.0), 2)
     net_rev = money["net_revenue"]
     out.update({
@@ -428,17 +459,22 @@ def for_period(config_path, workspace_id, marketplace, start, end,
         "currency": money["currency"],
     })
 
-    # THE CARD'S OWN REVENUE, compared rather than substituted. Both are built
-    # from order_lines (live_reconcile.from_lines writes the card's figure from
-    # them), so a difference means the two stores have drifted -- which must be
-    # visible, because it is how "Total Sales 1,248, Profit 1,728" happened.
+    # THE CARD'S OWN REVENUE, compared rather than substituted -- against what
+    # the ORDER ROWS say buyers paid, which is what the card is built from
+    # (live_reconcile.from_lines). Not against Amazon's settled principal plus
+    # tax: that legitimately differs on fully refunded and cross-border orders
+    # (sales_data.series says so), and comparing with it would leave a "press
+    # Sync" note that never goes away. A difference here means the two stores
+    # have drifted, which must be visible -- it is how "Total Sales 1,248,
+    # Profit 1,728" happened.
     try:
-        if revenue is not None and abs(float(revenue) - money["revenue"]) > 0.01:
+        if (revenue is not None and not asin
+                and abs(float(revenue) - float(lines_revenue)) > 0.01):
             out["revenue_note"] = (
                 "The orders behind this profit come to %.2f, and the sales "
                 "figure on screen is %.2f. They are built from the same orders, "
                 "so the gap means one of them has not caught up yet -- press "
-                "Sync." % (money["revenue"], float(revenue)))
+                "Sync." % (float(lines_revenue), float(revenue)))
     except (TypeError, ValueError):
         pass
 
@@ -459,6 +495,23 @@ def for_period(config_path, workspace_id, marketplace, start, end,
             "this profit is too high. Set the rate on the account.")
     if out.get("revenue_note"):
         notes.append(out["revenue_note"])
+    # A PER-PRODUCT CHARGE THAT LOOKS LIKE ADVERTISING, beside measured ad
+    # spend. asin_charges was where a hand-allocated ad figure went while the
+    # Ads API was not connected; once it is, both come off and the same money
+    # is subtracted twice. Not decided here -- the label is the owner's own
+    # words -- only said, so he can remove whichever one he no longer wants.
+    if ads_connected and ads:
+        _adlike = [p["label"] for p in (out.get("charge_parts") or [])
+                   if any(w in str(p.get("label") or "").lower()
+                          for w in ("advert", "ppc", "sponsored", " ads", "ads "))
+                   or str(p.get("label") or "").strip().lower() in ("ad", "ads")]
+        if _adlike:
+            notes.append(
+                "Your per-product charges include %s, which looks like an "
+                "advertising allowance -- and the advertising Amazon measured is "
+                "also taken off. If both are the same money, remove the "
+                "allowance on the product so it is not counted twice."
+                % ", ".join('"%s"' % x for x in _adlike[:3]))
     out["notes"] = notes
 
     # AD SPEND ONLY WHEN IT IS KNOWN. Asked for: build it the way Orbit does --

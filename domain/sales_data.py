@@ -265,6 +265,7 @@ def availability(config_path, workspace_id, marketplace):
 
 
 _FIN_COLS = ("referral_fees", "fba_fees", "other_fees", "promo_fees",
+             "charges",
              "refunds", "refund_units",
              "refund_fees_returned", "reimbursements", "promos", "principal",
              "tax", "refund_tax", "units_shipped", "cogs", "cogs_units")
@@ -777,7 +778,10 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
             # the Profit card, the P&L and Finance state (profit_for below does
             # the same for a week or a month). Unmeasured spend is not zero, so
             # a day with no ads row has nothing taken off.
+            # And the owner's per-unit charges, on the order calendar where
+            # they are known (order_finance.complete_by_order_date).
             row["profit"] = round(row["net_proceeds"] - float(row.get("cogs") or 0.0)
+                                  - float(row.get("charges") or 0.0)
                                   - float(row.get("spend") or 0.0), 2)
             p = float(row.get("principal") or 0.0)
             row["margin_pct"] = round(row["profit"] / p * 100, 2) if p else None
@@ -1172,6 +1176,7 @@ def profit_for(rows, allow_uncosted=False):
     # Rows that carry no `spend` (the Finance screen's, which subtract their
     # own) contribute nothing here.
     return round(net - float(_sum(rows, "cogs") or 0.0)
+                 - float(_sum(rows, "charges") or 0.0)
                  - float(_sum(rows, "spend") or 0.0), 2)
 
 

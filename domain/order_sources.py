@@ -138,6 +138,16 @@ def options_for(config_path, workspace_id, marketplace, sku, sell_price=None,
     if not pairs:
         return []
     rule = _sourcing.rule_with_defaults(rule)
+    # THE ACCOUNT'S VAT RATE, when the caller's rule did not come through
+    # source_repo.rule_for (which attaches it). `sell_price` is what the buyer
+    # paid, VAT included, so the profit on each option takes it out -- the same
+    # way the order's own profit beside it does.
+    if rule.get("vat_rate") is None:
+        try:
+            from domain import unit_profit as _up
+            rule["vat_rate"] = _up.account_vat_rate(config_path, workspace_id)
+        except Exception:
+            pass
     price = _f(sell_price)
 
     out = []
@@ -191,11 +201,13 @@ def options_for(config_path, workspace_id, marketplace, sku, sell_price=None,
                 got = _pricing.achieved(price, landed, 0.0,
                                         rule["shipping_label"],
                                         rule["ads_margin"],
-                                        other_fees=fee_amount)
+                                        other_fees=fee_amount,
+                                        vat_rate=rule.get("vat_rate"))
                 row["fee_basis"] = "actual"
             else:
                 got = _pricing.achieved(price, landed, rule["referral_rate"],
-                                        rule["shipping_label"], rule["ads_margin"])
+                                        rule["shipping_label"], rule["ads_margin"],
+                                        vat_rate=rule.get("vat_rate"))
                 row["fee_basis"] = "estimated"
             row["profit"] = got.get("profit")
             row["margin_pct"] = got.get("margin_pct")

@@ -793,7 +793,7 @@ function ordersRender(){
       // cost behind it is unknown.
       +  '<td style="font-size:11.5px;white-space:nowrap">'
       +  _ordPct(r.margin_pct, 20, 8,
-                'Profit as a share of what the buyer paid') + '</td>'
+                'Profit as a share of what the buyer paid, after VAT') + '</td>'
       +  '<td style="font-size:11.5px;white-space:nowrap"'
       +  (r.cogs != null ? ' title="on ' + _oEsc(_oMoney(r.cogs, r.currency))
                            + ' of stock"' : '') + '>'
@@ -1223,6 +1223,16 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
       + ' above have no cost recorded, so the order total is left blank rather '
       + 'than counting them as free. Set a cost for THIS order below, or set '
       + 'the product\'s cost on the Costs sheet to fix it everywhere.');
+  }
+  // VAT, taken out of each line's profit at the account's own setting -- the
+  // columns above are what the buyer paid, so without this the row would not
+  // add up to the profit beside it.
+  if(Number(t.vat) > 0){
+    notes.push('VAT of ' + _oMoney(t.vat, currency)
+      + (t.vat_rate ? ' (this account’s ' + Math.round(Number(t.vat_rate) * 1000) / 10
+                      + '%)' : '')
+      + ' is inside what the buyer paid and has been taken out of the profit — '
+      + 'it is collected for HMRC, not earned.');
   }
   if(t.order_total !== null && t.order_total !== undefined
      && Math.abs((t.revenue || 0) - t.order_total) > 0.02){

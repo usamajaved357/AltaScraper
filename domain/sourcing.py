@@ -140,6 +140,9 @@ DEFAULT_RULE = {
     # Set it per SKU, on the supplier that has actually let you down.
     "handling_buffer_days": 0,
     "referral_rate":        DEFAULT_REFERRAL_RATE,
+    # The account's VAT rate, attached by source_repo.rule_for -- never stored
+    # per SKU. None (not registered, or not said) changes nothing.
+    "vat_rate":             None,
     # The three per-unit costs of the user's pricing rule. Defaults come from
     # listing/pricing.py so there is one definition of what a unit costs to sell;
     # they are here so a SKU that posts in a bigger box can say so.
@@ -600,7 +603,8 @@ def floor_price(cost, rule=None):
     flat = _pricing.floor_from_rate(c, rule["referral_rate"],
                                     shipping_label=rule["shipping_label"],
                                     ads_margin=rule["ads_margin"],
-                                    min_profit=rule["min_profit"])
+                                    min_profit=rule["min_profit"],
+                                    vat_rate=rule.get("vat_rate"))
     # THE SAFETY FLOOR. With the three per-unit amounts at 0.00, `flat` above is
     # exactly cost + Amazon's fee -- break-even. See min_roi_pct in DEFAULT_RULE.
     safety = None
@@ -608,7 +612,8 @@ def floor_price(cost, rule=None):
     if _mr is not None and _mr > 0:
         safety = _pricing.floor_from_target(c, rule["referral_rate"], "roi", _mr,
                                             shipping_label=rule["shipping_label"],
-                                            ads_margin=rule["ads_margin"])
+                                            ads_margin=rule["ads_margin"],
+                                            vat_rate=rule.get("vat_rate"))
     floors = [f for f in (flat, safety) if f is not None]
     flat = max(floors) if floors else None
 
@@ -701,7 +706,8 @@ def unreachable_targets(cost, rule=None):
     for kind, pct in targets_set(rule):
         if _pricing.floor_from_target(c, rule["referral_rate"], kind, pct,
                                       shipping_label=rule["shipping_label"],
-                                      ads_margin=rule["ads_margin"]) is None:
+                                      ads_margin=rule["ads_margin"],
+                                      vat_rate=rule.get("vat_rate")) is None:
             out.append((kind, pct))
     return out
 
@@ -729,7 +735,8 @@ def target_floor(cost, rule=None):
     for kind, pct in targets_set(rule):
         f = _pricing.floor_from_target(c, rule["referral_rate"], kind, pct,
                                        shipping_label=rule["shipping_label"],
-                                       ads_margin=rule["ads_margin"])
+                                       ads_margin=rule["ads_margin"],
+                                       vat_rate=rule.get("vat_rate"))
         if f is not None:
             floors.append(f)
     return max(floors) if floors else None
@@ -759,7 +766,8 @@ def target_status(price, cost, rule=None):
     if p is not None and c is not None and p > 0 and c >= 0:
         got = _pricing.achieved(p, c, rule["referral_rate"],
                                 shipping_label=rule["shipping_label"],
-                                ads_margin=rule["ads_margin"])
+                                ads_margin=rule["ads_margin"],
+                                vat_rate=rule.get("vat_rate"))
 
     parts = []
     for kind, pct in want:
@@ -1079,9 +1087,17 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         #
         # Derived from the price, so the column adds up whichever floor won --
         # flat minimum, safety floor, a target, or a held price.
-        "profit": round(price - cost - float(rule["shipping_label"])
-                        - float(rule["ads_margin"])
-                        - (price * rule["referral_rate"]), 2),
+        # From listing/pricing.achieved, the one per-sale formula, so the VAT
+        # a VAT-registered account owes on this price comes off here too.
+        "profit": _pricing.achieved(price, cost, rule["referral_rate"],
+                                    shipping_label=rule["shipping_label"],
+                                    ads_margin=rule["ads_margin"],
+                                    vat_rate=rule.get("vat_rate"))["profit"],
+        # The VAT inside this price, at the account's setting, so the column
+        # the screen lays out still adds up to the price.
+        "vat": _pricing.achieved(price, 0.0, 0.0,
+                                 vat_rate=rule.get("vat_rate"))["vat"],
+        "vat_rate": rule.get("vat_rate"),
         # The input is still carried, separately and under its own name, because
         # "you asked for at least X" is a real thing to want to show. It is no
         # longer what the profit line reads.
@@ -1120,7 +1136,8 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         "rules_price": (out.get("held_over") if out.get("held") else price),
         "at_price": _pricing.achieved(price, cost, rule["referral_rate"],
                                       shipping_label=rule["shipping_label"],
-                                      ads_margin=rule["ads_margin"]),
+                                      ads_margin=rule["ads_margin"],
+                                      vat_rate=rule.get("vat_rate")),
     }
 
     # The breakdown goes in the reason because this line IS the audit trail --
@@ -1157,7 +1174,8 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         # the order somebody actually asks them.
         got = _pricing.achieved(price, cost, rule["referral_rate"],
                                 shipping_label=rule["shipping_label"],
-                                ads_margin=rule["ads_margin"])
+                                ads_margin=rule["ads_margin"],
+                                vat_rate=rule.get("vat_rate"))
         bits = []
         n_usable = len(live) - len(rejections)
         bits.append("Buying from %s at %.2f delivered%s."
@@ -1166,8 +1184,9 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
                        " -- the %s of %d sources that can be used"
                        % ("cheapest" if rule["strategy"] == "cheapest"
                           else rule["strategy"], n_usable)))
-        bits.append("Selling at %.2f leaves %.2f a unit after Amazon's %.2f fee%s."
+        bits.append("Selling at %.2f leaves %.2f a unit after %sAmazon's %.2f fee%s."
                     % (price, got["profit"] if got["profit"] is not None else 0.0,
+                       ("%.2f VAT and " % got["vat"]) if got.get("vat") else "",
                        price * rule["referral_rate"],
                        "" if not (rule["shipping_label"] or rule["ads_margin"])
                        else " and your %.2f of postage and ads"

@@ -333,7 +333,19 @@ def rates(config_path, workspace_id, marketplace, start, end):
     """
     out = {"fee_rate": None, "fee_rate_basis": "", "fee_rate_detail": "",
            "cogs_rate": None, "cogs_basis": "", "breakeven_acos_pct": None,
-           "why": ""}
+           "vat_share": 0.0, "why": ""}
+    # THE SHARE OF EVERY POUND OF SALES THAT IS VAT, at the account's own
+    # setting -- the owner's decision of 28 Sep 2026 that every profit figure
+    # follows it. Ad sales are what buyers paid, VAT included, so on jack_uk a
+    # sixth of every attributed pound was being counted as profit.
+    try:
+        from config import settings as _settings
+        from domain import sales_data as _sd
+        _v = _sd.vat_rate_for(_settings.read_raw(config_path) or {}, workspace_id)
+        if _v is not None and 0 < float(_v) < 1:
+            out["vat_share"] = round(float(_v) / (1.0 + float(_v)), 6)
+    except Exception:
+        pass
     try:
         from domain import order_profit as _op
         # END_DATE IS REQUIRED, and it is the window's end rather than today:
@@ -350,10 +362,20 @@ def rates(config_path, workspace_id, marketplace, start, end):
 
     conn = _db.get_db(config_path)
     try:
+        # WHAT THE STOCK COST, OVER WHAT THOSE SAME LINES SOLD FOR. It read
+        # SUM(cogs) -- the cost of ONE unit per line, never multiplied by how
+        # many were sold -- over the revenue of EVERY line, costed or not and
+        # cancelled or not. Both errors made stock look cheaper than it was, so
+        # the break-even ACOS came out higher and campaigns looked healthier
+        # than they were. Measured 28 Sep 2026 (profit-accuracy work).
         r = conn.execute(
-            "SELECT SUM(cogs) c, SUM(revenue) rev, COUNT(*) n, "
+            "SELECT SUM(CASE WHEN cogs IS NOT NULL THEN cogs * COALESCE(units,1) "
+            "           END) c, "
+            "       SUM(CASE WHEN cogs IS NOT NULL THEN revenue END) rev, "
+            "       COUNT(*) n, "
             "       SUM(CASE WHEN cogs IS NULL THEN 1 ELSE 0 END) uncosted "
             "FROM order_lines WHERE workspace_id=? AND marketplace=? "
+            "AND lower(COALESCE(status,'')) NOT IN ('canceled','cancelled') "
             "AND purchase_date>=? AND purchase_date<=?",
             (workspace_id, marketplace, start, end + "T23:59:59")).fetchone()
     except Exception:
@@ -376,9 +398,10 @@ def rates(config_path, workspace_id, marketplace, start, end):
 
     fee, cogs = out["fee_rate"], out["cogs_rate"]
     if fee is not None and cogs is not None:
-        # What is left of a pound of revenue after Amazon's fee and the stock,
-        # which is the most a campaign can spend before it stops making money.
-        margin = 1.0 - float(fee) - float(cogs)
+        # What is left of a pound of revenue after the VAT, Amazon's fee and
+        # the stock, which is the most a campaign can spend before it stops
+        # making money.
+        margin = 1.0 - float(out["vat_share"]) - float(fee) - float(cogs)
         out["breakeven_acos_pct"] = (round(100.0 * margin, 1)
                                      if margin > 0 else 0.0)
     return out
@@ -660,7 +683,23 @@ def trail(config_path, workspace_id, marketplace, days=7, start=None, end=None):
     return out
 
 
-def per_click_trend(rows, fee_rate, cogs_rate):
+def ad_profit(sales, spend, fee_rate, cogs_rate, vat_share=0.0):
+    """What attributed sales left after the VAT, Amazon's fee, the stock and the
+    ad spend. None when either rate is unknown -- never a guessed margin.
+
+        profit = sales - spend - sales x (vat share + fee rate + cost rate)
+
+    THE ONE COPY. It was written out six times across this module and
+    domain/ppc_targeting.py, none of which took VAT out (CLAUDE.md Rule 12).
+    """
+    if fee_rate is None or cogs_rate is None or sales is None or spend is None:
+        return None
+    s = float(sales)
+    return (s - float(spend)
+            - s * (float(vat_share or 0.0) + float(fee_rate) + float(cogs_rate)))
+
+
+def per_click_trend(rows, fee_rate, cogs_rate, vat_share=0.0):
     """Daily profit per click. The mockup's "Profit per Click Trend".
 
     None on a day with no clicks -- dividing by nothing is undefined, and a 0.00
@@ -675,8 +714,7 @@ def per_click_trend(rows, fee_rate, cogs_rate):
         if sales is None or spend is None or not clicks:
             out.append(None)
             continue
-        profit = (float(sales) - float(spend) - float(sales) * float(fee_rate)
-                  - float(sales) * float(cogs_rate))
+        profit = ad_profit(sales, spend, fee_rate, cogs_rate, vat_share)
         out.append(round(profit / float(clicks), 3))
     return out
 
@@ -923,7 +961,8 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
         spend, sales = _f(d["spend"]), _f(d["sales"])
         profit = None
         if can_profit and spend is not None and sales is not None:
-            profit = round(sales - spend - sales * float(fee) - sales * float(cogs), 2)
+            profit = round(ad_profit(sales, spend, fee, cogs,
+                                     r.get("vat_share")), 2)
 
         # The figures the judgement is made on: the mature ones when there are
         # any, otherwise the same ones being displayed.
@@ -940,8 +979,8 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
             j_spend, j_sales = _f(j["spend"]), _f(j["sales"])
             j_profit = None
             if can_profit and j_spend is not None and j_sales is not None:
-                j_profit = round(j_sales - j_spend - j_sales * float(fee)
-                                 - j_sales * float(cogs), 2)
+                j_profit = round(ad_profit(j_sales, j_spend, fee, cogs,
+                                           r.get("vat_share")), 2)
             j_cohort = _cohort(j_spend, j_sales, j_profit, be, can_profit)
             j_opp = _opportunity(j_spend, j_sales, _f(j["clicks"]),
                                  _f(j["orders"]), be,
@@ -1210,12 +1249,15 @@ def net_profit(config_path, workspace_id, marketplace, start, end, totals=None):
              "neither can this. They read the same figures."))
         return out
 
+    # THE SALES PAGE'S PROFIT IS ALREADY AFTER AD SPEND. Since 28 Sep 2026 every
+    # profit figure takes measured advertising off (sales_data.profit_for and
+    # the daily row do it), so subtracting `spend` here again took it off twice
+    # -- sales 100, fees 15, stock 30, ads 10 read 35 instead of 45. Found by
+    # the review of the profit-accuracy work.
     if spend is None:
         out["why"] = ("No advertising spend is stored for these days, so this "
                       "is the account's profit with nothing taken off for ads.")
-        out["net_profit"] = round(float(sp), 2)
-    else:
-        out["net_profit"] = round(float(sp) - float(spend), 2)
+    out["net_profit"] = round(float(sp), 2)
 
     # A MONTHLY CHARGE LANDING IN A SHORT WINDOW IS NOT A BAD WEEK.
     #
@@ -1599,7 +1641,8 @@ def asins(config_path, workspace_id, marketplace, start, end, rate_info=None):
         spend, sales = _f(a.get("spend")), _f(a.get("sales"))
         profit = None
         if can_profit and spend is not None and sales is not None:
-            profit = round(sales - spend - sales * float(fee) - sales * float(cogs), 2)
+            profit = round(ad_profit(sales, spend, fee, cogs,
+                                     r.get("vat_share")), 2)
         look = {}
         try:
             look = _cat.look(idx, None, asin) or {}
@@ -1670,7 +1713,8 @@ def terms(config_path, workspace_id, marketplace, rate_info=None, limit=1000,
         clicks, orders = _f(d.get("clicks")), _f(d.get("orders"))
         profit = None
         if can_profit and spend is not None and sales is not None:
-            profit = round(sales - spend - sales * float(fee) - sales * float(cogs), 2)
+            profit = round(ad_profit(sales, spend, fee, cogs,
+                                     r.get("vat_share")), 2)
         term = str(d.get("search_term") or "")
         out.append({
             "search_term": term,

@@ -245,6 +245,9 @@ def _blank_bucket(key, group):
         "principal": 0.0, "tax": 0.0, "refunds": 0.0, "refund_tax": 0.0,
         "refund_units": 0, "refund_fees_returned": 0.0, "promos": 0.0,
         "units": 0, "cogs": 0.0, "cogs_units": 0,
+        # The owner's own per-unit charges (domain/asin_charges: postage out,
+        # prep ...), beside the stock cost they sit with.
+        "charges": 0.0,
         "orders_settled": 0, "orders_estimated": 0,
         "fees_estimated": 0.0, "reimbursements": 0.0,
         # Orders whose fee could not be estimated at all, because this
@@ -310,7 +313,7 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
     orders = {}
     for r in conn.execute(
             "SELECT substr(l.purchase_date,1,10) AS d, l.order_id, "
-            "       COALESCE(l.asin,'') AS asin, "
+            "       COALESCE(l.asin,'') AS asin, COALESCE(l.sku,'') AS sku, "
             "       COALESCE(l.revenue,0) + COALESCE(l.shipping,0) AS gross, "
             "       COALESCE(l.units,0) AS units, l.cogs AS cogs, "
             "       l.currency AS currency "
@@ -366,6 +369,26 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
 
     def _bucket(key):
         return out.setdefault(key, _blank_bucket(key, group))
+
+    # THE OWNER'S PER-UNIT CHARGES, per line, at the rate that applied on the
+    # day of the order. Worked out HERE so every screen built on this function
+    # subtracts them -- they used to come off the Profit card and the P&L only,
+    # so the Sales grid and the Finance product rows read higher by exactly
+    # that. Found by the review of the profit-accuracy work, 28 Sep 2026.
+    _charge_memo = {}
+
+    def _charge(asin, sku, day):
+        k = (asin, sku, day)
+        if k not in _charge_memo:
+            try:
+                from domain import asin_charges as _ac
+                per, _parts = _ac.per_unit(config_path, workspace_id,
+                                           marketplace, asin, sku=sku,
+                                           on_date=day)
+                _charge_memo[k] = float(per or 0.0)
+            except Exception:
+                _charge_memo[k] = 0.0
+        return _charge_memo[k]
 
     for oid, order in orders.items():
         lines = order["lines"]
@@ -449,7 +472,11 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
                 flags["orders_fee_unknown"] = 1
                 o["revenue_fee_unknown"] += net
             else:
-                est = round(net * rate, 2)
+                # ON WHAT THE BUYER PAID. The rate is measured over the
+                # VAT-inclusive figure (order_profit.fee_rate), because that is
+                # what Amazon charges its fee on; applying it to the figure
+                # after VAT would take a sixth too little.
+                est = round(gross * rate, 2)
                 o["referral_fees"] += est
                 o["fees_estimated"] += est
                 flags["orders_estimated"] = 1
@@ -469,6 +496,8 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
             if L["cogs"] is not None:
                 b["cogs"] += float(L["cogs"]) * units
                 b["cogs_units"] += units
+            if units:
+                b["charges"] += _charge(L["asin"], L["sku"], order["d"]) * units
             if key not in reached:
                 reached.add(key)
                 for k, v in flags.items():

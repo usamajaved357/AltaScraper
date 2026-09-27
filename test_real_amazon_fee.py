@@ -79,7 +79,14 @@ rate, basis, detail = F.rate_for_asin(
     "config.json", None, "jack_uk", "UK", None, "B0TESTASIN", 20.99,
     allow_quote=False)
 check("it falls back to the account's measured rate", basis, F.ESTIMATED)
-truthy("  which is this account's own 17.5%, not 15%", abs(rate - 0.175) < 0.02)
+# RE-PINNED 28 Sep 2026. The account's rate is now measured over what buyers
+# PAID, VAT included -- the base Amazon charges its fee on, and the base the
+# other two tiers use. jack_uk's same settled figures (70.42 of fees on 402.39
+# of principal plus 80.47 of VAT) are 14.6% of that, where the old figure,
+# 17.5%, was over the principal alone and overcharged every listing priced on
+# it by a fifth. Still this account's own measurement, not a flat figure.
+truthy("  which is this account's own measured rate, over what buyers paid",
+       abs(rate - 0.146) < 0.02 and "VAT included" in detail)
 truthy("  and it says Amazon has not been asked yet",
        "not been asked" in detail)
 truthy("  naming the button that would ask", "Get Amazon" in detail)
