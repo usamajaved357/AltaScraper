@@ -345,17 +345,23 @@ only, never PUTs a listing.
 - The app needs only a `config.json` at `$CONFIG_PATH` (`build_app()` reads
   it at boot); the SQLite database is created beside it. No `APP_PASSWORD` =
   no login; no `PORT` = binds 127.0.0.1 and picks a free port from 5000.
-- A safe dev setup lives OUTSIDE the repo in
-  `D:\AltaScraper-wt\claude-environment-devdata\`: a config with no keys and
-  two fake credential-free accounts (`dev_test_a`, `dev_test_b`, read-only
-  workspaces: no Amazon calls, no publishing) and a few TEST drafts, one SKU
-  shared by both accounts (seeded through `data/store.ListingStore`).
-- Start (PowerShell, from the worktree):
-  `$env:CONFIG_PATH="D:\AltaScraper-wt\claude-environment-devdata\config.json"; py -3.11 -u dashboard.py`
-  then open the URL it prints (normally http://127.0.0.1:5000). Logs can be
-  redirected into the devdata folder. `.app_port` is written in the worktree
-  (gitignored).
-- Never point CONFIG_PATH at the real config.json from a development session.
+- Dev runtime data lives OUTSIDE the repo in
+  `D:\AltaScraper-wt\claude-environment-devdata\`, one folder per data set:
+  - `sandbox\` — no keys; two fake credential-free accounts (`dev_test_a`,
+    `dev_test_b`, read-only: no Amazon calls, no publishing) and TEST drafts,
+    one SKU shared by both.
+  - `local-copy\` — a COPY of the old checkout's data, made by the OWNER running
+    `migrate_local_copy.py` (Claude does not open credential files or
+    databases). The copy's config gets dev overrides: `repricer_enabled` and
+    `asin_monitor_enabled` off, `google_service_account_json` blanked, paths
+    into `D:\AltaScraper` re-pointed or blanked; Slack (`notify.json`),
+    `service_account.json`, `users.json` are not copied. The database is a
+    read-only-sourced SQLite backup copy.
+- Start with `devdata\start_dev.ps1 -Data sandbox|local-copy`: sets
+  CONFIG_PATH, clears PORT/APP_PASSWORD/ALTASCRAPER_DB (binds 127.0.0.1),
+  refuses if the database would not be that data set's own, logs into the
+  data set folder. `.app_port` is written in the worktree (gitignored).
+- Never point CONFIG_PATH at `D:\AltaScraper\config.json` from a development session.
 
 ## 14. Tests
 
