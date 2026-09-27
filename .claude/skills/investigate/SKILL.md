@@ -9,7 +9,7 @@ description: AltaScraper's standard bug investigation - reproduce, find the entr
 and fixes that treat a symptom.
 
 **Modifies files:** no application files. Writes a trace/notes file in
-`<main checkout>/active/` and may add a FAILING test in the task worktree once
+`<main checkout>/active/` and may add a FAILING test in the development worktree once
 the cause is known (step 7).
 
 ## Inputs
@@ -33,7 +33,7 @@ account and marketplace, the screen and view (table / detailed / card / PDP).
    until the answer is a code decision, a data fact, or an outside blocker.
 6. **Classify:** UI / state / rendering / routing / backend logic / data /
    account scope / Amazon API / config / blocked outside code.
-7. **Pin it:** write a test that fails because of the bug (in the task
+7. **Pin it:** write a test that fails because of the bug (in the development
    worktree), unless the bug is outside the code.
 8. **Propose** in plain English (CLAUDE.md Rule 6 format): what happened, why,
    the fix, what else it touches (Rule 12 audit). More than 2 files or a

@@ -26,7 +26,9 @@ the diff and the surrounding code, and treat every claim in the hand-off
   - **UNVERIFIED** — plausible concern you could not confirm either way
 
 ## Inputs
-The worktree path, the base (normally `origin/main`), what the change was meant
+The worktree path, the task base commit recorded by start-task (review
+`git diff <task-base>` plus untracked files — not origin/main, which would
+include earlier tasks on the long-running branch), what the change was meant
 to do (one paragraph from Main Claude), and the verify-change / qa-runner
 results. If any is missing, review the diff anyway and say what was missing.
 

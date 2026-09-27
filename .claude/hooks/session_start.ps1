@@ -42,7 +42,10 @@ if ($git) {
         $lines.Add("Versus local origin/main ref (not fetched): behind $($parts[0]), ahead $($parts[1])")
     }
     $lines.Add("Uncommitted entries: $dirty")
-    if ($branch -eq "main") { $lines.Add("WARNING: on main. Create a worktree from origin/main before editing (CLAUDE.md Rule 2).") }
+    if ($branch -ne "claude-environment-setup") {
+        $lines.Add("WARNING: not on claude-environment-setup, the primary development branch (CLAUDE.md Rule 2). " +
+                   "Do not edit or switch branches; tell the owner unless he asked for isolated experimental work here.")
+    }
 }
 
 if ($main) {

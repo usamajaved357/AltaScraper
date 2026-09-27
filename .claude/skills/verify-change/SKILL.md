@@ -13,11 +13,14 @@ two files.
 the `qa-runner` agent when the output would be long.
 
 ## Inputs
-- worktree path (repo root)
-- what changed: `git status --short` and `git diff --name-only <base>`
-- the baseline file: `<main checkout>/active/test-baseline-<branch>.txt`
-  (made by `start-task`; if missing, say so and make one on a clean copy of the
-  base commit before judging failures)
+- worktree path (repo root; normally `D:\AltaScraper-wt\claude-environment`)
+- the **task base**: the commit recorded by `start-task` (HEAD when the task
+  began). On the long-running branch, never diff against origin/main for "what
+  this task changed" — that would include every earlier task.
+- what changed: `git status --short` and `git diff --name-only <task-base>`
+- the baseline file: `<main checkout>/active/test-baseline-<short-base-sha>.txt`
+  (made by `start-task`; if missing, say so and make one before judging
+  failures — never by resetting or stashing the work)
 
 ## Procedure
 Run from the repo root. `$g` = the git.exe from CLAUDE.md Rule 2.
@@ -25,13 +28,13 @@ Run from the repo root. `$g` = the git.exe from CLAUDE.md Rule 2.
 1. **Syntax** (the hook already did each saved file; repeat for the set):
    - each changed .py: `py -3.11 -m py_compile <file>`
    - each changed .js: `node --check <file>` (parse only)
-2. **Deleted functions:** `py -3.11 .claude/skills/verify-change/scope_check.py`
+2. **Deleted functions:** `py -3.11 .claude/skills/verify-change/scope_check.py --base <task-base>`
    REMOVED must be empty, or each removal explained (a faithful move with the
    new location, confirmed by the owner if not already agreed).
-3. **Re-read the diff:** `& $g diff` — does it change exactly what was intended?
+3. **Re-read the diff:** `& $g diff <task-base>` — does it change exactly what was intended?
    Anything touching Rule 1 (payload), Rule 8 (bids), Rule 14 (account scope)?
    If so, the matching agent must review it.
-4. **Relevant tests:** `py -3.11 .claude/skills/verify-change/relevant_tests.py --changed`
+4. **Relevant tests:** `py -3.11 .claude/skills/verify-change/relevant_tests.py --changed --base <task-base>`
    then run each (`py -3.11 <test>.py` / `node <test>.js`) or
    `py -3.11 run_tests.py <filter>`.
 5. **Full suite** before any push, or when CLAUDE.md, run_tests.py,

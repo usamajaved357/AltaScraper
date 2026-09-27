@@ -131,6 +131,13 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 
 ## Working agreements
 
+- **27 Sep 2026 — One long-running development branch.** `D:\AltaScraper-wt\claude-environment`
+  on `claude-environment-setup` is the primary development environment for the
+  whole app. Ordinary tasks do not create worktrees or branches, switch, reset,
+  rebase or cherry-pick; a new worktree only for isolated experimental work he
+  asks for. No push / merge / deploy without his explicit word;
+  `phase6-config-layer` not used unless he asks. Source: read.txt, 27 Sep 2026.
+
 - **Ask before changing existing behaviour.** For any plan, separate: already
   does / needs your input / would change behaviour / pure addition. Source:
   memory ask-before-changing-existing-behaviour.

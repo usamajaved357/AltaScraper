@@ -90,10 +90,18 @@ The user must write explicitly: "I want to change the listing mode to X."
 An Amazon error message is never sufficient justification to change this.
 Any diff touching the payload goes to the `listing-payload-guardian` agent.
 
-## 2. GIT WORKFLOW — EVERY PIECE OF WORK IS A BRANCH
+## 2. GIT WORKFLOW — ONE LONG-RUNNING DEVELOPMENT BRANCH
 
-- Branch from **origin/main**, never local `main` (it goes stale silently):
-  `git fetch origin`, then a worktree: `git worktree add -b fix/x <dir> origin/main`.
+- All ordinary work happens in `D:\AltaScraper-wt\claude-environment` on
+  branch `claude-environment-setup` (local only, no upstream) — the primary
+  development branch since 27 Sep 2026. Do not create another worktree or
+  branch, switch branches, reset, rebase, cherry-pick or discard work unless
+  the owner explicitly asks. A new worktree is only for isolated experimental
+  work he requests, and then it is cut from **origin/main**, never local
+  `main` (it goes stale silently).
+- Never modify `D:\AltaScraper` (except the shared untracked
+  `current-work.md` / `active/`) or origin/main. Commit locally on this branch
+  after verification.
 - git is not on PATH. Use the GitHub Desktop git (newest `app-*` folder):
   `$g=(Get-ChildItem "$env:LOCALAPPDATA\GitHubDesktop" -Directory -Filter "app-*" | Sort-Object Name -Descending | Select-Object -First 1).FullName + "\resources\app\git\cmd\git.exe"`
 - **Pushing to origin/main IS the production deploy** (Render builds it).
@@ -180,9 +188,10 @@ identical before and after.
 ## 11. HOW TO START EVERY TASK
 
 Use the `start-task` skill: read the task (usually `<main checkout>/read.txt`),
-check branch and current-work.md, classify it, create a worktree from
-origin/main, take the test baseline, do the Rule 12 audit. If the request is
-unclear, ask one specific question before starting.
+confirm you are in the development worktree on `claude-environment-setup`,
+read current-work.md and the relevant docs, record the task base commit,
+classify it, take the test baseline, do the Rule 12 audit. If the request is
+unclear in a way that changes what gets built, ask one specific question first.
 
 ## 12. NO DUPLICATED LOGIC
 

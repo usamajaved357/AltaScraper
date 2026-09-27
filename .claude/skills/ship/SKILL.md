@@ -33,7 +33,8 @@ words if he asked to push, merge or deploy.
      root cause(s), numbered; what changed and where; the Rule 1 / 4 / 12 notes
      (the Rule 12 audit); tests added or re-pinned and why; anything not verified.
    - no secrets, no customer personal data.
-4. Commit on the task branch. Never on main.
+4. Commit locally on the current development branch (`claude-environment-setup`).
+   Never on main. Committing is routine; it needs no extra approval.
 
 ### Stage B — Push the branch (only when the owner says to push)
 `& $g push -u origin <branch>` (set `$env:GIT_TERMINAL_PROMPT=0`). The
@@ -44,8 +45,13 @@ No `gh` CLI: hand the owner the PR link git prints if he wants one.
 1. Say out loud: CLAUDE.md Rule 2 asks for production confirmation before a
    merge; it is being waived on the owner's instruction.
 2. `& $g fetch origin`; the branch must contain origin/main
-   (`& $g merge-base --is-ancestor origin/main <branch>`); if not, rebase on
-   origin/main and re-run `verify-change` on the rebased tree.
+   (`& $g merge-base --is-ancestor origin/main <branch>`). If it does not,
+   STOP and tell the owner: bringing origin/main in (merge or rebase) is his
+   decision. Only after his explicit instruction, do it and re-run
+   `verify-change` on the resulting tree. Also tell him exactly which commits
+   the push would put on main (`git log --oneline origin/main..<branch>`) —
+   on the long-running branch that includes every earlier task and the
+   Claude Code environment commits.
 3. Fast-forward: `& $g push origin <branch>:main` (the hook asks; it says
    PRODUCTION DEPLOY).
 4. **Confirm the swap from outside**: `/healthz` only says "ok". Poll a static

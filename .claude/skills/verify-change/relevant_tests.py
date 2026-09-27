@@ -7,7 +7,11 @@ first cut; it is not a guarantee.
 
 Usage (from the repo root):
     py -3.11 .claude/skills/verify-change/relevant_tests.py static/js/listings.js routes/listing_routes.py
-    py -3.11 .claude/skills/verify-change/relevant_tests.py --changed     # vs merge-base with origin/main + uncommitted
+    py -3.11 .claude/skills/verify-change/relevant_tests.py --changed --base <task-base>
+        # files changed since the task base (HEAD when start-task ran) + uncommitted
+    py -3.11 .claude/skills/verify-change/relevant_tests.py --changed
+        # no --base: merge-base with origin/main (on the long-running development
+        # branch that includes every earlier task -- pass --base instead)
 Prints one test file per line, then a count. Read-only.
 """
 import glob
@@ -19,9 +23,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scope_check import GIT  # noqa: E402  (same git discovery)
 
 
-def changed_files():
-    r = subprocess.run([GIT, "merge-base", "HEAD", "origin/main"], capture_output=True, text=True)
-    base = r.stdout.strip() or "HEAD"
+def changed_files(base=None):
+    if not base:
+        r = subprocess.run([GIT, "merge-base", "HEAD", "origin/main"], capture_output=True, text=True)
+        base = r.stdout.strip() or "HEAD"
     out = set()
     for args in (["diff", "--name-only", base], ["ls-files", "--others", "--exclude-standard"]):
         r = subprocess.run([GIT, *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -41,10 +46,19 @@ def needles(path):
 
 
 def main(argv):
-    files = changed_files() if (not argv or argv == ["--changed"]) else argv
+    base = None
+    if "--base" in argv:
+        i = argv.index("--base")
+        if i + 1 >= len(argv):
+            print("--base needs a commit")
+            return 2
+        base = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
+    changed_mode = (not argv) or argv == ["--changed"]
+    files = changed_files(base) if changed_mode else argv
     files = [f for f in files if not os.path.basename(f).startswith("test_")]
     tests = sorted(glob.glob("test_*.py") + glob.glob("test_*.js"))
-    direct = sorted({f for f in argv if os.path.basename(f).startswith("test_")}) if argv and argv != ["--changed"] else []
+    direct = [] if changed_mode else sorted({f for f in argv if os.path.basename(f).startswith("test_")})
     hits = set(direct)
     for t in tests:
         try:

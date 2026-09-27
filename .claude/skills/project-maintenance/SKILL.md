@@ -44,6 +44,7 @@ A table: item | finding | evidence | recommendation | risk if left. Then the
 list of actions awaiting approval. Nothing is changed in this step.
 
 ## Persist afterwards
-Approved actions are done on a `chore/maintenance-<date>` worktree branch;
+Approved actions are done in the development worktree on
+`claude-environment-setup` (no separate branch unless the owner asks);
 removed items are listed in docs/changelog.md when they deploy; decisions in
 docs/decisions.md.

@@ -14,10 +14,11 @@ database. Allowed: `py -3.11 run_tests.py [filter]`, `py -3.11 test_x.py`,
 Follow `.claude/skills/verify-change/SKILL.md` for the exact commands.
 
 ## Inputs you will be given
-- the worktree path
-- the changed files (or "all": `git diff --name-only origin/main...HEAD` plus
-  uncommitted changes)
-- the baseline file (normally `<main checkout>/active/test-baseline-<branch>.txt`)
+- the worktree path (normally `D:\AltaScraper-wt\claude-environment`)
+- the task base commit (recorded by start-task) and the changed files
+  (or "all": `git diff --name-only <task-base>` plus untracked files). Do not
+  use origin/main as the base: the long-running branch carries earlier tasks.
+- the baseline file (normally `<main checkout>/active/test-baseline-<short-base-sha>.txt`)
 - whether to run the relevant subset or the full suite
 
 ## Choosing relevant tests
