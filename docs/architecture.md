@@ -294,6 +294,24 @@ only, never PUTs a listing.
   Listings API, else Reports API) -> `/live/full_pull` (mirror) -> `loadRows`
   -> `/live/reconcile`.
 
+### The product page (PDP), as traced 27 Sep 2026
+- Every row, tile and live view calls `openListing` -> `pdpOpen(sku)`
+  (static/js/pdp.js); `openDrawer` also forwards to it. No draft row -> a
+  read-only catalogue row from `LIVE_ITEMS` (`pdpCatalogueRow`).
+- `pdpOpen` resets tab/dirty state only when the SKU changes, then
+  `pdpRender` (whole `innerHTML`), then `pdpRefreshChecks` (`/row`),
+  `loadSchemas`, `lvEnsure` (`/listing/live_attributes`, cached per SKU in
+  `LIVE_ATTRS`), `altaSyncUrl` (`pdpPath()` = `/w/<ws>/listing/<sku>`).
+- Tabs: details, images (pdp_images.js), variations (only when it has one),
+  offer, compliance (`pdpSafetyTab`). Partial redraws: `pdpHeroRefresh`,
+  `pdpFieldEdited`, `_pdpiPaint`, `pdpMarkDirty`.
+- Saving is per field, on blur/change: `dwBlurSave` / `editCell` -> `saveEdit`
+  -> `editField` -> `POST /edit` with `acctBody()`; the server writes the named
+  account's store (`_store_for`) via `listing/repo.set_field`. "Save & finish"
+  only blurs the focused box and closes. `pdpClose` redraws the grid only if
+  `PDP_DIRTY`.
+- Open problems: docs/known-issues.md "PDP".
+
 ## 13. Deployment
 
 - Docker (`Dockerfile`: python:3.11-slim + Playwright Chromium for crawl4ai).

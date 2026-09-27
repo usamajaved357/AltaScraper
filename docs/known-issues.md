@@ -40,6 +40,59 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
    `enterAccount`; `SELECTED` and `LISTING_METRICS` are not reset either.
    SKUs are not unique across accounts.
 
+## PDP (product page) — review of 27 Sep 2026 (read-only; no tests run)
+
+Account switching (none of these is pinned by a test yet):
+- **READ — the PDP stays open across an account switch.** `enterAccount` /
+  `switchAccountMarket` (shell.js) never call `pdpClose` or reset `PDP_SKU`,
+  `PDP_DIRTY`, `PDP_EDITED_FIELDS`, `PDPI`, `LIVE_ATTRS`. Reachable with the
+  Ctrl+K palette (z 200, above the PDP) and Back/Forward between
+  `/w/A/listing/X` and `/w/B/listing/X`. Edits then save with `acctBody()` =
+  the NEW account, into its same-SKU row (or `adopt` creates one). Cross-account write.
+- **READ — `LIVE_ATTRS` (drawer_attributes.js) is keyed by SKU only, cached
+  forever (failures included) and never cleared**; with a shared SKU, account
+  B's PDP shows and merges account A's Amazon copy (`pdpAmazonCopy`) and
+  `lvPushChanges` diffs against A. Extends suspected bug #5.
+- **READ — `PDPI` (pdp_images.js) is keyed by SKU only, never reset** on close
+  or switch; reopening the same SKU shows stale slots/library.
+- **READ — a late `/row` reply** (pdp.js `pdpRefreshChecks`) is checked by SKU
+  only, not account, and merged into the new account's row.
+- **READ — `/listing/live_attributes` ignores the named account** and uses
+  `_active_account()` (listing_routes.py `listing_live_attributes`).
+- **READ — PDP calls that name no account:** `/listing/image_slots`,
+  `/media/list`, `/media/upload`, `/genimage/start_batch`.
+- **NEEDS VERIFICATION — an image-generation job finishing after a switch**
+  may place images into the new account's slots (`_pdpigPlace`).
+
+Security:
+- **READ — guard exemption prefix bug.** `auth/guard.py`
+  `WORKSPACE_PARAM_EXEMPT` uses `p.startswith(ex)`, so `"/row"` also exempts
+  `/rows` and `/rows_all`: a user restricted to one account is not stopped from
+  naming another in `/rows_all?account=`. Verify with the Flask test client.
+
+States and rendering:
+- **READ — silent failures:** `/row` checks (so a barcode clash can go
+  unreported), schema load, mirror load, profit recompute; the barcode check
+  can stick on "checking…"; the image library and competitor-picture errors
+  look like "nothing here".
+- **READ — the image-generation poller has no end on error**, so
+  `PDPIG.running` can stay true and block later runs.
+- **READ — Preview/Submit from the PDP:** the run panel exists only in the
+  drawer, so a queue failure started from the PDP shows nothing.
+- **LIKELY — full `pdpRender` from late data** (live attributes, schema,
+  `/row`, mirror, image assign, sync) is not deferred while typing, so focus or
+  unsaved typed text can be lost; only `pdpAfterAction` waits.
+- **LIKELY — one Escape with a modal open over the PDP closes both.**
+- **READ — the Variations tab always shows its fallback note**:
+  `pdpVariationsTab` is referenced (pdp.js) but defined nowhere.
+- **READ — a deep link cannot open a catalogue-only listing**
+  (`pdpOpenFromUrl` requires a ROWS hit).
+- **READ — two `/edit` writers bypass `editField`:** gtin.js `_gtinWrite` and
+  pdp_images.js `pdpImgAssign` (Rule 12; the latter skips dirty/warnings updates).
+- **READ — unsafe `'${esc(x)}'` inline handlers in the PDP** (pdp.js, pdp_images.js,
+  `editCell`, `drawerMore`); pdp.js says `jsArg` "is not in scope", but it is a
+  global (users.js).
+
 ## Other defects seen by reading
 
 - **READ — config.json is still written directly (non-atomic, truncate first)**
