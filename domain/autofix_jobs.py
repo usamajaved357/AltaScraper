@@ -11,6 +11,42 @@ load a second copy of the app).
 """
 
 from listing import api_issues as _api_issues
+import threading
+import re
+
+# ---- state this module OWNS (architecture batch A3): moved word for word
+# from dashboard.py, which imports these same objects back.
+# =============================================================================
+# AUTO-FIX AS A SERVER-SIDE JOB
+# =============================================================================
+# Auto-fix used to be a loop inside the BROWSER (static/js/autofix.js): it called
+# /suggest -> /edit -> /run/api in a JS `while`. So it died whenever the browser
+# stopped executing JS -- a locked screen, a slept laptop, a closed tab, a re-login.
+# The user would come back to a half-finished batch with no progress shown.
+#
+# It now runs HERE, on the server, exactly like image generation:
+#   * it keeps running when nobody is watching,
+#   * ANY signed-in browser can see the same live progress (the job registry is
+#     server state, not per-tab state),
+#   * it stops only when it finishes, or when the user presses Stop.
+# Same code path locally and on Render -- there is no browser dependency left.
+# =============================================================================
+_AF_JOBS = {}                       # job_id -> {...}
+_AF_JOBS_LOCK = threading.Lock()
+_AF_MAX_ROUNDS = 8                  # matches the old browser loop
+
+# --- the Preview step, run synchronously inside the worker --------------------
+# Reuse the EXISTING /run/api route by consuming its stream generator, rather than
+# rebuilding the generator's command line here. That keeps ONE source of truth for
+# account/sheet/tab/marketplace scoping -- if that logic changes, auto-fix follows.
+_AF_PROSE = re.compile(r"none of the requested|only publishes|fix any flagged errors|then click approve"
+                       r"|not processed|were not (?:submitted|processed)|not found in this tab|^\s*accounting:", re.I)
+_AF_ERRNUM = re.compile(r"(\d+)\s+(?:error|issue)\(s\)", re.I)
+_AF_EFIELD = re.compile(r"\[E\]\s*([a-z0-9_.]+)", re.I)
+_AF_NET = re.compile(r"getaddrinfo failed|failed to resolve|nameresolutionerror|max retries exceeded"
+                     r"|connectionerror|errno 11002|temporary failure in name resolution"
+                     r"|connection timed out|handshake operation timed out", re.I)
+
 
 _app = None
 
@@ -24,12 +60,12 @@ def bind(app_module):
 def _af_new(skus, account_id, label=""):
     import time as _t, uuid as _u
     jid = _u.uuid4().hex[:12]
-    with _app._AF_JOBS_LOCK:
+    with _AF_JOBS_LOCK:
         # retire anything older than an hour so the registry can't grow forever
-        for k in [k for k, v in _app._AF_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
-            _app._AF_JOBS.pop(k, None)
+        for k in [k for k, v in _AF_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
+            _AF_JOBS.pop(k, None)
         from domain import job_owner as _jo
-        _app._AF_JOBS[jid] = _jo.stamp({
+        _AF_JOBS[jid] = _jo.stamp({
             "id": jid, "status": "running", "cancel": False, "error": "",
             "ts": _t.time(), "started_at": _t.strftime("%Y-%m-%d %H:%M:%S"),
             "account_id": account_id, "label": label,
@@ -43,8 +79,8 @@ def _af_new(skus, account_id, label=""):
 
 
 def _af_get(jid):
-    with _app._AF_JOBS_LOCK:
-        j = _app._AF_JOBS.get(jid)
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
         return dict(j) if j else None
 
 
@@ -67,13 +103,13 @@ def _af_active():
     # A job stamped before accounts were recorded has none, and is still shown:
     # hiding work that is genuinely running is the worse failure.
     acct = str(_app._state.get("active_account_id", "") or "")
-    with _app._AF_JOBS_LOCK:
-        if not _app._AF_JOBS:
+    with _AF_JOBS_LOCK:
+        if not _AF_JOBS:
             return None
         def _mine(v):
             a = str(v.get("account_id") or "")
             return (not a) or (not acct) or a == acct
-        pool_all = [v for v in _app._AF_JOBS.values() if _mine(v)]
+        pool_all = [v for v in _AF_JOBS.values() if _mine(v)]
         if not pool_all:
             return None
         run = [v for v in pool_all if v.get("status") == "running"]
@@ -82,8 +118,8 @@ def _af_active():
 
 
 def _af_cancelled(jid):
-    with _app._AF_JOBS_LOCK:
-        j = _app._AF_JOBS.get(jid)
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
         return bool(j and j.get("cancel"))
 
 
@@ -97,8 +133,8 @@ def _af_stop(jid=""):
     """
     acct = str(_app._state.get("active_account_id", "") or "")
     n = 0
-    with _app._AF_JOBS_LOCK:
-        for k, j in _app._AF_JOBS.items():
+    with _AF_JOBS_LOCK:
+        for k, j in _AF_JOBS.items():
             if j.get("status") != "running":
                 continue
             if jid:
@@ -114,23 +150,23 @@ def _af_stop(jid=""):
 
 
 def _af_step(jid, msg):
-    with _app._AF_JOBS_LOCK:
-        j = _app._AF_JOBS.get(jid)
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
         if j:
             j["steps"].append(msg)
             del j["steps"][:-400]          # keep the tail bounded
 
 
 def _af_set(jid, **kw):
-    with _app._AF_JOBS_LOCK:
-        j = _app._AF_JOBS.get(jid)
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
         if j:
             j.update(kw)
 
 
 def _af_finish(jid, error=""):
-    with _app._AF_JOBS_LOCK:
-        j = _app._AF_JOBS.get(jid)
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
         if j:
             if j.get("cancel") and not error:
                 j["status"] = "stopped"
@@ -162,20 +198,20 @@ def _af_preview(sku, acct=""):
                     lines.append(d)
                     if "[busy]" in d:
                         verdict = "busy"
-                    if _app._AF_NET.search(d):
+                    if _AF_NET.search(d):
                         verdict = "network"
                     if "no seller_id" in d.lower():
                         verdict = "nocreds"
-                    for m in _app._AF_EFIELD.finditer(d):
+                    for m in _AF_EFIELD.finditer(d):
                         if m.group(1) not in fields:
                             fields.append(m.group(1))
                     # NEVER read the generator's explanatory prose as a per-row result:
                     # it names the SKU *and* the words "API_READY, APPROVED", which used
                     # to be misparsed as success.
-                    if _app._AF_PROSE.search(d) or sku not in d:
+                    if _AF_PROSE.search(d) or sku not in d:
                         continue
                     low = d.lower()
-                    m = _app._AF_ERRNUM.search(d)
+                    m = _AF_ERRNUM.search(d)
                     if m:
                         verdict, n_err = "error", int(m.group(1))
                     elif "not live" in low or "api call failed" in low or "api_error" in low:
@@ -200,8 +236,8 @@ def _run_autofix_bg(jid):
             pass
     finally:
         try:
-            with _app._AF_JOBS_LOCK:
-                j = _app._AF_JOBS.get(jid)
+            with _AF_JOBS_LOCK:
+                j = _AF_JOBS.get(jid)
                 if j and j.get("status") == "running":
                     j["status"] = "error"
                     j["error"] = j.get("error") or "worker exited without finishing"
@@ -247,7 +283,7 @@ def _run_autofix_bg_inner(jid):
             _app._af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — starting")
             rounds, prev_errors, outcome, diagnosis = [], None, "failed", ""
 
-            for rnd in range(1, _app._AF_MAX_ROUNDS + 1):
+            for rnd in range(1, _AF_MAX_ROUNDS + 1):
                 if _app._af_cancelled(jid):
                     break
                 _app._af_set(jid, current_round=rnd)
@@ -370,8 +406,8 @@ def _run_autofix_bg_inner(jid):
                 _app._af_step(jid, "Stopped by user.")
                 break
 
-            with _app._AF_JOBS_LOCK:
-                j = _app._AF_JOBS.get(jid)
+            with _AF_JOBS_LOCK:
+                j = _AF_JOBS.get(jid)
                 if j:
                     j["results"].append({"sku": sku, "outcome": outcome,
                                          "diagnosis": diagnosis, "rounds": rounds})

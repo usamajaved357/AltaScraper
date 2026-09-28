@@ -1429,9 +1429,9 @@ _COGS_OVERRIDE = _cogs_store_mod.all_overrides()
 _COGS_FILE = _cogs_store_mod.path_for(CONFIG_PATH)
 _IMG_CACHE = {}  # {"accountid::MKT::SKU": {"url":..., "ts":epoch}} live listing main images
 
-# ---- background image-generation jobs (so the UI never blocks) ----
-_IMG_JOBS = {}        # job_id -> {status, total, done, results:[...], error, ts}
-_IMG_JOBS_LOCK = threading.Lock()
+# ---- background image-generation jobs: the job table and its lock are owned
+# by domain/image_jobs.py (architecture batch A3); the same objects, re-exported.
+from domain.image_jobs import _IMG_JOBS, _IMG_JOBS_LOCK
 
 
 
@@ -1442,24 +1442,9 @@ _IMG_JOBS_LOCK = threading.Lock()
 
 
 
-# =============================================================================
-# AUTO-FIX AS A SERVER-SIDE JOB
-# =============================================================================
-# Auto-fix used to be a loop inside the BROWSER (static/js/autofix.js): it called
-# /suggest -> /edit -> /run/api in a JS `while`. So it died whenever the browser
-# stopped executing JS -- a locked screen, a slept laptop, a closed tab, a re-login.
-# The user would come back to a half-finished batch with no progress shown.
-#
-# It now runs HERE, on the server, exactly like image generation:
-#   * it keeps running when nobody is watching,
-#   * ANY signed-in browser can see the same live progress (the job registry is
-#     server state, not per-tab state),
-#   * it stops only when it finishes, or when the user presses Stop.
-# Same code path locally and on Render -- there is no browser dependency left.
-# =============================================================================
-_AF_JOBS = {}                       # job_id -> {...}
-_AF_JOBS_LOCK = threading.Lock()
-_AF_MAX_ROUNDS = 8                  # matches the old browser loop
+# AUTO-FIX AS A SERVER-SIDE JOB -- the job table, its lock and the loop's limits
+# are owned by domain/autofix_jobs.py (architecture batch A3); re-exported here.
+from domain.autofix_jobs import _AF_JOBS, _AF_JOBS_LOCK, _AF_MAX_ROUNDS
 
 
 import domain.autofix_jobs as _m4_autofix_jobs  # moved (Milestone 4)
@@ -1481,17 +1466,8 @@ from domain.autofix_jobs import (_af_new, _af_get, _af_active, _af_cancelled, _a
 
 
 
-# --- the Preview step, run synchronously inside the worker --------------------
-# Reuse the EXISTING /run/api route by consuming its stream generator, rather than
-# rebuilding the generator's command line here. That keeps ONE source of truth for
-# account/sheet/tab/marketplace scoping -- if that logic changes, auto-fix follows.
-_AF_PROSE = re.compile(r"none of the requested|only publishes|fix any flagged errors|then click approve"
-                       r"|not processed|were not (?:submitted|processed)|not found in this tab|^\s*accounting:", re.I)
-_AF_ERRNUM = re.compile(r"(\d+)\s+(?:error|issue)\(s\)", re.I)
-_AF_EFIELD = re.compile(r"\[E\]\s*([a-z0-9_.]+)", re.I)
-_AF_NET = re.compile(r"getaddrinfo failed|failed to resolve|nameresolutionerror|max retries exceeded"
-                     r"|connectionerror|errno 11002|temporary failure in name resolution"
-                     r"|connection timed out|handshake operation timed out", re.I)
+# The Preview step's patterns: owned by domain/autofix_jobs.py (batch A3).
+from domain.autofix_jobs import _AF_PROSE, _AF_ERRNUM, _AF_EFIELD, _AF_NET
 
 
 

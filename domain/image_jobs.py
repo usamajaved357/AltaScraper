@@ -16,6 +16,14 @@ from domain.image_bytes import (_fetch_image_b64, _sniff_image_ext, _to_jpeg_byt
 import json
 import os
 import re
+import threading
+
+# ---- state this module OWNS (architecture batch A3): moved word for word
+# from dashboard.py, which imports these same objects back.
+# ---- background image-generation jobs (so the UI never blocks) ----
+_IMG_JOBS = {}        # job_id -> {status, total, done, results:[...], error, ts}
+_IMG_JOBS_LOCK = threading.Lock()
+
 
 _app = None
 
@@ -36,9 +44,9 @@ def _new_img_job(total, label="", plan=None):
     import time as _t, uuid as _u
     from domain.request_account import current as _rqa_current
     jid = _u.uuid4().hex[:12]
-    with _app._IMG_JOBS_LOCK:
+    with _IMG_JOBS_LOCK:
         from domain import job_owner as _jo
-        _app._IMG_JOBS[jid] = _jo.stamp(
+        _IMG_JOBS[jid] = _jo.stamp(
             {"status": "running", "total": total, "done": 0,
              "results": [], "error": "", "ts": _t.time(),
              "cancel": False, "label": label, "plan": plan or [],
@@ -52,25 +60,25 @@ def _new_img_job(total, label="", plan=None):
              # Stop in the other tab ended it (two-tab review).
              "account": _rqa_current(_app._state)})
     try:
-        with _app._IMG_JOBS_LOCK:
-            for k in [k for k, v in _app._IMG_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
-                _app._IMG_JOBS.pop(k, None)
+        with _IMG_JOBS_LOCK:
+            for k in [k for k, v in _IMG_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
+                _IMG_JOBS.pop(k, None)
     except Exception:
         pass
     return jid
 
 
 def _job_push(jid, result):
-    with _app._IMG_JOBS_LOCK:
-        j = _app._IMG_JOBS.get(jid)
+    with _IMG_JOBS_LOCK:
+        j = _IMG_JOBS.get(jid)
         if j:
             j["results"].append(result)
             j["done"] = len(j["results"])
 
 
 def _job_finish(jid, error=""):
-    with _app._IMG_JOBS_LOCK:
-        j = _app._IMG_JOBS.get(jid)
+    with _IMG_JOBS_LOCK:
+        j = _IMG_JOBS.get(jid)
         if j:
             j["status"] = "error" if error else "done"
             if error:
@@ -79,8 +87,8 @@ def _job_finish(jid, error=""):
 
 def _job_cancelled(jid):
     """Workers check this between images so a Stop-all takes effect promptly."""
-    with _app._IMG_JOBS_LOCK:
-        j = _app._IMG_JOBS.get(jid)
+    with _IMG_JOBS_LOCK:
+        j = _IMG_JOBS.get(jid)
         return bool(j and j.get("cancel"))
 
 
@@ -142,8 +150,8 @@ def _run_img_jobs_bg(jid, jobs, kind):
     finally:
         # Belt-and-braces: whatever happened, never leave the job on "running".
         try:
-            with _app._IMG_JOBS_LOCK:
-                _j = _app._IMG_JOBS.get(jid)
+            with _IMG_JOBS_LOCK:
+                _j = _IMG_JOBS.get(jid)
                 if _j and _j.get("status") == "running":
                     _j["status"] = "error"
                     _j["error"] = _j.get("error") or "worker exited without finishing"
