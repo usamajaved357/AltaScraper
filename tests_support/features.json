@@ -7,7 +7,9 @@
     "domain/image_bytes.py",
     "listing/subfields.py",
     "domain/cogs_estimate.py",
-    "listing/patches.py"
+    "listing/patches.py",
+    "domain/image_jobs.py",
+    "domain/autofix_jobs.py"
   ],
   "amazon_listing_generator.py": [
     "amazon_listing_generator.py"

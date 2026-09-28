@@ -28,7 +28,10 @@ check("the crash-safe wrapper calls it",
 check("the inner worker can be told not to retire the job",
       "def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True)" in src, True)
 check("and the job is finished exactly once, by the dispatcher",
-      src.count("    if finish:\n        _job_finish(jid)"), 1)
+      # Since Milestone 4 the job code reads the app's names as _app.<name>
+      # (domain/image_jobs.py, owner-approved); either spelling is the one call.
+      src.count("    if finish:\n        _job_finish(jid)")
+      + src.count("    if finish:\n        _app._job_finish(jid)"), 1)
 check("the pool size is bounded", "min(n, 8)" in src, True)
 check("  and overridable", "ALTA_IMG_WORKERS" in src, True)
 

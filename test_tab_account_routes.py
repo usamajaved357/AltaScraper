@@ -141,7 +141,10 @@ ws = DASH.split("def _ws():")[1].split("\ndef ")[0]
 check("_ws() refuses the server's sheet for another tab's account",
       "sheet_mismatch(_state)" in ws and ws.index("sheet_mismatch") < ws.index("active_sheet_id"), True)
 job = DASH.split("def _new_img_job(")[1].split("\ndef ")[0]
-check("an image job is labelled with the request's account", "_rqa_current(_state)" in job, True)
+# Since Milestone 4 the image job code lives in domain/image_jobs.py and reads
+# the app's state as _app._state (owner-approved); the same account resolution.
+check("an image job is labelled with the request's account",
+      "_rqa_current(_state)" in job or "_rqa_current(_app._state)" in job, True)
 with app.test_request_context("/sync/pull?account=tab1_account"):
     check("sheet_mismatch: another tab's account -> refused",
           bool(RA.sheet_mismatch(STATE)), True)
@@ -177,7 +180,8 @@ brand = DASH.split("def _active_brand():")[1].split("\ndef ")[0]
 check("the brand name is not the open account's view when another tab asks",
       "_other_tab" in brand and "_rqa.current(_state)" in brand, True)
 instr = DASH.split("def _load_img_instructions(")[1].split("\ndef ")[0]
-check("image instructions default to the request's account", "_rqa.current(_state)" in instr, True)
+check("image instructions default to the request's account",
+      "_rqa.current(_state)" in instr or "_rqa.current(_app._state)" in instr, True)
 worker = DASH.split("def _run_img_jobs_bg_inner(")[1].split("\ndef ")[0]
 check("the worker loads the BATCH's instructions", "_load_img_instructions(_job_acct or None)" in worker, True)
 MISC = src("routes/misc_routes.py")

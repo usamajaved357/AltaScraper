@@ -455,3 +455,8 @@ Code MOVED word for word, never rewritten; every old name still resolves
   nothing of dashboard.py's changeable state moved; anything reading
   `CONFIG_PATH`, `_state` or `_cfg` stayed, because tests (and the app) replace
   `dashboard.CONFIG_PATH` at run time and a moved copy would not see it.
+- **Background jobs (batch 8):** `domain/image_jobs.py` (image generation
+  jobs) and `domain/autofix_jobs.py` (auto-fix jobs). They are handed the
+  RUNNING app module once (`bind(sys.modules[__name__])` in dashboard.py) and
+  read every app name as `_app.<name>`, so a job sees the current workspace,
+  records and config path at the moment it runs. They never import dashboard.
