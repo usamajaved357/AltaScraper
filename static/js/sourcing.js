@@ -336,15 +336,28 @@ async function sourcingMaster(on){
 }
 
 async function sourcingArm(sku, live){
+  // Fixed BEFORE either question: the answer agrees to this SKU in this account.
+  const scope = _srcScopeNow();
   if(live && !await srcConfirm({
       title: "Arm " + sku + "?",
       body: "From then on the app may change this listing's price, stock and "
           + "handling time on Amazon by itself, without anyone watching.",
       confirm: "Arm it", risk: true})) return;
+  // DISARMING ASKS TOO (design package 01/07: "Armed -- disarm" is a dangerous
+  // toggle). It is the safer direction for prices, but it STOPS automatic
+  // pricing: from then on nothing keeps the price, stock or handling time in
+  // step with the source, and an out-of-stock source can oversell.
+  if(!live && !await srcConfirm({
+      title: "Disarm repricing for " + sku + "?",
+      body: "Automatic pricing stops for this SKU: its price, stock and handling "
+          + "time will no longer follow the source. Nothing already sent to "
+          + "Amazon is undone, and you can arm it again at any time.",
+      confirm: "Disarm", risk: true})) return;
+  if(!_srcStillIn(scope)){ toast("The account changed while that was open, so nothing was sent."); return; }
   try{
     const j = await (await fetch("/sourcing/arm",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:_srcBody({sku:sku, live:!!live})})).json();
+      body:_srcBody({sku:sku, live:!!live}, scope)})).json();
     if(!j.ok){ toast(j.error||"Could not arm"); return; }
     toast(j.note || (j.mode==="live" ? "Armed" : "Back to dry run"));
     sourcingLoad(true);
@@ -3247,6 +3260,15 @@ async function sourcingBulkArm(on){
                            + "pushed until you switch it on."),
       {title: "Arm " + skus.length + " SKU" + (skus.length === 1 ? "" : "s"),
        ok: "Arm them", danger: true});
+    if(!ok) return;
+  }else{
+    // Disarming asks as well -- see sourcingArm.
+    const ok = await uiConfirm(
+      "Disarm " + skus.length + " SKU" + (skus.length === 1 ? "" : "s") + "?\n\n"
+      + "Automatic pricing stops for them: price, stock and handling time will "
+      + "no longer follow their sources. Nothing already sent to Amazon is undone.",
+      {title: "Disarm " + skus.length + " SKU" + (skus.length === 1 ? "" : "s"),
+       ok: "Disarm", danger: true});
     if(!ok) return;
   }
   let done = 0, stopped = 0;
