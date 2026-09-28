@@ -109,6 +109,28 @@ has these until the owner merges):
   marketplace; Miles runs (EventSource, not fetch) stay on the open account,
   as before; /submit/precheck always returns nothing (it calls _records()
   without a sheet -- pre-existing, not account-related).
+- **Non-design batch 5 (28 Sep 2026): multi-step work stays in one account.**
+  The listing-row editor's Save-all (which pushes STOCK to Amazon), the bullet
+  save and the product-type fix loop re-read the open account on every write:
+  a switch part-way sent the rest to the new account's same-SKU listing. They
+  now take the account once (before the stock confirmation) and stop on a
+  switch. A switch also forgets unsaved row edits, the Image studio's product
+  and results (and stops its poll), Sales' product filter, and empties the
+  panels those screens had drawn (the seeded-marker browser check caught the
+  Sales product picker and the Image library list still showing the other
+  account). The auto-fix worker checks the account before EVERY step, not once
+  per SKU. AI spend from background jobs is billed to the job's account. An
+  image's Drive title comes from its own account; its Drive copy never falls
+  back to the open account's folder. Re-picking the marketplace already open
+  no longer discards in-flight work.
+  LEFT FOR THE OWNER: (1) the scheduled `inventory_sync` job has never worked
+  -- it sends the account as JSON and the route reads a form field -- so it
+  always gets a 400. The fix is one line, but it would START scheduled Amazon
+  inventory reads for every account, which is new external activity; not done
+  without a yes. (2) A signed-in team member's auto-fix stops at the first
+  SKU ("workspace changed"): worker threads see only the shared account, not
+  a person's own. Safe (it refuses rather than mixes), but it means auto-fix
+  only runs for the shared-password owner, or when the shared account matches.
 - **Non-design batch 3 (28 Sep 2026).** The browser check now SEEDS its
   temporary copy with orders, sales and ad rows unique to each fake account
   and fails if one account's marker is ever visible under the other -- after a

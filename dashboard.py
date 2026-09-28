@@ -1824,7 +1824,7 @@ _AF_NET = re.compile(r"getaddrinfo failed|failed to resolve|nameresolutionerror|
                      r"|connection timed out|handshake operation timed out", re.I)
 
 
-def _af_preview(sku):
+def _af_preview(sku, acct=""):
     """Run one Preview for `sku` and return (verdict, error_fields, lines).
 
     verdict: ok_preview | error | missing | busy | network | nocreds | unknown
@@ -1832,7 +1832,10 @@ def _af_preview(sku):
     from urllib.parse import quote as _q
     lines, verdict, n_err, fields = [], None, 0, []
     try:
-        with app.test_request_context(f"/run/api?skus={_q(sku)}"):
+        # Named, so the run route's own mismatch refusal applies if the open
+        # account moved since the last check (request_account.mismatch_for_write).
+        _acct_q = f"&account={_q(acct)}" if acct else ""
+        with app.test_request_context(f"/run/api?skus={_q(sku)}{_acct_q}"):
             resp = app.view_functions["run"]("api")
             for chunk in resp.response:            # drives the generator to completion
                 text = chunk.decode("utf-8", "replace") if isinstance(chunk, bytes) else str(chunk)
@@ -1898,6 +1901,18 @@ def _run_autofix_bg_inner(jid):
     skus = job["skus"]
     acct = job["account_id"]
 
+    # CHECKED BEFORE EVERY STEP, not once per SKU. Suggest, apply and Preview
+    # all act on the server's open account (a worker has no page to name one),
+    # so a switch in another tab part-way through a SKU sent that SKU's later
+    # rounds to the other account's same-SKU row (background-jobs audit).
+    def _moved():
+        if (_state.get("active_account_id") or "") != (acct or ""):
+            _af_finish(jid, error="Workspace changed while auto-fix was running, so it "
+                                  "stopped to avoid editing another account's listings. "
+                                  "Go back to the original workspace and run it again.")
+            return True
+        return False
+
     with app.app_context():
         for idx, sku in enumerate(skus):
             if _af_cancelled(jid):
@@ -1924,8 +1939,11 @@ def _run_autofix_bg_inner(jid):
                          "verdict": None, "error_fields": [], "diagnosis": ""}
 
                 # 1) ask for suggestions
+                if _moved():
+                    return
                 try:
-                    with app.test_request_context(json={"sku": sku}):
+                    with app.test_request_context(json={"sku": sku},
+                                                  query_string={"account": acct} if acct else {}):
                         sres = app.view_functions["suggest"]().get_json() or {}
                 except Exception as e:
                     entry["diagnosis"] = f"/suggest crashed: {e}"
@@ -1954,6 +1972,8 @@ def _run_autofix_bg_inner(jid):
                 _batch = [{"target": "attr", "key": s.get("field"), "value": s.get("value")}
                           for s in ai if s.get("value")]
                 if _batch and not _af_cancelled(jid):
+                    if _moved():
+                        return
                     try:
                         _ap, _sk = _apply_edits_batch(sku, _batch)
                         entry["applied"].extend(_ap)
@@ -1972,7 +1992,9 @@ def _run_autofix_bg_inner(jid):
 
                 # 3) preview
                 _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — round {rnd}: previewing against Amazon…")
-                verdict, fields, _lines = _af_preview(sku)
+                if _moved():
+                    return
+                verdict, fields, _lines = _af_preview(sku, acct)
                 entry["verdict"] = verdict
                 entry["error_fields"] = fields
                 rounds.append(entry)
@@ -2678,7 +2700,12 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                                         acc = _accmod.get_account(_cfg(), _aid, CONFIG_PATH)
                                     except Exception:
                                         acc = None
-                                acc = acc or _active_account()
+                                # Never the OPEN account's Drive: if the batch's
+                                # account is gone, the copy is simply not made.
+                                if _aid and not acc:
+                                    acc = None
+                                else:
+                                    acc = acc or _active_account()
                                 folder = (acc or {}).get("drive_folder_url", "")
                                 parent_id = _drive_folder_id_from_url(folder) if folder else ""
                                 if not parent_id:
@@ -2686,7 +2713,12 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                                 else:
                                     _prod = ""
                                     try:
-                                        _rec = next((r for r in _records(_ws())
+                                        # The BATCH's rows (a worker has no request,
+                                        # so _ws() is the open account's).
+                                        from data import backend as _be
+                                        _st = (_be.store_for(_aid, _cfg(), CONFIG_PATH)
+                                               if _aid else None) or _ws()
+                                        _rec = next((r for r in _records(_st)
                                                      if str(r.get("SKU", "")).strip() == str(sku).strip()), None)
                                         _prod = (_rec or {}).get("Title", "") or ""
                                     except Exception:

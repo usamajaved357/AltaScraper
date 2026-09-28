@@ -53,6 +53,26 @@ function sliceFn(src, name){
   check("  and marked stale", !!got.stale, true);
   check("B's same-SKU row is untouched", env.ROWS[0].title, "B's title");
 
+  console.log("\n1b. a write PINNED to A, sent after the switch, goes to A and leaves B's row alone");
+  {
+    const sent = [];
+    const env2 = Object.assign({}, env, {
+      ROWS: [{sku: "SAME-SKU", title: "B's title"}],
+      acctBodyFor: (o, id) => Object.assign({}, o, {account: id}),
+      acctId: () => scope.acct,
+      fetch: (u, o) => { sent.push(JSON.parse(o.body).account);
+                         return Promise.resolve({json: async () => ({ok: true})}); },
+    });
+    const n2 = Object.keys(env2);
+    const ef2 = new Function(...n2, sliceFn(AF, "editField") + "\nreturn editField;")
+                  (...n2.map(k => env2[k]));
+    // scope is B now (from section 1); the bullet loop pinned A before the switch
+    const r2 = await ef2("SAME-SKU", "col", "title", "A's bullet", "A");
+    check("the write names A", sent, ["A"]);
+    check("  reported stale, and B's row keeps its own value",
+          [!!r2.stale, env2.ROWS[0].title], [true, "B's title"]);
+  }
+
   console.log("\n2. the barcode save and the image generator honour it");
   const PDP = JS("pdp.js");
   const bc = sliceFn(PDP, "pdpBarcodeSave");

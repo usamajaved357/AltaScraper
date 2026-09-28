@@ -1146,10 +1146,14 @@ function updateLocalCol(r,key,value){
  * Returns {ok, error} and never throws, so a batch can report one failure
  * without losing the rest.
  */
-async function editField(sku, target, key, value){
+async function editField(sku, target, key, value, acct){
   try{
-    const body = (typeof acctBody === "function")
-      ? acctBody({sku, target, key, value}) : {sku, target, key, value};
+    // `acct`, when given, is the account a multi-write action STARTED in
+    // (acctBodyFor): every write goes there even if the screen moves on.
+    const body = (acct && typeof acctBodyFor === "function")
+      ? acctBodyFor({sku, target, key, value}, acct)
+      : (typeof acctBody === "function")
+        ? acctBody({sku, target, key, value}) : {sku, target, key, value};
     // Which account this save is FOR. The server writes to that one (the body
     // names it); but a reply landing after a switch must not update the NEW
     // account's same-SKU row on screen (known-issues: PDP, "a save reply that
@@ -1161,6 +1165,11 @@ async function editField(sku, target, key, value){
     if(!j || !j.ok) return {ok:false, error:(j && j.error) || "save refused"};
     if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)){
       return {ok:true, stale:true};    // saved -- to the account it was typed in
+    }
+    // A write pinned to an account that is no longer on screen: saved there,
+    // and not drawn onto this account's same-SKU row.
+    if(acct && typeof acctId === "function" && acctId() !== acct){
+      return {ok:true, stale:true};
     }
     const r = (typeof ROWS !== "undefined") ? ROWS.find(x => x.sku === sku) : null;
     if(r){
@@ -1299,9 +1308,17 @@ const MAX_BULLETS=5;
 // exactly matches the array -- this is what makes reorder / remove-and-compact stick.
 async function _saveBullets(sku, bullets){
   const arr=(bullets||[]).slice(0, MAX_BULLETS);
+  // Five writes, one account: taken once, and the loop stops if the screen
+  // moves -- otherwise bullets 2-5 went to the NEW account's same-SKU listing.
+  // All five go to the account they were edited in, even if the screen moves
+  // on: stopping part-way left a half-rewritten set (a duplicated or missing
+  // bullet) in that account (review).
+  const pin = (typeof screenScope === "function") ? screenScope() : null;
+  const acct = pin ? pin.acct : "";
   for(let i=0;i<MAX_BULLETS;i++){
-    await editField(sku, "col", "Bullet "+(i+1), (arr[i]||""));
+    await editField(sku, "col", "Bullet "+(i+1), (arr[i]||""), acct);
   }
+  if((pin && typeof screenStillIn === "function" && !screenStillIn(pin))) return;          // saved there; this screen is another account now
   // Still set outright afterwards. editField updates r.bullets[i] per write,
   // which is right for one bullet but cannot SHORTEN the array -- and shortening
   // is what remove-and-compact does. The blank writes above clear the cells;

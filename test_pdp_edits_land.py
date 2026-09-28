@@ -62,7 +62,7 @@ print("== 1. THE EDIT REACHES THE DATABASE ==")
 #
 # So "the edit didn't save to the database" is not what happened.
 yes("there is one save path and it posts to /edit",
-    "async function editField(sku, target, key, value)" in AF
+    "async function editField(sku, target, key, value" in AF   # (+ optional pinned account)
     and AF.count('fetch("/edit"') == 1)
 yes("  a column typed empty is saved as empty, an attribute is deleted",
     'if(target === "attr")' in AF and "delete r.attributes[key]" in AF)

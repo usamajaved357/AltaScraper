@@ -228,6 +228,44 @@ function switchTo(ctx, id){
           vm.runInContext("IMGP.items.length + '|' + IMGP.sku", ctx), "0|");
   }
 
+  console.log("\nO. what a switch must also forget (seeded-marker check + review)");
+  {
+    const ctx = sandbox();
+    ctx.setInterval = setInterval; ctx.clearInterval = clearInterval;
+    vm.runInContext('var STUDIO = {skus: ["A-SKU"], items: [{sku: "A-SKU"}], brand: "A brand", results: {x: 1}};' +
+                    'var STUDIO_POLL = setInterval(function(){}, 100000);' +
+                    'var LR_EDITS = {"A-SKU": {stock: "5"}};', ctx);
+    ctx.document.getElementById("imgp_picker").innerHTML = "A-SKU B0AAAAAAAA";
+    ctx.document.getElementById("sales_asin").innerHTML = "<option>B0AAAAAAAA</option>";
+    ctx.document.getElementById("studiobody").innerHTML = "A's studio";
+    switchTo(ctx, "acct_B");
+    check("the Image studio forgets A's product, brand and results",
+          vm.runInContext("STUDIO.skus.length + '|' + STUDIO.brand + '|' + Object.keys(STUDIO.results).length", ctx), "0||0");
+    check("  and its progress poll is stopped", vm.runInContext("STUDIO_POLL", ctx), null);
+    check("unsaved listing-row edits typed in A are dropped",
+          vm.runInContext("Object.keys(LR_EDITS).length", ctx), 0);
+    check("drawn panels are emptied: Image library list, Studio",
+          ["imgp_picker", "studiobody"].map(i => ctx.document.getElementById(i).innerHTML),
+          ["", ""]);
+  }
+  {
+    const S = read("sales.js");
+    const f = S.slice(S.indexOf("function _sForget()"), S.indexOf("\n}", S.indexOf("function _sForget()")));
+    check("Sales forgets its product filter on a switch", /SALES\.asin = "";/.test(f), true);
+    check("  and puts the filter control back to 'All products' (a control is never emptied)",
+          /_sel\.innerHTML = '<option value="">All products<\/option>'/.test(f), true);
+  }
+  {
+    const L = read("listrow_edit.js"), A = read("autofix.js"), P = read("product_type.js");
+    const pinned = src => /const pin = \(typeof screenScope === "function"\) \? screenScope\(\) : null;/.test(src)
+                          && /!screenStillIn\(pin\)/.test(src);
+    check("the multi-field save loops take the account once and stop on a switch",
+          [pinned(L), pinned(A), pinned(P)], [true, true, true]);
+    const la = L.slice(L.indexOf("async function lrEditSaveAll("));
+    check("  the row editor pins it BEFORE the stock confirmation",
+          la.indexOf("const pin =") < la.indexOf("uiConfirm("), true);
+  }
+
   console.log("\n" + ran + " checks, " + fails + " failed");
   console.log("FAILURES: " + fails);
   process.exit(fails ? 1 : 0);

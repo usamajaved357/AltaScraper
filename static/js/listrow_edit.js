@@ -251,6 +251,11 @@ function lrEditCancel(){
  * highlight, so the bar still shows them and they can be tried again.
  */
 async function lrEditSaveAll(){
+  // THE ACCOUNT THESE EDITS WERE TYPED IN, taken once, before the stock
+  // confirmation below: each save reads the open account afresh, so a switch
+  // part-way (or while the dialog is up) sent the rest -- stock to Amazon
+  // included -- to the NEW account's same-SKU listing (batch 3-4 review).
+  const pin = (typeof screenScope === "function") ? screenScope() : null;
   const jobs = [];
   document.querySelectorAll("input.lr-edit.dirty").forEach(function(el){
     const sku = el.getAttribute("data-lr-sku") || "";
@@ -274,7 +279,9 @@ async function lrEditSaveAll(){
   if(bar) bar.classList.add("busy");
   let ok = 0;
   const failed = [];
+  let stopped = 0;
   for(const j of jobs){
+    if((pin && typeof screenStillIn === "function" && !screenStillIn(pin))){ stopped = jobs.length - ok - failed.length; break; }
     j.el.classList.remove("err");
     j.el.classList.add("saving");
     let res;
@@ -301,6 +308,13 @@ async function lrEditSaveAll(){
     }
   }
   if(bar) bar.classList.remove("busy");
+  if(stopped){
+    try{ lrEditBar(); }catch(e){}
+    if(typeof toast === "function")
+      toast("Stopped: the account or marketplace changed part-way, so " + stopped
+            + " change" + (stopped === 1 ? " was" : "s were") + " not saved.");
+    return;
+  }
   lrEditBar();
 
   if(typeof toast === "function"){

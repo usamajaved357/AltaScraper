@@ -184,6 +184,9 @@ async function pdpImgGenRun(preset){
   const before = {};
   ((typeof PDPI !== "undefined" && PDPI.library) || []).forEach(function(f){ before[f.url] = 1; });
 
+  // Whose listing this batch is for -- taken BEFORE the request, so a switch
+  // while it starts cannot make it look like the new account's (review).
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   let resp;
   try{
     resp = await (await fetch("/genimage/start_batch", {method: "POST",
@@ -193,10 +196,9 @@ async function pdpImgGenRun(preset){
   if(!resp || !resp.ok){ _pdpigSay('<span class="bad">' + esc((resp && resp.error) || "failed to start") + '</span>'); return; }
 
   PDPIG.running = true; PDPIG.sku = sku; PDPIG.job = resp.job;
-  // Whose listing this batch is for. The pictures are filed under that
-  // account by the server; they are only PLACED into slots if the screen is
-  // still on it -- the same SKU in another account is another listing.
-  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  // The pictures are filed under the batch's account by the server; they are
+  // only PLACED into slots if the screen is still on it -- the same SKU in
+  // another account is another listing.
   const _moved = function(){ return !!_sc && typeof screenStillIn === "function" && !screenStillIn(_sc); };
   _pdpigSetBusy(true);
   _pdpigSay('<span class="genspin"></span> Generating 0/' + jobs.length + '…');

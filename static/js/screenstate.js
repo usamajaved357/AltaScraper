@@ -36,7 +36,18 @@ const SCREEN_MAX_AGE_MS = 10 * 60 * 1000;
 // in the page itself and are deliberately NOT touched.
 const SCREEN_BODIES = {
   sales:        ["sales_cards", "sales_charts", "sales_breakdown", "sales_range", "sales_today",
-                 "pnl_body"],
+                 "pnl_body",
+                 // Found by the seeded-marker browser check (28 Sep 2026): the
+                 // product picker kept A's ASINs under B. The data panels and
+                 // labels Sales draws into -- never its controls.
+                 "sales_grid", "sales_campaigns", "sales_camp_note",
+                 "sales_note", "sales_orgppc", "sales_ppccards", "sales_week",
+                 "sales_hourly", "sales_today_clock", "sales_today_delta",
+                 "sales_today_key", "sales_today_note", "sales_week_delta",
+                 "sales_week_key", "sales_week_note"],
+  // Image library / Image studio: drawn product lists and the chosen product.
+  imagelib:     ["imgp_picker", "imgp_which", "imgp_lib"],
+  imagestudio:  ["studiobody", "studio_picker_list"],
   finance:      ["finbody"],
   orders:       ["ordbody"],
   returns:      ["retbody", "returns_list", "returns_detail"],
@@ -168,6 +179,18 @@ function _screenResetHeld(){
     o.loading = false; o.error = ""; });
   if(typeof IMGP  !== "undefined") T(IMGP,  o => { o.items = []; o.sku = ""; o.q = "";
     o.loading = false; o.note = ""; });
+  // THE IMAGE STUDIO'S product, brand and results belong to the account they
+  // were picked in; kept, B's Studio redrew A's product and its Save filed A's
+  // images into B's library. Its progress poll is stopped with them (review).
+  if(typeof STUDIO !== "undefined") T(STUDIO, o => { o.skus = []; o.items = [];
+    o.brand = ""; o.results = {}; o.manualRef = ""; });
+  try{ if(typeof STUDIO_POLL !== "undefined" && STUDIO_POLL){ clearInterval(STUDIO_POLL); STUDIO_POLL = null; } }catch(e){}
+  // UNSAVED TYPED EDITS in the listing rows belong to the account they were
+  // typed in. Kept, lrEditRestore put A's price/stock into B's same-SKU boxes,
+  // and one Save wrote them to B -- stock to Amazon included (review).
+  if(typeof LR_EDITS !== "undefined") T(LR_EDITS, o => { Object.keys(o).forEach(k => { delete o[k]; }); });
+  // ...and the "N SKUs edited" bar that counted them (it lives on <body>).
+  try{ if(typeof lrEditBar === "function") lrEditBar(); }catch(e){}
   if(typeof WK    !== "undefined") T(WK,    o => { o.week = null; o.weeks = [];
     o.change = {}; o.loading = false; o.fellBack = ""; });
   if(typeof PNL   !== "undefined") T(PNL,   o => { o.data = null; o.expenses = null;

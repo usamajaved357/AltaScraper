@@ -696,7 +696,8 @@ async function switchAccountMarket(m){
   // A DIFFERENT MARKETPLACE IS A DIFFERENT PRODUCT CONTEXT (owner, 27 Sep
   // 2026): the same SKU there is another Amazon listing. Close the product page
   // and forget what it held BEFORE the marketplace moves.
-  if(String(m) !== String(WS_MARKET || "") && typeof pdpLeaveContext === "function"){
+  const _mktMoved = String(m) !== String(WS_MARKET || "");
+  if(_mktMoved && typeof pdpLeaveContext === "function"){
     try{ pdpLeaveContext(); }catch(e){}
   }
   WS_MARKET=m;
@@ -705,7 +706,11 @@ async function switchAccountMarket(m){
   // Remembered screens are keyed by both, so they will reload -- but what is
   // already painted has to go, or the UK figures sit under the US heading until
   // the reload lands.
-  if(typeof screenForgetAll === "function") screenForgetAll();
+  //
+  // ONLY WHEN IT MOVED. Re-picking the marketplace already open forgot
+  // everything too, so a save or an image batch in flight was treated as
+  // belonging to another context and its result dropped (batch 3-4 review).
+  if(_mktMoved && typeof screenForgetAll === "function") screenForgetAll();
   // The counting numbers remember what they last showed, so they animate only a
   // real change. Every one of those figures is about to describe something
   // else, so that memory goes with the rest.

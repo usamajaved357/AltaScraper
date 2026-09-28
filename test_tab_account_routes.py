@@ -197,5 +197,23 @@ check("push_image refuses when its rows and its push would be two accounts",
 check("push_image takes the tab's marketplace, not another tab's selection",
       '_state.get("active_marketplace")' not in PI, True)
 
+print("\n7. background work (the jobs audit)")
+DASH = src("dashboard.py")
+afw = DASH.split("def _run_autofix_bg_inner(")[1].split("\ndef ")[0]
+check("auto-fix checks the account before suggest, apply AND preview",
+      afw.count("if _moved():") >= 3
+      and afw.index("if _moved():") < afw.index('view_functions["suggest"]'), True)
+check("  and names its account on the internal suggest and preview requests",
+      'query_string={"account": acct}' in afw and "_af_preview(sku, acct)" in afw, True)
+drv = DASH.split("def _run_img_jobs_bg_inner(")[0]
+drv = DASH[DASH.index("# The BATCH's rows (a worker has no request,"):][:600]
+check("an image's Drive title comes from the BATCH's account rows", "store_for(_aid" in drv, True)
+from domain import ai_usage as AIU
+AIU.set_context(workspace_id="last_browsed")
+with app.test_request_context("/genimage/recipe?account=batch_account"):
+    check("AI spend inside a request naming an account is billed to it",
+          AIU.whose(), "batch_account")
+check("outside a request, the context as before", AIU.whose(), "last_browsed")
+
 print("\nFAILURES: %d" % len(fails))
 sys.exit(1 if fails else 0)

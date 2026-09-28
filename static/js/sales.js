@@ -321,6 +321,14 @@ function _sForget(){
     SALES._live = null;
     SALES.compare = null;
     SALES._chartBasis = "";
+    // AND THE PRODUCT FILTER. It names the previous account's ASIN, and the
+    // product picker keeps a chosen ASIN even with no sales in range -- so B's
+    // picker offered A's product (seeded-marker browser check, 28 Sep 2026).
+    SALES.asin = "";
+    // The filter CONTROL back to its default -- emptied, it lost "All products"
+    // until the next good load (review).
+    const _sel = document.getElementById("sales_asin");
+    if(_sel) _sel.innerHTML = '<option value="">All products</option>';
   }catch(e){}
 }
 
