@@ -2277,6 +2277,11 @@
   /* The design system's ring (foundations.css): 2px solid, 2px offset, on every
      interactive element; it follows the element's radius. */
   *:focus-visible{outline:var(--as-focus-w) solid var(--as-focus-ring);outline-offset:2px;box-shadow:none}
+  /* The marketplace + currency beside the account name in the top bar chip. */
+  .acct-ctx-mkt{font:var(--as-text-small);color:var(--as-text-muted);
+    padding-left:var(--as-space-2);margin-left:var(--as-space-1);
+    border-left:1px solid var(--as-border);white-space:nowrap}
+  .acct-ctx-mkt:empty{display:none}
   /* Skip link: off-screen until focused, then the first thing on the page. */
   .skiplink{position:absolute;left:8px;top:-60px;z-index:var(--as-z-tooltip);
     background:var(--as-action);color:var(--as-action-fg);font-weight:600;

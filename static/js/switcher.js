@@ -311,6 +311,18 @@ function renderSwitchRows(){
   const hdr = document.getElementById("appbar_acct_label");
   if(hdr) hdr.textContent = name;
   const m = (typeof WS_MARKET !== "undefined") ? WS_MARKET : "";
+  // ...with the marketplace and currency beside it, from the same line, so the
+  // three cannot disagree (design system: the top bar always says which
+  // account, where, in what money -- the old bar never said the marketplace).
+  const hm = document.getElementById("appbar_mkt_label");
+  const ccy = (m && typeof mktCcy === "function") ? mktCcy(m) : "";
+  if(hm) hm.textContent = (a && m) ? (mktShort(m) + (ccy ? " \u00b7 " + ccy : "")) : "";
+  const chip = document.getElementById("appbar_acctswitch");
+  if(chip && typeof chip.setAttribute === "function"){
+    const where = (a && m) ? (", " + mktName(m) + (ccy ? ", " + ccy : "")) : "";
+    chip.setAttribute("aria-label", "Account: " + name + where + ". Switch account");
+    chip.title = "Account: " + name + where;
+  }
   if(mf) mf.textContent = m ? mktFlag(m) : "🌐";
   if(ml) ml.textContent = m ? mktName(m) : "No marketplace";
   // The dropshipping workspace has no marketplace of its own, so the row is
