@@ -73,7 +73,7 @@ drawer before it can be finished.
 
 ## 4. CSS load order (it carries meaning)
 
-`foundations.css` → `dashboard.css` → `dialog.css` → `datatable.css` →
+`foundations.css` → `dashboard.css` + its 21 pieces `dashboard/01-shell.css` … `dashboard/21-density.css` (Milestone 4: the file cut in load order; together they ARE dashboard.css and must stay adjacent and in number order) → `dialog.css` → `datatable.css` →
 `genui.css` → `repricer.css` → `inputupload.css` → `genflow.css` → `drawer.css`
 → `drawer_attributes.css` → `draftsources.css` → `pdp.css` → `pdp_images.css` →
 `listrow_detailed.css` → `listrow_edit.css` → `revenue.css` → `pnl.css` →

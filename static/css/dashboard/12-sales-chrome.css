@@ -1,0 +1,424 @@
+/* static/css/dashboard/12-sales-chrome.css -- the Sales page chrome, the (i) marks, marketplace flags, the chart hover card, the Sales page to spec. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+/* =====================================================================
+   SALES DASHBOARD — Orbit's page chrome, measured
+   =====================================================================
+   Read off the live dashboard with tools/orbit_capture.py; the raw
+   figures are in orbit_interactions.md. Nothing here is a judgement call.
+
+       page background   rgb(26,29,41), 12px padding
+       panel             rgb(37,41,55), 1px rgb(55,65,81), radius 12, pad 12
+       panel title       18px / 600, line-height 27
+       page title        28px / 600, line-height 30.8, 4px below
+       stat card         rgb(45,50,66), 1px rgb(55,65,81), radius 8, pad 12
+       preset group      rgb(45,50,66), radius 8, padding 2, gap 2
+       preset button     28 high, radius 6, padding 4/12, 10px
+       preset active     gold, with rgb(26,29,41) text
+   ===================================================================== */
+/* .salespanel itself is defined once, with .panelcard, further down (Rule 12). */
+.salespanel + .salespanel{ margin-top:12px; }
+
+.panelhead{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+}
+/* .paneltitle: one definition, further down this file (an exact duplicate lived here). */
+.panelsub{
+  font:var(--as-text-small);
+  color:var(--as-text-muted);
+  margin:0;
+}
+.panelhead .spacer{ flex:1; }
+
+/* The two cards along the top: see the single .sales-toprow rule further down.
+   This block used to declare it a second time, with a different minmax and a
+   different gap, and the later one silently won -- so the numbers here described
+   a layout the app was not using. Rule 12: one definition. */
+
+/* The segmented preset control: one tray, buttons inside it, the active one
+   filled gold with dark text. */
+.seg{
+  display:inline-flex;
+  align-items:center;
+  gap:2px;
+  background:var(--as-surface-2);
+  /* The tray has a BORDER too -- without it the group floats on the panel
+     instead of reading as one control. Tokens since 28 Sep 2026. */
+  border:1px solid var(--as-border);
+  border-radius:var(--as-radius-md);
+  padding:2px;
+}
+.seg > button{
+  height:28px;
+  border-radius:var(--as-radius-sm);
+  padding:4px 12px;
+  font-size:10px;
+  font-weight:500;
+  line-height:normal;
+  border:1px solid transparent;
+  background:transparent;
+  color:var(--as-text-primary);
+  cursor:pointer;
+  transition:background var(--as-dur-fast) var(--as-ease), color var(--as-dur-fast) var(--as-ease);
+}
+.seg > button:hover{ background:var(--as-surface-3); }
+/* THE GOLD "ON" IS OWNER-LOCKED (the Sales/Traffic presets, liked as they are).
+   The design package's selected segment is teal; where the two conflict the
+   owner's existing look wins (design migration map, 28 Sep 2026). */
+.seg > button.on{
+  background:#fbbf24;
+  color:rgb(26,29,41);
+  font-weight:600;
+}
+.seg > button.on:hover{ background:#fbbf24; }
+
+/* The ⓘ beside a panel's subtitle, as Orbit has it: an 18px circle, not an
+   icon font, so it lines up with the text at any size. */
+.infodot{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:14px;height:14px;
+  border:1px solid rgb(107,114,128);
+  border-radius:50%;
+  font-size:9px;
+  line-height:1;
+  color:rgb(156,163,175);
+  margin-left:4px;
+  cursor:help;
+  vertical-align:middle;
+}
+
+/* =========================================================================
+   THE ⓘ MARKS ACTUALLY SAY SOMETHING NOW
+   =========================================================================
+   "see there are I circular marks everywhere in the app including the ppc
+    analytics page, they should show some statements"
+
+   Every one of them already CARRIED its statement -- in a title="" attribute,
+   which is the browser's native tooltip. That is why they looked empty:
+
+     * it waits about a second before appearing, so a normal hover shows
+       nothing at all and the mark reads as decoration;
+     * it renders in the OS's own style, which on a dark panel is a small pale
+       box that does not belong to the page;
+     * it collapses newlines and truncates long text on some platforms, and
+       these statements are two or three sentences of arithmetic.
+
+   So the text moves to data-tip (altaTips() in static/js/tips.js does the
+   move, once, after each render) and this draws it. No call site changes --
+   there are dozens of these marks across the app and rewriting each one is how
+   half of them would end up different.
+
+   POSITIONED ABOVE AND CENTRED, and allowed to be wide: the statements are
+   sentences, and a 200px column of six words is harder to read than the native
+   tooltip it replaces. `left:50%` + `translateX(-50%)` centres it on the mark;
+   the two edge classes below stop it hanging off the side of the screen. */
+[data-tip]{ position:relative; }
+[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute; bottom:calc(100% + 8px); left:50%;
+  transform:translateX(-50%) translateY(3px);
+  min-width:180px; max-width:340px; width:max-content;
+  padding:8px 10px; border-radius:6px;
+  background:var(--panel2,#1f242c); color:var(--text,#e6e9ef);
+  border:1px solid var(--line,#333a45);
+  box-shadow:0 6px 20px rgba(0,0,0,.35);
+  font-size:11.5px; font-weight:400; line-height:1.5; text-align:left;
+  white-space:pre-line;          /* the statements contain real newlines */
+  letter-spacing:normal; text-transform:none;
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .12s ease, transform .12s ease;
+  z-index:9999;
+}
+/* The little arrow. Drawn as a rotated square so it inherits the same border
+   and background as the bubble and cannot drift out of step with it. */
+[data-tip]::before{
+  content:""; position:absolute; bottom:calc(100% + 3px); left:50%;
+  width:9px; height:9px; transform:translateX(-50%) rotate(45deg) translateY(3px);
+  background:var(--panel2,#1f242c);
+  border-right:1px solid var(--line,#333a45);
+  border-bottom:1px solid var(--line,#333a45);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .12s ease, transform .12s ease;
+  z-index:9999;
+}
+[data-tip]:hover::after, [data-tip]:focus::after,
+[data-tip]:hover::before, [data-tip]:focus::before{
+  opacity:1; visibility:visible; transform:translateX(-50%) translateY(0);
+}
+[data-tip]:hover::before, [data-tip]:focus::before{
+  transform:translateX(-50%) rotate(45deg) translateY(0);
+}
+/* A mark near the left or right edge would push the bubble off-screen, and a
+   tooltip you have to scroll to is worse than none. altaTips() adds these. */
+[data-tip].tip-l::after{ left:0; transform:translateX(0) translateY(3px); }
+[data-tip].tip-l:hover::after, [data-tip].tip-l:focus::after{
+  transform:translateX(0) translateY(0); }
+[data-tip].tip-r::after{ left:auto; right:0; transform:translateX(0) translateY(3px); }
+[data-tip].tip-r:hover::after, [data-tip].tip-r:focus::after{
+  transform:translateX(0) translateY(0); }
+
+/* A mark that carries a statement is worth noticing. These were at 0.5 opacity
+   and easy to read as punctuation. */
+.infodot[data-tip], .ppc-i[data-tip], .ppc-q[data-tip]{ opacity:.85; }
+.infodot[data-tip]:hover, .ppc-i[data-tip]:hover, .ppc-q[data-tip]:hover{
+  opacity:1; color:var(--accent,#2dd4a8); border-color:var(--accent,#2dd4a8); }
+
+/* On a touch screen there is no hover. Tapping focuses it instead, which the
+   :focus rules above already handle -- this makes the mark focusable-looking
+   and stops the bubble being clipped by a scrolling table. */
+@media (hover:none){
+  [data-tip]::after{ max-width:min(340px, 78vw); }
+}
+
+
+/* ---- marketplace flags on the home cards ------------------------------
+   The home screen's one job is choosing an account, and nearly every account
+   here sells in more than one country. Orbit chooses the account AND the
+   marketplace in one step, with the country shown as a flag; picking the
+   account only to then hunt for the marketplace switcher is a step that need
+   not exist. Clicking a flag opens the account already on that marketplace. */
+.wscard .mktflag{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  height:24px;
+  padding:0 8px;
+  margin:0 4px 0 0;
+  border:1px solid rgb(55,65,81);
+  border-radius:6px;
+  background:rgb(45,50,66);
+  color:rgb(209,213,219);
+  font-size:11px;
+  font-weight:500;
+  line-height:1;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.wscard .mktflag span{ letter-spacing:.02em; }
+.wscard .mktflag:hover{
+  border-color:#fbbf24;
+  background:rgb(55,60,78);
+  transform:translateY(-1px);
+}
+/* The account's own default, marked so the card says which one a plain click
+   will open -- otherwise the flags look like the only way in. */
+.wscard .mktflag.on{
+  border-color:#fbbf24;
+  color:rgb(243,244,246);
+}
+.wscard .stats{ flex-wrap:wrap; row-gap:6px; }
+
+
+/* ---- the chart hover card ----------------------------------------------
+   Measured off Orbit's own tooltip (orbit_interactions.md, tooltip.json):
+
+       card     rgb(45,50,66), 1px rgb(75,85,99), radius 6, padding 8/12,
+                min-width 160, shadow rgba(251,191,36,.3) 0 4px 6px
+       time     12px / 600, rgb(243,244,246), 4px below it
+       label    12px / 500, in the series' OWN colour
+       value    12px / 600, rgb(243,244,246), pushed right
+       movement transform .4s -- it GLIDES from column to column
+
+   That last line is the one that matters. Ours put a readout in the corner of
+   the panel, which cannot move with the pointer and so never felt like
+   anything. The card following the cursor IS the interaction. */
+.charttip{
+  position:absolute;
+  top:0; left:0;
+  pointer-events:none;          /* never eat a drag-to-zoom */
+  z-index:5;
+  min-width:160px;
+  background:rgb(45,50,66);
+  border:1px solid rgb(75,85,99);
+  border-radius:6px;
+  padding:8px 12px;
+  box-shadow:rgba(251,191,36,.3) 0 4px 6px 0;
+  opacity:0;
+  transition:transform .4s ease, opacity .15s ease;
+  will-change:transform;
+}
+.charttip-time{
+  margin:0 0 4px;
+  padding:0;
+  font-size:12px;
+  font-weight:600;
+  line-height:18px;
+  color:rgb(243,244,246);
+}
+.charttip-row{
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  line-height:18px;
+}
+.charttip-name{
+  font-size:12px;
+  font-weight:500;
+  white-space:nowrap;
+}
+.charttip-val{
+  margin-left:auto;
+  font-size:12px;
+  font-weight:600;
+  color:rgb(243,244,246);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+/* Someone who asked their system not to animate should not be chased around the
+   screen by a gliding card; it still appears, it just does not travel. */
+@media (prefers-reduced-motion: reduce){
+  .charttip{ transition:opacity .01ms; }
+}
+
+
+/* ---- the Sales page, to the spec ---------------------------------------
+   From orbit_sales_spec.md, a full scan of Orbit's page at 1600px. These are
+   the numbers that decide whether the screen reads the same, and they are the
+   ones that were wrong: the panels were the right colour at the wrong size,
+   with the wrong gaps, so the same data looked like a different dashboard. */
+
+/* THE PAGE, AND THE COLUMN IT IS DRAWN IN -- one rule, because it used to be
+   two and the second silently added to the first.
+
+   Measured on Orbit: a 260px sidebar, a <main> with 32px padding, and inside it
+   a container with `max-width: 1400px`, centred. Every other number on the
+   screen falls out of that one:
+
+     top cards   (1400 - 16 gap) / 2 = 692   -> chart 692 - 24 pad - 3 border = 665
+     Sales Report            1400           -> chart 1400 - 32 pad - 3 border = 1365
+
+   which is exactly what Orbit's charts measure. Ours had no limit at all, so on
+   a wide monitor the cards simply kept growing and every chart with them --
+   "the size of the graphs on the desktop view is not the same as orbit". The
+   old note here said the cards were 622.5 wide, which was a measurement of a
+   narrower scan and never true of this layout.
+
+   Scoped to the Sales screen rather than applied app-wide: the other screens are
+   tables, and a table wants the whole width.
+
+   1464 AND NOT 1400, because `*{box-sizing:border-box}` is set at the top of
+   this file: the 32px padding comes OUT of the width, so a 1400 box would leave
+   1336 of content and every chart would be 64px narrower than Orbit's. Orbit
+   carries its padding on the <main> ABOVE the 1400 container; the same result
+   here needs 1400 + 32 + 32. */
+#sec_sales{
+  padding:32px;
+  background:rgb(26,29,41);
+  max-width:1464px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+/* Two equal columns, not auto-fit. With auto-fit a container a few pixels short
+   of twice the minimum drops to one column and the cards jump full width, which
+   is the "uneven" -- the two halves of the top row have to stay identical. They
+   stack below 900px, as Orbit's do on a phone (measured: 366 wide each in a 390
+   viewport, one under the other). */
+.sales-toprow{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+  margin-bottom:16px;
+}
+/* Side by side, the grid's gap is the spacing. The stacked-panel margin above
+   used to land on the second card too, so Week to Date sat 12px lower and
+   12px shorter than Live Sales beside it. */
+.sales-toprow > .salespanel + .salespanel{ margin-top:0; }
+@media (max-width:900px){
+  .sales-toprow{ grid-template-columns:1fr; }
+}
+
+/* THE SALES SCREEN ON A PHONE, at Orbit's own measurements.
+   Measured on Orbit at 390px: its cards are 366 wide, so 12px of page padding
+   each side -- not the 32px it uses on a desktop. Ours kept the desktop 32,
+   which took 64px out of a 390px screen and left every chart 40px narrower than
+   Orbit's on the same phone. The max-width goes with it: there is nothing left
+   to centre in.
+
+   DELIBERATELY AFTER the #sec_sales rule above rather than in the 860px block
+   with the rest of the mobile layout. Both are plain id selectors, so the later
+   one wins whatever the media query says -- putting it up there would have
+   looked right in the diff and done nothing. */
+@media (max-width:860px){
+  #sec_sales{ padding:12px; max-width:none; }
+  /* Three nested paddings is most of a phone screen, so the panels inside drop
+     from 16 to the 12 the top cards already use. */
+  #sec_sales > .salespanel{ padding:12px; }
+}
+.sales-toprow > .salespanel{ padding:12px; }
+#sec_sales > .salespanel{ padding:16px; }
+
+/* The panel header: title and subtitle on the left, indicators and the change
+   badge pushed right, 12px between them, a 12px rule under it. */
+.panelhead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  margin:0 0 16px;
+  padding:0 0 12px;
+}
+.sales-toprow .panelhead{ margin:0 0 8px; padding:0 0 4px; }
+.paneltitle{ font:var(--as-text-panel-title); color:var(--as-text-primary); margin:0; }
+.panelsub{ font:var(--as-text-small); color:var(--as-text-muted); margin:2px 0 0; }
+
+/* "3 days not in from Amazon yet — shaded, not zero". It explains the grey
+   block on the right of the week chart, so it cannot simply be dropped for
+   matching Orbit's card exactly -- Orbit has no such block because its data is
+   complete. It goes on the subtitle line, where it costs no height, rather than
+   as a band of small print between the header and the chart.
+   :empty so a complete week leaves no stray gap after the subtitle. */
+.panelnote{ margin-left:8px; }
+.panelnote:empty{ display:none; }
+/* Gold only when it is saying something is MISSING. The same slot also carries
+   the hourly card's timezone, which is a fact rather than a warning and must
+   not be dressed as one. */
+.panelnote.warn{ color:rgb(251,191,36); }
+
+/* The key in the header row, beside the change badge, as Orbit has it. Centred
+   against the title rather than against the top of the two-line header block,
+   so it lines up with the words instead of floating above them. */
+.sales-toprow .panelhead > span[id$="_key"],
+.sales-toprow .panelhead > .panelclock{ align-self:center; }
+
+/* "Pacific Time (PDT): 5:14 PM" -- measured at 12px on Orbit's Live Sales
+   header, the zone name muted and the time in the reading colour. */
+.panelclock{ font-size:12px; color:rgb(243,244,246); white-space:nowrap; }
+.panelclock:empty{ display:none; }
+
+/* Five stat cards across, 12px apart -- measured pitch 247.8 on a 235.8 card. */
+#sales_cards.stat-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:12px;
+  margin:0 0 16px;
+}
+
+/* The ad-spend strip under each live card: 10px uppercase labels with a
+   0.4px letter-spacing, values in normal case beside them. */
+#sec_sales .adfooter{
+  display:flex;
+  align-items:baseline;
+  gap:4px;
+  flex-wrap:wrap;
+  margin:8px 0 0;
+  padding:4px 0 0;
+  font-size:12px;
+  line-height:18px;
+  color:rgb(209,213,219);
+}
+#sec_sales .adfooter b{ font-weight:600; }
+#sec_sales .adfooter .lbl{
+  font-size:10px;
+  font-weight:400;
+  line-height:15px;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:rgb(156,163,175);
+}
+

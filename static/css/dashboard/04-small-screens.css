@@ -1,0 +1,333 @@
+/* static/css/dashboard/04-small-screens.css -- user permissions, finding a listing, image order, generate preview, image library, Dr PPC, overview, compliance checker, catalog, keywords, leading indicators, trackers. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+  /* ---- USER PERMISSIONS, THE WAY SELLER CENTRAL LAYS THEM OUT ----
+     The area down the left, the three levels across the top, one radio per row.
+     The point of the columns is that they can be READ DOWN: you see at a glance
+     that this person has View on everything in Money and nothing in Operations.
+     Seventeen dropdowns each had to be opened to be read. */
+  .perm-head{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+             padding:2px 0 12px}
+  .perm-table{width:100%;border-collapse:collapse;font-size:12px}
+  .perm-table th{text-align:left;font-size:10px;font-weight:700;
+                 letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);
+                 padding:10px 12px;border-bottom:1px solid var(--line)}
+  .perm-table td{padding:8px 12px;border-bottom:1px solid var(--line)}
+  .perm-col{text-align:center;width:118px}
+  .perm-table tr:last-child td{border-bottom:0}
+  /* The group heading is a row, so "set all" sits in the same columns as the
+     radios it sets -- which is what makes it obvious what it will do. */
+  .perm-group td{background:var(--panel2);font-weight:700;font-size:11px;
+                 letter-spacing:.05em;text-transform:uppercase;color:var(--ink3)}
+  .perm-all{background:none;border:1px solid var(--line);border-radius:5px;
+            color:var(--ink3);font-size:10px;padding:2px 8px;cursor:pointer;
+            font-family:inherit}
+  .perm-all:hover{border-color:var(--accent);color:var(--accent)}
+  /* A page that sits under an area is indented, so the hierarchy is visible
+     without reading the labels. */
+  .perm-child td:first-child{padding-left:26px}
+  .perm-inherit{font-size:10px;color:var(--ink4);display:inline-flex;
+                align-items:center;gap:5px;white-space:nowrap;cursor:pointer}
+  .perm-inherit.on{color:var(--ink2)}
+  .perm-ws{display:flex;flex-wrap:wrap;gap:7px}
+  .perm-wsopt{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+              background:var(--panel2);border:1px solid var(--line);
+              border-radius:7px;padding:5px 10px;cursor:pointer}
+  .perm-wsopt.on{border-color:var(--accent);background:var(--accent-bg);
+                 color:var(--accent)}
+  /* "Every account" is checked, so the individual ones stop meaning anything --
+     shown dimmed rather than removed so the list of what exists is still there. */
+  .perm-wsopt.dim{opacity:.45;cursor:default}
+
+  /* ---- FINDING ONE LISTING ----
+     "let me search the listing using the sku, asin, or a ean used in it"
+     Sits in the filter strip, before the duplicates pill, and stays there when
+     that pill is absent -- it is the only way to reach a single product on an
+     account with eighty of them, so it must not hide with the thing beside it. */
+  /* THE CAP IS GONE.
+   *     "make that search bar long that it covers the same area that it
+   *      should be, right now it is covering only half"
+   * It had flex:1 AND max-width:420px, so it stopped growing at 420px and left
+   * the rest of the toolbar row empty -- the half he is describing. It is the
+   * only way to reach one product among eighty and it now takes whatever the
+   * row has spare. The min-width still protects it on a narrow window. */
+  .lsearch{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
+           border:1px solid var(--line);border-radius:8px;padding:3px 9px;
+           min-width:260px;flex:1 1 420px}
+  .lsearch .ti{color:var(--ink4);font-size:15px;flex:0 0 auto}
+  .lsearch input{background:none;border:none;outline:none;flex:1;min-width:0;
+                 color:var(--ink);font-size:12px;padding:4px 0}
+  .lsearch input::placeholder{color:var(--ink4)}
+
+  /* ---- THE ORDER OF THE IMAGES ----
+     "there should be a story or a logic behind every image that why it comes
+      first second and third"
+
+     The number is a big, plain step marker down the left of the list, so the
+     sequence reads as a sequence rather than as a set of cards that happen to
+     be stacked. .cwhy is the reason, and it sits ABOVE the concept: the order
+     is the decision being made on this screen, and the concept is what fills
+     the slot once that decision is taken. */
+  .conceptcard{position:relative}
+  .cstep{flex:0 0 30px;width:30px;height:30px;border-radius:50%;
+         background:var(--accent-bg);border:1px solid var(--accent);
+         color:var(--accent);font-weight:700;font-size:13px;
+         display:flex;align-items:center;justify-content:center;margin-right:2px}
+  .crole{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.04em;
+         text-transform:uppercase;color:var(--ink3);background:var(--panel2);
+         border:1px solid var(--line);border-radius:999px;padding:1px 7px;
+         margin-left:6px;vertical-align:middle}
+  .cwhy{font-size:12px;line-height:1.5;color:var(--ink2);background:var(--panel2);
+        border-left:2px solid var(--accent);border-radius:0 6px 6px 0;
+        padding:5px 9px;margin:5px 0 6px}
+
+  /* ---- WHAT GENERATE WOULD DO ----
+     Sits directly under the Generate button, because it is about to be pressed.
+     Ordinary state is quiet; the .bad state is a queue with NOTHING on record,
+     which is what a broken duplicate check looks like and is worth an alarm. */
+  .genplan{margin:0 0 14px}
+  .genplan-in{background:var(--panel2);border:1px solid var(--line);
+              border-radius:9px;padding:11px 13px}
+  .genplan-in.bad{border-color:#5c2f2f;background:#2b1a1a}
+  .genplan-bad{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f;
+               border-radius:9px;padding:11px 13px;font-size:12px}
+  .genplan-nums{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;
+                margin-bottom:5px}
+  .genplan-n{font-size:12px;color:var(--ink2)}
+  .genplan-n b{font-size:16px;color:var(--ink);margin-right:3px}
+  .genplan-n.go b{color:var(--accent)}
+  .genplan-n.warn b{color:var(--warn)}
+  .genplan-say{font-size:12px;color:var(--ink2);line-height:1.5;max-width:760px}
+  .genplan-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+  .genplan-list span{font-size:10px;font-family:ui-monospace,Menlo,Consolas,monospace;
+                     background:var(--panel);border:1px solid var(--line);
+                     border-radius:5px;padding:2px 6px;color:var(--ink3)}
+
+  /* ---- IMAGE LIBRARY PAGE ----
+     A picker beside the library rather than above it, so choosing the next
+     product does not scroll the images off the screen -- which is the round
+     trip this page exists to remove. The two columns stack on a narrow screen,
+     picker first, because you cannot use the right-hand side until you have
+     chosen something on the left. */
+  .imgp-split{display:grid;grid-template-columns:290px minmax(0,1fr);gap:14px;
+              align-items:start}
+  .imgp-left{background:var(--panel);border:1px solid var(--line);
+             border-radius:var(--radius);padding:10px;position:sticky;top:64px;
+             max-height:calc(100vh - 90px);overflow-y:auto}
+  .imgp-right{min-width:0}
+  .imgp-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+            padding:2px 2px 8px}
+  .imgp-list{display:flex;flex-direction:column;gap:3px}
+  .imgp-row{display:flex;gap:8px;align-items:center;padding:6px;border-radius:7px;
+            cursor:pointer;border:1px solid transparent}
+  .imgp-row:hover{background:var(--panel2)}
+  .imgp-row.on{background:var(--accent-bg);border-color:var(--accent)}
+  .imgp-row img, .imgp-noimg{width:34px;height:34px;border-radius:6px;
+                             object-fit:cover;flex:0 0 34px;background:var(--panel2);
+                             border:1px solid var(--line);display:block}
+  .imgp-noimg{display:flex;align-items:center;justify-content:center;
+              color:var(--ink4);font-size:14px}
+  .imgp-meta{min-width:0;flex:1}
+  .imgp-t{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap}
+  @media (max-width:900px){
+    .imgp-split{grid-template-columns:1fr}
+    .imgp-left{position:static;max-height:none}
+  }
+
+  /* ---- DR PPC ----
+     The not-connected state is the one that matters most for now, so it is a
+     numbered list of what to actually do rather than a shrug. */
+  .drp-how{margin:10px 0 0;padding-left:20px;font-size:12px;color:var(--ink2);
+           line-height:1.6;max-width:700px}
+  .drp-how li{margin-bottom:6px}
+
+  /* ---- BUSINESS OVERVIEW ----
+     One total card per CURRENCY, never one grand total: pounds and dollars are
+     not added, so there is no single number to make big.
+
+     The two marks in the grid are the honest ones. "·" is a month with nothing
+     STORED, which is not a month with no sales -- drawing a 0 there would show
+     a collapse that never happened. "*" is the current month, which is not
+     finished, and a chart that omits that shows every business falling off a
+     cliff on the 3rd. */
+  .ovw-totals{display:flex;gap:9px;flex-wrap:wrap;margin:4px 0 10px}
+  .ovw-total{background:var(--panel2);border:1px solid var(--line);
+             border-radius:9px;padding:12px 16px;min-width:170px}
+  .ovw-grid td, .ovw-grid th{text-align:right;white-space:nowrap}
+  .ovw-grid td:first-child, .ovw-grid th:first-child{text-align:left}
+  .ovw-none{color:var(--ink4);text-align:center !important}
+  .ovw-partial{color:var(--ink2)}
+  .ovw-star{color:var(--warn);font-weight:700;margin-left:2px}
+
+  /* ---- COMPLIANCE CHECKER ----
+     The score is for SORTING and nothing more, so it is big but it sits beside
+     the findings rather than above them on its own.
+
+     .cmp-gaps is the important one: what the scan could NOT check goes ABOVE
+     the findings, not under them. A scan that skipped half its checks and
+     scored 96 is not a listing in good order, and burying that at the bottom is
+     how the number turns into a lie. */
+  .cmp-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;
+            padding:2px 0 10px}
+  .cmp-score{width:66px;height:66px;border-radius:12px;display:flex;
+             align-items:center;justify-content:center;font-size:26px;
+             font-weight:700;flex:0 0 66px}
+  .cmp-score.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
+  .cmp-score.warn{background:#2a2415;border:1px solid #55492a;color:#e3c98a}
+  .cmp-score.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
+  .cmp-counts{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;align-items:center}
+  .cmp-mini{display:inline-block;min-width:30px;text-align:center;font-weight:700;
+            font-size:11px;padding:2px 7px;border-radius:6px}
+  .cmp-mini.ok{background:#16291d;color:#7fd6a2}
+  .cmp-mini.warn{background:#2a2415;color:#e3c98a}
+  .cmp-mini.off{background:#2b1a1a;color:#f0928f}
+  .cmp-gaps{background:#241f10;border:1px solid #3a3320;border-radius:8px;
+            padding:10px 12px;margin:0 0 12px}
+  .cmp-gapsk{font-size:11px;font-weight:700;letter-spacing:.05em;
+             text-transform:uppercase;color:#e3c98a;margin-bottom:5px}
+  .cmp-gap{font-size:12px;color:#e6d9b8;line-height:1.5;margin-top:4px}
+
+  /* ---- PRODUCT CATALOG ----
+     Four findings above the table. A catalogue of eighty products is a list
+     nobody reads; these are the reason to open the page, so they are sentences
+     rather than numbers needing interpretation, and they go first.
+
+     Only ONE of them carries a colour: "listed and earning nothing" is the only
+     card that names work to do. The other three are facts about the shape of
+     the business, and colouring all four would make none of them stand out. */
+  .catp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+              gap:9px;margin:4px 0 12px}
+  .catp-card{background:var(--panel2);border:1px solid var(--line);
+             border-radius:9px;padding:12px 14px}
+  .catp-card.warn{border-color:#55492a;background:#241f10}
+  .catp-k{font-size:10px;font-weight:700;letter-spacing:.07em;
+          text-transform:uppercase;color:var(--ink4)}
+  .catp-v{font-size:24px;font-weight:700;line-height:1.15;margin:3px 0 2px}
+  .catp-s{font-size:12px;color:var(--ink3);line-height:1.45}
+  .catp-counts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;
+               font-size:12px;color:var(--ink2);padding:2px 0 10px}
+  .catp-bar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .catp-img{width:34px;height:34px;border-radius:6px;object-fit:cover;flex:0 0 34px;
+            background:var(--panel2);border:1px solid var(--line);display:block}
+  .catp-noimg{display:flex;align-items:center;justify-content:center;
+              color:var(--ink4);font-size:14px}
+  /* A product earning nothing is dimmed rather than hidden -- the catalogue
+     page is the one place those most need to be visible. */
+  .catp-dead{opacity:.62}
+
+  /* ---- KEYWORDS (SQP) ----
+     The break cards are the point of the screen: four different jobs, each with
+     a count and the sales that went elsewhere. Clickable, because "show me the
+     eleven queries where they see us and scroll past" is the actual next
+     action. */
+  .sqp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+             gap:9px;margin:4px 0 10px}
+  .sqp-card{background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+            padding:11px 13px;cursor:pointer;transition:border-color .12s,background .12s}
+  .sqp-card:hover{border-color:var(--accent);background:var(--panel)}
+  .sqp-card.on{border-color:var(--accent);background:var(--accent-bg)}
+  .sqp-n{font-size:21px;font-weight:700;line-height:1.1}
+  .sqp-l{font-size:12px;font-weight:600;color:var(--ink2)}
+
+  /* ---- LEADING INDICATORS ----
+     Four states, and the fourth is the important one: a figure with too little
+     history, or a day Amazon has not reported, is genuinely UNJUDGED. It gets
+     its own neutral pill rather than borrowing the on-track green, because a
+     screen whose whole job is to filter attention must not claim a verdict it
+     did not reach. */
+  .ld-head{display:flex;justify-content:space-between;align-items:flex-start;
+           gap:12px;flex-wrap:wrap;padding:4px 0 12px}
+  .ld-day{font-size:15px;font-weight:600}
+  .ld-counts{display:flex;gap:6px;flex-wrap:wrap}
+  .ld-pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;
+           border-radius:999px;white-space:nowrap}
+  .ld-pill.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
+  .ld-pill.warn{background:#2a2415;border:1px solid #55492a;color:#e3c98a}
+  .ld-pill.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
+  .ld-pill.unk{background:var(--panel2);border:1px solid var(--line);color:var(--ink3)}
+  /* Sigma is signed so POSITIVE ALWAYS MEANS BETTER, whichever way round the
+     indicator runs -- so one colour rule covers all eight. */
+  .ld-good{color:#7fd6a2;font-weight:600}
+  .ld-mid{color:var(--ink2);font-weight:600}
+  .ld-warn{color:#e3c98a;font-weight:600}
+  .ld-bad{color:#f0928f;font-weight:600}
+  .ld-sparkcell{color:var(--ink3);min-width:100px}
+  .ld-spark{display:block;opacity:.85}
+
+  /* ---- TRACKERS ----
+     Three states, and the third is the one that matters: "not known" must not
+     look like either a pass or a failure. A reading Amazon would not give, and
+     a number with no target set, are both genuinely unjudged -- and a
+     monitoring screen that renders those as a tick is a screen that lies. */
+  .trkpill{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;
+           border-radius:999px;white-space:nowrap}
+  .trkpill.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
+  .trkpill.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
+  .trkpill.unk{background:var(--panel2);border:1px solid var(--line);color:var(--ink3)}
+  /* Drift is signed so positive always means WORSE, whichever way round the
+     metric runs -- so one colour rule covers all four trackers. */
+  .trkbad{color:#f0928f;font-weight:600}
+  .trkgood{color:#7fd6a2;font-weight:600}
+
+  .apopts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+  .appres{font-size:11px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px;cursor:pointer}
+  .apmob{display:inline-flex;gap:5px;align-items:center;font-size:11px;color:var(--muted);cursor:pointer}
+  .apmob input{margin:0}
+  .apscr{display:inline-block;font-size:10px;color:#cbb7e8;background:#241a33;border:1px solid #453258;padding:1px 6px;border-radius:999px;margin-left:4px}
+  .apcopy{font-size:11px;color:#c7d0dc;padding:6px 8px;border-top:1px dashed var(--line);line-height:1.45}
+  .issuesbox{border-radius:9px;padding:11px 13px;margin-bottom:12px;font-size:12px;line-height:1.5}
+  .issuesbox.ok{background:#16241a;border:1px solid #2c5036;color:#bfe3c9}
+  .issuesbox.warn{background:#2a2014;border:1px solid #5c4528;color:#e9d5b6}
+  .issgrp{margin-top:8px}
+  .issgrp-h{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+  .issgrp-h.err{color:var(--red)}
+  .issgrp-h.warn{color:var(--warn)}
+  .issrow{background:rgba(0,0,0,.18);border-radius:6px;padding:6px 9px;margin-bottom:4px}
+  .issmsg{font-size:12px}
+  .issattr{font-size:10px;color:var(--ink2);margin-top:2px}
+  .issattr code,.optfix~* code{background:#1c2430;padding:0 4px;border-radius:4px}
+  .optsec{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2);font-weight:700;margin:4px 0 8px}
+  .srcbox{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px}
+  .optall{margin-top:14px;border:1px solid var(--line);border-radius:9px;padding:4px 10px}
+  .optall>summary{cursor:pointer;font-size:13px;font-weight:600;padding:6px 0}
+  .optattr{font-size:12px}
+  .subrow .k{padding-left:18px;color:#9fb0c8;font-size:12px}
+  .subrow .subarrow{color:var(--ink3);margin-right:3px}
+  .optdiff{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px}
+  .optdiff.chg{border-color:#5a4a2a;background:#1c1810}
+  .optdiff.same{opacity:.6}
+  .optcheck{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px;cursor:pointer}
+  .optcheck input{width:16px;height:16px;accent-color:var(--accent)}
+  .chgflag{font-size:10px;background:#5a4a2a;color:var(--warn);padding:1px 7px;border-radius:999px;font-weight:600}
+  .optold{font-size:12px;color:var(--ink2);margin:2px 0;padding:4px 8px;background:#1a1414;border-radius:6px}
+  .optnew{font-size:12px;color:#aca;padding:4px 8px;background:#141a14;border-radius:6px}
+  .rememberbtn:hover{filter:brightness(1.12)}
+  .rememberbtn:disabled{opacity:.6;cursor:default}
+  #stopbtn:disabled{opacity:.4;cursor:default}
+  .ibtn{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
+        border-radius:50%;font-size:10px;font-weight:700;cursor:help;margin-left:6px;
+        border:1px solid var(--line);font-style:normal}
+  .ibtn.iok{color:var(--accent2);border-color:var(--accent-line)}
+  .ibtn.iwarn{color:var(--warn);border-color:var(--warn-line);background:var(--amberbg)}
+  .heroimg{margin:6px 0 2px}
+  .heroimg img{max-width:100%;max-height:190px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:var(--panel);display:block}
+  .findsum{font-size:12px;font-weight:600;padding:7px 11px;border-radius:8px;cursor:pointer;list-style:none;margin:2px 0}
+  .findsum.good{background:var(--ok-bg);border:1px solid var(--ok-line);color:var(--ok);cursor:default}
+  .findsum.bad{background:var(--redbg);border:1px solid var(--red-line);color:var(--red)}
+  .findsum.info{background:var(--amberbg);border:1px solid var(--warn-line);color:var(--warn)}
+  .findings.info{background:var(--amberbg);border:1px solid var(--warn-line)}
+  /* Amazon feedback = informational -> NEUTRAL/GREY, never red. */
+  .findsum.neutral{background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+  .findings.neutral{background:var(--panel2);border:1px solid var(--line)}
+  /* Restricted products check panel (Shape 2) -- clean = quiet green strip; matches = rows */
+  /* Restricted-check CLEAN state: quiet reassurance, not a flag. Small + muted green. */
+  .restclear{font-size:11px;color:#6fb98a;background:transparent;border:none;border-radius:8px;
+             padding:3px 2px;margin:2px 0;display:flex;align-items:center;gap:6px}
+  .restclear i{font-size:13px;color:#4e9c6e}
+  .restclear .cc{color:var(--muted)}
+  .restlist{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+  .restrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
+  .restrow.red{background:var(--redbg);border-color:var(--red-line)}
+  .restrow.amber{background:var(--amberbg);border-color:var(--warn-line)}
+  .restconf{margin-left:6px;font-size:10px}
+  .findingsbox .findings{margin-top:6px}
+  details.findingsbox>summary::-webkit-details-marker{display:none}

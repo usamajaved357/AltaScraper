@@ -1,0 +1,244 @@
+/* static/css/dashboard/08-sales-dashboard.css -- the Sales dashboard, Hourly Sales, Traffic & Conversions, the heatmap. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+  /* =====================================================================
+     SALES DASHBOARD
+     Stat cards + a metrics x dates grid. Every cell prints its number and the
+     tint only shades it, so the grid IS the accessible table view -- nothing is
+     readable by colour alone, and nothing is lost in print or to colour
+     blindness. One hue, light to dark, shaded per ROW: shading across rows
+     would compare sessions against revenue, which means nothing.
+     ===================================================================== */
+
+  /* One filter row, above everything it scopes. Per-card filters would let two
+     cards show different periods, which is worse than no filter at all. */
+  .salesbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+
+  /* The stat cards reuse .stat-row/.stat-card from the Orbit block. The number
+     is deliberately NOT tabular: equal-width digits make a large standalone
+     figure look loose and gappy. tabular-nums belongs where numbers stack
+     vertically -- which is the grid below, not here. */
+  .stat-card .stat-number{font-variant-numeric:normal}
+  .stat-card{text-align:left;cursor:default}
+  /* .stat-card.is-empty .stat-number: one definition, in 11-stat-cards.css (an exact duplicate lived here). */
+  .stat-delta{font-size:11px;margin-top:6px;font-weight:600}
+  /* Direction AND a word, never colour alone. */
+  .stat-delta.good{color:var(--ok)}
+  .stat-delta.bad{color:var(--red)}
+  .stat-delta.flat{color:var(--ink3)}
+  .salesnote{font-size:12px;margin:-6px 0 14px;padding:8px 10px;
+             border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+
+  /* 30+ columns will not fit; the grid scrolls inside its own box rather than
+     making the whole page scroll sideways. The metric column stays put, because
+     a value with its row label scrolled away is unreadable. */
+  .salesgridwrap{overflow:auto;max-height:62vh;border:1px solid var(--line);
+                 border-radius:10px;background:var(--panel)}
+  .salesgrid{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}
+  .salesgrid th,.salesgrid td{padding:7px 10px;white-space:nowrap;
+                              border-bottom:1px solid var(--line)}
+  /* Numbers stack vertically here, so tabular figures are right. */
+  .salesgrid td{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .salesgrid thead th{position:sticky;top:0;z-index:2;background:var(--panel2);
+                      font-size:10px;text-transform:uppercase;letter-spacing:.03em;
+                      font-weight:600;color:var(--ink3);text-align:right}
+  .salesgrid th.mcol{position:sticky;left:0;z-index:1;background:var(--panel2);
+                     text-align:left;font-weight:500;color:var(--ink2);
+                     text-transform:none;letter-spacing:0;font-size:12px;
+                     max-width:210px;overflow:hidden;text-overflow:ellipsis}
+  .salesgrid thead th.mcol{z-index:3}
+
+  /* THE SECTION BANDS. Measured on Orbit's P&L Heatmap: its grid is six
+     sections, each introduced by a header row 24px tall on rgb(45,50,66),
+     against 29px transparent for a data row. Without them thirty-eight metrics
+     are one wall of numbers and "is my advertising working" means finding four
+     rows scattered through it. */
+  /* ---- Hourly Sales -----------------------------------------------------
+     A row per product: its name, a 24-cell strip of its day, and the window
+     totals. Measured off Orbit's: cells 33x20 on rgb(45,50,66), gold at
+     varying alpha for volume. */
+  #sec_hourly{ padding:32px; background:rgb(26,29,41);
+               max-width:1464px; margin-left:auto; margin-right:auto; }
+  .hrlywrap{ border:1px solid var(--line); border-radius:10px;
+             background:var(--panel); overflow:auto; }
+  .hrlyhead, .hrlyrow{
+    display:grid; grid-template-columns:280px minmax(480px,1fr) 130px;
+    align-items:center; gap:12px; padding:7px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .hrlyhead{ position:sticky; top:0; z-index:2; background:var(--panel2);
+             font-size:10px; font-weight:600; letter-spacing:.04em;
+             text-transform:uppercase; color:rgb(156,163,175); }
+  .hrlyrow{ cursor:pointer; }
+  .hrlyrow:hover{ background:rgba(255,255,255,.03); }
+  .hrlyrow.open{ background:rgba(251,191,36,.06); }
+  .hrlyname{ min-width:0; font-size:12px; }
+  .hrlyname code{ font-size:10px; display:block; }
+  .hrlytitle{ display:block; overflow:hidden; text-overflow:ellipsis;
+              white-space:nowrap; }
+  /* 24 equal columns -- one per hour. The header labels sit in the same grid,
+     so 12AM lines up with the first cell and 11PM with the last. */
+  .hrlystrip{ display:grid; grid-template-columns:repeat(24,1fr); gap:1px;
+              font-size:10px; color:rgb(156,163,175); }
+  .hrlycell{ height:20px; border-radius:2px; display:block; }
+  .hrlytot{ font-size:11px; text-align:right; white-space:nowrap;
+            font-variant-numeric:tabular-nums; }
+  /* The Mon-Sun grid a click opens. */
+  .hrlygrid{ padding:10px 12px 14px 12px; border-bottom:1px solid var(--line);
+             background:rgba(0,0,0,.12); }
+  .hrlygridhead, .hrlygridrow{
+    display:grid; grid-template-columns:44px repeat(24,1fr); gap:1px;
+    align-items:center; margin-bottom:1px;
+  }
+  .hrlygridhead{ font-size:10px; color:rgb(156,163,175); margin-bottom:4px; }
+  .hrlydow{ font-size:10px; color:rgb(156,163,175); }
+  @media (max-width:860px){
+    #sec_hourly{ padding:12px; max-width:none; }
+    .hrlyhead, .hrlyrow{ grid-template-columns:150px minmax(360px,1fr) 96px;
+                         gap:8px; }
+  }
+
+  /* ---- Traffic & Conversions -------------------------------------------
+     Its tiles, tables and pills reuse the Sales screen's classes; only the
+     three things that screen does not have are defined here. */
+  #sec_traffic{ padding:32px; background:rgb(26,29,41);
+                max-width:1464px; margin-left:auto; margin-right:auto; }
+  /* The donut sits beside the daily split, and drops under it on a narrow
+     screen rather than squeezing both. */
+  .trafsplit{ display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .trafdonut{ flex:0 0 auto; text-align:center; }
+  .traflegend{ display:flex; gap:18px; flex-wrap:wrap; margin-top:10px;
+               font-size:12px; }
+  /* Horizontal bars for the top converters. A bar per row with the figure
+     printed on it says the same as Orbit's bar chart and stays readable when a
+     product title is long -- which every one of these is. */
+  .trafbars{ display:flex; flex-direction:column; gap:9px; }
+  .trafbar{ display:grid; grid-template-columns:minmax(0,1fr) 150px 58px 90px;
+            align-items:center; gap:10px; font-size:12px; }
+  .trafbar-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trafbar-track{ height:9px; border-radius:5px; background:var(--panel2);
+                  overflow:hidden; }
+  .trafbar-fill{ display:block; height:100%; border-radius:5px;
+                 background:#22c55e; }
+  .trafbar-val{ text-align:right; font-variant-numeric:tabular-nums;
+                font-weight:600; }
+  .trafbar-sub{ font-size:11px; text-align:right; }
+  /* The product cell: one line, truncated, with the ASIN never cut -- it is the
+     part you would copy. Left to wrap, these titles made rows 182px tall and
+     the table 4,587px long. */
+  .trafname{ padding:6px 8px; max-width:420px; }
+  .trafname-t{ display:block; max-width:340px; overflow:hidden;
+               text-overflow:ellipsis; white-space:nowrap; }
+  .trafname-a{ font-size:10px; margin-right:6px; }
+  @media (max-width:860px){
+    #sec_traffic{ padding:12px; max-width:none; }
+    .trafbar{ grid-template-columns:minmax(0,1fr) 70px; }
+    .trafbar-track, .trafbar-sub{ display:none; }
+  }
+
+  /* ---- the heatmap's own toolbar, measured off Orbit's ----------------
+     labels 11px/600 uppercase in rgb(156,163,175); pills 10px on a 4px
+     radius with 4px 10px of padding, the active one 600 on #fbbf24 with dark
+     text; buttons 10px/500 on a 6px radius. */
+  .gtools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  .gtools .glbl,.gcogs .glbl{font-size:11px;font-weight:600;letter-spacing:.04em;
+       text-transform:uppercase;color:rgb(156,163,175)}
+  .gtools .gspacer{flex:1}
+  .gtools .glast{font-size:11px;color:rgb(156,163,175);white-space:nowrap}
+  .gbtn{font-size:10px;font-weight:500;padding:4px 12px;border-radius:6px;
+        background:transparent;color:var(--ink2);border:1px solid var(--line);
+        cursor:pointer;white-space:nowrap}
+  .gbtn:hover{border-color:var(--accent);color:var(--ink)}
+  .gbtn.wide{font-size:13px;font-weight:400;padding:7px 12px;border-radius:8px;
+             background:rgb(45,50,66);max-width:230px;overflow:hidden;
+             text-overflow:ellipsis}
+  .gpills{display:inline-flex;gap:2px;background:rgb(45,50,66);
+          border:1px solid rgb(75,85,99);border-radius:6px;padding:2px}
+  .gpill{font-size:10px;font-weight:500;padding:4px 10px;border-radius:4px;
+         background:transparent;color:var(--ink2);border:0;cursor:pointer}
+  .gpill:hover{color:var(--ink)}
+  .gpill.on{background:#fbbf24;color:#0f172a;font-weight:600}
+
+  /* The COGS strip under the toolbar. */
+  .gcogs{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;
+         font-size:12px;margin:0 0 12px;color:var(--ink2)}
+  .gcogs .gsep{color:var(--muted)}
+  /* The tie-out line is a caveat, not a warning: Amazon's two feeds disagree
+     about a few orders and both figures are real. Marked so it is noticed and
+     not coloured like an error, which it is not. */
+  .gtie{border-left:2px solid var(--muted);padding-left:8px}
+  /* "There is nothing here" said out loud. Not an error colour: an account that
+     was not trading yet is a fact about the business, not a fault in the app. */
+  .gnodata{border-left:2px solid var(--accent2,#6ac7e8);padding-left:8px;
+           display:block;line-height:1.5}
+  .gnodata .glbl{margin-right:6px}
+  .glink{background:none;border:0;padding:0;font-size:12px;font-weight:500;
+         color:var(--accent2);cursor:pointer}
+  .glink:hover{text-decoration:underline}
+
+  /* The Metrics picker. Anchored to its button in page coordinates, so it is
+     appended to <body> rather than inside the scrolling grid wrapper. */
+  .metricpick{position:absolute;z-index:60;display:none;width:264px;
+              max-height:60vh;overflow:auto;background:var(--panel);
+              border:1px solid var(--line);border-radius:10px;padding:8px;
+              box-shadow:0 10px 28px rgba(0,0,0,.45)}
+  .metricpick.open{display:block}
+  .metricpick-head{display:flex;align-items:center;gap:8px;font-size:11px;
+                   font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+                   color:rgb(156,163,175);padding:2px 4px 8px}
+  .metricpick-head .glink{margin-left:auto;font-size:11px}
+  .metricpick-head .glink + .glink{margin-left:0}
+  .metricpick-sec{font-size:10px;font-weight:600;text-transform:uppercase;
+                  letter-spacing:.05em;color:rgb(156,163,175);
+                  padding:8px 4px 3px;border-top:1px solid var(--line);margin-top:4px}
+  .metricpick-sec:first-of-type{border-top:0;margin-top:0}
+  .metricpick-row{display:flex;align-items:center;gap:7px;font-size:12px;
+                  padding:4px 4px;border-radius:5px;cursor:pointer}
+  .metricpick-row:hover{background:rgba(255,255,255,.04)}
+
+  /* Sends the eye to the product filter at the top of the screen rather than
+     giving the grid a second one that could disagree with it. */
+  .flashfocus{outline:2px solid var(--accent);outline-offset:2px;
+              transition:outline-color .2s}
+
+  .salesgrid tr.gsec th.mcol,
+  .salesgrid tr.gsec td{background:rgb(45,50,66);padding:4px 10px;height:24px}
+  .salesgrid tr.gsec th.mcol{font-size:10px;font-weight:600;color:rgb(243,244,246);
+                             text-transform:uppercase;letter-spacing:.05em}
+  /* No hover lift on a heading, and it never shades: it has no numbers in it. */
+  .salesgrid tbody tr.gsec:hover td{box-shadow:none}
+  /* A hairline one shade off the surface -- never dashed, never heavy. */
+  .salesgrid tbody tr:last-child td,
+  .salesgrid tbody tr:last-child th{border-bottom:none}
+  .salesgrid tbody tr:hover td{box-shadow:inset 0 0 0 9999px rgba(255,255,255,.02)}
+
+  /* Today so far -- a live figure, from a different measurement than the grid.
+     Set apart deliberately: a quiet strip above the cards, not a fifth card,
+     because it will not tie out to them and should not look like it should. */
+  /* THE STRIP IS A FIXED HEIGHT, and that is what keeps two cards level.
+     "the Live Sales graph and week to date graph differ in size or maybe the
+      size is same but second graph is positioned a little lower"
+     The charts ARE the same size -- measured before, 579x200 with a 559x160
+     plot area on both. What differed is where each one STARTS. Both cards put
+     this strip above their chart, the strip was flex-wrap:wrap, and the note at
+     its right end is a different length on each: "live from orders · vs the
+     same time yesterday · 3 pending" against "5 days so far · vs the same days
+     last week". Whichever wrapped to a second line pushed only ITS chart down,
+     so two identical charts sat at different heights.
+     One row, one height, and the note truncates rather than wrapping the box
+     taller. Fixing the container is what makes this stay fixed -- matching the
+     two notes' lengths by hand would come apart the next time either changes. */
+  .todaystrip{display:flex;flex-wrap:nowrap;align-items:center;gap:18px;
+              padding:10px 14px;margin:0 0 14px;border-radius:8px;
+              min-height:46px;box-sizing:border-box;
+              background:rgba(255,255,255,.02);
+              border:1px solid var(--line)}
+  .todaylead{font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+             color:var(--muted);font-weight:600}
+  .todaybit{white-space:nowrap}
+  .todaybit b{font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
+  .todaybit .good{color:var(--green,#2dd4a8);font-size:12px}
+  .todaybit .bad{color:var(--red,#f87171);font-size:12px}
+  /* min-width:0 is what lets the ellipsis happen at all -- a flex item will
+     not shrink below its content without it, and the note would push the row
+     wider instead of truncating. */
+  .todaynote{margin-left:auto;font-size:10px;min-width:0;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

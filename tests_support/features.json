@@ -1,10 +1,45 @@
 {
   "_what": "Milestone 4 (28 Sep 2026): the big files are being split by feature, code moved word for word. Tests read these files AS TEXT by their old path; the test runner makes such a read return the whole feature -- every file listed here for it, in this order (page load order for JS/CSS/HTML, the original first for Python). See tests_support/README.md. A list with only the original in it changes nothing.",
-  "dashboard.py": ["dashboard.py"],
-  "amazon_listing_generator.py": ["amazon_listing_generator.py"],
-  "static/js/listings.js": ["static/js/listings.js"],
-  "static/js/sourcing.js": ["static/js/sourcing.js"],
-  "static/js/sales.js": ["static/js/sales.js"],
-  "static/css/dashboard.css": ["static/css/dashboard.css"],
-  "templates/dashboard.html": ["templates/dashboard.html"]
+  "dashboard.py": [
+    "dashboard.py"
+  ],
+  "amazon_listing_generator.py": [
+    "amazon_listing_generator.py"
+  ],
+  "static/js/listings.js": [
+    "static/js/listings.js"
+  ],
+  "static/js/sourcing.js": [
+    "static/js/sourcing.js"
+  ],
+  "static/js/sales.js": [
+    "static/js/sales.js"
+  ],
+  "static/css/dashboard.css": [
+    "static/css/dashboard.css",
+    "static/css/dashboard/01-shell.css",
+    "static/css/dashboard/02-listings-table.css",
+    "static/css/dashboard/03-components.css",
+    "static/css/dashboard/04-small-screens.css",
+    "static/css/dashboard/05-listings-grid.css",
+    "static/css/dashboard/06-side-drawer.css",
+    "static/css/dashboard/07-orbit-layout.css",
+    "static/css/dashboard/08-sales-dashboard.css",
+    "static/css/dashboard/09-mobile-860.css",
+    "static/css/dashboard/10-motion.css",
+    "static/css/dashboard/11-stat-cards.css",
+    "static/css/dashboard/12-sales-chrome.css",
+    "static/css/dashboard/13-returns.css",
+    "static/css/dashboard/14-ops-screens.css",
+    "static/css/dashboard/15-sidebar-accounts.css",
+    "static/css/dashboard/16-one-look.css",
+    "static/css/dashboard/17-orders-table.css",
+    "static/css/dashboard/18-inventory.css",
+    "static/css/dashboard/19-order-panel.css",
+    "static/css/dashboard/20-nav-tools.css",
+    "static/css/dashboard/21-density.css"
+  ],
+  "templates/dashboard.html": [
+    "templates/dashboard.html"
+  ]
 }

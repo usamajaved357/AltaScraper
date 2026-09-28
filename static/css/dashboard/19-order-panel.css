@@ -1,0 +1,207 @@
+/* static/css/dashboard/19-order-panel.css -- the order panel, supplier list, auto-fix box, provenance lines. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+/* =====================================================================
+   THE ORDER PANEL -- what opens when you click an order number
+   =====================================================================
+       "RIGHT NOW THE TEXT APPEARS IN A FREE FORM WHEN I CLICK ON THE ORDER
+        NUMBER INSIDE THE ORDERS TAB ... also the order page is not arranged
+        the, text mixes freely into each other."
+
+   He was right, and the cause was that the whole panel was built from inline
+   styles: every element carried its own padding and font-size, nothing shared
+   a baseline, and there was no grid for anything to line up against. Text that
+   is only ever positioned relative to the text before it runs together as soon
+   as one piece grows.
+
+   So the panel has sections now, and the sections have a shape:
+
+       .odp          the panel
+       .odp-sec      one section, with a rule above it and a heading
+       .odp-h        that heading
+       .odp-item     one ordered line: title, identifiers, quantity, price
+       .odp-ids      the SKU / ASIN chips under a title
+       .odp-src      the supplier table -- a GRID, so the columns align down
+                     the page instead of each row setting its own widths
+       .odp-kv       label/value pairs for the delivery dates
+
+   Everything here is new. No existing class is touched.
+   ===================================================================== */
+.odp{
+  border:1px solid var(--line); border-radius:10px;
+  background:var(--panel); padding:0; margin:2px 0 6px;
+  font-size:12px; line-height:1.55;
+}
+.odp-sec{ padding:11px 14px; border-top:1px solid var(--line); }
+.odp-sec:first-child{ border-top:0; }
+.odp-h{
+  display:flex; align-items:center; gap:7px; margin:0 0 9px;
+  font-size:11px; font-weight:600; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--ink3);
+}
+.odp-h .ti{ font-size:14px; color:var(--ink4); }
+.odp-h .odp-count{ color:var(--ink4); font-weight:500; letter-spacing:0;
+                   text-transform:none; }
+
+/* ---- one ordered line -------------------------------------------------- */
+.odp-item{
+  display:grid; grid-template-columns:1fr auto auto; gap:2px 12px;
+  align-items:baseline; padding:8px 0; border-top:1px solid var(--line);
+}
+.odp-item:first-of-type{ border-top:0; padding-top:0; }
+.odp-title{
+  grid-column:1; font-size:12px; color:var(--ink); font-weight:500;
+  /* Two lines then ellipsis: one line hid too much of a long Amazon title,
+     and unbounded made the row height jump between products. */
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.odp-qty{ grid-column:2; color:var(--ink3); white-space:nowrap;
+          font-variant-numeric:tabular-nums; }
+.odp-price{ grid-column:3; white-space:nowrap; font-weight:600;
+            font-variant-numeric:tabular-nums; }
+.odp-ids{ grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px;
+          margin-top:3px; align-items:center; }
+.odp-id{
+  font-family:ui-monospace,Consolas,monospace; font-size:10px;
+  color:var(--ink4); background:var(--panel2); border:1px solid var(--line);
+  border-radius:5px; padding:1px 6px; white-space:nowrap;
+}
+.odp-id.link{ color:var(--accent); text-decoration:none; }
+.odp-id.link:hover{ border-color:var(--accent); background:var(--accent-bg); }
+.odp-id .ti{ font-size:11px; vertical-align:-1px; }
+
+/* ---- a status, with what it means ------------------------------------- */
+.odp-state{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:10px; border-radius:5px; padding:1px 7px;
+  border:1px solid var(--line); white-space:nowrap;
+}
+.odp-state.warn{ color:var(--warn); border-color:var(--warn-line); }
+.odp-state.bad { color:#fca5a5;     border-color:var(--red-line); }
+.odp-state.ok  { color:var(--ok);   border-color:var(--ok-line, var(--line)); }
+.odp-why{
+  grid-column:1 / -1; margin-top:4px; font-size:11px; color:var(--ink3);
+  line-height:1.5;
+}
+
+/* ---- the supplier list: a grid, so columns line up -------------------- */
+/* minmax(0,1fr), not 1fr. `1fr` is shorthand for `minmax(auto,1fr)`, and `auto`
+   there means "at least as wide as my widest unbreakable content". The supplier
+   cell holds a raw eBay URL, so that column refused to go under about 5,500px
+   and dragged the whole grid out with it -- measured at 5523px on a 390px
+   screen, and wrong on a desktop drawer too, just less visible. `0` lets the
+   column shrink and hands the overflow to .odp-link, which already ellipsises. */
+.odp-src{ display:grid; grid-template-columns:auto minmax(0,1fr) auto auto;
+          gap:0 10px; }
+.odp-src-h{
+  font-size:10px; color:var(--ink4); text-transform:uppercase;
+  letter-spacing:.04em; padding-bottom:4px; border-bottom:1px solid var(--line);
+}
+.odp-src-h.r, .odp-src .r{ text-align:right; }
+/* Same reason as the track above: a grid child is min-width:auto by default and
+   will not shrink below its longest word. The supplier link sits inside a plain
+   wrapper div, and that wrapper was the one holding the column open. */
+.odp-src > *{ padding:5px 0; align-self:center; min-width:0; }
+.odp-rank{
+  font-size:10px; color:var(--ink4); white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.odp-rank.best{ color:var(--ok); font-weight:600; }
+.odp-link{
+  color:var(--accent); text-decoration:none; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;
+}
+.odp-link:hover{ text-decoration:underline; }
+.odp-num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+.odp-num.neg{ color:var(--red); }
+.odp-num .sub{ color:var(--ink4); font-size:10px; font-weight:400; }
+/* The delivery sentence sits under its own row and spans the whole grid, so
+   it can be a full sentence without squeezing the numbers beside it. */
+.odp-ship{
+  grid-column:1 / -1; margin:-2px 0 4px; padding:0 0 6px 0;
+  font-size:10px; color:var(--ink3); border-bottom:1px solid var(--line);
+}
+/* ONE PILL PER FACT, under the supplier's name.
+   The postage, the delivery window, the destination, the dispatch time and the
+   stock left were one 10px sentence joined with middots; at full row width
+   nothing in it was findable. Same facts, each with an icon saying which kind
+   of fact it is, so they are picked out by shape rather than by reading. */
+.sup-ship-tags{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.sup-ship-tag{
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:var(--fs-xs); padding:1px 5px;
+  background:var(--panel2); border-radius:var(--radius-sm);
+  color:var(--ink2); white-space:nowrap;
+}
+.sup-ship-tag i{ font-size:10px; color:var(--ink3); }
+/* A REASON THIS SUPPLIER MAY BE UNUSABLE IS NOT A DELIVERY DETAIL. Out of
+   stock, a failed read and a stale price stay sentences -- a chip the same size
+   as "5d handling" would bury them. */
+.odp-shipwarn{ display:block; margin-top:3px; color:var(--warn); }
+.odp-row-dead{ opacity:.5; }
+
+/* ---- delivery dates --------------------------------------------------- */
+.odp-kv{ display:grid; grid-template-columns:auto 1fr; gap:5px 14px;
+         font-size:12px; }
+.odp-kv dt{ color:var(--ink3); white-space:nowrap; }
+.odp-kv dd{ margin:0; color:var(--ink); }
+
+/* ---- the little (i) that explains a line ------------------------------ */
+.odp-i{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:15px; height:15px; border-radius:50%; cursor:help; flex:none;
+  border:1px solid var(--line2); color:var(--ink3); font-size:10px;
+  background:none; padding:0; line-height:1; vertical-align:-2px;
+}
+.odp-i:hover{ border-color:var(--accent); color:var(--accent); }
+
+/* ---- notes under a table --------------------------------------------- */
+.odp-note{ font-size:10px; color:var(--ink3); margin-top:5px; line-height:1.5; }
+.odp-note.warn{ color:var(--warn); }
+
+/* ---- the folded supplier block, for screens with many of them ---------
+   The Repricer draws one of these per tracked SKU. At full size that was
+   8,888px of a 19,201px page on 64 SKUs, so folded is the default there and
+   the summary line has to carry the answer on its own. */
+.odp-sec-c{ padding:6px 0 0; border-top:1px solid var(--line); }
+.odp-c-sum{ list-style:none; cursor:pointer; display:flex; align-items:center;
+            gap:7px; flex-wrap:wrap; font-size:12px; color:var(--ink2);
+            padding:5px 2px; border-radius:6px; }
+.odp-c-sum::-webkit-details-marker{ display:none; }
+.odp-c-sum:hover{ background:var(--panel2); }
+.odp-c-sum b{ color:var(--text); font-weight:600; }
+.odp-c-sum b.neg{ color:var(--red); }
+.odp-c-dot{ color:var(--ink3); margin:0 1px; }
+.odp-c-warn{ color:var(--warn); }
+.odp-c-bad{ color:var(--ink3); }
+/* The chevron turns instead of the row moving, so a list of sixty does not
+   jump when one is opened. */
+.odp-c-chev{ transition:transform .15s ease; font-size:13px; color:var(--ink3); }
+details[open] > .odp-c-sum .odp-c-chev{ transform:rotate(90deg); }
+.odp-c-body{ padding:2px 0 8px; }
+
+@media (max-width: 720px){
+  /* Four columns of supplier do not fit a phone; the price and the profit
+     keep their own line under the link rather than being squeezed to nothing. */
+  .odp-src{ grid-template-columns:auto 1fr; }
+  .odp-src .odp-num{ grid-column:2; text-align:right; }
+}
+
+  /* ---- the auto-fix box: movable, and foldable to its title ----------------
+     "when i am running auto fix a tab appears on the screen and it is not
+      minimizable or floatable, it hides the content behind it"
+     It was 620px wide and up to 80vh tall at z-index 9999, and the only
+     control destroyed it -- so the choice was covering the listings you were
+     looking at, or losing sight of the run. Folded, only the title bar is
+     left; the run and its progress carry on untouched underneath. */
+  #autofix_panel .af-head{cursor:move;user-select:none}
+  #autofix_panel.af-min{width:auto!important;min-width:260px;max-height:none}
+  #autofix_panel.af-min > *:not(.af-head){display:none}
+
+  /* ---- where a figure came from -------------------------------------------
+     Amazon has two feeds that describe the same trade and they disagree for
+     days at a time, so a number without its source is a number you cannot act
+     on. Quiet by design: this is provenance, not content. */
+  .ui-source{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
+    margin:2px 0 12px;font-size:10px;color:var(--muted);line-height:1.6}
+  .ui-source-i b{font-weight:600;color:var(--ink3);margin-right:3px}
+  .ui-source-n{opacity:.85;max-width:640px}

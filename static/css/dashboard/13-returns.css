@@ -1,0 +1,20 @@
+/* static/css/dashboard/13-returns.css -- Returns intelligence. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+/* =====================================================================
+   RETURNS INTELLIGENCE — the Promixx report's design, in the app
+   =====================================================================
+   Taken from Promixx-USA-FBA-Returns-Intelligence-May2026.html: the same
+   six KPI cards, the same nine panels, the same type scale and spacing.
+   Its own tokens are mapped onto the app's so the page belongs here
+   rather than looking like a document someone pasted in.
+   ===================================================================== */
+#sec_returns .ri-main{ max-width:1440px; margin:0 auto; }
+
+/* Six across, as the report has them. */
+.ri-kpis{
+  display:grid;
+  grid-template-columns:repeat(6, 1fr);
+  gap:14px;
+  margin-bottom:24px;
+}
+@media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
+@media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
