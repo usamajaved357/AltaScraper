@@ -460,3 +460,11 @@ Code MOVED word for word, never rewritten; every old name still resolves
   RUNNING app module once (`bind(sys.modules[__name__])` in dashboard.py) and
   read every app name as `_app.<name>`, so a job sees the current workspace,
   records and config path at the moment it runs. They never import dashboard.
+- **Listing engine (batch 9):** `listing/copy_text.py`, `scrape_helpers.py`,
+  `product_type_rules.py`, `sheet_input.py`, `value_snap.py`, `flat_row.py`,
+  `verify_live.py`. The engine imports every name back. What stayed, on
+  purpose: build_api_attributes and the other 21 functions that read the
+  engine's runtime-changed MARKETPLACE / MARKETPLACE_ID / MINIMAL_MODE /
+  OUTPUT_TAB, anything calling seller_id_for (a test replaces it at run time),
+  and the first of the two `_strip_html` definitions (the second, which wins,
+  moved). None of these modules imports the engine (it runs as __main__).

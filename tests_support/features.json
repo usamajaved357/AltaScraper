@@ -12,7 +12,14 @@
     "domain/autofix_jobs.py"
   ],
   "amazon_listing_generator.py": [
-    "amazon_listing_generator.py"
+    "amazon_listing_generator.py",
+    "listing/copy_text.py",
+    "listing/scrape_helpers.py",
+    "listing/product_type_rules.py",
+    "listing/sheet_input.py",
+    "listing/value_snap.py",
+    "listing/flat_row.py",
+    "listing/verify_live.py"
   ],
   "static/js/listings.js": [
     "static/js/core_util.js",

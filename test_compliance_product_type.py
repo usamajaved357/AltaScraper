@@ -86,7 +86,10 @@ RULES = json.loads(rd("compliance_rules.json"))
 # rich and sp_api and a great deal else that a test has no business loading.
 _ns = {}
 _i = GEN.index("def _product_type_allows(")
-_j = GEN.index("def check_compliance(")
+# To the next top-level def: since Milestone 4 the function lives in
+# listing/product_type_rules.py (moved word for word), no longer next to
+# check_compliance, and GEN is the engine's whole feature (tests_support).
+_j = GEN.index("\ndef ", _i + 1)
 exec(GEN[_i:_j], _ns)
 allows = _ns["_product_type_allows"]
 

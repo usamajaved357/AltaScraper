@@ -84,16 +84,7 @@ from sp_api.base import Marketplaces
 console     = Console()
 
 
-def _claude(config):
-    """The Claude client. ONE place, so the library loads only when it is used.
-
-    Written out identically at four call sites (generate, retry, optimise,
-    Miles). Beyond the duplication, each of those copies is reached only on the
-    run it belongs to, while the import at the top of the file was paid on all
-    of them -- 2.1 seconds, on runs like export that never call Claude at all.
-    """
-    import anthropic
-    return anthropic.Anthropic(api_key=config["anthropic_api_key"])
+from listing.copy_text import (_claude, INFORMATIONAL, get_autocomplete_keywords, extract_core_search_term, _build_message_content, SEARCH_TERMS_MAX_BYTES, clean_search_terms, cap_chars, prompt_for_brand)  # moved (Milestone 4)
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", str(Path(__file__).parent / "config.json")))
 
 MARKETPLACE_ID = "A1F83G8C2ARO7P"          # UK (default); MUTABLE — reassigned on marketplace switch
@@ -251,7 +242,7 @@ def _safe_records(ws):
         out.append({name: (row[i] if i < len(row) else "") for i, name in cols})
     return out
 MARKETPLACE    = Marketplaces.UK
-MIN_MARGIN     = 20.0
+from listing.flat_row import (MIN_MARGIN, calculate_financials, build_sku, next_model_number, is_model_number_required, resolve_account_brand, _COMPLIANCE_PASSTHROUGH, build_flat_row, _ALWAYS_WRITE_TOKENS, build_col_attr_map, gate_built_row)  # moved (Milestone 4)
 OUTPUT_TAB     = "Listings v7.0 UK"
 
 # =============================================================================
@@ -303,8 +294,7 @@ def _get_ebay_token(app_id: str, cert_id: str) -> str:
     return tok
 
 
-def _extract_ebay_item_id(url: str) -> str:
-    return _ebay_api.item_id_from_url(url)
+from listing.scrape_helpers import (_extract_ebay_item_id, _flatten_attr_value, _BROWSER_CFG, _browser_cfg, _scrape)  # moved (Milestone 4)
 
 
 def fetch_ebay_supplement(ebay_url: str, app_id: str, cert_id: str) -> dict:
@@ -406,26 +396,6 @@ def fetch_ebay_supplement(ebay_url: str, app_id: str, cert_id: str) -> dict:
 # SP-API -- COMPETITOR DATA
 # =============================================================================
 
-def _flatten_attr_value(entry) -> str:
-    """Turn one SP-API attribute entry into a clean human-readable string.
-    Handles {value}, {value,unit}, {displayValue}, and nested dimension shapes
-    like {length:{value,unit}, width:..., height:...} -- so we never dump a raw
-    Python dict (e.g. \"{'length': {'value': 30...}}\") into the attribute set."""
-    if not isinstance(entry, dict):
-        return str(entry).strip()
-    if entry.get("value") not in (None, ""):
-        unit = str(entry.get("unit") or entry.get("unit_of_measure") or "").strip()
-        return f"{entry['value']} {unit}".strip()
-    for k in ("displayValue", "amount", "name"):
-        if entry.get(k) not in (None, ""):
-            return str(entry[k]).strip()
-    parts = []
-    for axis in ("length", "width", "height", "depth", "weight"):
-        sub = entry.get(axis)
-        if isinstance(sub, dict) and sub.get("value") not in (None, ""):
-            unit = str(sub.get("unit", "")).strip()
-            parts.append(f"{axis} {sub['value']} {unit}".strip())
-    return ", ".join(parts)
 
 
 def get_competitor_asin_data(asin: str, creds: dict) -> dict:
@@ -743,26 +713,6 @@ from listing.pricing import (          # single source of the pricing rule
 )
 
 
-def calculate_financials(source_cost: float, selling_price: float,
-                          shipping_cost: float, fees: dict) -> dict:
-    total_costs = round(source_cost + shipping_cost + fees["total_amazon_fees"], 2)
-    profit      = round(selling_price - total_costs, 2)
-    margin      = round((profit / selling_price) * 100, 1) if selling_price > 0 else 0
-    roi         = round((profit / source_cost)    * 100, 1) if source_cost  > 0 else 0
-    return {
-        "source_cost":       source_cost,
-        "shipping_cost":     shipping_cost,
-        "referral_fee":      fees["referral_fee"],
-        "variable_closing":  fees["variable_closing"],
-        "total_amazon_fees": fees["total_amazon_fees"],
-        "total_costs":       total_costs,
-        "selling_price":     selling_price,
-        "profit":            profit,
-        "margin_pct":        f"{margin}%",
-        "roi_pct":           f"{roi}%",
-        "viable":            "YES" if margin >= MIN_MARGIN else "LOW MARGIN",
-        "fee_source":        fees["fee_source"],
-    }
 
 
 def get_product_type_schema(product_type: str, creds: dict, marketplace: str = None) -> dict:
@@ -895,41 +845,8 @@ def get_product_type_schema(product_type: str, creds: dict, marketplace: str = N
 # CRAWL4AI -- REVIEW SCRAPING
 # =============================================================================
 
-_BROWSER_CFG = {}     # built on first use; see _browser_cfg()
 
 
-def _browser_cfg():
-    """The scraping browser's settings, built the first time a page is scraped.
-
-    This used to be a module-level constant, which meant importing crawl4ai --
-    2.1 seconds, and with it numpy, aiohttp and two copies of Playwright -- every
-    time this program started, including the many runs that scrape nothing at
-    all. The settings themselves are unchanged; only WHEN they are built moved.
-    """
-    if "cfg" in _BROWSER_CFG:
-        return _BROWSER_CFG["cfg"]
-    from crawl4ai import BrowserConfig
-    _BROWSER_CFG["cfg"] = BrowserConfig(
-        headless=True, verbose=False,
-        headers={
-        "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                           "AppleWebKit/537.36 (KHTML, like Gecko) "
-                           "Chrome/120.0.0.0 Safari/537.36",
-            "Accept-Language": "en-GB,en;q=0.9",
-        },
-        # Pin the amazon.co.uk delivery location to a UK postcode BEFORE any
-        # page loads. Without this, a non-UK visitor (e.g. from Pakistan) gets
-        # served a location-fallback view: prices hidden, no Buy Box, "cannot
-        # ship to your location" banners -- exactly why the scraper was
-        # returning thin data on UK PDPs when SP-API fell back. SW1A 1AA =
-        # London postcode.
-        cookies=[
-            {"name": "lc-main",    "value": "en_GB",   "domain": ".amazon.co.uk", "path": "/"},
-            {"name": "i18n-prefs", "value": "GBP",     "domain": ".amazon.co.uk", "path": "/"},
-            {"name": "sp-cdn",     "value": "L5Z9:GB", "domain": ".amazon.co.uk", "path": "/"},
-        ],
-    )
-    return _BROWSER_CFG["cfg"]
 
 
 NOISE_RE = re.compile(
@@ -942,28 +859,6 @@ NOISE_RE = re.compile(
 REVIEW_CSS = "[data-hook='review-body'], .review-text-content, [data-hook='review']"
 
 
-async def _scrape(url: str, css: str = None, timeout: int = 25000,
-                  delay: float = 2.0) -> str:
-    # Imported here rather than at the top of the file: this is the only place
-    # the browser engine is needed, and loading it costs 2.1s of every run.
-    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-    run_cfg = CrawlerRunConfig(
-        css_selector=css, word_count_threshold=15,
-        remove_overlay_elements=True, exclude_external_links=True,
-        page_timeout=timeout, delay_before_return_html=delay,
-        excluded_tags=["nav", "header", "footer", "script", "style"] if not css else [],
-    )
-    async def _run():
-        async with AsyncWebCrawler(config=_browser_cfg()) as crawler:
-            result = await crawler.arun(url=url, config=run_cfg)
-            return (result.markdown or result.cleaned_html or "").strip()
-    # Hard ceiling: the page_timeout above is crawl4ai-internal and can still
-    # hang on browser launch/navigation. Kill the whole attempt a few seconds
-    # past the page timeout so a stuck browser can never freeze the run.
-    try:
-        return await asyncio.wait_for(_run(), timeout=(timeout / 1000.0) + 8)
-    except asyncio.TimeoutError:
-        return ""
 
 
 def _extract_reviews(content: str) -> list:
@@ -1204,47 +1099,10 @@ async def get_voc_data(asin: str, product_name: str, core_term: str) -> dict:
 # KEYWORDS -- amazon.co.uk AUTOCOMPLETE
 # =============================================================================
 
-INFORMATIONAL = ["what is", "how does", "why is", "history of",
-                  "difference between", "meaning of"]
 
 
-def get_autocomplete_keywords(core_term: str) -> list:
-    variations = [core_term, f"best {core_term}", f"{core_term} set",
-                  f"{core_term} for", f"buy {core_term}"]
-    headers    = {
-        "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept-Language": "en-GB,en;q=0.9",
-        "Accept":          "application/json, text/javascript, */*",
-    }
-    seen, all_kws = set(), []
-    for v in variations:
-        enc = urllib.parse.quote(v)
-        url = (f"https://completion.amazon.co.uk/search/complete"
-               f"?method=completion&q={enc}&search-alias=aps&mkt=3&x=String")
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=5) as r:
-                data = json.loads(r.read().decode("utf-8"))
-            if isinstance(data, list) and len(data) > 1:
-                for pos, s in enumerate(data[1]):
-                    if isinstance(s, str) and 3 < len(s) < 100:
-                        kl = s.lower().strip()
-                        if kl not in seen and not any(inf in kl for inf in INFORMATIONAL):
-                            seen.add(kl)
-                            all_kws.append({"keyword":   kl,
-                                            "vol_score": round(max(0, 1 - pos / 15), 2)})
-        except Exception:
-            continue
-    all_kws.sort(key=lambda x: x["vol_score"], reverse=True)
-    return all_kws[:30]
 
 
-def extract_core_search_term(item_name: str) -> str:
-    noise   = r"\b(\d+|pcs|pc|pack|piece|inch|lbs|lot|uk|usa|new|best|buy|get|the|and|with|for)\b"
-    cleaned = re.sub(noise, "", item_name.lower(), flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    words   = [w for w in cleaned.split() if len(w) > 2][:5]
-    return " ".join(words) if words else item_name[:30]
 
 
 # =============================================================================
@@ -1263,60 +1121,6 @@ SYSTEM_PROMPT = (
 )
 
 
-def _build_message_content(prompt: str, images: list) -> list:
-    """Build Claude message content. Images are validated by magic bytes and
-    size before being attached; bad images are skipped silently."""
-    # Anthropic-supported formats
-    MAGIC = {
-        b"\xff\xd8\xff":           "image/jpeg",
-        b"\x89PNG\r\n\x1a\n":      "image/png",
-        b"GIF87a":                 "image/gif",
-        b"GIF89a":                 "image/gif",
-        b"RIFF":                   "image/webp",   # checked further below
-    }
-    MAX_IMG_BYTES = 4_500_000   # ~4.5 MB (Anthropic limit is 5 MB)
-    MIN_IMG_BYTES = 1_000       # reject tiny 1x1 trackers / 0-byte responses
-
-    content = []
-    for img_url in images[:2]:
-        if not img_url or not img_url.startswith("http"):
-            continue
-        try:
-            req = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=8) as r:
-                img_bytes = r.read()
-        except Exception:
-            continue
-        if not img_bytes or len(img_bytes) < MIN_IMG_BYTES:
-            continue
-        if len(img_bytes) > MAX_IMG_BYTES:
-            continue
-        # Detect actual media type by magic bytes (ignore URL extension - it lies)
-        media_type = None
-        for sig, mt in MAGIC.items():
-            if img_bytes.startswith(sig):
-                if sig == b"RIFF":
-                    # WebP files: 'RIFF' + 4-byte size + 'WEBP'
-                    if len(img_bytes) >= 12 and img_bytes[8:12] == b"WEBP":
-                        media_type = "image/webp"
-                else:
-                    media_type = mt
-                break
-        if not media_type:
-            continue
-        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-        content.append({"type": "image",
-                         "source": {"type": "base64",
-                                    "media_type": media_type,
-                                    "data": img_b64}})
-    if content:
-        content.append({"type": "text",
-                         "text": ("Above: product images of the competitor item. "
-                                  "Use them to visually confirm: material, colour, "
-                                  "handle material, finish type.\n\n" + prompt)})
-    else:
-        content.append({"type": "text", "text": prompt})
-    return content
 
 
 def build_prompt(comp_data: dict, pricing: dict, financials: dict,
@@ -1908,67 +1712,8 @@ TITLE_MAX_CHARS   = 75     # incl spaces
 HIGHLIGHTS_MAX    = 125
 BULLET_MAX_CHARS  = 500
 DESC_MAX_CHARS    = 2000   # incl HTML tags
-SEARCH_TERMS_MAX_BYTES = 249
 
-def clean_search_terms(st: str) -> str:
-    """Backend search terms: strip ALL punctuation, collapse to single spaces,
-    lowercase, then byte-cap at 249 (Amazon ignores the whole field if over).
-    Spaces are kept (Amazon tokenises on them); only punctuation is removed."""
-    if not st:
-        return ""
-    import re as _re
-    # replace any punctuation/separators with a space, then collapse spaces
-    st = _re.sub(r"[^\w\s]", " ", st, flags=_re.UNICODE)
-    st = _re.sub(r"\s+", " ", st).strip().lower()
-    b = st.encode("utf-8")
-    if len(b) > SEARCH_TERMS_MAX_BYTES:
-        st = b[:SEARCH_TERMS_MAX_BYTES].decode("utf-8", "ignore")
-        # don't end mid-word
-        if " " in st:
-            st = st[:st.rfind(" ")].strip()
-    return st
 
-def cap_chars(s: str, n: int) -> str:
-    """Trim to n characters and STILL READ AS A FINISHED SENTENCE.
-
-    Cutting on a word boundary keeps words whole, which is necessary and not
-    sufficient. On a real listing this produced a bullet ending
-
-        ...suitable for users of all experience levels who wish to practise
-        aerial yoga, stretching, or simply
-
-    -- every word intact and the sentence abandoned mid-thought, published to
-    Amazon exactly like that. A customer reads that as a broken listing, which
-    is the one thing the copy is there to avoid.
-
-    So: end at the last full stop when there is one reasonably near the limit,
-    and otherwise fall back to the word boundary with any dangling conjunction
-    or comma removed. Losing a clause is better than printing half of one.
-    """
-    s = (s or "").rstrip()
-    if len(s) <= n:
-        return s
-    cut = s[:n]
-
-    # A sentence end, if one sits in the last third of what we are allowed to
-    # keep. Nearer the start than that and we would throw away too much.
-    floor = int(n * 0.6)
-    best = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-    if best < 0 and cut.rstrip().endswith((".", "!", "?")):
-        best = len(cut.rstrip()) - 1
-    if best >= floor:
-        return cut[:best + 1].rstrip()
-
-    # No usable sentence end: whole words, and nothing left hanging.
-    if " " in cut:
-        cut = cut[:cut.rfind(" ")].rstrip()
-    cut = cut.rstrip(" ,;:-–—")
-    _tail = cut.rsplit(" ", 1)[-1].lower() if " " in cut else ""
-    while _tail in ("and", "or", "but", "with", "for", "to", "the", "a", "an",
-                    "of", "in", "on", "as", "that", "which", "while", "from"):
-        cut = cut[:cut.rfind(" ")].rstrip().rstrip(" ,;:-–—")
-        _tail = cut.rsplit(" ", 1)[-1].lower() if " " in cut else ""
-    return cut
 
 COUNTER_PATH      = CONFIG_PATH.parent / "model_number_counter.json"
 COMPLIANCE_PATH   = Path(__file__).parent / "compliance_rules.json"
@@ -1980,33 +1725,8 @@ VALID_VALUES_PATH = Path(__file__).parent / "valid_values.json"
 # SKU / BRAND / MODEL NUMBER HELPERS
 # =============================================================================
 
-def build_sku(source_cost: float, handling_days: str, comp_asin: str,
-              taken_skus: set) -> tuple:
-    """
-    SKU format: {source_price}_{N}Days_{COMP_ASIN}
-    e.g. 7.99_3Days_B0XYZ12345
-    If the resulting SKU is already taken in this run or previous runs,
-    append _2, _3, etc. Returns (sku, was_duplicate).
-    """
-    price_part = f"{source_cost:.2f}" if source_cost > 0 else "0.00"
-    days_part  = f"{handling_days}Days" if handling_days else "3Days"
-    base       = f"{price_part}_{days_part}_{comp_asin}"
-    if base not in taken_skus:
-        return base, False
-    n = 2
-    while f"{base}_{n}" in taken_skus:
-        n += 1
-    return f"{base}_{n}", True
 
 
-def prompt_for_brand() -> str:
-    """Ask user once for the brand to use across this run.
-    Empty string = auto-pick per category from schema."""
-    try:
-        entered = input("Enter brand name (or press Enter to auto-pick per category): ").strip()
-    except EOFError:
-        entered = ""
-    return entered
 
 
 # pick_brand_for_product moved to listing/brand_validator.py in Phase 5 (self-contained;
@@ -2014,91 +1734,11 @@ def prompt_for_brand() -> str:
 from listing.brand_validator import pick_brand_for_product
 
 
-def derive_product_type_code(product_type: str) -> str:
-    """First 3 letters of product_type, uppercased. e.g. COOKWARE_SET -> COO."""
-    if not product_type:
-        return "GEN"
-    cleaned = re.sub(r"[^A-Za-z]", "", product_type).upper()
-    return (cleaned[:3] or "GEN")
+from listing.product_type_rules import (derive_product_type_code, _PT_INFER_RULES, infer_product_type, _product_type_allows, PRODUCT_ROUTES, TEMPLATE_PRODUCT_TYPES, PT_DEFAULT_NODE, _norm_pt, _PT_FALLBACK_RULES, _fallback_pt, detect_route)  # moved (Milestone 4)
 
 
-# Keyword -> Amazon product_type inference. Used ONLY when SP-API and the PDP
-# scrape both fail to provide a product type (e.g. the SP-API app lacks the
-# Catalog Items role). Ordered: the FIRST matching rule wins, so put more
-# specific patterns before generic ones.
-_PT_INFER_RULES = [
-    (r"\bflash\s?light|\btorch\b|\bhead\s?lamp|\blantern\b|\bwork\s?light", "FLASHLIGHT"),
-    (r"\bstring\s?light|\bfairy\s?light|\bfestoon", "STRING_LIGHT"),
-    (r"\bdesk\s?lamp|\btable\s?lamp|\bfloor\s?lamp|\bbedside\s?lamp", "LAMP"),
-    (r"\bceiling\s?light|\bwall\s?light|\bpendant|\bchandelier|\bsconce", "LIGHT_FIXTURE"),
-    (r"\bbulb|\bled\s?light|\blighting|\blamp\b", "HOME_LIGHTING_AND_LAMPS"),
-    (r"\bsecurity\s?camera|\bcctv|\bsurveillance|\bdoorbell\s?cam", "SECURITY_CAMERA"),
-    (r"\bknife|\bknives|\bcleaver|\bchef'?s?\s?knife", "KITCHEN_KNIFE"),
-    (r"\bcookware|\bpan\s?set|\bpot\s?set|\bsaucepan", "COOKWARE_SET"),
-    (r"\bspatula|\bturner\b", "FOOD_SPATULA"),
-    (r"\bglobe\b", "GLOBE"),
-    (r"\bserum|\bcleanser|\bmoisturi|\bsunscreen|\bskincare|\bskin\s?care|\bcosmetic|\bface\s?cream", "BEAUTY"),
-    (r"\bsupplement|\bvitamin|\bnebuli|\binhaler|\bthermometer|\bblood\s?pressure", "HEALTH_PERSONAL_CARE"),
-    (r"\bhelmet|\bknee\s?pad|\belbow\s?pad|\bprotective\s?gear|\bguard\b", "POWERSPORTS_PROTECTIVE_GEAR"),
-    (r"\bnet\b|\bgoal\s?net|\bsports\s?net", "SPORT_NET"),
-    (r"\btarget\b|\bdart\s?board|\barchery", "SPORT_TARGET"),
-    (r"\bdrill|\bwrench|\bscrewdriver|\bplier|\bhand\s?tool|\bpower\s?tool", "TOOLS"),
-    (r"\bscrew|\bbolt|\bnut\b|\bbracket|\bhinge|\bfastener|\bhardware", "HARDWARE"),
-    (r"\bart\s?(kit|set)|\bcraft\s?(kit|set)|\bpainting\s?set", "ART_CRAFT_KIT"),
-    (r"\bfigure\b|\baction\s?figure|\bcollectible|\bfigurine", "TOY_FIGURE"),
-    # ADDED FROM THE ROWS THAT HAD NO TYPE AT ALL -- and only where Amazon has
-    # actually given this app a schema for the type, which is the evidence that
-    # the name is real (CLAUDE.md Rule 4: do not guess what Amazon calls
-    # something). The 96 confirmed names are in the schema_cache table.
-    #
-    # Found by listing the 32 blank listings and reading their titles:
-    #
-    #   "Miles Lubricants POE Refrigeration Oil"     -> MACHINE_LUBRICANT ✓
-    #   "12V 10A AC to DC Adapter 120W Power Supply" -> no confirmed name
-    #   "10X Magnifying Glass Desk Light Magnifier"  -> no confirmed name
-    #   "1m x1m Artificial Plant Flower Wall Panel"  -> no confirmed name
-    #
-    # Only the first gets a rule. The others stay blank on purpose: an invented
-    # product type is worse than none, because Amazon refuses it at submit and
-    # the compliance gate believes it in the meantime. listing/product_type.py
-    # raises a warning on what is left, so a blank is visible and fixable
-    # instead of silent.
-    (r"\blubricant|\bcompressor\s?oil|\brefrigerat\w*\s?oil"
-     r"|\bhydraulic\s?oil|\bgear\s?oil|\bgrease\b", "MACHINE_LUBRICANT"),
-]
 
 
-def infer_product_type(comp_data: dict, item_name: str = "",
-                       valid_types: dict = None, default: str = "HOME") -> str:
-    """Best-effort product type when none came from SP-API or the scrape.
-    Matches keywords from the title + item_type_keyword + breadcrumbs against
-    known Amazon types. Returns a valid product type, or 'HOME' as a safe
-    generic that exists in the schema (never the invalid literal 'PRODUCT').
-
-    `default` IS WHAT COMES BACK WHEN NOTHING MATCHED, and it matters where the
-    answer is being STORED rather than used once. "HOME" is the right fallback
-    for a submit -- Amazon needs some type and HOME is a real one. It is the
-    wrong thing to write onto a row: the compliance gate reads the stored type
-    and would take "HOME" as a fact about the product, which for a 12V power
-    supply would turn its electrical check OFF. listing/product_type.py passes
-    "" so that a guess it did not actually make stays blank."""
-    haystack = " ".join(str(x) for x in [
-        item_name,
-        comp_data.get("title", ""),
-        comp_data.get("item_type_keyword", ""),
-        " ".join(comp_data.get("browse_nodes", []) or []),
-        " ".join(f"{k} {v}" for k, v in (comp_data.get("attributes") or {}).items()),
-    ]).lower()
-
-    for pat, ptype in _PT_INFER_RULES:
-        if re.search(pat, haystack):
-            # only return it if the schema actually knows this type (when we have
-            # the valid_values map); otherwise still return it -- SP-API will
-            # validate at export and Claude uses it as a strong hint.
-            if not valid_types or ptype in valid_types or ptype == "HOME":
-                return ptype
-            return ptype
-    return default
 
 
 def load_model_counter() -> dict:
@@ -2124,23 +1764,8 @@ def save_model_counter(data: dict):
         console.print(f"  [yellow]Could not persist model counter: {e}[/yellow]")
 
 
-def next_model_number(brand: str, product_type: str, counter: dict) -> str:
-    """Generate model number: {first 4 of brand}-{3-letter category code}-{seq:03d}.
-    Mutates the counter dict in place. Caller is responsible for saving."""
-    prefix = re.sub(r"[^A-Za-z0-9]", "", brand or "Unb")[:4].title() or "Unbr"
-    code   = derive_product_type_code(product_type)
-    key    = f"{prefix}-{code}"
-    counter[key] = counter.get(key, 0) + 1
-    return f"{prefix}-{code}-{counter[key]:03d}"
 
 
-def is_model_number_required(schema: dict) -> bool:
-    """True iff schema marks any of model_number / model / part_number as required."""
-    required = schema.get("required", {}) or {}
-    for field in ("model_number", "model", "part_number"):
-        if field in required:
-            return True
-    return False
 
 
 # =============================================================================
@@ -2165,42 +1790,6 @@ def load_compliance_rules() -> dict:
 _RISK_PRIORITY = {"HIGH": 3, "MEDIUM": 2, "BASELINE": 1, "": 0}
 
 
-def _product_type_allows(cat_key, rule, product_type):
-    """Can this category apply to a product Amazon files under `product_type`?
-
-    True  -- yes, or there is nothing here that says otherwise.
-    False -- no: the rules file names this type as one the category cannot
-             cover, or names the only types it can and this is not one.
-
-    RETURNS TRUE ON EVERY UNCERTAINTY. No product type, no rule, a type nobody
-    has written a rule about: all of them mean "carry on as before". This
-    function can only ever turn a flag DOWN, and only when a person has written
-    down, in compliance_rules.json, that it does not apply. A compliance check
-    that guesses its way to silence is worse than one that is noisy.
-
-    THIS WAS BRIEFLY THE OPPOSITE. REMAINING_FIXES_HANDOFF.md asked for "if no
-    product type is cached, skip category-specific compliance checks entirely",
-    and it was built that way -- measured: 32 of 303 listings have no product
-    type, and skipping withheld 10 electrical (HIGH) and 4 cookware (MEDIUM)
-    flags. The owner then settled it the other way:
-
-        "but why are we having products with no product type, the app should be
-         able to pull the product type of the items, dont skip compliance checks"
-
-    Which is the right answer to the right question: a missing product type is a
-    gap to FILL, not a reason to stop checking. See listing/product_type.py,
-    which fills it in.
-    """
-    pt = str(product_type or "").strip().upper()
-    if not pt:
-        return True
-    never = [str(x).upper() for x in (rule.get("product_type_never") or []) if x]
-    if any(n and n in pt for n in never):
-        return False
-    only = [str(x).upper() for x in (rule.get("product_type_only") or []) if x]
-    if only:
-        return any(o and o in pt for o in only)
-    return True
 
 
 def check_compliance(item_name: str, listing: dict, rules: dict,
@@ -2587,17 +2176,7 @@ def _open_sheet_retry(gc, key: str, what: str = "sheet", tries: int = 5):
         raise last
 
 
-def _data_backend(config: dict) -> str:
-    """Where THIS run writes its listings: "sheets" (default) or "db".
-
-    Delegates to data/choice.py, which is the ONE place this is decided. It used
-    to read ALTA_DATA_BACKEND here directly, while dashboard.py decided from a
-    function argument that the deployed app never set -- so the generator could
-    be writing to SQLite while the dashboard read the Google Sheet, and listings
-    generated here would never appear there.
-    """
-    from data import choice as _choice
-    return _choice.resolve(config, config.get("_config_path"))
+from listing.sheet_input import (_data_backend, read_input_sheet, _extract_asin, _extract_ebay_item, select_rows, _finish_match, _attrs_with_images, _find_target_row)  # moved (Milestone 4)
 
 
 def output_ws(config: dict, gc=None, spreadsheet_id: str = None,
@@ -2740,228 +2319,16 @@ def init_sheets(config: dict):
     return gc, ws_in, ws_out
 
 
-def read_input_sheet(ws_in) -> list:
-    # Still a Google Sheet -- this is the INPUT, where products come from, and
-    # nothing replaces it yet. Reading it through the repo anyway means the day
-    # something does (a paste screen, an upload), this call site does not change.
-    from listing import repo as _repo
-    from listing import suppliers as _suppliers
-    rows = _repo.read_grid(ws_in)
-    if not rows:
-        return []
-    headers  = [h.strip().lower().replace(" ", "_") for h in rows[0]]
-    products = []
-    for row in rows[1:]:
-        if not any(row):
-            continue
-        row  = row + [""] * max(0, len(headers) - len(row))
-        item = dict(zip(headers, row))
-        norm = {
-            "ebay_url":      item.get("ebay_link",     item.get("ebay_url",      "")),
-            # EVERY SUPPLIER ON THE ROW, in the owner's priority order.
-            #
-            # The sheet has always had one link column. Several sellers list the
-            # same product and each fills in a different amount, so the second
-            # and third carry specifics the first left blank. listing/suppliers
-            # finds whatever supplier columns the sheet has -- Supplier 2,
-            # Source URL 3, and so on -- so adding a sixth is a new column and
-            # no code change. `ebay_url` stays as it was, and is the first of
-            # these, so nothing that reads it needs to know about the rest.
-            "supplier_urls": _suppliers.urls_from(item, headers),
-            "source_cost":   item.get("ebay_price",    item.get("ebay_cost",     "")),
-            "amazon_url":    item.get("amazon_link",   item.get("amazon_url",    "")),
-            "selling_price": item.get("amazon_price",  item.get("selling_price", "")),
-            "item_name":     item.get("item_name",     ""),
-            "handling_time": item.get("delivery_time", item.get("handling_time", "")),
-            "upc":           item.get("ean",           item.get("upc",            "")),
-            # THE BRAND THE SHEET NAMED. Blank means "use the account's own",
-            # which is what process_row then does -- see the brand selection
-            # there. Without this the column was read by nothing on the way in,
-            # so a sheet that named a brand generated under the account's
-            # instead, silently (the upload path had the same gap: see
-            # listing/queued_input.row_to_product).
-            "brand":         item.get("brand",         ""),
-        }
-        # A ROW NEEDS A SOURCE, NOT NECESSARILY A COMPETITOR.
-        #
-        # This required amazon_url and dropped everything else without a word. On
-        # a spreadsheet that was invisible -- a row with only an eBay link simply
-        # never generated and nobody knew why. Once products can be typed into
-        # the app it becomes a trap: you paste the eBay link you buy from, the
-        # row appears in the queue, and generation silently ignores it.
-        #
-        # Per CLAUDE.md Rule 1 the Amazon ASIN is a COMPETITOR REFERENCE used to
-        # pull product data, not the thing being listed. The eBay link is a
-        # source of that same data -- fetch_ebay_supplement already reads title,
-        # specifics and images from it, and the eBay seller import creates drafts
-        # with no competitor ASIN at all. So either link is enough to start from.
-        #
-        # A ROW WHOSE ONLY LINK IS IN A SUPPLIER COLUMN still has a source.
-        #
-        # `ebay_url` reads the primary column, so a row filled in only under
-        # "Supplier 2" would have had an empty ebay_url and been dropped by the
-        # gate below -- silently, which is the exact failure the note above
-        # describes and the reason it was written. The first supplier found IS
-        # the primary link when the primary column is blank.
-        if not str(norm["ebay_url"]).strip() and norm["supplier_urls"]:
-            norm["ebay_url"] = norm["supplier_urls"][0][1]
-
-        # A row with NEITHER is still dropped: there is nothing to generate from.
-        if norm["amazon_url"].strip() or norm["ebay_url"].strip():
-            products.append(norm)
-    return products
 
 
-def _extract_asin(url: str) -> str:
-    # The one ASIN-from-a-link regex lives in data/input_import._asin_of; this
-    # used to be a second copy of it (CLAUDE.md Rule 12).
-    from data.input_import import _asin_of
-    return _asin_of(url)
 
 
-def _extract_ebay_item(url: str) -> str:
-    """eBay item number = the digits after /itm/ in an eBay URL."""
-    m = re.search(r"/itm/(?:[^/]*?/)?(\d{6,})", str(url))
-    if m:
-        return m.group(1)
-    # some eBay URLs carry it as ?item=12345 or /itm/12345?...
-    m = re.search(r"[?&]item=(\d{6,})", str(url))
-    return m.group(1) if m else ""
 
 
-def select_rows(products: list, raw: str, sel_type: str = "auto"):
-    """Filter input-sheet products down to the user's selection.
-
-    Returns (filtered_list, error_message). On success error_message is "".
-    On a problem (duplicate / no match / bad input) returns ([], message) so the
-    caller can print it and stop -- never silently generate the wrong rows.
-
-    sel_type: 'row' | 'asin' | 'ebay_item' | 'auto'
-      - A pasted URL always auto-detects (ignores sel_type): amazon.* -> ASIN,
-        ebay.* -> item number.
-      - 'row'       -> comma-separated 1-based positions in the queue. STILL
-                       WORKS, but no longer offered in the app: it is a Google
-                       Sheets idea (the product on line 5 of the spreadsheet)
-                       and the queue is a database table that displays no row
-                       number anywhere, so the box was asking for a figure that
-                       appears on no screen. Reachable from the command line via
-                       --select-type row, where the position is at least
-                       countable.
-      - 'asin'      -> match each row's ASIN (its competitor_asin, else the
-                       one in its amazon_url -- data/input_row.resolved_asin).
-      - 'ebay_item' -> match item number parsed from each row's ebay_url.
-    """
-    from data.input_row import resolved_asin
-    raw = (raw or "").strip()
-    if not raw:
-        return products, ""   # empty -> generate all (unchanged)
-
-    # --- URL pasted: auto-detect platform regardless of sel_type --------------
-    low = raw.lower()
-    if "http://" in low or "https://" in low or "amazon." in low or "ebay." in low:
-        if "amazon." in low:
-            asin = _extract_asin(raw)
-            if not asin:
-                return [], f"Couldn't read an ASIN from that Amazon URL: {raw[:60]}"
-            hits = [(i, p) for i, p in enumerate(products, 1)
-                    if resolved_asin(p) == asin]
-            return _finish_match(hits, f"ASIN {asin}")
-        if "ebay." in low:
-            item = _extract_ebay_item(raw)
-            if not item:
-                return [], f"Couldn't read an item number from that eBay URL: {raw[:60]}"
-            hits = [(i, p) for i, p in enumerate(products, 1)
-                    if _extract_ebay_item(p.get("ebay_url", "")) == item]
-            return _finish_match(hits, f"eBay item {item}")
-        if "docs.google." in low or "/spreadsheets/" in low or "drive.google." in low:
-            return [], ("That's your Google Sheet link, not a product to select. "
-                        "Leave the Generate box EMPTY to make every input-sheet row, "
-                        "or type a row number (e.g. 1), or paste a single Amazon/eBay "
-                        "product URL.")
-        return [], f"Couldn't tell if that URL is Amazon or eBay: {raw[:60]}"
-
-    # --- Row numbers ----------------------------------------------------------
-    if sel_type == "row":
-        nums = []
-        for tok in re.split(r"[,\s]+", raw):
-            tok = tok.strip()
-            if not tok:
-                continue
-            if not tok.isdigit():
-                return [], (f"'{tok}' is not a row number. For rows, enter digits "
-                            f"like 2, 5, 7.")
-            nums.append(int(tok))
-        picked, bad = [], []
-        for n in nums:
-            if 1 <= n <= len(products):
-                picked.append(products[n - 1])
-            else:
-                bad.append(n)
-        if bad:
-            return [], (f"Row(s) {', '.join(map(str, bad))} are out of range "
-                        f"(sheet has {len(products)} data rows).")
-        if not picked:
-            return [], "No valid rows in that selection."
-        return picked, ""
-
-    # --- Bare ASIN ------------------------------------------------------------
-    if sel_type == "asin":
-        asin = raw.upper()
-        hits = [(i, p) for i, p in enumerate(products, 1)
-                if resolved_asin(p) == asin]
-        return _finish_match(hits, f"ASIN {asin}")
-
-    # --- Bare eBay item number ------------------------------------------------
-    if sel_type == "ebay_item":
-        item = re.sub(r"\D", "", raw)
-        hits = [(i, p) for i, p in enumerate(products, 1)
-                if _extract_ebay_item(p.get("ebay_url", "")) == item]
-        return _finish_match(hits, f"eBay item {item}")
-
-    return [], f"Unknown selection type '{sel_type}'."
 
 
-def _finish_match(hits: list, label: str):
-    """hits = list of (row_number, product). Enforce the duplicate rule."""
-    if not hits:
-        return [], (f"No row found matching {label}. Check the value or the input "
-                    f"sheet.")
-    if len(hits) > 1:
-        rows = ", ".join(str(i) for i, _ in hits)
-        return [], (f"{label} appears in rows {rows} of the input sheet. Switch to "
-                    f"Row number and enter the exact row you want.")
-    return [hits[0][1]], ""
 
 
-def _attrs_with_images(pa: dict, comp_data: dict) -> dict:
-    """Stash the competitor's primary (+ additional) image URLs into the attribute
-    dict so the dashboard can preview them and the API submit can use them as the
-    product images. eBay images already take priority inside comp_data['images'].
-
-    Also writes a `_provenance` map {attr_key: 'ebay'|'amazon'|'ai'} so the
-    dashboard can tag each field with where its value came from. Source-supplied
-    keys keep their eBay/Amazon tag; any attribute the AI produced (present in
-    `pa` but not in the source map) is tagged 'ai'.
-    """
-    out = dict(pa or {})
-    imgs = [u for u in (comp_data.get("images") or []) if u][:5]
-    if imgs:
-        out.setdefault("main_product_image_locator", imgs[0])
-        for i, u in enumerate(imgs[1:5], start=1):
-            out.setdefault(f"other_product_image_locator_{i}", u)
-    # provenance: start from the eBay/Amazon source map, tag the rest as AI
-    _src = dict((comp_data.get("_provenance") or {}))
-    _prov = {}
-    for _k in out.keys():
-        if _k.startswith("main_product_image_locator") or _k.startswith("other_product_image_locator_"):
-            continue  # images aren't attribute facts
-        if _k in _src:
-            _prov[_k] = _src[_k]
-        else:
-            _prov[_k] = "ai"   # the AI produced this value
-    if _prov:
-        out["_provenance"] = _prov
-    return out
 
 
 def build_sheet_row(comp_asin: str, row: dict, listing: dict,
@@ -3043,21 +2410,6 @@ def build_sheet_row(comp_asin: str, row: dict, listing: dict,
     return out
 
 
-def _find_target_row(ws, comp_asin: str):
-    """Decide where a generated row should go so listings refill the row you
-    cleared (or the first blank gap) instead of always appending at the bottom.
-    Priority:
-      1) a row with this exact Competitor ASIN but no SKU  (the row you cleared);
-      2) the first fully-blank data row (SKU, Title, Competitor ASIN, Product Type all empty);
-      3) None  -> caller appends.
-    Returns a 1-based sheet row number, or None.
-    """
-    # MOVED to listing/repo.py. This generator runs as its own process with its
-    # own sheet client, so while this logic lived here nothing else could reach
-    # it -- and a database backend could never replace it. Kept as a thin
-    # delegate because domain/brand_listing.py calls these by name via `host`.
-    from listing import repo as _repo
-    return _repo.find_reusable_row(ws, comp_asin)
 
 
 def sheet_write_row(ws, row_data: list, comp_asin: str = ""):
@@ -3168,181 +2520,24 @@ FILE2_COLS = {
     "TOTAL_COLS":                     612,
 }
 
-PRODUCT_ROUTES = [
-    (["cookware", "saucepan", "pots and pans", "frying pan", "casserole", "pan set"],
-     "FILE1", "COOKWARE_SET", "11715891"),
-    (["floor lamp", "standing lamp", "corner lamp", "rgb led lamp", "mood lamp"],
-     "FILE1", "LAMP", "10709381"),
-    (["light bar", "rgb light", "led bar", "tv backlight", "gaming light", "backlights"],
-     "FILE1", "LAMP", "3764800031"),
-    (["solar light", "security light", "outdoor light", "motion sensor"],
-     "FILE1", "LAMP", "13679891"),
-    (["shelf bracket", "floating shelf", "wall bracket", "mount bracket"],
-     "FILE1", "HARDWARE", "1938668031"),
-    (["changeover switch", "rotary cam", "cam switch", "electrical switch",
-      "bearing puller", "gear puller", "extractor"],
-     "FILE1", "HARDWARE", "1938353031"),
-    (["golf", "chipping net", "practice net", "swing trainer"],
-     "FILE1", "SPORT_TARGET", "26971320031"),
-    (["teeth whitening", "whitening powder", "whitening strips"],
-     "FILE2", "HEALTH_PERSONAL_CARE", "74136031"),
-    (["night cream", "day cream", "face cream", "skin care", "moisturi", "collagen",
-      "sleeping mask", "serum"],
-     "FILE2", "BEAUTY", "18918424031"),
-    (["body lotion", "body cream", "glutathione", "whitening lotion"],
-     "FILE2", "BEAUTY", "344269031"),
-    (["hair fibre", "hair fiber", "hair loss", "hair growth", "elixir"],
-     "FILE2", "HEALTH_PERSONAL_CARE", "2867979031"),
-    (["shampoo", "conditioner", "curl cream", "hair spray", "scalp scrub"],
-     "FILE2", "HEALTH_PERSONAL_CARE", "18918425031"),
-    (["hair dryer", "blow dryer"],
-     "FILE2", "HEALTH_PERSONAL_CARE", "2868092031"),
-    (["straightener", "hair straighten", "heated brush", "curling iron", "curler"],
-     "FILE2", "HEALTH_PERSONAL_CARE", "74099031"),
-    (["body spray", "perfume", "fragrance", "body mist"],
-     "FILE2", "BEAUTY", "2790134031"),
-    (["garlic press", "mandoline", "slicer", "chopper", "kitchen tool", "kitchen gadget"],
-     "FILE2", "KITCHEN", "3187111031"),
-    (["blender", "juicer", "food processor", "deep fryer", "air fryer"],
-     "FILE2", "KITCHEN", "3538310031"),
-    (["mop", "bucket set", "shelving unit", "shelf unit", "storage rack", "clothes rail"],
-     "FILE2", "HOME", "3579745031"),
-    (["extension lead", "power strip", "plug socket"],
-     "FILE2", "HOME", "3538310031"),
-    (["security camera", "cctv", "indoor camera", "surveillance"],
-     "FILE2", "HOME", "3538310031"),
-    (["massager", "shiatsu", "back massager"],
-     "FILE2", "HEALTH_PERSONAL_CARE", "3360475031"),
-]
 
 
-# Product types THIS unified template accepts (from its Valid Values tab).
-TEMPLATE_PRODUCT_TYPES = {
-    "KITCHEN", "CORRECTIVE_EYEGLASSES", "GLOBE", "COOKWARE_SET", "AUTO_BATTERY",
-    "CAR_ELECTRONICS", "FOOD_SPATULA", "HEALTH_PERSONAL_CARE", "KITCHEN_KNIFE",
-    "HANDBAG", "AUTO_ACCESSORY", "HARDWARE", "SPORT_TARGET", "BEAUTY",
-    "SUNGLASSES", "SECURITY_CAMERA", "LAMP", "SNOW_GLOBE", "HOME",
-}
-
-# Best-effort browse node when the sheet's type is trusted (blank is acceptable;
-# recommended_browse_nodes is not a required field).
-PT_DEFAULT_NODE = {
-    "COOKWARE_SET": "11715891", "LAMP": "10709381", "HARDWARE": "1938668031",
-    "SPORT_TARGET": "26971320031", "HEALTH_PERSONAL_CARE": "66280031",
-    "BEAUTY": "18918424031", "KITCHEN": "3187111031", "HOME": "3579745031",
-}
 
 
-def _norm_pt(s: str) -> str:
-    return re.sub(r"[^A-Z0-9_]", "", str(s).strip().upper().replace(" ", "_"))
 
 
-# When a product's exact type isn't in this template, map it to the NEAREST
-# available type. Order matters (first match wins); HOME is the final catch-all.
-# Matching is whole-word on alphanumeric-tokenised text, so 'chair' never hits
-# 'hair' and 'lightweight' never hits 'light'.
-_PT_FALLBACK_RULES = [
-    (["snow globe"], "SNOW_GLOBE"),
-    (["globe", "atlas"], "GLOBE"),
-    (["sunglasses", "sunglass"], "SUNGLASSES"),
-    (["eyeglasses", "spectacles", "reading glasses", "prescription glasses", "optical frame"], "CORRECTIVE_EYEGLASSES"),
-    (["cctv", "security camera", "surveillance camera", "ip camera", "webcam", "doorbell camera", "dash cam", "dashcam"], "SECURITY_CAMERA"),
-    (["lamp", "lamps", "bulb", "bulbs", "chandelier", "sconce", "lantern", "lighting",
-      "downlight", "spotlight", "floodlight", "light fixture", "ceiling light", "wall light",
-      "pendant light", "led light", "string light", "night light", "desk light",
-      "wall lamp", "desk lamp", "floor lamp", "table lamp"], "LAMP"),
-    (["knife", "cleaver", "kitchen knife", "chef knife", "paring knife"], "KITCHEN_KNIFE"),
-    (["spatula", "turner", "ladle"], "FOOD_SPATULA"),
-    (["cookware", "saucepan", "frying pan", "casserole", "wok", "stockpot", "pots and pans"], "COOKWARE_SET"),
-    (["blender", "juicer", "mixer", "peeler", "grater", "slicer", "chopper", "food processor", "air fryer", "kettle", "toaster", "whisk", "utensil", "kitchen gadget", "kitchen tool"], "KITCHEN"),
-    (["handbag", "purse", "tote", "backpack", "satchel", "clutch", "shoulder bag", "crossbody"], "HANDBAG"),
-    (["car battery", "vehicle battery", "leisure battery"], "AUTO_BATTERY"),
-    (["car stereo", "head unit", "car audio", "car speaker"], "CAR_ELECTRONICS"),
-    (["car", "automotive", "vehicle", "number plate", "seat cover", "floor mat", "wing mirror", "wiper"], "AUTO_ACCESSORY"),
-    (["serum", "moisturiser", "moisturizer", "face cream", "body cream", "night cream", "lotion", "cosmetic", "skincare", "makeup", "fragrance", "perfume", "mascara", "lipstick", "face mask"], "BEAUTY"),
-    (["massager", "supplement", "trimmer", "shaver", "toothbrush", "grooming", "scalp", "manicure"], "HEALTH_PERSONAL_CARE"),
-    (["dartboard", "archery", "practice net", "chipping net", "golf net", "shooting target", "target board"], "SPORT_TARGET"),
-    (["tool", "tools", "bracket", "fixing", "screw", "drill", "wrench", "hardware", "mount", "hinge", "hook", "fastener", "clamp"], "HARDWARE"),
-]
 
 
-def _fallback_pt(text: str) -> str:
-    """Map an unsupported product to the NEAREST available template type.
-    Returns 'HOME' (the generic catch-all) when nothing more specific fits."""
-    t = " " + re.sub(r"[^a-z0-9]+", " ", text.lower()).strip() + " "
-    for keywords, pt in _PT_FALLBACK_RULES:
-        if any(f" {kw} " in t for kw in keywords):
-            return pt
-    return "HOME"
 
 
-def detect_route(title: str, category: str, product_type: str) -> tuple:
-    """
-    Return (file_id, product_type, browse_node).
-      1) Trust the sheet's Product Type when this template accepts it.
-      2) Else keyword-route with LEFT word-boundary matching, so 'chair' can no
-         longer match 'hair'.
-      3) Else return ('', '', '') -- a SKIP signal; the caller skips and flags the
-         row instead of forcing it into HOME.
-    """
-    text     = f"{title} {category} {product_type}".lower()
-    pt_sheet = _norm_pt(product_type)
-
-    # 1) Trust the explicit sheet value if the template supports it.
-    if pt_sheet in TEMPLATE_PRODUCT_TYPES:
-        node = PT_DEFAULT_NODE.get(pt_sheet, "")
-        for keywords, file_id, pt, browse_node in PRODUCT_ROUTES:
-            if pt == pt_sheet and any(re.search(r"\b" + re.escape(kw), text) for kw in keywords):
-                node = browse_node
-                break
-        fid = "FILE1" if pt_sheet in {"COOKWARE_SET", "LAMP", "HARDWARE", "SPORT_TARGET"} else "FILE2"
-        return fid, pt_sheet, node
-
-    # 2) Keyword routing with left word-boundary matching.
-    for keywords, file_id, pt, browse_node in PRODUCT_ROUTES:
-        if any(re.search(r"\b" + re.escape(kw), text) for kw in keywords):
-            if pt in TEMPLATE_PRODUCT_TYPES:
-                return file_id, pt, browse_node
-
-    # 3) Unsupported type -> map to the NEAREST available type (never skip).
-    fb  = _fallback_pt(text)
-    fid = "FILE1" if fb in {"COOKWARE_SET", "LAMP", "HARDWARE", "SPORT_TARGET"} else "FILE2"
-    return fid, fb, PT_DEFAULT_NODE.get(fb, "")
 
 
-def _parse_field_key(field_id: str) -> str:
-    return field_id.split("[")[0].split("#")[0].strip().lower()
+
+from listing.value_snap import (_parse_field_key, FIELD_KEY_ALIASES, _smart_vlist, merge_static_into_runtime, _SPELLING, _spell, snap_to_valid, _strip_html, _clean_days, _DIM_UNIT_NORM, _norm_dim_unit, _dim_number, _merge_conditional_enums, _dim_axis_raw)  # moved (Milestone 4)
 
 
-# Field key alias map:
-# Amazon uses different field ID names per product type in the Dropdown Lists tab.
-# Each entry lists aliases to try in order so we never miss a valid dropdown list.
-FIELD_KEY_ALIASES = {
-    "size":                ["size", "item_size", "item_package_quantity",
-                            "item_display_dimensions", "volume_capacity_name"],
-    "color":               ["color", "color_name", "colour", "item_color_name",
-                            "exterior_color_name", "color_map"],
-    "material":            ["material", "material_type", "item_material_type",
-                            "outer_material_type"],
-    "target_gender":       ["target_gender", "department", "department_name"],
-    "age_range":           ["age_range_description", "age_range", "age_range_name"],
-    "condition_type":      ["condition_type", "condition"],
-    "country_of_origin":   ["country_of_origin", "country_of_manufacture"],
-    "product_tax_code":    ["product_tax_code"],
-    "batteries_required":  ["batteries_required", "are_batteries_required"],
-    "batteries_included":  ["batteries_included", "are_batteries_included"],
-    "fulfillment_channel": ["fulfillment_availability#1.fulfillment_channel_code",
-                            "fulfillment_channel_code"],
-}
 
 
-def _smart_vlist(field_name: str, valid_values: dict) -> list:
-    """Try all aliases for a field name, return first non-empty list found."""
-    for alias in FIELD_KEY_ALIASES.get(field_name, [field_name]):
-        result = valid_values.get(alias, [])
-        if result:
-            return result
-    return []
 
 
 def load_static_valid_values() -> dict:
@@ -3370,23 +2565,6 @@ def load_static_valid_values() -> dict:
         return {}
 
 
-def merge_static_into_runtime(runtime_vv: dict, static_vv: dict) -> dict:
-    """
-    Overlay static valid-values on top of runtime-loaded ones.
-    For each product type covered by static_vv, replace the runtime values
-    so the script uses Amazon-published enumerations as the source of truth.
-    Product types only present in runtime_vv are preserved (they may exist
-    in the Google Sheet template but not in our two XLSM files).
-    """
-    if not static_vv:
-        return runtime_vv
-    merged = dict(runtime_vv) if runtime_vv else {}
-    for pt, attrs in static_vv.items():
-        if pt not in merged:
-            merged[pt] = {}
-        for attr, values in attrs.items():
-            merged[pt][attr] = list(values)  # static wins
-    return merged
 
 
 def load_dropdown_values(gc, sheet_id: str, label: str) -> dict:
@@ -3432,85 +2610,10 @@ def load_dropdown_values(gc, sheet_id: str, label: str) -> dict:
     return result
 
 
-# BRITISH AND AMERICAN SPELLINGS OF THE SAME WORD. Amazon's UK lists say
-# Aluminium, Microfibre, Grey and Colour; the AI and eBay's sellers write them
-# either way. Comparing the raw strings makes those a miss, and a miss here
-# means the value goes to Amazon unsnapped.
-_SPELLING = (("fibre", "fiber"), ("metre", "meter"), ("litre", "liter"),
-             ("colour", "color"), ("aluminium", "aluminum"), ("grey", "gray"),
-             ("centre", "center"), ("mould", "mold"), ("jewellery", "jewelry"))
 
 
-def _spell(s: str) -> str:
-    out = str(s or "").lower()
-    for uk, us in _SPELLING:
-        out = out.replace(uk, us)
-    return out
 
 
-def snap_to_valid(value: str, valid_list: list) -> str:
-    """Fuzzy match to Amazon's exact valid dropdown value."""
-    if not value or not valid_list:
-        return ""
-    v = value.strip()
-    if v in valid_list:
-        return v
-    v_lower = v.lower()
-    for item in valid_list:
-        if item.lower() == v_lower:
-            return item
-    # Same word, other side of the Atlantic.
-    v_sp = _spell(v_lower)
-    for item in valid_list:
-        if _spell(item) == v_sp:
-            return item
-    # SUBSTRING MATCHING NEEDS SOMETHING TO MATCH ON. With no length guard,
-    # "a" matched "Acrylic" and "s" matched "Steel" -- a single character
-    # snapping to whichever option happened to contain it. Exact and
-    # case-insensitive matching above still catch legitimately short values
-    # like the sizes S, M and L, which is why the guard is only here.
-    if len(v_lower) >= 3:
-        for item in valid_list:
-            if item.lower() in v_lower:
-                return item
-        for item in valid_list:
-            if v_lower in item.lower():
-                return item
-    v_words   = set(v_lower.split())
-    best, best_score = "", 0
-    for item in valid_list:
-        score = len(v_words & set(item.lower().split()))
-        if score > best_score:
-            best_score, best = score, item
-    if best_score >= 1:
-        return best
-    # THE SAME WORD IN ANOTHER FORM. 'Rectangle' and Amazon's 'Rectangular'
-    # share no whole word and neither contains the other, so every strategy
-    # above misses -- and it was one of the values sitting unmatched on a real
-    # draft. Six characters is enough to make it the same word and short enough
-    # to still be a word; anything looser starts matching 'Round' to 'Rounded
-    # Corner Something'.
-    if len(v_sp) >= 6:
-        for item in valid_list:
-            i_sp = _spell(item)
-            if len(i_sp) >= 6 and i_sp[:6] == v_sp[:6]:
-                return item
-    # LAST RESORT: AN INITIALISM. Amazon spells its materials out in full, and
-    # the trade does not: 'ABS' is Acrylonitrile Butadiene Styrene, 'MDF' is
-    # Medium Density Fibreboard, 'PVC' is Polyvinyl Chloride. Found on real
-    # drafts, where 'ABS' matched nothing and was sent as-is.
-    #
-    # Deliberately strict: 2-5 letters, no spaces, and the initials of a
-    # MULTI-word option must match exactly. Anything looser starts matching
-    # short words to unrelated options.
-    if 2 <= len(v) <= 5 and v.isalpha():
-        for item in valid_list:
-            parts = str(item).split()
-            if len(parts) < 2:
-                continue
-            if "".join(p[0] for p in parts).lower() == v_lower:
-                return item
-    return ""
 
 
 # Column letter from a 0-based index. Was implemented identically here AND in
@@ -3523,209 +2626,22 @@ from listing.repo import col_letter as _col_letter
 from listing.builder import _clean_price
 
 
-def _strip_html(html: str) -> str:
-    text = re.sub(r"<br\s*/?>", " ",   html, flags=re.IGNORECASE)
-    text = re.sub(r"<li>",      " - ", text, flags=re.IGNORECASE)
-    text = re.sub(r"<[^>]+>",  "",    text)
-    return re.sub(r"\s+", " ", text).strip()
 
 
-def _clean_days(row: dict) -> str:
-    days = str(row.get("Handling Days", "")).strip()
-    if days.isdigit():
-        return days
-    nums = re.findall(r"\d+", str(row.get("Handling Time", "")))
-    return nums[0] if nums else "3"
 
 
 # _has_battery moved to listing/hazmat.py in Phase 5 (self-contained; behaviour unchanged).
 from listing.hazmat import _has_battery
 
 
-# Normalises a measurement unit to the EXACT string Amazon accepts (its unit
-# dropdowns are case-sensitive: "kilograms" is REJECTED, "Kilograms" is accepted).
-# Amazon's catalogue dimensions block returns lowercase forms, so we must map up.
-_DIM_UNIT_NORM = {
-    "cm": "Centimeters", "cms": "Centimeters", "centimeter": "Centimeters",
-    "centimetre": "Centimeters", "centimetres": "Centimeters", "centimeters": "Centimeters",
-    "mm": "Millimeters", "millimeter": "Millimeters", "millimetre": "Millimeters",
-    "millimetres": "Millimeters", "millimeters": "Millimeters",
-    "m": "Meters", "meter": "Meters", "metre": "Meters", "metres": "Meters", "meters": "Meters",
-    "in": "Inches", "ins": "Inches", "inch": "Inches", "inches": "Inches", '"': "Inches",
-    "ft": "Feet", "foot": "Feet", "feet": "Feet",
-    "g": "Grams", "gm": "Grams", "gms": "Grams", "gram": "Grams", "grams": "Grams",
-    "kg": "Kilograms", "kgs": "Kilograms", "kilogram": "Kilograms", "kilograms": "Kilograms",
-    "lb": "Pounds", "lbs": "Pounds", "pound": "Pounds", "pounds": "Pounds",
-    "oz": "Ounces", "ounce": "Ounces", "ounces": "Ounces",
-    "mg": "Milligrams", "milligram": "Milligrams", "milligrams": "Milligrams",
-}
 
 
-def _norm_dim_unit(raw: str) -> str:
-    u = str(raw or "").strip().lower().rstrip(".")
-    if not u:
-        return ""
-    u = u.split()[0]                          # "centimeters (cm)" -> "centimeters"
-    return _DIM_UNIT_NORM.get(u, u)
 
 
-def resolve_account_brand(row_brand, config):
-    """(brand_to_send, note) -- THE one place that decides whose brand goes out.
-
-    A listing must go out under THIS ACCOUNT'S OWN TRADEMARK. The Brand column
-    is trusted only when it names one of the account's registered brands
-    (accounts can have several); anything else is a stale or leaked value and
-    the account's primary trademark is used instead. It is NEVER
-    config["brand_name"] when an account is resolved -- that global is exactly
-    how one account's brand once ended up on another's listings.
-
-    A BRAND SWAP IS NEVER SILENT, and that is what this exists for:
-
-        "I am trying to put the brand name as AltaboltaVoo while creating a new
-         listing on Nestwell Goods account, my nestwell goods account has that
-         brand name approved in the seller central ... but the app says
-         'Amazon flagged this - review the value'"
-
-    Measured: nestwell_goods is configured with brands ['Nestwell Goods'].
-    Typing AltaboltaVoo was REPLACED with 'Nestwell Goods' without a word, so
-    the listing went out under a brand nobody chose and the only clue was a
-    generic flag on a field the editor would not let you fix.
-
-    The guard stays -- one account's trademark on another's listing is the worse
-    fault. But the app cannot know which brands Amazon approved for an account;
-    only the owner knows, and the account's Brands list is where they say so. So
-    the swap is ANNOUNCED, with the exact thing to do about it.
-
-    ...AND THE SWAP IS GONE. IT REPORTS NOW, AND SENDS WHAT WAS TYPED.
-
-        "please do not force the listing to use the brand name from the
-         approved or added brand list just allow the types brand name to go to
-         amazon if there is a typo or some error amazon will reveal in preview"
-
-    He is right, and the argument is Amazon's own enforcement. A brand this
-    account does not own CANNOT be used to create a listing: Amazon refuses it
-    with code 100550, "You need to connect your brand X with your account to
-    create new ASINs with this brand", and hands back the Manage Your Brands
-    link. So the worst case the substitution was written to prevent -- one
-    account's trademark on another's listing -- is a case Amazon already blocks,
-    at the only place that actually knows which brands are approved.
-
-    And the substitution had its own cost, in his words the first time:
-
-        "Typing AltaboltaVoo was REPLACED with 'Nestwell Goods' without a word"
-
-    Replacing it did not make the listing correct. It made it go out under a
-    brand nobody chose, and hid the thing that needed fixing.
-
-    THE APP CANNOT KNOW WHICH BRANDS AMAZON APPROVED, and this is not a gap that
-    can be closed: Amazon's own documentation says SP-API "doesn't provide
-    information about intellectual property restrictions for new products or
-    details about gated brands". There is no endpoint to read the list and none
-    to apply. So the account's Brands list is a note the owner keeps for himself
-    -- useful for spotting a stale value, and never authoritative enough to
-    overrule what he typed.
-
-    THE NOTE STAYS. A brand that is not on the account's list is still worth
-    saying out loud, because a leaked or stale value looks exactly like a
-    deliberate one. What changed is that it is now a remark about a value being
-    sent, not an announcement of a value being changed.
-
-    ONE COPY, used by build_api_attributes and by the submit guard (rule 12).
-    They disagreed about nothing, but two copies of "whose brand is this" is one
-    more than a listing can safely have.
-    """
-    brand = str(row_brand or "").strip()
-    acct = [str(x).strip() for x in (config.get("_account_brands") or [])
-            if str(x).strip()]
-    if acct:
-        if brand and brand not in acct:
-            return brand, (
-                "Brand: the row says %r, which is not one of this account's "
-                "listed brands (%s). Sending it as typed — Amazon decides which "
-                "brands this account may use, and refuses with code 100550 if "
-                "it is not linked. If %r is right, add it to the account's "
-                "Brands list so this note stops; if it is not, change it on the "
-                "row." % (brand, ", ".join(acct), brand))
-        # Typed and recognised, or nothing typed -- then the account's primary,
-        # which is the only case left where the app supplies a brand at all.
-        return (brand or acct[0]), ""
-    if config.get("_account_brand") is not None:
-        # Account resolved and no trademark listed. A TYPED brand still goes --
-        # the list is the owner's own note, not Amazon's permission, and an
-        # empty list is far more likely to mean he has not filled it in than
-        # that he owns no brands. Only a row with no brand at all sends none,
-        # because there is then nothing to send and nothing to borrow.
-        if brand:
-            return brand, (
-                "Brand: sending %r as typed. This account has no brands listed "
-                "in its settings, so nothing here could confirm it — Amazon "
-                "will, and refuses with code 100550 if the brand is not linked "
-                "to the account." % brand)
-        return "", ""
-    return (brand or config.get("brand_name", "")), ""   # legacy / no account
 
 
-def _dim_number(raw) -> str:
-    """A physical measurement, written the way a person writes one.
-
-    Amazon's catalogue returns dimensions already converted, so the numbers
-    arrive with the full error of that conversion:
-
-        item_length  9.842519675 inches      (25 cm)
-        item_height  157.48 inches           (4 m)
-        item_width   13.779527545 inches     (35 cm)
-
-    Nine decimal places on the width of a squeegee is not precision, it is
-    float noise -- and it is shown to buyers and to whoever is checking the
-    draft. Reported as "some data is put in there which do not make any sense".
-
-    Two decimals, with pointless trailing zeros removed -- but NEVER below one
-    decimal place, because Amazon rejects a whole number here:
-
-        item_dimensions_fraction  Value '10.' for attribute 'Overall Height
-        Derived' has too few decimal places. It has 0 decimal places but the
-        minimum allowed is '1'.
-
-    That message is off a real listing, and it is why this returns "35.0" and
-    not "35". It also shows what a badly-trimmed number looks like when it
-    reaches Amazon -- "10." is a trailing dot with nothing after it, which is
-    what stripping zeros without then handling the dot produces.
-
-    Anything that is not a number is handed back untouched rather than mangled.
-    """
-    s = str(raw if raw is not None else "").strip()
-    if not s:
-        return ""
-    try:
-        n = float(s)
-    except (TypeError, ValueError):
-        return s
-    out = "%.2f" % n
-    # 9.84 stays; 35.00 becomes 35.0; never 35, and never a bare "35."
-    if out.endswith("0") and not out.endswith(".00"):
-        out = out[:-1]
-    elif out.endswith(".00"):
-        out = out[:-2] + "0"
-    return out
 
 
-# Safety & compliance attribute keys whose values are taken verbatim from the
-# live SP-API schema enum (injected into the generation prompt). These are
-# written to the flat file WITHOUT fuzzy snapping, because the static
-# valid-values lists for these columns are frequently incomplete and snapping
-# would blank a correct "No"/"Not Applicable" answer or match the wrong option.
-_COMPLIANCE_PASSTHROUGH = {
-    "supplier_declared_dg_hz_regulation",
-    "contains_liquid_contents",
-    "ghs",
-    "ghs_classification_class",
-    "hazmat",
-    "batteries_required",
-    "batteries_included",
-    "supplier_declared_material_regulation",
-    "pesticide_marking",
-    "california_proposition_65_compliance_type",
-}
 
 # ---------------------------------------------------------------------------
 # GLOBAL SAFE-DEFAULTS for safety/compliance fields.
@@ -3771,219 +2687,6 @@ from listing.compliance import _enum_for, _pick_not_applicable, apply_compliance
 
 
 
-def build_flat_row(sheet_row: dict, brand: str, manufacturer: str,
-                   cols_map: dict, valid_values: dict,
-                   product_type: str, browse_node: str,
-                   shipping_group: str = "") -> list:
-    total    = cols_map["TOTAL_COLS"]
-    out      = [""] * total
-    title    = str(sheet_row.get("Title",                ""))[:200]
-    upc      = str(sheet_row.get("UPC",                  "")).strip()
-    asin     = str(sheet_row.get("Competitor ASIN",      "")).strip()
-    sku      = str(sheet_row.get("SKU",                  "")).strip()
-    price    = _clean_price(sheet_row.get("Our Price (GBP)", ""))
-    desc     = _strip_html(str(sheet_row.get("Description (HTML)", "")))[:2000]
-    keywords = str(sheet_row.get("Search Terms / KW",    ""))[:249]
-    handling = _clean_days(sheet_row)
-    battery  = _has_battery(sheet_row)
-
-    def vv(field_name: str) -> list:
-        return _smart_vlist(field_name, valid_values)
-
-    # Constrained fields -- all snapped from live dropdown lists
-    material = snap_to_valid(
-        str(sheet_row.get("Material", "")).split(",")[0].strip().replace("N/A", ""),
-        vv("material"))
-
-    colour_raw = str(sheet_row.get("Colour", "")).replace("N/A", "")
-    colour     = snap_to_valid(colour_raw, vv("color")) if vv("color") else colour_raw
-
-    size_raw = str(sheet_row.get("Size", "")).replace("N/A", "")
-    # Leave blank when no valid list -- raw values fail dropdown validation
-    size     = snap_to_valid(size_raw, vv("size")) if vv("size") else ""
-
-    gender   = snap_to_valid(
-        str(sheet_row.get("Target Gender", "Unisex")).replace("N/A", "Unisex"),
-        vv("target_gender")) or "Unisex"
-
-    age      = snap_to_valid(
-        str(sheet_row.get("Age Range", "Adult")).replace("N/A", "Adult"),
-        vv("age_range")) or "Adult"
-
-    condition = snap_to_valid("New",         vv("condition_type"))     or "New"
-    fulfill   = snap_to_valid("DEFAULT",     vv("fulfillment_channel")) or "DEFAULT"
-    country   = snap_to_valid("China",       vv("country_of_origin"))  or "China"
-    batt_yes  = snap_to_valid("Yes",         vv("batteries_required")) or "Yes"
-    batt_no   = snap_to_valid("No",          vv("batteries_required")) or "No"
-    tax_code  = snap_to_valid("A_GEN_NOTAX", vv("product_tax_code"))   or "A_GEN_NOTAX"
-
-    # Product Id: real barcode if the sheet provides one, else BLANK (GTIN-exempt).
-    # Never write the competitor's ASIN -- you cannot list a new product under it.
-    # normalize_gtin is the ONE place that decides this (listing/barcode.py):
-    # it strips separators and unwraps a 14-digit GTIN back to the EAN-13 it is.
-    # Empty type -> no usable barcode -> leave blank; needs GTIN exemption.
-    prod_id, _pid_type = normalize_gtin(upc)
-    prod_id_type       = _pid_type.upper()
-
-    # Per-row brand from sheet wins; fall back to the export-level default.
-    row_brand        = str(sheet_row.get("Brand", "")).strip()
-    effective_brand  = row_brand or brand
-    # Per-row model number: blank means category does not require it.
-    row_model_number = str(sheet_row.get("Model Number", "")).strip()
-
-    # Title must NOT lead with the brand -- strip it from the start if present
-    # (covers rows already generated under the old brand-first prompt).
-    title_clean = title
-    _bn = effective_brand.strip()
-    if _bn and title_clean.lower().startswith(_bn.lower()):
-        title_clean = title_clean[len(_bn):].lstrip(" -\u2013\u2014:|,").strip()
-
-    def s(key: str, val):
-        idx = cols_map.get(key)
-        if idx is not None and idx < total:
-            out[idx] = str(val) if val is not None else ""
-
-    s("SKU",                           sku)
-    s("Product Type",                  product_type)
-    s("Listing Action",                "Create or Replace (Full Update)")
-    s("Item Name",                     title_clean)
-    s("Brand Name",                    effective_brand)
-    s("Product Id Type",               prod_id_type)
-    s("Product Id",                    prod_id)
-    s("Browse Node 1",                 browse_node)
-    if row_model_number:
-        s("Model Number",              row_model_number)
-        s("model_name",                row_model_number)   # own-brand: mirror model number
-        s("part_number",               row_model_number)
-    s("Manufacturer",                  manufacturer)
-    s("Product Description",           desc)
-    s("Bullet Point 1",                str(sheet_row.get("Bullet 1", ""))[:500])
-    s("Bullet Point 2",                str(sheet_row.get("Bullet 2", ""))[:500])
-    s("Bullet Point 3",                str(sheet_row.get("Bullet 3", ""))[:500])
-    s("Bullet Point 4",                str(sheet_row.get("Bullet 4", ""))[:500])
-    s("Bullet Point 5",                str(sheet_row.get("Bullet 5", ""))[:500])
-    s("Generic Keyword",               keywords)
-    s("Material",                      material)
-    s("Colour",                        colour)
-    s("Size",                          size)
-    s("Number of Items",               str(sheet_row.get("Number of Items", "1")) or "1")
-    s("Target Gender",                 gender)
-    s("Age Range Description",         age)
-    s("Item Condition",                condition)
-    s("List Price with Tax",           price)
-    s("Product Tax Code",              tax_code)
-    s("Fulfillment Channel Code (UK)", fulfill)
-    s("Quantity (UK)",                 "99")
-    s("Handling Time (UK)",            handling)
-    s("Your Price GBP",                price)
-    s("Country of Origin",             country)
-    s("Are batteries required?",       batt_yes if battery else batt_no)
-    s("Are batteries included?",       batt_yes if battery else batt_no)
-    if shipping_group:
-        s("merchant_shipping_group",   shipping_group)
-
-    # --- Pillars 3-4: map the full attribute object generated for this product --
-    # Reads the "Attributes JSON" column. Enumerated values are snapped to Amazon's
-    # accepted strings (left BLANK if no clean match -- never writes an invalid enum
-    # or "N/A" into a dropdown). Free-text values are written as-is. Skips fields
-    # already written above so we never double-write.
-    _already = {"material", "color", "colour", "size", "number_of_items",
-                "country_of_origin", "item_condition", "item_type_keyword",
-                "item_length", "item_width", "item_height", "item_depth",
-                "item_weight", "length", "width", "height", "depth", "weight",
-                "item_package_length", "item_package_width", "item_package_height",
-                "item_package_weight", "package_length", "package_width",
-                "package_height", "package_weight"}
-    try:
-        _gen = json.loads(str(sheet_row.get("Attributes JSON", "") or "{}"))
-    except Exception:
-        _gen = {}
-    if isinstance(_gen, dict):
-        for _ak, _av in _gen.items():
-            _akl = str(_ak).strip().lower()
-            if _akl in _already or _av is None or str(_av).strip() == "":
-                continue
-            if _akl not in cols_map:
-                continue                      # template has no column for this attribute
-            # Safety & compliance fields: their value comes from the live SP-API
-            # schema enum injected into the generation prompt, so it is already a
-            # valid Amazon string. Write it directly -- snapping it against the
-            # (sometimes incomplete) static valid-values list would wrongly blank
-            # a correct answer like "No" or "Not Applicable", or fuzzy-match it to
-            # the wrong option (e.g. "Not Applicable" -> "GHS").
-            if _akl in _COMPLIANCE_PASSTHROUGH:
-                s(_akl, str(_av).strip()[:120])
-                continue
-            _vlist = vv(_akl)
-            if _vlist:                        # enumerated: snap; blank if no clean match
-                _snapped = snap_to_valid(str(_av).replace("N/A", "").strip(), _vlist)
-                if _snapped:
-                    s(_akl, _snapped)
-            else:                             # free-text: write value, or N/A (accepted as text)
-                _clean = str(_av).strip()
-                if _clean:
-                    s(_akl, _clean[:500])
-
-    # --- Dimensions: fill a field-GROUP only when every axis it needs has a value.
-    # Amazon errors on a partially filled group (e.g. depth/width/height with depth
-    # missing), so we gather the measurements we actually have, then for each
-    # template group write it ONLY if all its required axes are covered. Item and
-    # package scopes are independent.
-    _dim_groups = cols_map.get("_DIM_GROUPS") or {}
-
-    def _split_dim(_raw):
-        m = re.match(r"\s*(-?[\d.]+)\s*(.*)$", str(_raw).strip())
-        if not m:
-            return None, None
-        return m.group(1).rstrip("."), _norm_dim_unit(m.group(2))
-
-    _have = {"item": {}, "package": {}}       # scope -> axis -> (value, unit)
-    _DIM_SOURCES = (
-        ("item",    "height", ("item_height", "height")),
-        ("item",    "length", ("item_length", "length")),
-        ("item",    "width",  ("item_width", "width")),
-        ("item",    "depth",  ("item_depth", "depth")),
-        ("item",    "weight", ("item_weight", "weight")),
-        ("package", "height", ("item_package_height", "package_height")),
-        ("package", "length", ("item_package_length", "package_length")),
-        ("package", "width",  ("item_package_width", "package_width")),
-        ("package", "weight", ("item_package_weight", "package_weight")),
-    )
-    for _scope, _axis, _src_keys in _DIM_SOURCES:
-        for _sk in _src_keys:
-            _raw = _gen.get(_sk)
-            if _raw and str(_raw).strip():
-                _v, _u = _split_dim(_raw)
-                if _v is not None:
-                    _have[_scope][_axis] = (_v, _u)
-                break
-
-    for _scope, _groups in _dim_groups.items():
-        for _gkey, _axes in _groups.items():
-            _need = [a for a, slots in _axes.items() if slots.get("value")]
-            if not _need or not all(a in _have[_scope] for a in _need):
-                continue                      # incomplete group -> leave blank
-            for _a in _need:
-                _v, _u = _have[_scope][_a]
-                for _ci in _axes[_a].get("value", []):
-                    if not out[_ci]:
-                        out[_ci] = _v
-                if _u:
-                    for _ci in _axes[_a].get("unit", []):
-                        if not out[_ci]:
-                            out[_ci] = _u
-
-    # --- Compliance safety net: these are near-universal for ordinary retail
-    # goods and Amazon BLOCKS the listing when a required one is missing. If the
-    # generation step didn't emit them, write the safe default so we never ship a
-    # row that fails on an empty compliance dropdown.
-    for _ck, _default in (("supplier_declared_dg_hz_regulation", "Not Applicable"),
-                          ("contains_liquid_contents", "No")):
-        _ci = cols_map.get(_ck)
-        if _ci is not None and not out[_ci]:
-            out[_ci] = _default
-
-    return out
 
 
 def write_to_template_sheet(gc, sheet_id: str, data_rows: list,
@@ -4990,98 +3693,6 @@ def _raw_schema_bounded(product_type: str, creds: dict, hard_timeout: int = 180)
     return box.get("r", ({}, set(), {}))
 
 
-def _merge_conditional_enums(props: dict, raw: dict) -> dict:
-    """Amazon hides many fields' REAL allowed values inside conditional branches
-    (allOf / anyOf / oneOf / if-then-else) of the schema, NOT in top-level
-    `properties`. The loader used to read only `properties`, so such fields looked
-    like free-text (e.g. battery_installation_device_type) even though Amazon
-    validates them server-side. This walks the WHOLE schema, collects every enum
-    found for each field across ALL branches, and injects the union into
-    props[field] so the rest of the app (dropdowns, snapping, hints) sees the real
-    list. Purely additive: existing enums are preserved; we only fill gaps/extend.
-    """
-    # 1) gather: field_name -> set of allowed values (from anywhere in the doc)
-    found = {}   # field -> list (order-preserving)
-
-    def _add(field, values):
-        if not values:
-            return
-        bucket = found.setdefault(field, [])
-        for v in values:
-            sv = str(v)
-            if sv not in bucket:
-                bucket.append(sv)
-
-    def _enum_under_value(node):
-        """Given a field-definition node, return enum at items.properties.value.enum
-        (and a few variants), searching simple anyOf wrappers too."""
-        out = []
-        if not isinstance(node, dict):
-            return out
-        it = node.get("items", {})
-        ip = it.get("properties", {}) if isinstance(it, dict) else {}
-        vp = ip.get("value", {}) if isinstance(ip, dict) else {}
-        # direct
-        if isinstance(vp, dict) and isinstance(vp.get("enum"), list):
-            out += vp["enum"]
-        # anyOf/oneOf wrappers around value
-        for key in ("anyOf", "oneOf", "allOf"):
-            for sub in (vp.get(key) or []) if isinstance(vp, dict) else []:
-                if isinstance(sub, dict) and isinstance(sub.get("enum"), list):
-                    out += sub["enum"]
-        # some defs put enum straight on items or the node
-        if isinstance(it, dict) and isinstance(it.get("enum"), list):
-            out += it["enum"]
-        if isinstance(node.get("enum"), list):
-            out += node["enum"]
-        return out
-
-    def _walk(node):
-        if isinstance(node, dict):
-            # if this dict is a `properties` map, each key is a field name
-            props_map = node.get("properties")
-            if isinstance(props_map, dict):
-                for fname, fdef in props_map.items():
-                    vals = _enum_under_value(fdef)
-                    if vals:
-                        _add(fname, vals)
-            for v in node.values():
-                _walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                _walk(v)
-
-    _walk(raw)
-
-    # 2) inject: ensure props[field] carries the discovered enum at the standard
-    #    location the rest of the app reads (items.properties.value.enum).
-    for field, values in found.items():
-        if not values:
-            continue
-        cur = props.get(field)
-        if not isinstance(cur, dict):
-            cur = {}
-        it = cur.setdefault("items", {})
-        if not isinstance(it, dict):
-            it = {}; cur["items"] = it
-        ip = it.setdefault("properties", {})
-        if not isinstance(ip, dict):
-            ip = {}; it["properties"] = ip
-        vp = ip.setdefault("value", {})
-        if not isinstance(vp, dict):
-            vp = {}; ip["value"] = vp
-        existing = vp.get("enum")
-        if isinstance(existing, list) and existing:
-            # extend without dupes (existing wins ordering)
-            merged = list(existing)
-            for v in values:
-                if v not in merged:
-                    merged.append(v)
-            vp["enum"] = merged
-        else:
-            vp["enum"] = values
-        props[field] = cur
-    return props
 
 
 def _try_fetch_seller_id(creds: dict) -> str:
@@ -5136,23 +3747,6 @@ from listing.shaper import _shape_simple
 from listing.shaper import _shape_dimensions
 
 
-def _dim_axis_raw(parent, axis, flat):
-    """Return one dimension axis as a 'value unit' string for _shape_dimensions.
-
-    Reads the NESTED item_dimensions[axis] object the EDITOR actually saves (each axis is
-    {value, unit}, rebuilt by _renest) FIRST, and falls back to the legacy FLAT item_<axis>
-    key only when the nested axis is absent or blank. Before this, the builder read the flat
-    keys only, so any axis present just in nested form (commonly width/height) was silently
-    dropped -- and Amazon rejected the listing as 'height/width missing'."""
-    node = parent.get(axis) if isinstance(parent, dict) else None
-    if isinstance(node, dict):
-        val = node.get("value", node.get("decimal_value", ""))
-        if str(val).strip() != "":
-            unit = str(node.get("unit", "")).strip()
-            return (str(val).strip() + " " + unit).strip()
-    elif node not in (None, ""):
-        return str(node)
-    return flat
 
 
 # _shape_axes moved to listing/shaper.py in Phase 5 (behaviour unchanged).
@@ -5193,29 +3787,7 @@ from listing.shaper import _shape_weight
 from listing.builder import _offer, _fulfillment
 
 
-def _issue_str(issues, sent_attrs: dict = None) -> str:
-    """Format Amazon's listing issues. Amazon reports a field with a MALFORMED
-    value using the same "X is required but missing" text it uses for a truly
-    empty required field -- which is misleading. When we know we actually sent a
-    value for that field (it's in sent_attrs), we relabel it so the user isn't
-    sent hunting for an empty field that isn't empty."""
-    sent_attrs = sent_attrs or {}
-    parts = []
-    for x in issues:
-        sev = str(x.get("severity", "?"))[:1].upper()
-        an  = x.get("attributeNames") or []
-        a   = an[0] if an else ""
-        msg = x.get("message", "")
-        # misleading-error rewrite: we DID send this attribute, yet Amazon says
-        # "required but missing" -> it's really a structure/format problem.
-        if a and a in sent_attrs and "required but missing" in msg.lower():
-            msg = (f"value was sent but Amazon rejected its STRUCTURE/format "
-                   f"(reported as '{msg.strip()}') -- the field is not actually "
-                   f"empty; its shape didn't match Amazon's schema.")
-        parts.append(f"[{sev}] {a} {msg}".strip())
-    # Keep generous room so all errors are stored (was 1500 -> cut off ~8+ errors,
-    # making the sheet/dashboard show fewer than the terminal).
-    return "; ".join(parts)[:6000]
+from listing.verify_live import (_issue_str, _classify_verify_error, _verify_live_status, _verify_live_settled)  # moved (Milestone 4)
 
 
 # ---- attribute payload builder ----------------------------------------------
@@ -5245,87 +3817,10 @@ from listing.hazmat import _build_ghs_from_schema
 
 
 
-def _classify_verify_error(exc) -> str:
-    """Turn a getListingsItem exception into a plain-English REASON the status check
-    failed, so 'unverified' means something (timeout vs not-found vs auth vs other)
-    instead of silently swallowing every error. Returns a short human sentence."""
-    m = (type(exc).__name__ + " " + str(exc)).lower()
-    if "timed out" in m or "timeout" in m or "read operation" in m:
-        return ("status check TIMED OUT (connection to Amazon too slow) -- the listing "
-                "may well be fine; re-check shortly with 'Re-verify live status'")
-    if "404" in m or "not found" in m or "notfound" in m or "does not exist" in m:
-        return ("Amazon has NO record of this SKU yet -- either still processing right "
-                "after submit (re-check shortly), or the submission did not create a listing")
-    if ("403" in m or "401" in m or "forbidden" in m or "unauthorized" in m
-            or "unauthorised" in m or "accessdenied" in m or "access to requested" in m):
-        return ("PERMISSION DENIED reading the listing (the app's SP-API Listings role "
-                "may lack read access) -- fix the role, then re-verify")
-    if "429" in m or "quota" in m or "throttl" in m or "too many requests" in m:
-        return "Amazon THROTTLED the status check (rate limit) -- re-check shortly"
-    return f"status check failed: {str(exc)[:140]}"
 
 
-def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
-    """After a SUBMIT is 'accepted', Amazon processes the listing ASYNCHRONOUSLY --
-    'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
-    LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
-    downstream rejection (e.g. a blocked main image) instead of a false LIVE.
-    Returns (status_list, error_issues, reason, asin): on success reason is "" and asin is
-    the ASIN Amazon assigned (for the LIVE note); if the check itself failed, status/errs
-    are None, reason is a plain-English WHY (timeout / not-found / auth / throttle / other)
-    captured from the LAST exception (never swallowed silently), and asin is "".
-
-    settle=True waits a few seconds first (right after a fresh submit, Amazon needs a
-    moment). Pass settle=False when RE-verifying an already-submitted listing minutes
-    later -- there's nothing to wait for, so skip the delay and check immediately."""
-    import time as _t
-    _last_exc = None
-    for _attempt in range(2):
-        try:
-            if settle:
-                _t.sleep(4)   # give Amazon a moment to process the submission
-            resp = li.get_listings_item(seller_id, sku, marketplaceIds=[mid],
-                                        issueLocale=locale,
-                                        includedData=["summaries", "issues"])
-            p = resp.payload if hasattr(resp, "payload") else (resp or {})
-            summaries = (p or {}).get("summaries", []) or []
-            status = summaries[0].get("status", []) if summaries else []
-            asin = summaries[0].get("asin", "") if summaries else ""
-            issues = (p or {}).get("issues", []) or []
-            errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
-            return status, errs, "", asin
-        except Exception as _e:
-            _last_exc = _e
-            continue
-    return None, None, (_classify_verify_error(_last_exc) if _last_exc else "status check failed (no response)"), ""
 
 
-def _verify_live_settled(li, seller_id, sku, mid, locale="en_GB",
-                         attempts=8, interval=12, log=None, tag=""):
-    """Poll getListingsItem until the listing SETTLES, instead of judging it from a single
-    snapshot taken ~4s after submit. Amazon processes asynchronously: right after a submit
-    a listing commonly shows ERRORS and a not-yet-DISCOVERABLE status for a few seconds,
-    then goes LIVE. Judging at 4s recorded a FALSE 'NOT live -- rejected' for listings
-    Amazon actually published (see 11.95_3Days_B09JYYJR7H -> ASIN B0HCV5XDBK went
-    DISCOVERABLE moments later). This returns as soon as the listing is BUYABLE/
-    DISCOVERABLE; otherwise it re-checks every `interval`s for up to attempts*interval
-    seconds before returning the SETTLED status. Same (status, errs, reason) shape as
-    _verify_live_status, so the caller's branch logic is unchanged. Safe to run long in
-    the background-job model (the user isn't waiting on a live connection)."""
-    import time as _t
-    last = (None, None, "status check did not complete")
-    n = max(1, int(attempts))
-    for _i in range(n):
-        status, errs, why, _asin = _verify_live_status(li, seller_id, sku, mid, locale, settle=(_i == 0))
-        if status is not None or errs is not None:
-            last = (status, errs, why)
-            if status and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in status):
-                return status, errs, ""            # settled LIVE -> done immediately
-        if _i < n - 1:                             # not live yet -> wait and re-check
-            if log and tag:
-                log(f"  [dim]{tag}: not live yet -- re-checking Amazon ({_i + 1}/{n})…[/dim]")
-            _t.sleep(max(1, int(interval)))
-    return last
 
 
 def _skus_across_all_tabs(ws_out) -> set:
@@ -9073,56 +7568,10 @@ async def main():
 # SCHEMA GATE -- never fill template fields that are grey/not-applicable
 # =============================================================================
 
-# Always written even if the product-type schema omits them (offer/control/
-# identity/image fields the schema skips or that the template needs structurally).
-_ALWAYS_WRITE_TOKENS = (
-    "contribution_sku", "record_action", "product_type", "parent_sku",
-    "child_parent_sku_relationship", "variation_theme", "purchasable_offer",
-    "list_price", "fulfillment_availability", "merchant_shipping_group",
-    "product_tax_code", "image_locator", "product_id", "condition_type",
-)
 
 
-def build_col_attr_map(template_path: str) -> dict:
-    """1-based column index -> base attribute key (text before '[' or '#'),
-    read from the template's field-ID row (row 5). Used by the schema gate."""
-    import openpyxl
-    # NOT read_only -- see the same note in domain/unified_export.build_field_map.
-    # A read-only sheet takes max_column from the extent the FILE declares, and
-    # Amazon's generated workbooks have been measured declaring a rectangle far
-    # smaller than their contents. Understating it here would map only the first
-    # few field IDs, so the schema gate below would stop checking most of the
-    # row. That fails OPEN (an unmapped column is never cleared), which is why
-    # nothing has ever looked wrong.
-    wb = openpyxl.load_workbook(template_path, keep_vba=True)
-    ws = wb["Template"] if "Template" in wb.sheetnames else wb[wb.sheetnames[0]]
-    out = {}
-    for c in range(1, ws.max_column + 1):
-        fid = ws.cell(row=5, column=c).value
-        if fid:
-            out[c] = re.split(r"[\[#]", str(fid))[0].strip().lower()
-    wb.close()
-    return out
 
 
-def gate_built_row(built_row: list, col_attr_map: dict, applicable: set) -> int:
-    """Clear cells whose attribute is NOT in the product type's schema, so grey/
-    not-applicable template fields never get filled. Fail-open: if `applicable`
-    is empty (schema fetch failed) nothing is cleared -- we never silently drop
-    data, worst case is the old behaviour. Returns count of cells cleared."""
-    if not applicable:
-        return 0
-    cleared = 0
-    for c, attr in col_attr_map.items():
-        i = c - 1
-        if i >= len(built_row) or built_row[i] in (None, ""):
-            continue
-        if any(tok in attr for tok in _ALWAYS_WRITE_TOKENS):
-            continue
-        if attr not in applicable:
-            built_row[i] = ""
-            cleared += 1
-    return cleared
 
 
 def run_export_unified(config: dict, gc, status_filter: str = "APPROVED"):
