@@ -20,8 +20,10 @@
     if (el.getAttribute("role") !== "button") return;
     const tag = (el.tagName || "").toUpperCase();
     // Real controls already do this themselves; doing it twice would click twice.
-    if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "TEXTAREA"
-        || tag === "SELECT") return;
+    // An <a> only does it itself when it HAS an href; a role="button" link
+    // without one ("Back to listings") did nothing on Enter (D3 review).
+    if (tag === "BUTTON" || (tag === "A" && el.hasAttribute("href")) || tag === "INPUT"
+        || tag === "TEXTAREA" || tag === "SELECT") return;
     e.preventDefault();          // Space would otherwise scroll the page
     el.click();
   });

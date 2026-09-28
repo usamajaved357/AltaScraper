@@ -349,10 +349,46 @@ def main(argv):
                     cur["where"] = "pdp %s A" % mode
                     page.evaluate("id => enterAccount(id)", a)
                     page.wait_for_load_state("networkidle")
+                    # From Listings, as a person opens it: the PDP reads the
+                    # listing rows, which another screen has not loaded.
+                    page.evaluate("() => navTo('listings')")
+                    page.wait_for_load_state("networkidle")
                     page.evaluate("s => pdpOpen(s)", shared)
                     if mode == "settled":
                         page.wait_for_load_state("networkidle")
                         page.wait_for_timeout(600)
+                        # KEYBOARD (design system, accessibility): focus starts
+                        # on "Back to listings", Tab never leaves the PDP, Esc
+                        # closes it.
+                        kb = {"role": page.evaluate("() => (document.getElementById('pdp')||{}).getAttribute && document.getElementById('pdp').getAttribute('role')"),
+                              "focus_on_open": page.evaluate("() => !!(document.activeElement && document.activeElement.classList.contains('pdp-back'))")}
+                        escaped = 0
+                        for _ in range(40):
+                            page.keyboard.press("Tab")
+                            if not page.evaluate("() => { const h=document.getElementById('pdp'); return !!(h && h.contains(document.activeElement)); }"):
+                                escaped += 1
+                        kb["tab_left_pdp"] = escaped
+                        # Tab OUT of an editable area inside the page moves on,
+                        # it does not jump to "Back" (D3 review).
+                        kb["contenteditable_tab_ok"] = page.evaluate("""() => {
+                            const ce = document.querySelector('#pdp [contenteditable]:not([contenteditable="false"])');
+                            if (!ce) return 'none';
+                            ce.focus();
+                            const ev = new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true});
+                            ce.dispatchEvent(ev);
+                            return !ev.defaultPrevented; }""")
+                        # A modal opened OVER the page keeps the keyboard.
+                        page.evaluate("() => { try { openUsers(); } catch (e) {} }")
+                        page.wait_for_timeout(300)
+                        over = 0
+                        for _ in range(12):
+                            page.keyboard.press("Tab")
+                            if not page.evaluate("() => { const m=document.getElementById('usersmodal'); return !!(m && m.contains(document.activeElement)); }"):
+                                over += 1
+                        kb["modal_over_pdp_left"] = over
+                        page.evaluate("() => { try { closeUsers(); } catch (e) {} }")
+                        page.wait_for_timeout(200)
+                        log["pdp_keyboard"] = kb
                         if _marks_on(page, "A"):
                             log["marker_seen_in_own_account"].append(cur["where"])
                         for m in _marks_on(page, "B"):
@@ -360,6 +396,8 @@ def main(argv):
                     cur["where"] = "pdp %s B" % mode
                     page.evaluate("id => enterAccount(id)", b)
                     if mode == "settled":
+                        page.wait_for_load_state("networkidle")
+                        page.evaluate("() => navTo('listings')")
                         page.wait_for_load_state("networkidle")
                     page.evaluate("s => pdpOpen(s)", shared)
                     try:
@@ -373,7 +411,42 @@ def main(argv):
                         log["marker_seen_in_own_account"].append(cur["where"])
                     for m in _marks_on(page, "A"):
                         log["marker_leaks"].append("%s shows %s" % (cur["where"], m))
+                    if mode == "settled":
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(300)
+                        log.setdefault("pdp_keyboard", {})["esc_closes"] = page.evaluate(
+                            "() => !document.body.classList.contains('pdp-on')")
+                        # ENTER on "Back to listings" closes it too (D3 review).
+                        page.evaluate("s => pdpOpen(s)", shared)
+                        page.wait_for_timeout(500)
+                        page.evaluate("() => { const b=document.querySelector('#pdp .pdp-back'); if(b) b.focus(); }")
+                        page.keyboard.press("Enter")
+                        page.wait_for_timeout(300)
+                        log["pdp_keyboard"]["enter_on_back_closes"] = page.evaluate(
+                            "() => !document.body.classList.contains('pdp-on')")
                     page.evaluate("() => { try { pdpClose(); } catch (e) {} }")
+
+            # THE OLDER MODALS (.modalwrap), via the Users dialog: named a
+            # dialog, focus moves in, Tab stays in, focus returns on close.
+            cur["where"] = "modal keyboard"
+            try:
+                page.evaluate("() => { const b=document.querySelector('.skiplink'); if(b) b.focus(); }")
+                page.evaluate("() => { try { openUsers(); } catch (e) {} }")
+                page.wait_for_timeout(400)
+                mk = {"role": page.evaluate("() => { const m=document.querySelector('#usersmodal .modal')||document.getElementById('usersmodal'); return m && m.getAttribute('role'); }"),
+                      "focus_inside": page.evaluate("() => { const m=document.getElementById('usersmodal'); return !!(m && m.contains(document.activeElement)); }")}
+                left = 0
+                for _ in range(25):
+                    page.keyboard.press("Tab")
+                    if not page.evaluate("() => { const m=document.getElementById('usersmodal'); return !!(m && m.contains(document.activeElement)); }"):
+                        left += 1
+                mk["tab_left_modal"] = left
+                page.evaluate("() => { try { closeUsers(); } catch (e) {} }")
+                page.wait_for_timeout(300)
+                mk["focus_returned"] = page.evaluate("() => !!(document.activeElement && document.activeElement.classList.contains('skiplink'))")
+                log["modal_keyboard"] = mk
+            except Exception as _e:
+                log["modal_keyboard"] = {"error": str(_e)[:200]}
 
             # TWO TABS. The server keeps ONE "open account" for everybody, and
             # the last tab to switch owns it. Tab 1 goes back to A; tab 2 then
@@ -434,6 +507,15 @@ def main(argv):
     print(json.dumps(log, indent=1))
     bad = (log["page_errors"] or log["console_errors"] or log["server_5xx"]
            or log["leaks"] or log.get("two_tab_leaks") or log.get("marker_leaks")
+           or (log.get("pdp_keyboard") and (log["pdp_keyboard"].get("tab_left_pdp")
+               or not log["pdp_keyboard"].get("focus_on_open")
+               or log["pdp_keyboard"].get("esc_closes") is False
+               or log["pdp_keyboard"].get("enter_on_back_closes") is False
+               or log["pdp_keyboard"].get("contenteditable_tab_ok") is False
+               or log["pdp_keyboard"].get("modal_over_pdp_left")))
+           or (log.get("modal_keyboard") and (log["modal_keyboard"].get("tab_left_modal")
+               or log["modal_keyboard"].get("role") != "dialog"
+               or not log["modal_keyboard"].get("focus_inside")))
            or log.get("two_tab_unnamed_requests"))
     return 1 if bad else 0
 

@@ -311,6 +311,9 @@ function pdpOpen(sku){
   }
   if(!PDP_SKU){                                  // entering from the grid, not
     try{ PDP_BACK_SCROLL = window.scrollY || 0; }catch(e){ PDP_BACK_SCROLL = 0; }
+    // ...and WHAT OPENED IT, to give focus back on close (design system,
+    // accessibility: "focus returns to the Review button on that row").
+    try{ PDP_OPENER = document.activeElement; }catch(e){ PDP_OPENER = null; }
   }                                              // moving between listings
   const changed = PDP_SKU !== sku;
   PDP_SKU = sku;
@@ -343,9 +346,17 @@ function pdpOpen(sku){
     // its own padding, does nothing. Assigned rather than added, so re-opening
     // cannot stack a second listener.
     host.onclick = function(ev){ if(ev.target === host) pdpClose(); };
+    // A MODAL DIALOG, said so (design system: the PDP is the Dialog xl over
+    // the dimmed Listings page -- the concept is unchanged, this names it).
+    if(typeof host.setAttribute === "function"){
+      host.setAttribute("role", "dialog");
+      host.setAttribute("aria-modal", "true");
+      host.setAttribute("aria-label", "Product page: " + sku);
+    }
   }
   document.body.classList.add("pdp-on");
   pdpRender();
+  _pdpFocusIn();
   // The slide-in is a class added on the next frame, so the browser has a
   // painted "off screen" state to animate FROM. Setting it in the same frame
   // as display:block would show the panel already in place.
@@ -407,6 +418,7 @@ function pdpOpen(sku){
 function pdpClose(opts){
   if(!PDP_SKU) return;
   PDP_SKU = "";
+  const _opener = PDP_OPENER; PDP_OPENER = null;
   // THE LIST UNDERNEATH IS ANOTHER COPY OF THE ROW, and it goes stale the same
   // way the hero did.
   //
@@ -441,7 +453,34 @@ function pdpClose(opts){
   // After the grid is on screen again, not before -- scrolling a hidden
   // element sets nothing.
   try{ window.scrollTo(0, PDP_BACK_SCROLL || 0); }catch(e){}
+  // FOCUS BACK TO WHAT OPENED IT (usually the row's Review button), if the
+  // grid did not replace it; otherwise to the screen itself, never lost.
+  try{
+    if(_opener && _opener.focus && document.contains(_opener)) _opener.focus({preventScroll: true});
+    else { const m = document.getElementById("wsmain"); if(m && m.focus) m.focus({preventScroll: true}); }
+  }catch(e){}
 }
+
+/* KEYBOARD INSIDE THE PRODUCT PAGE (design system, accessibility): focus goes
+ * to "Back to listings" on open and Tab stays inside while it is open. The trap
+ * is the shared one (dialog.js uiTrapTab); it stands aside while a confirmation
+ * dialog is open on top, which traps its own. */
+let PDP_OPENER = null;
+function _pdpFocusIn(){
+  try{
+    const back = document.querySelector("#pdp .pdp-back");
+    if(back && back.focus) back.focus({preventScroll: true});
+  }catch(e){}
+}
+document.addEventListener("keydown", function(e){
+  if(e.key !== "Tab" || !PDP_SKU || e.defaultPrevented) return;
+  if(document.querySelector(".uidlg-wrap")) return;
+  const host = document.getElementById("pdp");
+  // A layer opened ON TOP of this page (a modal, the chat, a menu) keeps its
+  // own keyboard: the trap only acts for focus in the page or behind it.
+  if(typeof uiFocusInLayer === "function" && uiFocusInLayer(host)) return;
+  if(host && typeof uiTrapTab === "function") uiTrapTab(e, host);
+});
 
 /* ESCAPE CLOSES IT, unless you are in the middle of typing.
  *
@@ -1916,7 +1955,7 @@ function pdpRender(){
     p  = _fullDataParts(r);
   }catch(err){
     host.innerHTML = '<div class="pdp"><div class="pdp-top">'
-      + '<a class="pdp-back" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
+      + '<a class="pdp-back" role="button" tabindex="0" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
       + '</div><div class="pdp-body"><div class="pdp-err">'
       + '<b>This listing’s page hit an error while rendering.</b>'
       + '<div class="pdp-errmsg">' + esc(String((err && err.message) || err)) + '</div>'
@@ -1933,7 +1972,7 @@ function pdpRender(){
   // the far right is the overflow menu. They stay in the banner either way --
   // moving them under the title was asked for and then asked against.
   const top = '<div class="pdp-top">'
-    + '<a class="pdp-back" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
+    + '<a class="pdp-back" role="button" tabindex="0" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
     // THE SAME THREE ACTIONS THE DRAWER'S FOOTER RUNS, calling the same
     // functions. Nothing here is reimplemented.
     + '<button class="pdp-tb" onclick="previewOne(' + jsArg(sku) + ')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>'
@@ -2056,6 +2095,18 @@ function pdpRender(){
     // on this page: the Images tab has the four preset buttons instead
     // (pdp_imagegen.js), which read the configured model themselves.
   }, 40);
+  // A REDRAW REPLACES WHAT HAD FOCUS. If that left focus on the page behind
+  // (the body), bring it back inside -- to "Back to listings" -- so a keyboard
+  // user is never dropped outside an open product page. Focus already inside
+  // the page is left exactly where it is.
+  try{
+    const a = document.activeElement;
+    const host = document.getElementById("pdp");
+    // Only when focus fell to NOTHING (the body): focus in a layer on top of
+    // this page (a modal, the chat) is somebody typing there (D3 review).
+    if(PDP_SKU && host && !document.querySelector(".uidlg-wrap")
+       && (!a || a === document.body)) _pdpFocusIn();
+  }catch(e){}
 }
 
 /* THE SAFETY & COMPLIANCE TAB (the owner's PDP redesign, 26 Sep 2026).

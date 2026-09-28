@@ -182,7 +182,7 @@
    * The rail and the tabs live inside it now rather than beside a wide page --
    * see .pdp-layout below. */
   width:100%;
-  max-width:680px;
+  max-width:680px;   /* OWNER-LOCKED (the PDP mockup; test_pdp_mockup_match) -- kept over the design package's 720 */
   /* A CARD IS AS TALL AS ITS CONTENTS. min-height:calc(100vh - 38px) forced it
      to the full screen whatever it held, so a short listing got a panel with
      empty space at the bottom and no visible lower edge -- which is what made
