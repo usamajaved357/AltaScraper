@@ -109,6 +109,20 @@ has these until the owner merges):
   marketplace; Miles runs (EventSource, not fetch) stay on the open account,
   as before; /submit/precheck always returns nothing (it calls _records()
   without a sheet -- pre-existing, not account-related).
+- **Non-design batch 3 (28 Sep 2026).** The browser check now SEEDS its
+  temporary copy with orders, sales and ad rows unique to each fake account
+  and fails if one account's marker is ever visible under the other -- after a
+  normal switch, a switch while loading, and with two tabs. It found: B's
+  Image library and Image studio listed A's products (the shared product
+  picker was fetched once and never forgotten). Fixed; test in
+  test_switch_drops_old_replies.js.
+  **OPEN, UNEXPLAINED:** twice in full runs the Sales screen showed the other
+  account's marker (once A under B, once B under A in tab 1). Not reproduced in
+  eight targeted runs (single-tab B->A at eight delays, two tabs x 8 rounds
+  capturing every response, six Sales/Listings/Traffic runs); every Sales
+  request goes through _sFetch, which drops a reply whose account changed, and
+  no tab-1 response ever carried B's data. The harness now names the element
+  a leaked marker is drawn in, so the next occurrence says where.
 - **Non-design batch 1 (28 Sep 2026).** A failed load is now drawn as a
   failure (pageui.js `uiError`: red, `role="alert"`, a Try again button) on
   Hourly, Traffic, Sales and Generate instead of the grey "no data" box, and it

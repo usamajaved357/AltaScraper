@@ -210,6 +210,24 @@ function switchTo(ctx, id){
           vm.runInContext('document.getElementById("inv_badge").textContent', ctx), 7);
   }
 
+  console.log("\nN. The product picker (Image library / Studio) forgets A on a switch");
+  {
+    // Found by tools/browser_smoke.py's seeded markers: B's Image library
+    // listed A's products, because the shared list was fetched once and kept.
+    const ctx = sandbox();
+    vm.runInContext(read("productpicker.js"), ctx);
+    vm.runInContext('IMGP = {items: [{sku: "A-SKU"}], q: "", sku: "A-SKU", loading: false, note: ""}', ctx);
+    const f = heldFetch(ctx, {ok: true, rows: [{sku: "A-SKU", asin: "B0AAAAAAAA"}]});
+    const p = vm.runInContext("ppLoad()", ctx);
+    await tick();
+    switchTo(ctx, "acct_B");
+    f.release(); await p;
+    check("A's late reply is not kept as B's list", vm.runInContext("PPICK.items.length", ctx), 0);
+    check("  and the list will be fetched again for B", vm.runInContext("PPICK.loaded", ctx), false);
+    check("  the Image library's own copy was emptied too",
+          vm.runInContext("IMGP.items.length + '|' + IMGP.sku", ctx), "0|");
+  }
+
   console.log("\n" + ran + " checks, " + fails + " failed");
   console.log("FAILURES: " + fails);
   process.exit(fails ? 1 : 0);

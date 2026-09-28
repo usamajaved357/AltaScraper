@@ -76,6 +76,72 @@ def _copy_sandbox(dst):
         src.close()
 
 
+# Data that exists in ONE account only, so a screen showing it under the other
+# account is a leak that needs no knowledge of the sandbox to spot.
+MARK = {"A": ("ZZ-ONLY-A-MARKER", "B0ZZONLYA1"), "B": ("ZZ-ONLY-B-MARKER", "B0ZZONLYB1")}
+
+
+def _seed_markers(dbp, ids):
+    """Fake orders, daily sales and ad rows for each account, in the TEMPORARY
+    copy only. Each account's rows carry its own marker title and ASIN."""
+    import datetime
+    con = sqlite3.connect(dbp)
+    today = datetime.date.today()
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    for tag, wsid in ids.items():
+        title, asin = MARK[tag]
+        for d in range(1, 21):
+            day = today - datetime.timedelta(days=d)
+            ins = [
+                ("order_lines", dict(workspace_id=wsid, marketplace="UK",
+                    order_id="ZZ-%s-%02d" % (tag, d), purchase_date=day.isoformat() + "T10:00:00Z",
+                    asin=asin, sku="ZZ-%s-SKU" % tag, title=title, units=1, revenue=19.99,
+                    currency="GBP", status="Shipped", fetched_at=now)),
+                ("sales_daily", dict(workspace_id=wsid, marketplace="UK", date=day.isoformat(),
+                    asin=asin, parent_asin=asin, units=1, orders=1, ordered_sales=19.99,
+                    sessions=40, page_views=55, currency="GBP", fetched_at=now)),
+                ("ads_daily", dict(workspace_id=wsid, marketplace="UK", date=day.isoformat(),
+                    asin=asin, impressions=900, clicks=12, spend=3.5, ad_orders=1,
+                    ad_sales=19.99, source="seed", fetched_at=now)),
+            ]
+            for table, row in ins:
+                try:
+                    cols = {r[1] for r in con.execute("pragma table_info(%s)" % table)}
+                    row = {k: v for k, v in row.items() if k in cols}
+                    con.execute("insert into %s (%s) values (%s)" % (
+                        table, ",".join(row), ",".join("?" * len(row))), list(row.values()))
+                except Exception:
+                    pass
+    con.commit()
+    con.close()
+
+
+def _marks_on(page, tag):
+    """Which of `tag`'s markers are VISIBLE on the page now -- each with the id
+    of the nearest element that holds it, so a leak says WHERE it is drawn."""
+    try:
+        text = page.inner_text("body")
+    except Exception:
+        return []
+    out = []
+    for m in MARK[tag]:
+        if m in text:
+            try:
+                where = page.evaluate("""m => {
+                    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                    let n; while ((n = w.nextNode())) {
+                      if (n.nodeValue.indexOf(m) >= 0) {
+                        let e = n.parentElement;
+                        while (e && !e.id) e = e.parentElement;
+                        return e ? '#' + e.id : '?';
+                      }
+                    } return '?'; }""", m)
+            except Exception:
+                where = "?"
+            out.append("%s in %s" % (m, where))
+    return out
+
+
 def _serve(tmp):
     os.environ["CONFIG_PATH"] = os.path.join(tmp, "config.json")
     for k in ("PORT", "APP_PASSWORD", "ALTASCRAPER_DB"):
@@ -92,6 +158,7 @@ def _serve(tmp):
     from werkzeug.serving import make_server
     srv = make_server("127.0.0.1", 0, app, threaded=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+    srv.db_path = dbp
     return srv, "http://127.0.0.1:%d" % srv.server_port
 
 
@@ -209,13 +276,38 @@ def main(argv):
                 print("STOP: the sandbox needs two accounts, found %d" % len(ids))
                 return 2
             a, b = ids[0], ids[1]
+            _seed_markers(srv.db_path, {"A": a, "B": b})
+            log["marker_seen_in_own_account"] = []
+            log["marker_leaks"] = []
             for acct, tag in ((a, "A"), (b, "B")):
+                other = "B" if tag == "A" else "A"
                 cur["where"] = "enter " + tag
                 page.evaluate("id => enterAccount(id)", acct)
                 page.wait_for_load_state("networkidle")
                 for sec in screens:
                     cur["where"] = "%s:%s" % (tag, sec)
                     _visit(page, sec, log, shots, tag)
+                    if _marks_on(page, tag):
+                        log["marker_seen_in_own_account"].append(cur["where"])
+                    for m in _marks_on(page, other):
+                        log["marker_leaks"].append("%s shows %s" % (cur["where"], m))
+
+            # SWITCH WHILE LOADING. Open each screen in A and switch to B at
+            # once, before A's replies land: a late reply painted over B is the
+            # bug class screenstate.js exists for.
+            for sec in screens:
+                cur["where"] = "fast A->B:%s" % sec
+                page.evaluate("id => enterAccount(id)", a)
+                page.evaluate("s => { try { navTo(s); } catch (e) {} }", sec)
+                page.evaluate("id => enterAccount(id)", b)
+                page.evaluate("s => { try { navTo(s); } catch (e) {} }", sec)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    log["slow"].append(cur["where"])
+                page.wait_for_timeout(600)
+                for m in _marks_on(page, "A"):
+                    log["marker_leaks"].append("%s shows %s" % (cur["where"], m))
             # A LEAK CHECK THAT NEEDS NO KNOWLEDGE OF THE DATA: the SKUs the
             # server says belong to A and not to B must not be on B's listings.
             cur["where"] = "leak check"
@@ -263,6 +355,8 @@ def main(argv):
             for sec in screens:
                 cur["where"] = "tab1(A):%s" % sec
                 _visit(page, sec, log, None, "T")
+                for m in _marks_on(page, "B"):
+                    log["marker_leaks"].append("%s shows %s" % (cur["where"], m))
             page.remove_listener("request", _unnamed)
             only_b = page.evaluate("""async ([a, b]) => {
                 const g = async id => ((await (await fetch('/rows_all?account=' +
@@ -287,7 +381,7 @@ def main(argv):
         shutil.rmtree(tmp, ignore_errors=True)
     print(json.dumps(log, indent=1))
     bad = (log["page_errors"] or log["console_errors"] or log["server_5xx"]
-           or log["leaks"] or log.get("two_tab_leaks")
+           or log["leaks"] or log.get("two_tab_leaks") or log.get("marker_leaks")
            or log.get("two_tab_unnamed_requests"))
     return 1 if bad else 0
 

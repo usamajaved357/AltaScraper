@@ -161,6 +161,13 @@ function _screenResetHeld(){
     o.detail = {}; o.openCamp = null; o.loading = false;
     const m = document.getElementById("drpc_main"); if(m && m.remove) m.remove(); });
   if(typeof DAILY !== "undefined") T(DAILY, o => { o.data = null; o.loading = false; });
+  // The shared PRODUCT PICKER (Image library, Image studio) fetched once and
+  // kept the list forever -- so B's Image library listed A's products. Found by
+  // the seeded-marker check in tools/browser_smoke.py (28 Sep 2026).
+  if(typeof PPICK !== "undefined") T(PPICK, o => { o.items = []; o.loaded = false;
+    o.loading = false; o.error = ""; });
+  if(typeof IMGP  !== "undefined") T(IMGP,  o => { o.items = []; o.sku = ""; o.q = "";
+    o.loading = false; o.note = ""; });
   if(typeof WK    !== "undefined") T(WK,    o => { o.week = null; o.weeks = [];
     o.change = {}; o.loading = false; o.fellBack = ""; });
   if(typeof PNL   !== "undefined") T(PNL,   o => { o.data = null; o.expenses = null;
