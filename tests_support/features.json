@@ -21,7 +21,15 @@
     "static/js/listings_open.js"
   ],
   "static/js/sourcing.js": [
-    "static/js/sourcing.js"
+    "static/js/sourcing.js",
+    "static/js/sourcing_actions.js",
+    "static/js/sourcing_dialogs.js",
+    "static/js/sourcing_chart.js",
+    "static/js/sourcing_detail.js",
+    "static/js/sourcing_menu.js",
+    "static/js/sourcing_bulk.js",
+    "static/js/sourcing_row.js",
+    "static/js/sourcing_row_actions.js"
   ],
   "static/js/sales.js": [
     "static/js/sales.js",
