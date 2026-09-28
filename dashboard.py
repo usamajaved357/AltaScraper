@@ -3161,7 +3161,8 @@ def build_app(backend=None):
     # already syncs -- and one frozen week out. See routes/weekly_routes.py.
     import routes.weekly_routes as _weekly_routes
     _weekly_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
-                            _active_account=_active_account, _state=_state)
+                            _active_account=_active_account, _state=_state,
+                            _client=_client)
     # The daily round -- the checklist somebody works through every morning,
     # run by the app. See routes/daily_routes.py.
     import routes.daily_routes as _daily_routes

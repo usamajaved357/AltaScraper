@@ -36,8 +36,17 @@ from domain import report_reader as _rr
 from domain import weekly_kpi as _wk
 
 
-def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
-    """Attach /weekly/* to the app."""
+def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
+             _client=None):
+    """Attach /weekly/* to the app.
+
+    _client is the app's Google Sheets client (dashboard._client), handed in
+    like every other dependency (architecture batch A2). It used to be fetched
+    with `import dashboard` inside the request -- which, when the app is run as
+    `python dashboard.py`, loads a SECOND copy of the app module with its own
+    state. The import stays only as the fallback for a caller that registers
+    these routes without handing it in.
+    """
 
     def _scope():
         aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id")
@@ -343,10 +352,13 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
             return jsonify(plan)
 
         try:
-            import dashboard as _dash
             from domain import weekly_grid as _wg
             from listing import repo as _repo
-            gc = _dash._client()
+            if _client is not None:
+                gc = _client()
+            else:
+                import dashboard as _dash
+                gc = _dash._client()
             book = gc.open_by_key(sid)
             # ensure_tab returns (worksheet, created) -- unpacked, because
             # calling .clear() on the tuple is a TypeError at the one moment
