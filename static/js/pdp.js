@@ -1596,6 +1596,9 @@ async function pdpBarcodeSave(sku, val){
       toast("Save failed: " + ((j && j.error) || ""));
     return;
   }
+  // Saved to the account it was typed in, but the screen has since moved to
+  // another: its same-SKU row must not take this barcode (editField, stale).
+  if(j.stale) return;
   const i = (typeof ROWS !== "undefined")
     ? ROWS.findIndex(function(x){ return String(x.sku) === String(sku); }) : -1;
   if(i >= 0) ROWS[i].barcode = v;

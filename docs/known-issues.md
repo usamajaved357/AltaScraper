@@ -149,7 +149,7 @@ has these until the owner merges):
   every other gate (master switch, arming, floor) still applies, and the timer
   already works that way. (b) Stop still ends another account's run whose
   slot never attached its process (the legacy fallback cannot tell whose it
-  is). (c) pdp_imagegen.js still polls forever after a 404.
+  is). (c) pdp_imagegen.js polled forever after a 404 -- fixed in batch 4.
 - **Milestones 4-6 (28 Sep 2026).** Cost overrides (cogs_overrides.json) and
   the Miles bundle store are written atomically -- a crash mid-write could
   empty them, and a corrupt file was then saved back as `{}`. The live
@@ -266,13 +266,12 @@ Account scope, remaining after the fix above:
   pdp_imagegen.js, checks the SKU only): if the SAME SKU is reopened on the new
   account and its Images tab loaded before the job ends, the old job's pictures
   could be assigned into the new account's slots. The switch now resets the
-  image-tab state, which narrows this to that reopen case. pdp_imagegen.js was
-  outside the approved change.
-- **LIKELY — a save reply that lands after a switch updates the new account's
-  same-SKU row IN THE BROWSER** (`editField`, autofix.js, has no context check;
-  `pdpBarcodeSave` likewise). The server write goes to the correct account;
-  only the in-memory row/screen can show the old value until a reload. Needs a
-  context check in autofix.js (outside the approved change).
+  image-tab state, which narrows this to that reopen case. FIXED 28 Sep 2026:
+  the batch is only placed if the account and marketplace are unchanged.
+- **FIXED (28 Sep 2026) — a save reply after a switch updated the new
+  account's same-SKU row in the browser** (`editField`, `pdpBarcodeSave`): the
+  reply is now reported as saved-but-stale and the screen is left alone
+  (test_pdp_late_replies.js). No visual change.
 - **Rule 12 follow-up:** `pdpContext` (pdp.js) and `_liveKey` / inline
   `acct::mkt` keys in miles_template.js build similar account+marketplace keys.
 - **UNVERIFIED — whether the browser fires blur when a focused field is
@@ -284,8 +283,9 @@ States and rendering:
   unreported), schema load, mirror load, profit recompute; the barcode check
   can stick on "checking…"; the image library and competitor-picture errors
   look like "nothing here".
-- **READ — the image-generation poller has no end on error**, so
-  `PDPIG.running` can stay true and block later runs.
+- **FIXED (28 Sep 2026) — the PDP image poller** stops on 404 (PDPIG.running no
+  longer sticks) and does not place a finished batch after the account or
+  marketplace moved.
 - **READ — Preview/Submit from the PDP:** the run panel exists only in the
   drawer, so a queue failure started from the PDP shows nothing.
 - **LIKELY — full `pdpRender` from late data** (live attributes, schema,
@@ -311,8 +311,7 @@ States and rendering:
 - **FIXED — unsafe inline handlers** were moved to `jsArg()` (Milestone 7;
   re-counted 28 Sep 2026: none left in listings/autofix/drawer/pdp/pdp_images).
 - **Image-generation pollers:** genimage.js now stops on 404 and says so
-  (28 Sep 2026). **pdp_imagegen.js still polls forever** -- left alone because
-  the PDP is not being changed without the owner.
+  (28 Sep 2026); pdp_imagegen.js too (batch 4 -- a code fix, no visual change).
 - **FIXED — `__all__` reaching the Repricer:** the server now drops it
   (routes/sourcing_routes `_where` on the shared resolver, 28 Sep 2026), and
   reads the account the page names -- it had read only `?id=`, so GETs sent

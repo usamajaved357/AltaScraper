@@ -1150,10 +1150,18 @@ async function editField(sku, target, key, value){
   try{
     const body = (typeof acctBody === "function")
       ? acctBody({sku, target, key, value}) : {sku, target, key, value};
+    // Which account this save is FOR. The server writes to that one (the body
+    // names it); but a reply landing after a switch must not update the NEW
+    // account's same-SKU row on screen (known-issues: PDP, "a save reply that
+    // lands after a switch").
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;
     const res = await fetch("/edit", {method:"POST",
       headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
     const j = await res.json();
     if(!j || !j.ok) return {ok:false, error:(j && j.error) || "save refused"};
+    if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)){
+      return {ok:true, stale:true};    // saved -- to the account it was typed in
+    }
     const r = (typeof ROWS !== "undefined") ? ROWS.find(x => x.sku === sku) : null;
     if(r){
       if(target === "attr"){

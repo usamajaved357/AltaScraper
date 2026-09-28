@@ -112,6 +112,15 @@ def _seed_markers(dbp, ids):
                         table, ",".join(row), ",".join("?" * len(row))), list(row.values()))
                 except Exception:
                     pass
+    # THE SAME SKU IN BOTH ACCOUNTS gets each account's own marker as its
+    # title, so the product page for that SKU can be checked across a switch.
+    try:
+        for tag, wsid in ids.items():
+            con.execute("update listings set title=? where workspace_id=? and sku in "
+                        "(select sku from listings group by sku having count(distinct workspace_id) > 1)",
+                        (MARK[tag][0], wsid))
+    except Exception:
+        pass
     con.commit()
     con.close()
 
@@ -322,6 +331,44 @@ def main(argv):
             shown = page.inner_text("body")
             log["leaks"] = [s for s in only_a if s in shown]
             log["only_a_skus_checked"] = len(only_a)
+
+            # THE PRODUCT PAGE, for a SKU both accounts have: opened in A, then
+            # in B -- normally, and before A's page has finished loading.
+            shared = page.evaluate("""async ([a, b]) => {
+                const g = async id => ((await (await fetch('/rows_all?account=' +
+                    encodeURIComponent(id))).json()).rows || []).map(r => String(r.sku || ''));
+                const sb = new Set(await g(b));
+                return (await g(a)).filter(s => s && sb.has(s))[0] || '';
+            }""", [a, b])
+            log["pdp_shared_sku"] = shared
+            if shared:
+                for mode in ("settled", "fast"):
+                    cur["where"] = "pdp %s A" % mode
+                    page.evaluate("id => enterAccount(id)", a)
+                    page.wait_for_load_state("networkidle")
+                    page.evaluate("s => pdpOpen(s)", shared)
+                    if mode == "settled":
+                        page.wait_for_load_state("networkidle")
+                        page.wait_for_timeout(600)
+                        if _marks_on(page, "A"):
+                            log["marker_seen_in_own_account"].append(cur["where"])
+                        for m in _marks_on(page, "B"):
+                            log["marker_leaks"].append("%s shows %s" % (cur["where"], m))
+                    cur["where"] = "pdp %s B" % mode
+                    page.evaluate("id => enterAccount(id)", b)
+                    if mode == "settled":
+                        page.wait_for_load_state("networkidle")
+                    page.evaluate("s => pdpOpen(s)", shared)
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=8000)
+                    except Exception:
+                        log["slow"].append(cur["where"])
+                    page.wait_for_timeout(800)
+                    if _marks_on(page, "B"):
+                        log["marker_seen_in_own_account"].append(cur["where"])
+                    for m in _marks_on(page, "A"):
+                        log["marker_leaks"].append("%s shows %s" % (cur["where"], m))
+                    page.evaluate("() => { try { pdpClose(); } catch (e) {} }")
 
             # TWO TABS. The server keeps ONE "open account" for everybody, and
             # the last tab to switch owns it. Tab 1 goes back to A; tab 2 then
