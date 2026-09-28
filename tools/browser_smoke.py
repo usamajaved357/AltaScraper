@@ -104,6 +104,15 @@ def _seed_markers(dbp, ids):
                     asin=asin, impressions=900, clicks=12, spend=3.5, ad_orders=1,
                     ad_sales=19.99, source="seed", fetched_at=now)),
             ]
+            # One row per match type, so Campaign Analytics has a match-type
+            # split to draw (its ring, table and spend-per-day chart).
+            for n, mt in enumerate(("EXACT", "PHRASE", "BROAD", "TARGETING_EXPRESSION",
+                                    "TARGETING_EXPRESSION_PREDEFINED")):
+                ins.append(("ads_targeting_daily", dict(workspace_id=wsid, marketplace="UK",
+                    date=day.isoformat(), campaign_id="ZZ-%s-C%d" % (tag, n),
+                    campaign_name="ZZ %s %s" % (tag, mt), keyword=title, match_type=mt,
+                    impressions=300, clicks=4 + n, spend=round(0.6 + 0.4 * n + (d % 5) * 0.2, 2),
+                    ad_orders=1, ad_sales=6.5, source="seed", fetched_at=now)))
             for table, row in ins:
                 try:
                     cols = {r[1] for r in con.execute("pragma table_info(%s)" % table)}
@@ -448,6 +457,38 @@ def main(argv):
             except Exception as _e:
                 log["modal_keyboard"] = {"error": str(_e)[:200]}
 
+            # THE BOTTOM-RIGHT CORNER. The assistant, the product chat and the
+            # runs badge are each placed by a different file; each must be the
+            # element actually hit at its own centre (not covered by another).
+            cur["where"] = "floating corner"
+            try:
+                page.evaluate("() => { try { asBuild(); } catch (e) {} const r = rqBadgeEl && rqBadgeEl(); if (r) { window.__rqSaved = [r.innerHTML, r.style.display]; r.textContent = 'Runs'; r.style.display = 'inline-flex'; } }")
+                page.wait_for_timeout(200)
+                log["floating"] = page.evaluate("""() => {
+                  const out = {covered: [], missing: []};
+                  // Every corner and the centre, so a partial overlap fails too.
+                  const check = (sel, when) => {
+                    const e = document.querySelector(sel);
+                    if (!e || !e.getClientRects().length) { out.missing.push(sel + when); return; }
+                    const r = e.getBoundingClientRect();
+                    for (const [fx, fy] of [[.5, .5], [.15, .2], [.85, .2], [.15, .8], [.85, .8]]) {
+                      const hit = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+                      if (!hit || !(hit === e || e.contains(hit))) {
+                        out.covered.push(sel + when + ' under ' + (hit ? (hit.id || hit.className || hit.tagName) : 'nothing'));
+                        return;
+                      }
+                    }
+                  };
+                  for (const sel of ['#asfab', '#fab', '#rqbadge']) check(sel, '');
+                  // With the assistant panel open, the badge must still show.
+                  const w = document.getElementById('aswrap');
+                  if (w) { w.style.display = 'flex'; check('#rqbadge', ' (assistant open)'); w.style.display = 'none'; }
+                  const r = document.getElementById('rqbadge');
+                  if (r && window.__rqSaved) { r.innerHTML = window.__rqSaved[0]; r.style.display = window.__rqSaved[1]; }
+                  return out; }""")
+            except Exception as _e:
+                log["floating"] = {"error": str(_e)[:200]}
+
             # TWO TABS. The server keeps ONE "open account" for everybody, and
             # the last tab to switch owns it. Tab 1 goes back to A; tab 2 then
             # opens B. Everything tab 1 asks for afterwards must still be A's:
@@ -516,6 +557,8 @@ def main(argv):
            or (log.get("modal_keyboard") and (log["modal_keyboard"].get("tab_left_modal")
                or log["modal_keyboard"].get("role") != "dialog"
                or not log["modal_keyboard"].get("focus_inside")))
+           or (log.get("floating") and (log["floating"].get("covered")
+               or log["floating"].get("missing") or log["floating"].get("error")))
            or log.get("two_tab_unnamed_requests"))
     return 1 if bad else 0
 

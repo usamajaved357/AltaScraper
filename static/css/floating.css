@@ -1,0 +1,85 @@
+/* static/css/floating.css -- everything pinned to the bottom-right corner.
+ *
+ * THREE THINGS USED TO SHARE ONE SPOT. The account assistant (#asfab, right 18
+ * bottom 22, z 9599), the product "Ask Claude" button (#fab, right 20 bottom
+ * 20, z 60) and the Preview/Submit runs badge (.rqbadge, right 16 bottom 16,
+ * z 1200) were each placed by a different file, and the assistant -- highest
+ * and widest -- sat on top of the other two. The runs badge, the one way back
+ * to a submit's log after it finishes, could not be seen or clicked.
+ *
+ * They now stack in one column, bottom to top: assistant, product chat, runs.
+ * Their layer ORDER is unchanged (design package: "only its size and offsets
+ * change"); only where they sit is decided here, in one place.
+ *
+ * Under 1100px the two chat buttons shrink to 44px icons (design package, 01
+ * item 15). Pages get bottom padding so the last row is never under them
+ * (04-layout: 110px desktop, 140px mobile).
+ */
+:root{
+  --fl-right: 18px;
+  --fl-base: 22px;                 /* the assistant button's bottom edge */
+  --fl-step: 46px;                 /* one button plus a gap */
+}
+
+/* ---- the account assistant (built by assistant.js) ---------------------- */
+#asfab{
+  position: fixed; right: var(--fl-right); bottom: var(--fl-base); z-index: 9599;
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px; padding: 0 16px;
+  background: var(--accent-bg); border: 1px solid var(--accent-line);
+  color: var(--accent2); border-radius: var(--as-radius-pill, 999px);
+  cursor: pointer; font: inherit; font-size: 12.5px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+
+/* Its panel opens above the whole column (the badge stays visible under it). */
+#aswrap{
+  position: fixed; right: var(--fl-right); z-index: 9600;
+  bottom: calc(var(--fl-base) + 3 * var(--fl-step));
+  width: 430px; max-width: calc(100vw - 36px);
+  height: min(620px, calc(100vh - var(--fl-base) - 3 * var(--fl-step) - 16px));
+  display: none; flex-direction: column; overflow: hidden;
+  background: var(--sidebar); border: 1px solid var(--accent-line);
+  border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.55);
+}
+
+/* ---- the product chat (#fab in dashboard.html, chat in submit.js) -------- */
+.fab{
+  position: fixed; right: var(--fl-right);
+  bottom: calc(var(--fl-base) + var(--fl-step)); z-index: 60;
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px; padding: 0 16px;
+  background: #6c5ce7; color: #fff; border: none; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600;
+  border-radius: 24px; box-shadow: 0 6px 20px rgba(0,0,0,.45);
+}
+.fab:hover{ filter: brightness(1.08); }
+/* Its panel opens above the whole column, so the runs badge never lands on its
+   input box, and never taller than the room left above that. */
+.chatwrap{
+  bottom: calc(var(--fl-base) + 3 * var(--fl-step));
+  max-height: calc(100vh - var(--fl-base) - 3 * var(--fl-step) - 16px);
+}
+
+/* ---- the runs badge and its panel (runqueue.js) ------------------------- */
+.rqbadge{ right: var(--fl-right); bottom: calc(var(--fl-base) + 2 * var(--fl-step));
+  min-height: 36px; }
+.rqpanel{ right: var(--fl-right); bottom: calc(var(--fl-base) + 3 * var(--fl-step)); }
+
+/* ---- room at the bottom of every page ----------------------------------- */
+#wsmain{ padding-bottom: 110px; }
+
+/* ---- narrow screens: the chat buttons become icons ---------------------- */
+@media (max-width: 1100px){
+  #asfab, .fab{
+    width: 44px; height: 44px; min-height: 44px; padding: 0;
+    justify-content: center; border-radius: 50%; font-size: 17px;
+  }
+  #asfab .fl-tx, .fab .fl-tx{
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+}
+@media (max-width: 720px){
+  #wsmain{ padding-bottom: 140px; }
+}

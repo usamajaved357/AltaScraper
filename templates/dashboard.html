@@ -116,6 +116,8 @@
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
 <link rel="stylesheet" href="/static/css/mobile.css?v={{ ASSET_V }}">
+<!-- The bottom-right corner: assistant, product chat and runs badge, stacked. -->
+<link rel="stylesheet" href="/static/css/floating.css?v={{ ASSET_V }}">
 </head>
 <script>
 /* WHY THIS RUNS BEFORE ANYTHING IS DRAWN.
@@ -2621,7 +2623,7 @@
   <button id="genstop_one" onclick="stopThisGeneration()" title="Stop only the batch this bar is showing" style="background:#3a1d24;border:1px solid #5c2a33;color:#ffb3b3;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px"><i class="ti ti-player-stop"></i> Stop this</button>
   <button onclick="stopAllGenerations()" title="Stop every image batch running in THIS account. Other accounts are not touched." style="background:#3a1d24;border:1px solid #5c2a33;color:#ffb3b3;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px"><i class="ti ti-player-stop"></i> Stop all here</button>
 </div>
-<button class="fab" id="fab" onclick="toggleChat()" title="Ask Claude about this product">✦ Ask Claude</button>
+<button class="fab" id="fab" onclick="toggleChat()" title="Ask Claude about this product" aria-label="Ask Claude about this product"><span aria-hidden="true">✦</span><span class="fl-tx">Ask Claude</span></button>
 <div class="chatwrap" id="chatwrap">
   <div class="chathead">
     <b>Ask Claude</b>

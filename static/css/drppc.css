@@ -149,6 +149,9 @@
   padding: 16px 18px;
 }
 .drp-panel + .drp-panel{ margin-top: 10px; }
+/* Side by side, the grid gap is the spacing; the stacked margin above used to
+   drop the right-hand panel 10px below the left. */
+.drp-grid > .drp-panel + .drp-panel{ margin-top: 0; }
 
 /* ---- THE LIGHT PANEL ------------------------------------------------------
  * The one place in this app with a white ground, and it is deliberate. */

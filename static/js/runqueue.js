@@ -343,7 +343,11 @@ function rqAttach(sku){ rqWatch(sku, null); }
 // ---- global "Runs" badge + panel -------------------------------------------
 function rqBadgeEl(){
   let el=document.getElementById("rqbadge");
-  if(!el){ el=document.createElement("div"); el.id="rqbadge"; el.className="rqbadge"; el.title="Preview/Submit runs"; el.onclick=rqTogglePanel; document.body.appendChild(el); }
+  if(!el){ el=document.createElement("div"); el.id="rqbadge"; el.className="rqbadge"; el.title="Preview/Submit runs"; el.onclick=rqTogglePanel;
+    // Reachable from the keyboard: it is the one way back to a finished run's log.
+    el.setAttribute("role","button"); el.tabIndex=0;
+    el.onkeydown=function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); rqTogglePanel(); } };
+    document.body.appendChild(el); }
   return el;
 }
 /* THE BADGE OUTLIVES THE RUN, for a couple of minutes.
