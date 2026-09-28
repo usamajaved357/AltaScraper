@@ -561,7 +561,7 @@
                the one that dry-runs the file and asks first ("uploading the cogs
                sheet should be in the one place, not scattered everywhere"). -->
           <template id="tpl_costs">
-            <button onclick="location.href='/cogs/template.csv'"
+            <button onclick="location.href=(typeof acctUrl==='function'?acctUrl('/cogs/template.csv'):'/cogs/template.csv')"
                title="Downloads a sheet listing every SKU on this account, with its ASIN, product name, the cost the app uses now and where that came from. Fill in the 'cost' column for the ones you want to set, and upload it back. Rows you leave blank are not changed."><i class="ti ti-file-download"></i> Cost sheet</button>
             <button onclick="cogsUploadOpen()" title="Upload the cost sheet back — or any CSV or spreadsheet with a sku (or asin) column and a cost column. Shows what it would change and asks before writing. Only rows with a cost filled in are applied."><i class="ti ti-upload"></i> Upload costs</button>
             <button onclick="cogsExplain()" title="Where every cost comes from, which one wins, and how profit is worked out"><i class="ti ti-help-circle"></i> How costs</button>
@@ -1568,7 +1568,7 @@
                a shoe in 14 sizes is one product. "Each child" is there for the
                per-variation read. -->
           <span class="cc" style="font-size:11px">rows</span>
-          <select class="db-chip" id="wk_group" style="width:auto">
+          <select class="db-chip" id="wk_group" aria-label="Rows" style="width:auto">
             <option value="parent">By parent ASIN</option>
             <option value="child">Each child ASIN</option>
           </select>
@@ -1688,7 +1688,7 @@
         <div><h2><i class="ti ti-file-upload"></i> Upload history</h2>
         <div class="sub">Every file uploaded to this account &mdash; the original file and what it did, row by row.</div></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <select id="uph_kind" class="ed" style="width:auto" onchange="uploadsLoad()"><option value="">All uploads</option></select>
+          <select id="uph_kind" aria-label="Which uploads" class="ed" style="width:auto" onchange="uploadsLoad()"><option value="">All uploads</option></select>
           <button class="db-chip" onclick="uploadsLoad()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
       </div>
@@ -1931,9 +1931,9 @@
         <div><h2><i class="ti ti-report-money"></i> Product contribution margin</h2>
         <div class="sub">What each product left behind after Amazon's fees, refunds and what the stock cost. Everything here is on the money basis — units shipped, dated when the money moved — so the fees and the units beside them describe the same sales.</div></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <input type="date" id="fin_start" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
+          <input type="date" id="fin_start" aria-label="Start date" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
           <span class="cc" style="font-size:11px">to</span>
-          <input type="date" id="fin_end" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
+          <input type="date" id="fin_end" aria-label="End date" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
           <button class="db-chip" onclick="financeLoad()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
       </div>
@@ -2049,7 +2049,7 @@
           <b>Step 1.</b> Upload a CSV or Excel file with one column of item numbers (e.g. <code>M001000603</code>). One item number = one product = one listing.
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <input type="file" id="miles_file" accept=".csv,.xlsx,.xls" onchange="milesPickFile(this)"
+          <input type="file" id="miles_file" aria-label="Item-number file (CSV or Excel)" accept=".csv,.xlsx,.xls" onchange="milesPickFile(this)"
                  style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
           <span id="miles_filestatus" style="font-size:12px;opacity:.7"></span>
         </div>

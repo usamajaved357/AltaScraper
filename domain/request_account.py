@@ -130,6 +130,65 @@ def named_any(request):
     return str(v or "").strip()
 
 
+# Values the browser uses to mean "no particular account". Never an account,
+# and the guard skips them -- so they must never be answered as one.
+_NOT_AN_ACCOUNT = ("__all__", "_no_account")
+
+
+def named_now():
+    """The account the CURRENT request names, or "" -- outside a request, or
+    when it names none (or only a placeholder)."""
+    try:
+        from flask import has_request_context, request
+        if has_request_context():
+            got = named(request)
+            if got and got not in _NOT_AN_ACCOUNT:
+                return got
+    except Exception:
+        pass
+    return ""
+
+
+def current(state):
+    """The account THIS REQUEST is for: the one the page named, else the
+    server's open account. Outside a request (a worker thread), the open one.
+
+    The server keeps ONE open account for every tab; the last tab to switch
+    owns it. Image uploads, the image library, image generation and Variations
+    read only that, so with two tabs open an upload made while looking at one
+    account was filed under the other (found by tools/browser_smoke.py's
+    two-tab check, 28 Sep 2026). The page's own account is checked by the
+    guard (auth/guard.py) like any other named account.
+    """
+    return named_now() or str((state or {}).get("active_account_id", "") or "")
+
+
+def sheet_mismatch(state):
+    """Why the SERVER'S sheet must not be used for this request, or "".
+
+    The Google Sheet settings (sheet id, tab) are one set for the whole server,
+    belonging to its open account. Once a request follows the account its page
+    names (current() above), a route that also opens that sheet would pair one
+    account with another's sheet -- read its rows, or write into them. So the
+    sheet is refused whenever the request is for a different account than the
+    one whose sheet is loaded, with the one thing to do about it.
+    """
+    try:
+        from flask import has_request_context, request
+        if not has_request_context():
+            return ""
+        asked = named(request)
+    except Exception:
+        return ""
+    open_id = str((state or {}).get("active_account_id", "") or "")
+    if asked and asked != open_id:
+        return ("This page is showing %s, but %s is open in another tab, and the "
+                "Google Sheet in use belongs to that one -- so nothing was read or "
+                "written. Open %s again in this tab and retry."
+                % (asked, open_id or "no account", asked))
+    return ""
+
+
 def for_read(request, state, get_account=None):
     """(account_id, account_or_None) for a read-only request.
 

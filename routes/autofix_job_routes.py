@@ -13,6 +13,7 @@ including a different device, or the same user after signing back in. The run co
 until every SKU is done or the user presses Stop.
 """
 from flask import request, jsonify
+from domain.request_account import current as _rqa_current
 
 
 def register(app, *, _af_new, _af_get, _af_active, _af_stop, _run_autofix_bg, _state, _threading,
@@ -31,11 +32,19 @@ def register(app, *, _af_new, _af_get, _af_active, _af_stop, _run_autofix_bg, _s
         # NB: _af_active() also returns the last FINISHED job (so a poller can read the
         # final result), so check the STATUS -- not merely that a job exists, or the
         # first completed run would block every run after it.
+        # Auto-fix drives the generator, which runs against the server's open
+        # account -- so, like Preview/Submit, refuse UP FRONT when this tab
+        # shows another one, rather than start and abort on the first SKU with
+        # "workspace changed" (two-tab review).
+        from domain import request_account as _rqa_mod
+        _mm = _rqa_mod.mismatch_for_write(request, _state, what="auto-fixed")
+        if _mm and _rqa_mod.named(request):
+            return jsonify({"ok": False, "error": _mm}), 409
         cur = _af_active()
         if cur and cur.get("status") == "running":
             return jsonify({"ok": False, "error": "an auto-fix run is already in progress",
                             "job": cur.get("id"), "running": True}), 409
-        jid = _af_new(skus, _state.get("active_account_id", "") or "",
+        jid = _af_new(skus, _rqa_current(_state),
                       label=(b.get("label") or "").strip()[:80])
         t = _threading.Thread(target=_run_autofix_bg, args=(jid,), daemon=True)
         t.start()

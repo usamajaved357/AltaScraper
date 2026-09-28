@@ -433,6 +433,13 @@ def _ws():
     # Read the ACTIVE account's own sheet/tab. Resolve the tab by gid first (the
     # exact tab the generator writes to), then by name. If it doesn't exist yet,
     # auto-create it so accounts never silently fall back to another's listings.
+    #
+    # AND ONLY FOR THE ACCOUNT WHOSE SHEET IT IS: a request from a tab showing
+    # another account is refused here, once, for every route that opens it.
+    from domain import request_account as _rqa
+    _other = _rqa.sheet_mismatch(_state)
+    if _other:
+        raise SheetScopeError(_other)
     sid = _state.get("active_sheet_id") or _cfg()["google_spreadsheet_id"]
     tab = str(_state.get("active_tab") or "").strip()
     gid = str(_state.get("active_tab_gid") or "").strip()
@@ -519,7 +526,14 @@ def _active_account():
     """
     try:
         import accounts as _acc
-        aid = _state.get("active_account_id")
+        # THE ACCOUNT THE REQUEST NAMES, else the open one (domain/
+        # request_account.current). The open account is ONE value for every
+        # tab, so routes that asked for it acted on whichever tab switched last
+        # -- stock pushed, auto-fixes run, Ads keys saved for the wrong account
+        # (two-tab audit, 28 Sep 2026). The guard has already checked that the
+        # caller may use the named account. Outside a request, the open one.
+        from domain import request_account as _rqa
+        aid = _rqa.current(_state)
         if not aid:
             return None
         return _acc.get_account(_cfg(), aid, CONFIG_PATH) or None
@@ -1326,7 +1340,10 @@ def _account_media_root(aid=None):
     """Per-account media folder so each workspace shows only its OWN images.
     Falls back to the shared root when no account is open."""
     if aid is None:
-        aid = _state.get("active_account_id", "") or ""
+        # The account the REQUEST is for (the page's), else the open one --
+        # one tab's upload must not land in the account another tab opened.
+        from domain import request_account as _rqa
+        aid = _rqa.current(_state)
     if not aid:
         return _media_root()        # no account -> shared root
     d = os.path.join(_media_root(), "_acct", _safe_sku(aid))
@@ -1605,6 +1622,7 @@ _IMG_JOBS_LOCK = threading.Lock()
 
 def _new_img_job(total, label="", plan=None):
     import time as _t, uuid as _u
+    from domain.request_account import current as _rqa_current
     jid = _u.uuid4().hex[:12]
     with _IMG_JOBS_LOCK:
         from domain import job_owner as _jo
@@ -1617,8 +1635,10 @@ def _new_img_job(total, label="", plan=None):
              # workspaces: the progress bar for a Nestwell batch appeared while
              # you were in Jack Reacherd, and "Stop all" on that screen ended it.
              # Accounts are independent; their jobs and their Stop buttons have
-             # to be too.
-             "account": str(_state.get("active_account_id", "") or "")})
+             # to be too. The REQUEST's account (the tab's), the same one its
+             # images are filed under -- labelled with the server's open one,
+             # Stop in the other tab ended it (two-tab review).
+             "account": _rqa_current(_state)})
     try:
         with _IMG_JOBS_LOCK:
             for k in [k for k, v in _IMG_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
@@ -2336,7 +2356,9 @@ def _load_img_instructions(aid=None):
             d = json.load(f) or {}
     except Exception:
         d = {}
-    aid = aid or _state.get("active_account_id", "") or ""
+    # The request's account when there is one (a tab's own), else the open one.
+    from domain import request_account as _rqa
+    aid = aid or _rqa.current(_state)
     # per-account instruction wins; otherwise the global one
     return (d.get("by_account", {}).get(aid, "") or d.get("global", "") or "").strip()
 
@@ -2443,7 +2465,11 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
     # Custom instructions the user wants the AI to remember for EVERY image
     # (e.g. "always pure white background", "include our logo top-left", "no people").
     # We append them to each job's brief so they apply on top of the strategist.
-    _custom = _load_img_instructions()
+    # The BATCH's account (stamped at enqueue), not whichever one is open when
+    # this thread starts -- another tab may have switched since.
+    _job_acct = next((str(j.get("_acct_id") or "") for j in (jobs or [])
+                      if j.get("_acct_id")), "")
+    _custom = _load_img_instructions(_job_acct or None)
     with app.app_context():
         for job in jobs:
             if _job_cancelled(jid):
@@ -2487,20 +2513,31 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                 # The Creative button ("Generate 3 variations") runs through this
                 # view, so genimage_recipe must stay even though no recipe UI is
                 # left. See the header of static/js/genimage.js.
+                # THE BATCH'S ACCOUNT, named on the internal request each image
+                # is made through -- otherwise every lookup inside (the product's
+                # facts, its rows, its instructions) fell back to whichever
+                # account is open now, which another tab may have switched
+                # (two-tab review). It was checked by the guard when the batch
+                # was queued; an account inside the payload is never trusted.
+                if isinstance(payload, dict):
+                    payload.pop("account", None)
+                    payload.pop("account_id", None)
+                _job_q = ({"account": str(job.get("_acct_id"))}
+                          if job.get("_acct_id") else {})
                 if kind in ("recipe", "creative"):
-                    with app.test_request_context(json=payload):
+                    with app.test_request_context(json=payload, query_string=_job_q):
                         resp = app.view_functions["genimage_recipe"]()
                 elif kind == "concept":
-                    with app.test_request_context(json=payload):
+                    with app.test_request_context(json=payload, query_string=_job_q):
                         resp = app.view_functions["genimage_from_concept"]()
                 elif kind == "source":
-                    with app.test_request_context(json=payload):
+                    with app.test_request_context(json=payload, query_string=_job_q):
                         resp = app.view_functions["genimage_process_source"]()
                 elif kind == "secondary":
-                    with app.test_request_context(json=payload):
+                    with app.test_request_context(json=payload, query_string=_job_q):
                         resp = app.view_functions["genimage_secondary_v2"]()
                 elif kind == "aplus":
-                    with app.test_request_context(json=payload):
+                    with app.test_request_context(json=payload, query_string=_job_q):
                         resp = app.view_functions["aplus_generate"]()
                 else:
                     _job_push(jid, {"ok": False, "label": label, "error": "unknown job kind"})
@@ -3588,15 +3625,21 @@ def _save_recipes(data):
 
 def _active_brand():
     """Best-effort current brand: active view/brand, else active account's first brand."""
+    # The selected view/brand belong to the OPEN account. A request naming a
+    # different account (another tab) takes that account's own brand instead,
+    # so its images never carry the other company's name (two-tab review).
+    from domain import request_account as _rqa
+    _named = _rqa.named_now()
+    _other_tab = bool(_named) and _named != str(_state.get("active_account_id", "") or "")
     try:
-        bv = _state.get("active_view") or _state.get("active_brand") or ""
+        bv = "" if _other_tab else (_state.get("active_view") or _state.get("active_brand") or "")
         if bv:
             return bv
     except Exception:
         pass
     try:
         import accounts as _acc
-        aid = _state.get("active_account_id", "")
+        aid = _rqa.current(_state)
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if acc:
             bl = [x for x in (acc.get("brands") or []) if x and x.strip()]

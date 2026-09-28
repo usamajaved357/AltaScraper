@@ -57,7 +57,7 @@ function ntfRender() {
     "Slack, or a webhook for anything else.",
     '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">' +
     '<div><label class="cc" style="display:block;font-size:11px">Type</label>' +
-    '<select id="ntf_kind" class="ed" style="width:150px">' +
+    '<select id="ntf_kind" aria-label="Channel type" class="ed" style="width:150px">' +
     '<option value="slack">Slack</option>' +
     '<option value="webhook">Webhook (anything else)</option>' +
     "</select></div>" +

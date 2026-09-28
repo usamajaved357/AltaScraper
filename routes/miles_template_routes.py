@@ -16,6 +16,7 @@ import re
 import base64 as _b64
 
 from flask import request, jsonify, send_from_directory
+from domain.request_account import current as _rqa_current
 
 
 def register(app, *, _cfg, _state, _load_miles_templates, _save_miles_templates,
@@ -201,7 +202,7 @@ def register(app, *, _cfg, _state, _load_miles_templates, _save_miles_templates,
             d = _sku_dir(sku)
             with open(os.path.join(d, fname), "wb") as f:
                 f.write(png)
-            aid = _state.get("active_account_id", "") or ""
+            aid = _rqa_current(_state)
             pfx = f"/media/_acct/{_safe_sku(aid)}" if aid else "/media"
             url = f"{pfx}/{_safe_sku(sku)}/{fname}"
             # Return a SMALL thumbnail for instant preview (not the full 2616px image

@@ -43,6 +43,7 @@ from domain.image_rules import (            # noqa: F401  (re-exported)
     _LIST_RULES, _IMAGE_TEXT_RULES, _PRESENCE_RULES, _SQUARE_CANVAS,
     _presence_rule,
 )
+from domain import request_account as _rqa
 
 
 BRAND_UNBRANDED = "unbranded"
@@ -176,7 +177,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # A job stamped before accounts were recorded has no account at all --
         # shown rather than hidden, because making existing work disappear from
         # its own progress bar is the worse failure.
-        _acct = str(_state.get("active_account_id", "") or "")
+        _acct = _rqa.current(_state)
         out, elsewhere = [], 0
         with _IMG_JOBS_LOCK:
             for jid, j in _IMG_JOBS.items():
@@ -218,7 +219,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # money, and the button is nowhere near the work it was killing. Scoped
         # to the account the same way the progress bar is, so what Stop ends is
         # exactly what the bar was showing.
-        _acct = str(_state.get("active_account_id", "") or "")
+        _acct = _rqa.current(_state)
         n, skipped = 0, 0
         with _IMG_JOBS_LOCK:
             for j in _IMG_JOBS.values():
@@ -296,9 +297,11 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # changed) filed the image under the wrong account, or under the shared root
         # where the owning workspace never showed it. Capturing it here pins each image
         # to the workspace it was generated for.
-        _acct_now = _state.get("active_account_id", "") or ""
+        _acct_now = _rqa.current(_state)
         for jb in jobs:
-            jb.setdefault("_acct_id", _acct_now)
+            # SET, never setdefault: `_acct_id` sent by the browser would file
+            # images into an account the guard never checked (review).
+            jb["_acct_id"] = _acct_now
         # a lightweight plan (label + concept per job) so the UI can show every
         # planned image and its status from the very start, not just as they finish.
         plan = [{"label": jb.get("label", ""), "sku": jb.get("sku", ""),
@@ -947,7 +950,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 f.write(_bytes)
         except Exception as e:
             return jsonify({"ok": False, "error": f"write failed: {e}"}), 500
-        _aid = _state.get("active_account_id", "") or ""
+        _aid = _rqa.current(_state)
         _pfx = f"/media/_acct/{_safe_sku(_aid)}" if _aid else "/media"
         _rel = f"{_safe_sku(sku)}/{sub}/{fname}" if sub else f"{_safe_sku(sku)}/{fname}"
         return jsonify({"ok": True, "url": f"{_pfx}/{_rel}",
@@ -1162,7 +1165,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # sheet. Saved under the first selected SKU's "secondary" folder, account-scoped.
         # Additive: what gets written to the row / submitted is unchanged.
         try:
-            _aid0 = _state.get("active_account_id", "") or ""
+            _aid0 = _rqa.current(_state)
             _first = _safe_sku(skus[0])
             _secdir = os.path.join(_sku_dir(skus[0]), "secondary")
             os.makedirs(_secdir, exist_ok=True)

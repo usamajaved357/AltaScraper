@@ -86,6 +86,29 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
 
 On `claude-environment-setup` (local, not merged or deployed — production still
 has these until the owner merges):
+- **Non-design batch 2: two tabs (28 Sep 2026).** Found by the new browser
+  check (tools/browser_smoke.py: tab 1 on account A while tab 2 switches the
+  server to B). The server has ONE open account for every tab, and a class of
+  routes used only that: the image library, uploads (and their Drive copy),
+  image generation and its Stop, Variations (read with the open account's
+  credentials, could publish to it), stock pushes, auto-fix, Amazon Ads keys,
+  the input queue, Drive uploads, Miles runs, variant queueing, sync, and the
+  rows on the database (a pull_row could write A's Amazon data into B's
+  same-SKU row). Now: `_active_account()` and the database rows follow the
+  account the request names (domain/request_account.current / named_now);
+  the browser names its account (and marketplace) on those paths (reqscope.js);
+  /media/delete refuses another account's folder; image jobs are labelled and
+  filed under the requesting tab's account and use its instructions and brand;
+  auto-fix refuses up front on a mismatch. Also: 25 form fields got accessible
+  labels (no visual change).
+  LEFT OPEN (low, from the reviews): the saved brand REFERENCE photo for an AI
+  main image is still chosen by the open account's view (genimage_routes
+  ~335); the image worker records the Drive map under the open account, so
+  deleting that image later can leave its Drive copy behind; the input-upload
+  log and /edit's "add a live SKU as a row" step take the open account's
+  marketplace; Miles runs (EventSource, not fetch) stay on the open account,
+  as before; /submit/precheck always returns nothing (it calls _records()
+  without a sheet -- pre-existing, not account-related).
 - **Non-design batch 1 (28 Sep 2026).** A failed load is now drawn as a
   failure (pageui.js `uiError`: red, `role="alert"`, a Try again button) on
   Hourly, Traffic, Sales and Generate instead of the grey "no data" box, and it

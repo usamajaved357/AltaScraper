@@ -9,13 +9,14 @@ These three endpoints make it an import instead. Your sheet stays exactly as you
 use it; it just stops being a dependency.
 """
 from flask import request, jsonify
+from domain.request_account import current as _rqa_current
 
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
     """Attach /input/* to the app."""
 
     def _wsid():
-        return str(_state.get("active_account_id", "") or "") or "_no_account"
+        return _rqa_current(_state) or "_no_account"
 
     @app.route("/input/status")
     def input_status():

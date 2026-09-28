@@ -10,6 +10,7 @@ Routes: GET/POST /ai/settings, POST /admin/logic_settings, GET /ai/test,
 import json
 
 from flask import request, jsonify
+from domain.request_account import current as _rqa_current
 
 from config import settings as _settings
 
@@ -159,7 +160,7 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                    or (request.get_json(silent=True) or {}).get("account_id")
                    or "")).strip()
         if not aid:
-            aid = str((_state or {}).get("active_account_id", "") or "")
+            aid = _rqa_current(_state)
         return aid
 
     @app.route("/settings/ads", methods=["GET", "POST"])

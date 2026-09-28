@@ -25,6 +25,7 @@ from listing import run_status          # honest run state, independent of the l
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
 from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
 from listing.sourcing_viability import check_sourcing_viability  # document-demand risk (WARN only)
+from domain import request_account as _rqa
 
 # Map the screener's field name -> the sheet column header to WRITE a rewrite into.
 # Standard 48-col layout first, then the Miles 12-col layout, so the one-click "Apply
@@ -666,8 +667,21 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         sku = (b.get("sku", "") or "").strip()
         if not sku:
             return jsonify({"ok": False, "error": "missing sku"}), 400
-        aid = b.get("id", "") or _state.get("active_account_id", "")
-        mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
+        aid = b.get("id", "") or _rqa.current(_state)
+        # THE ROWS AND THE PUSH MUST BE ONE ACCOUNT. The image is read from the
+        # rows _ws() opens (the account the request names, else the open one)
+        # and pushed with `aid`'s credentials -- with two tabs and a SKU used on
+        # both accounts, B's live listing could get A's main image (two-tab
+        # review). Refuse rather than guess.
+        if str(aid) != str(_rqa.current(_state)):
+            return jsonify({"ok": False, "error":
+                            "This page is showing %s but %s is open in another tab, so "
+                            "no image was pushed. Open %s again in this tab and retry."
+                            % (aid, _rqa.current(_state) or "no account", aid)}), 409
+        from routes import scope as _scope_mod
+        mkt = (b.get("marketplace", "") or request.args.get("marketplace")
+               or _scope_mod.marketplace(state=_state, account=_active_account() or {})
+               or "").upper()
         ptype = b.get("product_type", "") or ""
 
         # 1) find the row's current main image (what the user saved via "use as main")
@@ -3022,7 +3036,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             _who = _jo.current()
         except Exception:
             _who = ""
-        _acct = str(_state.get("active_account_id", "") or "")
+        _acct = _rqa.current(_state)
         _all = _SLOTS.active()
         mine = [s for s in _all
                 if str(s.get("account") or "") == _acct

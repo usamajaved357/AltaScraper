@@ -315,26 +315,26 @@ _PANEL_HTML = r"""
     <div id="brand_cards" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
     <table class="kv">
       <tr><td class="k">Brand</td><td class="v">
-        <select class="ed" id="b_select" onchange="brandLoad(this.value)"></select>
+        <select class="ed" id="b_select" aria-label="Brand" onchange="brandLoad(this.value)"></select>
         <span class="cc">or type a new name below to create one</span>
       </td></tr>
-      <tr><td class="k">Brand name</td><td class="v"><input class="ed" id="b_name"></td></tr>
+      <tr><td class="k">Brand name</td><td class="v"><input class="ed" id="b_name" aria-label="Brand name"></td></tr>
       <tr><td class="k">Vendor mode</td><td class="v">
-        <select class="ed" id="b_vendor_mode">
+        <select class="ed" id="b_vendor_mode" aria-label="Vendor mode">
           <option value="single_brand">single_brand (one brand owns everything)</option>
           <option value="reseller">reseller (multi-vendor store)</option>
         </select></td></tr>
       <tr><td class="k">Voice mode</td><td class="v">
-        <select class="ed" id="b_voice_mode">
+        <select class="ed" id="b_voice_mode" aria-label="Voice mode">
           <option value="regenerate">regenerate (fresh optimised copy)</option>
           <option value="preserve">preserve (keep brand phrasing, restructure)</option>
         </select></td></tr>
       <tr><td class="k">Tone / output language</td><td class="v">
-        <select class="ed" id="b_tone"></select>
+        <select class="ed" id="b_tone" aria-label="Tone / output language"></select>
         <span class="cc">English is default; brand's source language appears if non-English</span>
       </td></tr>
       <tr><td class="k">Marketplace</td><td class="v">
-        <select class="ed" id="b_marketplace"><option>UK</option><option>US</option></select></td></tr>
+        <select class="ed" id="b_marketplace" aria-label="Marketplace"><option>UK</option><option>US</option></select></td></tr>
       <tr><td class="k">Pricing</td><td class="v">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <span class="cc">source currency</span>
@@ -354,9 +354,9 @@ _PANEL_HTML = r"""
       <tr><td class="k">Country of origin</td><td class="v">
         <input class="ed" id="b_coo" placeholder="brand-stated, else leave blank"></td></tr>
       <tr><td class="k">Lead title with brand</td><td class="v">
-        <select class="ed" id="b_lead"><option value="true">Yes</option><option value="false">No</option></select></td></tr>
+        <select class="ed" id="b_lead" aria-label="Lead title with brand"><option value="true">Yes</option><option value="false">No</option></select></td></tr>
       <tr><td class="k">SKU prefix</td><td class="v">
-        <select class="ed" id="b_prefix_on" style="width:auto;display:inline-block">
+        <select class="ed" id="b_prefix_on" aria-label="SKU prefix" style="width:auto;display:inline-block">
           <option value="false">off (use brand SKU as-is)</option>
           <option value="true">on</option></select>
         <input class="ed" id="b_prefix" placeholder="e.g. LEECH" style="display:inline-block;width:auto;margin-left:8px">
@@ -404,7 +404,7 @@ _PANEL_HTML = r"""
     <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
       <button class="primary" onclick="brandSave()">Save brand</button>
       <span style="margin-left:12px;color:var(--muted)">Test mode — generate only</span>
-      <input class="ed" id="b_testlimit" value="2" style="width:60px;display:inline-block">
+      <input class="ed" id="b_testlimit" aria-label="Test mode: how many to generate" value="2" style="width:60px;display:inline-block">
       <span style="color:var(--muted)">listing(s)</span>
       <button class="ok" onclick="brandRun(true)">Test run (limited)</button>
       <button class="danger" onclick="brandRun(false)" title="Generates ALL products — uses full credits">

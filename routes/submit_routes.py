@@ -8,7 +8,7 @@ Routes:
   GET /submit/precheck -> warn about APPROVED rows whose main image is a LOCAL path
   GET /submit/target   -> report which Amazon account/marketplace a submit will hit
 """
-from flask import jsonify
+from flask import jsonify, request
 
 
 def register(app, *, _records, _active_account, _state, _cfg):
@@ -46,7 +46,13 @@ def register(app, *, _records, _active_account, _state, _cfg):
         """Report WHICH Amazon account a submit will hit. With the accounts model,
         this is the ACTIVE ACCOUNT directly -- not inferred from marketplace."""
         acc = _active_account()
-        mkt = (_state.get("active_marketplace") or "").upper()
+        # The tab's marketplace and view, never another tab's (routes/scope).
+        from routes import scope as _scope_mod
+        from domain import request_account as _rqa
+        mkt = (_scope_mod.marketplace(state=_state, account=acc or {},
+                                      asked=request.args.get("marketplace")) or "").upper()
+        _other_tab = bool(_rqa.named_now()) and _rqa.named_now() != str(
+            _state.get("active_account_id", "") or "")
         if acc:
             rt = str(acc.get("refresh_token", ""))
             ready = bool(rt) and not rt.startswith(("PUT_", "ROTATE"))
@@ -55,7 +61,8 @@ def register(app, *, _records, _active_account, _state, _cfg):
                             "seller_id": acc.get("seller_id", ""),
                             "account_id": acc.get("id", ""),
                             "block": "account" if ready else "none",
-                            "view": _state.get("active_view") or acc.get("label", ""),
+                            "view": (acc.get("label", "") if _other_tab
+                                     else (_state.get("active_view") or acc.get("label", ""))),
                             "ready": ready})
         # legacy fallback
         cfg = _cfg()

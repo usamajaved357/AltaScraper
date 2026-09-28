@@ -16,6 +16,7 @@ import re
 import base64 as _b64
 
 from flask import request, jsonify, send_from_directory
+from domain import request_account as _rqa
 
 
 def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
@@ -180,7 +181,7 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
                 f.write(raw)
         except Exception as e:
             return jsonify({"ok": False, "error": f"write failed: {e}"}), 500
-        aid = _state.get("active_account_id", "") or ""
+        aid = _rqa.current(_state)
         _pfx = f"/media/_acct/{_safe_sku(aid)}" if aid else "/media"
         _subpart = f"{subfolder}/" if subfolder else ""
         url = f"{_pfx}/{_safe_sku(sku)}/{_subpart}{fname}"
@@ -193,10 +194,17 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
         try:
             if kind in ("generated", "main"):
                 acc = _active_account()
+                # THE UPLOAD'S ACCOUNT, NOT THE OPEN ONE. The file above went
+                # into `aid`'s folder; its Drive copy must not go into another
+                # account's Drive because a second tab switched the server.
+                if str((acc or {}).get("id") or "") != str(aid or ""):
+                    acc = None
                 folder = (acc or {}).get("drive_folder_url", "")
                 parent_id = _drive_folder_id_from_url(folder)
                 if not parent_id:
-                    drive_error = "no Drive folder configured for this account"
+                    drive_error = ("no Drive folder configured for this account" if acc
+                                   else "not copied to Drive: this account's settings "
+                                        "could not be read -- saved in the app only")
                 if parent_id:
                     _prod = ""
                     try:
@@ -229,7 +237,7 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
     def media_list():
         """List stored media grouped by SKU for the ACTIVE account only, so each
         workspace shows its own image library. Optional ?sku= filters."""
-        aid = _state.get("active_account_id", "") or ""
+        aid = _rqa.current(_state)
         root = _account_media_root(aid)
         # URL prefix that media_serve can resolve back to this root
         url_prefix = f"/media/_acct/{_safe_sku(aid)}" if aid else "/media"
@@ -384,7 +392,7 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
         sku = (request.args.get("sku") or "").strip()
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
-        aid = _state.get("active_account_id", "") or ""
+        aid = _rqa.current(_state)
         root = _account_media_root(aid)
         # _safe_sku, and then a check that the resolved path is still INSIDE the
         # media root: a SKU is user data, and "../../config.json" is a SKU as far
@@ -431,6 +439,26 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
         fpath = os.path.normpath(os.path.join(_media_root(), relpath))
         if not fpath.startswith(os.path.normpath(_media_root())):
             return jsonify({"ok": False, "error": "bad path"}), 400
+        # ONLY THIS ACCOUNT'S FILES. The url names its account's folder
+        # (/media/_acct/<account>/...), and any url was deleted -- so a login
+        # limited to one account could delete another's images by naming them,
+        # and a tab could delete from the account a different tab opened. The
+        # request's own account is the one the guard has already checked.
+        # From the path that will ACTUALLY be deleted -- "./_acct/..", a
+        # backslash or "_ACCT" on Windows all normalise to the same file, and a
+        # check on the raw text let them through (review).
+        _parts = os.path.relpath(fpath, os.path.normpath(_media_root())).split(os.sep)
+        if os.name == "nt":
+            _parts = [p.lower() for p in _parts]
+        if len(_parts) > 1 and _parts[0] == "_acct":
+            _mine = _safe_sku(_rqa.current(_state))
+            if os.name == "nt":
+                _mine = _mine.lower()
+            if not _mine or _parts[1] != _mine:
+                return jsonify({"ok": False, "error":
+                                "That image belongs to a different account than "
+                                "the one this page is showing, so it was not "
+                                "deleted."}), 403
         try:
             if os.path.exists(fpath):
                 os.remove(fpath)

@@ -120,6 +120,14 @@ def workspace_of(state):
     the built-in cross-account workspace, so its rows cannot collide with a real
     account's just because both resolved to an empty string.
     """
-    return (state.get("active_account_id")
+    # THE ACCOUNT THE REQUEST NAMES comes first. dashboard._active_account()
+    # already answers for it (domain/request_account.current), so rows opened
+    # here from the server's global would pair that account's credentials
+    # with ANOTHER account's rows -- /live/pull_row fetched A's images with A's
+    # keys and wrote them into B's same-SKU row (two-tab review, 28 Sep 2026).
+    # On the database an account IS its store, so the store simply follows.
+    from domain import request_account as _rqa
+    return (_rqa.named_now()
+            or state.get("active_account_id")
             or state.get("active_view")
             or "_no_account")

@@ -405,7 +405,7 @@ function ilDownloadAll(sku){
   const s = sku || IMGLIB.openFolder || IMGLIB.sku;
   if(!s){ toast("No folder to download."); return; }
   toast("Preparing the zip…");
-  window.location.href = "/media/zip?sku=" + encodeURIComponent(s);
+  window.location.href = acctUrl("/media/zip?sku=" + encodeURIComponent(s));   // the tab's account (reqscope.js)
 }
 
 function closeImageLibrary(){

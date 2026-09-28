@@ -167,7 +167,7 @@ function trkAddForm() {
   return uiToolbar(
     '<span class="ui-lbl">Watch a number</span>' +
     '<input id="trk_asin" class="ed" style="width:140px" placeholder="B0XXXXXXXX">' +
-    '<select id="trk_metric" class="ed" style="width:160px">' + opts + "</select>" +
+    '<select id="trk_metric" aria-label="Number to watch" class="ed" style="width:160px">' + opts + "</select>" +
     '<input id="trk_target" class="ed" style="width:110px" placeholder="target (optional)">' +
     '<button class="primary" onclick="trkAdd()"><i class="ti ti-plus"></i> Track it</button>',
     '<span class="cc" style="font-size:11px;max-width:330px;text-align:right">' +

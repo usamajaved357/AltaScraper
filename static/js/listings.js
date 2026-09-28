@@ -3113,7 +3113,7 @@ function listBlock(rows, fn){
       <th class="selcol" title="Select every row shown">
         <input type="checkbox" class="rowsel"
                ${rows.length && rows.every(x => SELECTED.has(String(x.sku))) ? "checked" : ""}
-               onchange="selectAllVisible(this.checked)"></th>
+               aria-label="Select all visible listings" onchange="selectAllVisible(this.checked)"></th>
       <th style="width:52px">Image</th><th>ASIN</th><th>Title</th>
       <th>Price</th><th title="What the stock cost you — a figure you set, by typing it here or uploading a cost sheet. Nothing is read out of the SKU name any more; a plain number with no mark is an old cost from before that changed. Click to set or replace one.">COGS</th>
       <th>Handling</th><th>Status</th><th>Compliance</th>

@@ -33,6 +33,7 @@ import csv
 import io
 
 from flask import request, jsonify, Response
+from domain.request_account import current as _rqa_current
 
 
 # A file bigger than this is not a product list, and reading it into memory to
@@ -130,7 +131,7 @@ def register(app, *, CONFIG_PATH, _state):
     """Attach /input/upload* to the app."""
 
     def _wsid():
-        return str(_state.get("active_account_id", "") or "") or "_no_account"
+        return _rqa_current(_state) or "_no_account"
 
     def _keep(filename, data, **kw):
         """Record this upload in the Upload history (domain/upload_log.py)."""
