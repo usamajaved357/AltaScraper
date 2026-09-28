@@ -162,3 +162,10 @@ inventory sync), and `build_api_attributes` (separate plan:
 - **A10** (jobs). Every job already stamps its account at start (image batch,
   auto-fix, preview queue, /run); `test_jobs_name_their_account.py` pins it.
   No code change; the two remaining fallbacks are bugs 8-9.
+- **A8** (rules out of routes). Finance's previous-window and overhead panels
+  moved word for word to `domain/finance_view.py` (full JSON snapshot identical
+  before/after). Stopped there on purpose: the other large blocks
+  (`dashboard_routes._build_summary`, `variant_routes._plan`, `live_catalog`,
+  `rows_all`, `miles_run`, `ppc_deliverable`) read sheets, the database and
+  closures through 5-15 free names -- moving them is a rewrite, not a move.
+  Intentional debt, per route, for later.
