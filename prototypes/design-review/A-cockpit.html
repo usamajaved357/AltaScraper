@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototype A — Operations Cockpit</title>
+<link rel="stylesheet" href="../../static/vendor/tabler-icons/tabler-icons.min.css">
+<link rel="stylesheet" href="shared/proto.css">
+<style>
+/* ===== A: OPERATIONS COCKPIT =====
+   One context bar, a thin icon rail, dense tables, a side-by-side product
+   panel, and a status line instead of toasts. Built for speed of repeat work. */
+body{display:grid;grid-template-rows:auto auto 1fr auto;min-height:100vh}
+.ctx{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--panel);
+  border-bottom:1px solid var(--line);position:sticky;top:31px;z-index:50}
+.ctx .seg{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;
+  background:var(--panel2);border:1px solid var(--line2);white-space:nowrap}
+.ctx .seg b{font-weight:650}
+.ctx .seg small{color:var(--ink2)}
+.ctx .acct-sw{width:10px;height:10px;border-radius:3px}
+.ctx .sp{flex:1}
+.ctx .kbd{font:600 11px/1 ui-monospace,monospace;padding:3px 5px;border-radius:4px;
+  background:var(--panel3);border:1px solid var(--line2);color:var(--ink2)}
+.ctx .attn{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn)}
+.shell{display:grid;grid-template-columns:64px 1fr;min-height:0}
+.rail{background:var(--panel);border-right:1px solid var(--line);padding:8px 6px;
+  display:flex;flex-direction:column;gap:4px}
+.rail button{border:0;background:none;border-radius:9px;padding:8px 2px;display:flex;
+  flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--ink2)}
+.rail button i{font-size:20px}
+.rail button.on{background:var(--accent-bg);color:var(--accent)}
+.rail button:disabled{opacity:.35}
+.main{display:grid;grid-template-columns:1fr;min-width:0}
+.main.split{grid-template-columns:minmax(0,1fr) minmax(380px,44%)}
+.pane{padding:12px 14px;min-width:0;overflow:auto;max-height:calc(100vh - 110px)}
+h2{margin:2px 0 10px;font-size:17px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{border:1px solid var(--line2);background:var(--panel2);border-radius:999px;
+  padding:3px 10px;font-size:12.5px}
+.chip.on{background:var(--accent-bg);border-color:var(--accent-line);color:var(--accent)}
+.chip .n{color:var(--ink2);margin-left:4px}
+.chip.hot .n{color:var(--warn)}
+.tools{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.tools input{width:260px}
+table.dense{width:100%;border-collapse:collapse;font-size:13px}
+table.dense th{position:sticky;top:0;background:var(--panel);text-align:left;font-weight:600;
+  color:var(--ink2);font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;
+  padding:6px 8px;border-bottom:1px solid var(--line2)}
+table.dense td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.dense tr.cur td{background:var(--panel2)}
+table.dense tr.cur td:first-child{box-shadow:inset 3px 0 var(--accent)}
+table.dense tr:hover td{background:var(--panel2)}
+table.dense .t{max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.dense .sku{font:11.5px ui-monospace,monospace;color:var(--ink3)}
+.cell-edit{width:78px;text-align:right;padding:3px 6px}
+.cell-edit.staged{border-color:var(--gold);background:var(--gold-bg)}
+.rowerr td{background:rgba(242,114,114,.05)}
+.rowerr .inlerr{color:var(--red);font-size:12px}
+.savebar{position:sticky;bottom:0;margin-top:10px;display:flex;gap:10px;align-items:center;
+  padding:10px 12px;border-radius:10px;background:var(--gold-bg);border:1px solid var(--gold-line)}
+.bulkbar{display:flex;gap:8px;align-items:center;padding:8px 10px;margin-bottom:8px;
+  border-radius:9px;background:var(--accent-bg);border:1px solid var(--accent-line)}
+.pdp{border-left:1px solid var(--line2);background:var(--panel);overflow:auto;
+  max-height:calc(100vh - 110px)}
+.pdp-h{padding:12px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:5}
+.pdp-h h3{margin:4px 0;font-size:15.5px}
+.pdp-facts{display:flex;flex-direction:column;gap:6px;padding:10px 14px}
+.fact{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:8px;font-size:13px}
+.fact.bad{background:var(--red-bg);border:1px solid var(--red-line)}
+.fact.warn{background:var(--warn-bg);border:1px solid var(--warn-line)}
+.fact.ok{background:var(--ok-bg);border:1px solid var(--ok-line)}
+.tabs{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:none;padding:8px 10px;color:var(--ink2);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.pdp-b{padding:12px 14px}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:13px}
+.kv span:nth-child(odd){color:var(--ink2)}
+.reply{border:1px solid var(--line2);border-radius:9px;padding:10px;margin-bottom:8px;background:var(--panel2)}
+.fchip{display:inline-block;font:11px ui-monospace,monospace;padding:1px 6px;border-radius:5px;
+  background:var(--red-bg);border:1px solid var(--red-line);color:var(--red);margin-right:6px}
+.status{display:flex;gap:10px;align-items:center;padding:5px 14px;font-size:12.5px;
+  background:var(--panel);border-top:1px solid var(--line);position:sticky;bottom:0;z-index:40}
+.status .last{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status .ok{color:var(--ok)} .status .bad{color:var(--red)}
+.issues{position:fixed;right:12px;bottom:40px;width:420px;max-height:50vh;overflow:auto;z-index:80;
+  background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:10px 12px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.queue{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.qcard{border:1px solid var(--line2);background:var(--panel);border-radius:11px;padding:12px;text-align:left}
+.qcard .n{font-size:26px;font-weight:700}
+.qcard.hot{border-color:var(--warn-line)} .qcard.hot .n{color:var(--warn)}
+.qcard.bad{border-color:var(--red-line)} .qcard.bad .n{color:var(--red)}
+.qcard .d{color:var(--ink2);font-size:12.5px}
+.pal{position:fixed;inset:0;z-index:300;background:rgba(5,7,12,.55);display:flex;justify-content:center;padding-top:90px}
+.pal .box{width:min(560px,94vw);background:var(--panel);border:1px solid var(--line2);border-radius:12px;overflow:hidden;height:max-content}
+.pal input{width:100%;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:12px 14px;font-size:15px;background:var(--panel)}
+.pal .it{padding:8px 14px;display:flex;gap:10px;align-items:center;cursor:pointer}
+.pal .it.on{background:var(--accent-bg)}
+.pal .it small{color:var(--ink3);margin-left:auto}
+.menu{position:absolute;z-index:120;background:var(--panel);border:1px solid var(--line2);border-radius:10px;
+  padding:4px;min-width:230px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:7px 10px;border-radius:7px}
+.menu button:hover{background:var(--panel2)}
+.expand td{background:var(--panel2)!important}
+.exp{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:6px 0}
+.exp .box{border:1px solid var(--line2);border-radius:9px;padding:10px;background:var(--panel)}
+.exp h4{margin:0 0 6px;font-size:12px;color:var(--ink2);text-transform:uppercase}
+.pl td:first-child{color:var(--ink2)}
+.pl tr.total td{font-weight:700;border-top:2px solid var(--line2)}
+.bars{display:flex;align-items:flex-end;gap:2px;height:60px;margin:6px 0 12px}
+.bars div{flex:1;background:var(--accent-line);border-radius:2px 2px 0 0}
+.empty{padding:40px 20px;text-align:center;border:1px dashed var(--line2);border-radius:12px;color:var(--ink2)}
+@media (max-width:900px){.main.split{grid-template-columns:1fr}.pdp{position:fixed;inset:31px 0 0 0;z-index:90;max-height:none}
+  .shell{grid-template-columns:52px 1fr}.ctx{flex-wrap:wrap}.tools input{width:100%}}
+</style>
+</head>
+<body>
+
+<header class="ctx" id="ctx" data-piece="A2"
+  data-why="One context bar, always visible|Account, marketplace and date window live in ONE bar at the top of every screen, and every screen obeys it.
+The audit found the account 'lives in your head': the marketplace was only in an overlay sidebar and each screen had its own date control (about 11 of them). One bar removes all of that.
+The account carries its own colour swatch so a glance tells you which company you are in, even when screens look alike."></header>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Main" data-piece="A1"
+    data-why="Six-destination rail + command palette|Instead of ~43 look-alike menu items, the rail has six places: Home, Listings, Orders, Money, Ads, Watch.
+Everything else (a specific SKU, an account, a report) is one Ctrl+K away in the command palette. Fast users type; nobody hunts through menus.
+Ads and Watch are shown disabled here only because they are not part of this prototype."></nav>
+  <main class="main" id="main"></main>
+</div>
+
+<footer class="status" id="status" data-piece="A8"
+  data-why="Status line instead of toasts|Every action writes one line here: what happened, to which account, and a link to undo or view.
+A toast disappears in 1.8 seconds; a line stays until the next action and the Issues list keeps every failure until it is fixed.
+Failures also stay on the ROW they belong to (persistent inline state), so nothing that went wrong can be missed by looking away."></footer>
+
+<script src="shared/data.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+/* ===== state ===== */
+const S = {acct: "northfield_uk", mkt: "UK", range: "Last 30 days", screen: "home",
+           filter: "attention", q: "", sel: new Set(), open: null, tab: "overview",
+           staged: {}, log: [], cur: 0, loading: false, orderOpen: null, ordFilter: "open"};
+const A = () => pAcct(S.acct);
+const cur = () => A().cur;
+
+function logLine(ok, text, undo){
+  S.log.unshift({ok, text, t: new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}), undo});
+  renderStatus();
+}
+
+/* ===== context bar ===== */
+function renderCtx(){
+  const a = A(), attn = attentionCount();
+  document.getElementById("ctx").innerHTML =
+    '<button class="seg" onclick="acctMenu(event)" title="Change account (Ctrl+K, then type the name)">'
+    + '<span class="acct-sw" style="background:' + a.colour + '"></span><b>' + esc(a.name)
+    + '</b><small>' + esc(a.seller) + '</small><i class="ti ti-chevron-down"></i></button>'
+    + '<button class="seg" onclick="mktMenu(event)"><i class="ti ti-world"></i><b>' + esc(S.mkt)
+    + '</b><i class="ti ti-chevron-down"></i></button>'
+    + '<button class="seg" onclick="rangeMenu(event)"><i class="ti ti-calendar"></i><b>' + esc(S.range)
+    + '</b><i class="ti ti-chevron-down"></i></button>'
+    + (S.loading ? '<span class="muted"><i class="ti ti-loader-2"></i> Loading ' + esc(a.name) + ' · ' + S.mkt + '…</span>' : '')
+    + '<span class="sp"></span>'
+    + '<button class="seg attn" onclick="go(\'listings\');setFilter(\'attention\')" title="Everything that needs a decision, in every table">'
+    + '<i class="ti ti-alert-triangle"></i> Needs attention <b>' + attn + '</b></button>'
+    + '<button class="seg" onclick="palette()"><i class="ti ti-search"></i> Jump to… <span class="kbd">Ctrl K</span></button>';
+}
+function menuAt(ev, html){
+  document.querySelectorAll(".menu").forEach(m => m.remove());
+  const m = document.createElement("div"); m.className = "menu"; m.innerHTML = html;
+  const r = ev.currentTarget.getBoundingClientRect();
+  m.style.left = r.left + "px"; m.style.top = (r.bottom + 4 + scrollY) + "px";
+  document.body.appendChild(m);
+  setTimeout(() => document.addEventListener("click", () => m.remove(), {once: true}), 0);
+}
+function acctMenu(ev){
+  menuAt(ev, P_ACCOUNTS.map(a => '<button onclick="switchAcct(\'' + a.id + '\')"><span class="dot" style="background:'
+    + a.colour + '"></span> ' + esc(a.name) + ' <span class="muted">· ' + a.mkts.join(", ") + '</span></button>').join(""));
+}
+function mktMenu(ev){ menuAt(ev, A().mkts.map(m => '<button onclick="S.mkt=\'' + m + '\';reload()">' + m + '</button>').join("")); }
+function rangeMenu(ev){
+  menuAt(ev, ["Today", "Last 7 days", "Last 30 days", "This month", "Last month"].map(r =>
+    '<button onclick="S.range=\'' + r + '\';reload()">' + r + '</button>').join(""));
+}
+async function switchAcct(id){
+  S.acct = id; S.mkt = pAcct(id).mkts[0]; S.sel.clear(); S.open = null; S.staged = {};
+  logLine(true, "Switched to " + pAcct(id).name + " · " + S.mkt + ". Ticks and unsaved edits from the previous account were dropped.");
+  reload();
+}
+async function reload(){
+  S.loading = true; render();
+  await wait(sim() === "slow" ? 1600 : 350);
+  S.loading = false; render();
+}
+
+/* ===== rail + palette ===== */
+function renderRail(){
+  const items = [["home","ti-home","Home"],["listings","ti-list","Listings"],["orders","ti-receipt","Orders"],
+                 ["money","ti-report-money","Money"],["ads","ti-target","Ads",1],["watch","ti-radar","Watch",1]];
+  document.getElementById("rail").innerHTML = items.map(([k,i,l,off]) =>
+    '<button class="' + (S.screen === k ? "on" : "") + '" ' + (off ? "disabled title=\"Not in this prototype\"" : "")
+    + ' onclick="go(\'' + k + '\')"><i class="ti ' + i + '"></i>' + l + '</button>').join("");
+}
+function go(k){ S.screen = k; S.open = null; render(); }
+function palette(){
+  const cmds = [
+    ...["home","listings","orders","money"].map(s => ({t:"Go to " + s[0].toUpperCase() + s.slice(1), k:"screen", run:() => go(s)})),
+    ...P_ACCOUNTS.map(a => ({t:"Switch account: " + a.name, k:"account", run:() => switchAcct(a.id)})),
+    ...pListings(S.acct).map(l => ({t:l.title, k:l.sku, run:() => { go("listings"); setFilter("all"); openPdp(l.sku); }})),
+  ];
+  const w = document.createElement("div"); w.className = "pal";
+  w.innerHTML = '<div class="box" data-piece="A1" data-why="Command palette|Type part of a product name, a SKU, a screen or an account and press Enter. It is the fast way round the app for someone who knows what they want, and it is also how deep things stay reachable without a long menu."><input placeholder="Type a product, SKU, screen or account…" aria-label="Jump to"><div class="list"></div></div>';
+  document.body.appendChild(w);
+  const inp = w.querySelector("input"), list = w.querySelector(".list"); let idx = 0, shown = [];
+  const draw = () => {
+    const q = inp.value.toLowerCase();
+    shown = cmds.filter(c => (c.t + " " + c.k).toLowerCase().includes(q)).slice(0, 9);
+    idx = Math.min(idx, Math.max(0, shown.length - 1));
+    list.innerHTML = shown.map((c, i) => '<div class="it ' + (i === idx ? "on" : "") + '" data-i="' + i + '">' + esc(c.t) + '<small>' + esc(c.k) + '</small></div>').join("")
+      || '<div class="it muted">Nothing matches.</div>';
+  };
+  const close = () => w.remove();
+  inp.addEventListener("input", () => { idx = 0; draw(); });
+  inp.addEventListener("keydown", e => {
+    if(e.key === "ArrowDown"){ idx++; draw(); e.preventDefault(); }
+    if(e.key === "ArrowUp"){ idx = Math.max(0, idx - 1); draw(); e.preventDefault(); }
+    if(e.key === "Enter" && shown[idx]){ close(); shown[idx].run(); }
+    if(e.key === "Escape") close();
+  });
+  list.addEventListener("click", e => { const it = e.target.closest("[data-i]"); if(it){ close(); shown[+it.dataset.i].run(); } });
+  w.addEventListener("click", e => { if(e.target === w) close(); });
+  draw(); inp.focus(); notesRefresh();
+}
+
+/* ===== counts ===== */
+function attentionOf(l){ return ["review","blocked","refused","ready"].includes(l.status) || (l.status === "live" && (l.cost == null || l.stock <= 3)); }
+function attentionCount(){
+  return pListings(S.acct).filter(attentionOf).length
+    + pOrders(S.acct).filter(o => ["to_buy","late"].includes(o.stage)).length;
+}
+
+/* ===== HOME: the queue board ===== */
+function renderHome(){
+  const L = pListings(S.acct), O = pOrders(S.acct), a = A(), s = pSales(S.acct).totals;
+  if(a.empty) return emptyAccount();
+  const q = [
+    ["bad", L.filter(l => l.status === "refused").length, "Amazon refused", "listings — Amazon's reply is on each row", () => { go("listings"); setFilter("refused"); }],
+    ["bad", O.filter(o => o.stage === "late").length, "Late to ship", "orders past their ship-by date", () => { go("orders"); S.ordFilter = "late"; render(); }],
+    ["hot", O.filter(o => o.stage === "to_buy").length, "To buy from supplier", "orders not yet bought", () => { go("orders"); S.ordFilter = "to_buy"; render(); }],
+    ["hot", L.filter(l => l.status === "review").length, "Needs review", "drafts waiting for you", () => { go("listings"); setFilter("review"); }],
+    ["hot", L.filter(l => l.status === "blocked").length, "Blocked by a check", "compliance / identifier", () => { go("listings"); setFilter("blocked"); }],
+    ["", L.filter(l => l.status === "ready").length, "Ready to submit", "approved, not sent", () => { go("listings"); setFilter("ready"); }],
+    ["hot", L.filter(l => l.status === "live" && l.cost == null).length, "Selling with no cost", "profit on these is not known", () => { go("listings"); setFilter("nocost"); }],
+  ];
+  window._q = q;
+  return '<h2>Home · ' + esc(a.name) + ' · ' + S.mkt + '</h2>'
+    + '<div class="queue" data-piece="A3" data-why="Home = a board of queues|A cockpit home is not a report: it is the list of queues, each a count you can clear. Click a card and you land in the table already filtered to exactly those rows.\nThe numbers are the SAME queues the \'Needs attention\' button and the table chips use, so the three can never disagree.">'
+    + q.map((x, i) => '<button class="qcard ' + (x[1] ? x[0] : "") + '" onclick="_q[' + i + '][4]()"><div class="n">' + x[1]
+      + '</div><b>' + x[2] + '</b><div class="d">' + x[3] + '</div></button>').join("") + '</div>'
+    + '<h2 style="margin-top:18px">This window · ' + esc(S.range) + '</h2>'
+    + '<div class="queue"><div class="qcard"><div class="d">Revenue</div><div class="n">' + money(s.revenue, a.cur) + '</div></div>'
+    + '<div class="qcard"><div class="d">Profit (costs known)</div><div class="n">' + money(s.profit, a.cur) + '</div><div class="d">' + s.unitsNoCost + ' units sold with no cost — real profit is lower</div></div>'
+    + '<div class="qcard"><div class="d">Ad spend</div><div class="n">' + money(s.ads, a.cur) + '</div>' + (s.ads == null ? '<div class="d">Advertising not connected</div>' : '') + '</div></div>';
+}
+
+/* ===== LISTINGS: dense table + side panel ===== */
+function setFilter(f){ S.filter = f; S.cur = 0; render(); }
+function filtered(){
+  let L = pListings(S.acct);
+  const f = S.filter;
+  if(f === "attention") L = L.filter(attentionOf);
+  else if(f === "nocost") L = L.filter(l => l.cost == null);
+  else if(f !== "all") L = L.filter(l => l.status === f);
+  if(S.q) L = L.filter(l => (l.title + l.sku).toLowerCase().includes(S.q.toLowerCase()));
+  return L;
+}
+const ACTION = {draft:"Finish draft", review:"Approve", blocked:"See why", refused:"Fix & resubmit",
+                ready:"Submit", submitted:"Check status", live:"View on Amazon"};
+function renderListings(){
+  const a = A(), all = pListings(S.acct);
+  if(a.empty) return emptyAccount();
+  const count = f => f === "all" ? all.length : f === "attention" ? all.filter(attentionOf).length
+                   : f === "nocost" ? all.filter(l => l.cost == null).length : all.filter(l => l.status === f).length;
+  const chips = [["attention","Needs attention"],["all","All"],["draft","Draft"],["review","Review"],["blocked","Blocked"],
+                 ["refused","Refused"],["ready","Ready"],["submitted","Submitted"],["live","Live"],["nocost","No cost"]];
+  const L = filtered();
+  const staged = Object.keys(S.staged).filter(k => pListings(S.acct).some(l => l.sku === k));
+  return '<h2>Listings · ' + esc(a.name) + ' · ' + S.mkt + '</h2>'
+    + '<div class="chips" data-piece="A4" data-why="Queues as filter chips|The same queues as Home, as chips with counts. \'Needs attention\' is first and selected by default: the table opens on the work, not on the whole catalogue.">'
+    + chips.map(([k, l]) => '<button class="chip ' + (S.filter === k ? "on" : "") + ' ' + (["attention","refused","blocked","review"].includes(k) && count(k) ? "hot" : "")
+      + '" onclick="setFilter(\'' + k + '\')">' + l + '<span class="n">' + count(k) + '</span></button>').join("") + '</div>'
+    + '<div class="tools"><input id="q" placeholder="Filter by name or SKU   ( / )" value="' + esc(S.q) + '" oninput="S.q=this.value;renderMain()">'
+    + '<span class="muted" style="font-size:12px"><span class="kbd">J</span>/<span class="kbd">K</span> move · <span class="kbd">Enter</span> open · <span class="kbd">X</span> tick · <span class="kbd">Esc</span> close</span></div>'
+    + (S.sel.size ? '<div class="bulkbar" data-piece="A9" data-why="Bulk bar names its scope|Appears only while rows are ticked. It says how many and in which account; ticks are cleared when the account changes, so a bulk action can never land on another account\'s same-SKU rows."><b>' + S.sel.size + ' ticked in ' + esc(a.name) + ' · ' + S.mkt + '</b>'
+      + '<button class="btn" onclick="bulk(\'approve\')">Approve</button><button class="btn primary" onclick="bulk(\'submit\')">Submit to Amazon…</button>'
+      + '<button class="btn" onclick="S.sel.clear();render()">Clear</button></div>' : '')
+    + (S.loading ? skeletonTable() : L.length ? table(L) : '<div class="empty">Nothing in this queue. <a href="#" onclick="setFilter(\'all\');return false">Show all listings</a></div>')
+    + (staged.length ? '<div class="savebar" data-piece="A9" data-why="Staged edits, saved together|Typing in a price or stock cell does not change Amazon. The cell turns gold and this bar collects the changes. Saving asks once, naming the account and every old → new value.\nThis replaces \'the same field does different things in different views\' (audit UX #8): here a cell edit ALWAYS stages first.">'
+      + '<i class="ti ti-pencil"></i><b>' + staged.length + ' unsaved change' + (staged.length > 1 ? "s" : "") + ' in ' + esc(a.name) + ' · ' + S.mkt + '</b>'
+      + '<span class="muted">Nothing has changed on Amazon yet.</span><span style="flex:1"></span>'
+      + '<button class="btn" onclick="S.staged={};render()">Discard</button><button class="btn gold" onclick="saveStaged()">Save to Amazon…</button></div>' : '');
+}
+function skeletonTable(){
+  return '<table class="dense" data-piece="A8" data-why="Loading keeps the layout|Skeleton rows hold the shape of the table so nothing jumps, and the context bar says WHICH account is loading. The previous account\'s rows are never left on screen while the new ones load."><tbody>'
+    + Array.from({length: 8}, () => '<tr>' + Array.from({length: 7}, () => '<td><div class="skel"></div></td>').join("") + '</tr>').join("") + '</tbody></table>';
+}
+function table(L){
+  const a = A();
+  return '<table class="dense" data-piece="A4" data-why="Dense table, actions in the row|One row per product, every decision-making figure in a column: status, price, stock, cost, profit per unit. The primary action for the row\'s state is at the end of the row, beside the product it acts on.\nPrice and stock are editable in place (staged). Profit shows \'not known\' — never 0.00 — when the cost is missing.">'
+    + '<thead><tr><th></th><th>Status</th><th>Product</th><th class="num">Price</th><th class="num">Stock</th><th class="num">Cost</th><th class="num">Profit / unit</th><th>Next</th></tr></thead><tbody>'
+    + L.map((l, i) => {
+        const p = pUnitProfit(l), st = S.staged[l.sku] || {};
+        const err = l.status === "refused" || (l.issues.length && l.status !== "live");
+        return '<tr class="' + (i === S.cur ? "cur " : "") + (err ? "rowerr" : "") + '" onclick="S.cur=' + i + ';openPdp(\'' + l.sku + '\')">'
+          + '<td onclick="event.stopPropagation()"><input type="checkbox" ' + (S.sel.has(l.sku) ? "checked" : "") + ' onchange="tick(\'' + l.sku + '\',this.checked)" aria-label="Tick"></td>'
+          + '<td><span class="pill ' + l.status + '">' + l.status + '</span></td>'
+          + '<td><div class="t">' + esc(l.title) + '</div><div class="sku">' + esc(l.sku) + '</div>'
+          + (err ? '<div class="inlerr"><i class="ti ti-alert-circle"></i> ' + esc((l.issues[0] || {}).msg || (l.compliance || {}).note || "") + (l.issues.length > 1 ? " (+" + (l.issues.length - 1) + " more)" : "") + '</div>' : '')
+          + (l.compliance && !err ? '<div class="inlerr" style="color:var(--warn)"><i class="ti ti-shield"></i> ' + esc(l.compliance.note) + '</div>' : '')
+          + '</td>'
+          + '<td class="num" onclick="event.stopPropagation()"><input class="cell-edit ' + (st.price != null ? "staged" : "") + '" value="' + (st.price ?? l.price ?? "") + '" onchange="stage(\'' + l.sku + '\',\'price\',this.value)" aria-label="Price"></td>'
+          + '<td class="num" onclick="event.stopPropagation()"><input class="cell-edit ' + (st.stock != null ? "staged" : "") + '" value="' + (st.stock ?? l.stock ?? "") + '" onchange="stage(\'' + l.sku + '\',\'stock\',this.value)" aria-label="Stock"></td>'
+          + '<td class="num">' + money(l.cost, a.cur) + '</td>'
+          + '<td class="num">' + money(p, a.cur) + '</td>'
+          + '<td><button class="btn ' + (["review","ready","refused"].includes(l.status) ? "primary" : "") + '" onclick="event.stopPropagation();rowAction(\'' + l.sku + '\')">' + ACTION[l.status] + '</button></td></tr>';
+      }).join("") + '</tbody></table>';
+}
+function tick(sku, on){ on ? S.sel.add(sku) : S.sel.delete(sku); render(); }
+function stage(sku, k, v){ S.staged[sku] = Object.assign(S.staged[sku] || {}, {[k]: v === "" ? null : Number(v)}); render(); }
+async function saveStaged(){
+  const a = A(), items = Object.entries(S.staged);
+  const lines = items.map(([sku, ch]) => { const l = P_LISTINGS.find(x => x.sku === sku);
+    return '<li>' + esc(l.title) + ': ' + Object.entries(ch).map(([k, v]) => k + ' ' + (k === "price" ? money(l[k], a.cur) + ' → ' + money(v, a.cur) : (l[k] ?? "—") + ' → ' + v)).join(", ") + (l.status === "live" ? ' <b style="color:var(--gold)">(live on Amazon)</b>' : '') + '</li>'; }).join("");
+  const ok = await confirmBox({title: "Save " + items.length + " change(s) to Amazon?", acct: a, mkt: S.mkt,
+    html: '<ul style="margin:6px 0 0;padding-left:18px;color:var(--ink)">' + lines + '</ul>',
+    foot: "Live listings change what buyers pay within minutes. Drafts change only here.", ok: "Save to Amazon"});
+  if(!ok){ logLine(true, "Save cancelled — nothing changed."); return; }
+  S.loading = true; render(); await wait(700); S.loading = false;
+  if(sim() === "fail"){ logLine(false, "Amazon refused 1 of " + items.length + " changes (price below the minimum Amazon allows). The others were saved. Refused cell kept gold so you can fix it.", null); S.staged = Object.fromEntries(items.slice(0, 1)); }
+  else { items.forEach(([sku, ch]) => Object.assign(P_LISTINGS.find(x => x.sku === sku), ch)); S.staged = {}; logLine(true, "Saved " + items.length + " change(s) to " + a.name + " · " + S.mkt + ".", "Undo"); }
+  render();
+}
+async function rowAction(sku){
+  const l = P_LISTINGS.find(x => x.sku === sku), a = A();
+  if(l.status === "review"){ l.status = "ready"; logLine(true, "Approved " + l.title + " — now in Ready to submit.", "Undo"); render(); return; }
+  if(l.status === "ready" || l.status === "refused"){
+    const ok = await confirmBox({title: "Submit to Amazon?", acct: a, mkt: S.mkt, html: '<b style="color:var(--ink)">' + esc(l.title) + '</b><br>A new listing under your brand ' + esc(l.brand) + '.',
+      foot: "Creates the listing on Amazon. Nothing is charged; Amazon may take a few minutes to show it.", ok: "Submit"});
+    if(!ok) return;
+    await submitOne(l); return;
+  }
+  openPdp(sku);
+}
+async function submitOne(l){
+  S.loading = true; render(); await wait(sim() === "slow" ? 1800 : 800); S.loading = false;
+  if(sim() === "fail" || l.status === "refused" && !l._fixed){
+    l.status = "refused";
+    if(!l.issues.length) l.issues = [{kind:"amazon", field:"bullet_point", msg:"Amazon: bullet_point #3 exceeds 500 characters."}];
+    logLine(false, "Amazon refused " + l.title + " — " + l.issues.length + " field(s). The reply is on the row and in the product panel.", null);
+  } else { l.status = "submitted"; logLine(true, "Submitted " + l.title + " to " + A().name + " · " + S.mkt + ". Checking status in 5 minutes.", "View"); }
+  render();
+}
+async function bulk(kind){
+  const a = A(), L = pListings(S.acct).filter(l => S.sel.has(l.sku));
+  if(kind === "approve"){ L.forEach(l => { if(l.status === "review") l.status = "ready"; }); logLine(true, "Approved " + L.length + " in " + a.name + "."); S.sel.clear(); render(); return; }
+  const ok = await confirmBox({title: "Submit " + L.length + " listing(s) to Amazon?", acct: a, mkt: S.mkt,
+    html: '<ul style="margin:6px 0 0;padding-left:18px;color:var(--ink)">' + L.map(l => '<li>' + esc(l.title) + '</li>').join("") + '</ul>', ok: "Submit " + L.length});
+  if(!ok) return;
+  for(const l of L) await submitOne(l);
+  S.sel.clear(); render();
+}
+
+/* ===== PDP: side panel ===== */
+function openPdp(sku){ S.open = sku; S.tab = pListings(S.acct).find(l => l.sku === sku)?.issues.length ? "reply" : "overview"; render(); }
+function renderPdp(){
+  const l = pListings(S.acct).find(x => x.sku === S.open); if(!l) return "";
+  const a = A(), p = pUnitProfit(l);
+  const facts = [];
+  if(l.issues.some(i => i.kind === "amazon")) facts.push(["bad", "ti-x", "Amazon refused this listing: " + l.issues.length + " field(s) to fix."]);
+  if(l.issues.some(i => i.kind === "identifier")) facts.push(["bad", "ti-barcode", l.issues.find(i => i.kind === "identifier").msg]);
+  if(l.compliance) facts.push([l.compliance.level === "prohibited" ? "bad" : "warn", "ti-shield", (l.compliance.level === "prohibited" ? "Prohibited: " : "Gated: ") + l.compliance.note]);
+  if(l.cost == null) facts.push(["warn", "ti-coin", "No cost set — profit is not known. Set it in Pricing."]);
+  if(!facts.length) facts.push(["ok", "ti-check", "Nothing is blocking this listing."]);
+  const tabs = [["overview","Overview"],["reply","Amazon reply" + (l.issues.length ? " (" + l.issues.length + ")" : "")],["pricing","Pricing"],["identity","Identifier & checks"],["images","Images"]];
+  let body = "";
+  if(S.tab === "overview") body = '<div class="kv"><span>Title</span><span>' + esc(l.title) + '</span><span>Brand</span><span>' + esc(l.brand) + '</span><span>SKU</span><span class="sku">' + esc(l.sku) + '</span><span>Our ASIN</span><span>' + (l.own ? esc(l.own) : '<span class="unknown">not on Amazon yet</span>') + '</span><span>Research ASIN</span><span class="muted">' + esc(l.ref) + ' (competitor reference, never ours)</span><span>Sold (30 d)</span><span>' + l.sold30 + '</span></div>';
+  if(S.tab === "reply") body = l.issues.length ? l.issues.map(i => '<div class="reply" data-piece="A5" data-why="Amazon\'s reply is kept as the record|Amazon\'s own words are shown verbatim with the field they are about. They stay here until the listing is resubmitted — the reply is evidence, not a notification.">' + '<span class="fchip">' + esc(i.field) + '</span>' + esc(i.msg) + '<div style="margin-top:6px"><button class="btn" onclick="fixField(\'' + l.sku + '\',\'' + i.field + '\')">Edit ' + esc(i.field) + '</button></div></div>').join("")
+    : '<div class="muted">Amazon has no complaints recorded for this listing.</div>';
+  if(S.tab === "pricing") body = '<div class="kv"><span>Price</span><span>' + money(l.price, a.cur) + '</span><span>Cost</span><span>' + money(l.cost, a.cur) + (l.cost == null ? ' <button class="btn" onclick="setCost(\'' + l.sku + '\')">Set cost</button>' : '') + '</span><span>VAT</span><span>' + (a.vat ? Math.round(a.vat * 100) + "% (account setting)" : "not registered") + '</span><span>Amazon fee</span><span>≈15.3% measured</span><span>Profit / unit</span><span>' + money(p, a.cur) + '</span></div>';
+  if(S.tab === "identity") body = '<div class="kv"><span>Barcode</span><span>' + (l.barcode ? esc(l.barcode) : '<span class="unknown">none</span>') + '</span><span>GTIN exemption</span><span><label><input type="checkbox"> Apply for GTIN exemption (your click only)</label></span><span>Compliance</span><span>' + (l.compliance ? esc(l.compliance.note) : "clear") + '</span></div>';
+  if(S.tab === "images") body = '<div class="muted">' + l.images + ' of 9 image slots filled.</div>';
+  return '<aside class="pdp" data-piece="A5" data-why="Product panel beside the table|The product opens BESIDE the grid, not over it: you can see where you are in the list and J/K moves to the next product without closing anything.\nThe top of the panel is the three things that decide what you do next (blocking facts), then the primary action, then detail in tabs. A refused listing opens straight on Amazon\'s reply.">'
+    + '<div class="pdp-h"><div style="display:flex;gap:8px;align-items:center"><span class="pill ' + l.status + '">' + l.status + '</span><span class="muted" style="font-size:12px">' + esc(a.name) + ' · ' + S.mkt + '</span><span style="flex:1"></span>'
+    + '<button class="btn" onclick="step(-1)" title="Previous (K)"><i class="ti ti-chevron-up"></i></button><button class="btn" onclick="step(1)" title="Next (J)"><i class="ti ti-chevron-down"></i></button><button class="btn" onclick="S.open=null;render()" title="Close (Esc)"><i class="ti ti-x"></i></button></div>'
+    + '<h3>' + esc(l.title) + '</h3>'
+    + '<div style="display:flex;gap:8px"><button class="btn primary" onclick="rowAction(\'' + l.sku + '\')">' + ACTION[l.status] + '</button>'
+    + '<button class="btn" onclick="moreMenu(event,\'' + l.sku + '\')">More <i class="ti ti-chevron-down"></i></button></div></div>'
+    + '<div class="pdp-facts">' + facts.map(f => '<div class="fact ' + f[0] + '"><i class="ti ' + f[1] + '"></i><span>' + esc(f[2]) + '</span></div>').join("") + '</div>'
+    + '<div class="tabs" role="tablist">' + tabs.map(([k, t]) => '<button role="tab" class="' + (S.tab === k ? "on" : "") + '" onclick="S.tab=\'' + k + '\';render()">' + t + '</button>').join("") + '</div>'
+    + '<div class="pdp-b">' + body + '</div></aside>';
+}
+function moreMenu(ev, sku){
+  menuAt(ev, '<button onclick="logLine(true,\'Preview sent to Amazon (checks only, creates nothing).\')">Preview against Amazon</button><button onclick="logLine(true,\'Put on hold.\')">Hold</button><button onclick="logLine(true,\'Duplicated as a new draft.\')">Duplicate</button><button style="color:var(--red)" onclick="delListing(\'' + sku + '\')">Delete…</button>');
+}
+async function delListing(sku){
+  const l = P_LISTINGS.find(x => x.sku === sku);
+  const ok = await confirmBox({title: "Delete this listing?", acct: A(), mkt: S.mkt, danger: true, ok: "Delete",
+    html: '<b style="color:var(--ink)">' + esc(l.title) + '</b>' + (l.status === "live" ? '<br><span style="color:var(--red)">It is LIVE: it will be removed from Amazon too. Amazon keeps no undo.</span>' : '<br>A draft: only this app changes.')});
+  if(!ok) return; l.status = "deleted"; P_LISTINGS.splice(P_LISTINGS.indexOf(l), 1); S.open = null;
+  logLine(true, "Deleted " + l.title + " from " + A().name + "."); render();
+}
+function step(d){ const L = filtered(); let i = L.findIndex(l => l.sku === S.open); i = Math.max(0, Math.min(L.length - 1, i + d)); S.cur = i; if(L[i]) openPdp(L[i].sku); }
+function fixField(sku, f){ const l = P_LISTINGS.find(x => x.sku === sku); l.issues = l.issues.filter(i => i.field !== f); l._fixed = !l.issues.length; if(l._fixed) l.status = "ready"; logLine(true, "Fixed " + f + (l._fixed ? " — nothing left; the listing is Ready to submit." : ".")); render(); }
+function setCost(sku){ const l = P_LISTINGS.find(x => x.sku === sku); l.cost = 7.25; logLine(true, "Cost set at " + A().cur + "7.25 for " + l.title + " (this account only)."); render(); }
+
+/* ===== ORDERS ===== */
+function renderOrders(){
+  const a = A(); if(a.empty) return emptyAccount();
+  const O = pOrders(S.acct);
+  const f = S.ordFilter, chips = [["open","Open"],["to_buy","To buy"],["to_ship","To ship"],["late","Late"],["shipped","Shipped"],["returned","Returns"]];
+  const list = O.filter(o => f === "open" ? ["to_buy","to_ship","late"].includes(o.stage) : o.stage === f)
+                .sort((x, y) => (x.stage === "late" ? -1 : 0) - (y.stage === "late" ? -1 : 0));
+  const n = k => k === "open" ? O.filter(o => ["to_buy","to_ship","late"].includes(o.stage)).length : O.filter(o => o.stage === k).length;
+  return '<h2>Orders · ' + esc(a.name) + ' · ' + S.mkt + '</h2>'
+    + '<div class="chips">' + chips.map(([k, l]) => '<button class="chip ' + (f === k ? "on" : "") + ' ' + (["late","to_buy"].includes(k) && n(k) ? "hot" : "") + '" onclick="S.ordFilter=\'' + k + '\';render()">' + l + '<span class="n">' + n(k) + '</span></button>').join("") + '</div>'
+    + (list.length ? '<table class="dense" data-piece="A6" data-why="One orders table, expand in place|Sorted by what is most urgent (late first, then ship-by). Clicking a row expands it IN PLACE into three boxes — money, supplier, shipping — so recording what you paid and the tracking number never takes you to another screen.">'
+      + '<thead><tr><th>Ship by</th><th>Order</th><th>Product</th><th class="num">Total</th><th class="num">Paid supplier</th><th>Stage</th></tr></thead><tbody>'
+      + list.map(o => '<tr onclick="S.orderOpen=S.orderOpen===\'' + o.id + '\'?null:\'' + o.id + '\';render()"><td>' + (o.stage === "late" ? '<b style="color:var(--red)">' + o.shipBy + ' · late</b>' : o.shipBy) + '</td><td class="sku">' + o.id + '</td><td><div class="t">' + esc(o.title) + '</div><div class="muted" style="font-size:12px">×' + o.qty + ' · ' + esc(o.buyer) + '</div></td><td class="num">' + money(o.total, a.cur) + '</td><td class="num">' + money(o.paid, a.cur) + '</td><td><span class="pill ' + (o.stage === "late" ? "refused" : o.stage === "to_buy" ? "review" : "live") + '">' + o.stage.replace("_", " ") + '</span></td></tr>'
+        + (S.orderOpen === o.id ? '<tr class="expand"><td colspan="6"><div class="exp">'
+          + '<div class="box"><h4>Money</h4><div class="kv"><span>Sale</span><span>' + money(o.total, a.cur) + '</span><span>Amazon fee</span><span>' + money(o.total * 0.153, a.cur) + '</span><span>Paid supplier</span><span>' + money(o.paid, a.cur) + '</span><span>Profit</span><span>' + money(o.paid == null ? null : o.total / (1 + a.vat) - o.total * 0.153 - o.paid, a.cur) + '</span></div></div>'
+          + '<div class="box"><h4>Supplier</h4>' + (o.paid == null ? '<button class="btn primary" onclick="event.stopPropagation();buy(\'' + o.id + '\')">Buy from supplier ↗</button><div class="muted" style="margin-top:6px;font-size:12px">Opens eBay; then type what you paid here.</div><input style="margin-top:6px;width:110px" placeholder="paid" onclick="event.stopPropagation()" onchange="paid(\'' + o.id + '\',this.value)">' : 'Bought for ' + money(o.paid, a.cur)) + '</div>'
+          + '<div class="box"><h4>Shipping</h4>' + (o.tracking ? esc(o.tracking) : '<input placeholder="tracking number" onclick="event.stopPropagation()" onchange="track(\'' + o.id + '\',this.value)" style="width:100%"><div class="muted" style="margin-top:6px;font-size:12px">Also enter it in Seller Central — Amazon does not share it back.</div>') + '</div>'
+          + '</div></td></tr>' : ''))
+        .join("") + '</tbody></table>'
+      : '<div class="empty">No orders in this stage.</div>');
+}
+function buy(id){ logLine(true, "Opened the supplier page for order " + id + " (simulated). Type what you paid to record it."); }
+function paid(id, v){ const o = P_ORDERS.find(x => x.id === id); o.paid = Number(v) || null; if(o.stage === "to_buy") o.stage = "to_ship"; logLine(true, "Recorded " + A().cur + v + " paid for " + id + "."); render(); }
+function track(id, v){ const o = P_ORDERS.find(x => x.id === id); o.tracking = v; o.stage = "shipped"; logLine(true, "Tracking saved for " + id + " — marked shipped."); render(); }
+
+/* ===== MONEY ===== */
+function renderMoney(){
+  const a = A(); if(a.empty) return emptyAccount();
+  const s = pSales(S.acct), t = s.totals, max = Math.max(...s.days.map(d => d.revenue));
+  const row = (l, v, extra) => '<tr><td>' + l + '</td><td class="num">' + money(v, a.cur) + '</td><td class="muted">' + (extra || "") + '</td></tr>';
+  return '<h2>Money · ' + esc(a.name) + ' · ' + S.mkt + ' · ' + esc(S.range) + '</h2>'
+    + '<div class="bars" title="Revenue per day">' + s.days.map(d => '<div style="height:' + Math.round(d.revenue / max * 100) + '%"></div>').join("") + '</div>'
+    + '<table class="dense pl" style="max-width:720px" data-piece="A7" data-why="One reconciled P&amp;L table|Every screen that shows money reads this one calculation. Each line says where it came from; a missing input is written in words (\'44 units with no cost\'), not hidden inside a total.\nThe window comes from the context bar — this screen has no date picker of its own.">'
+    + '<tbody>' + row("Revenue (buyers paid)", t.revenue, t.units + " units")
+    + row("VAT", -t.vat, a.vat ? "account setting " + Math.round(a.vat * 100) + "%" : "not VAT-registered")
+    + row("Amazon fees", -t.fees, "settled + measured rate for unsettled")
+    + row("Advertising", t.ads == null ? null : -t.ads, t.ads == null ? "not connected — not included" : "")
+    + row("Refunds", -t.refunds, "on the day the money went back")
+    + row("Cost of goods (known)", -t.cogsKnown, '<span style="color:var(--warn)">' + t.unitsNoCost + ' units sold with no cost — <a href="#" onclick="go(\'listings\');setFilter(\'nocost\');return false">set costs</a></span>')
+    + row("Overheads", -t.overhead, "subscriptions etc.")
+    + '<tr class="total"><td>Profit</td><td class="num">' + money(t.profit, a.cur) + '</td><td class="muted">real figure is lower until the missing costs are set</td></tr>'
+    + '</tbody></table>';
+}
+
+/* ===== empty account ===== */
+function emptyAccount(){
+  const a = A();
+  return '<div class="empty" data-piece="A8" data-why="Empty is not an error|An account with nothing in it says so in plain words, names the account, and offers the next step. It never looks like a failed load, and a failed load never looks like this."><i class="ti ti-package" style="font-size:30px"></i><h3 style="color:var(--ink)">' + esc(a.name) + ' · ' + S.mkt + ' has no listings yet</h3><p>Nothing to review, sell or ship here yet.</p><button class="btn primary" onclick="logLine(true,\'Upload template opened (simulated).\')">Upload a product template</button> <button class="btn" onclick="palette()">Research an ASIN…</button></div>';
+}
+
+/* ===== status line ===== */
+function renderStatus(){
+  const last = S.log[0], fails = S.log.filter(l => !l.ok).length;
+  document.getElementById("status").innerHTML = (last ? '<span class="last ' + (last.ok ? "ok" : "bad") + '"><i class="ti ' + (last.ok ? "ti-circle-check" : "ti-alert-octagon") + '"></i> ' + last.t + ' · ' + esc(last.text) + '</span>' + (last.undo ? '<button class="btn" style="padding:2px 8px" onclick="logLine(true,\'Undone.\')">' + last.undo + '</button>' : '') : '<span class="last muted">Ready. Nothing has been changed in this session.</span>')
+    + '<button class="btn" style="padding:2px 8px" onclick="toggleIssues()">Issues ' + (fails ? '<b style="color:var(--red)">' + fails + '</b>' : '0') + '</button>'
+    + '<span class="muted">' + esc(A().name) + ' · ' + S.mkt + '</span>';
+}
+function toggleIssues(){
+  const ex = document.querySelector(".issues"); if(ex){ ex.remove(); return; }
+  const d = document.createElement("div"); d.className = "issues";
+  const f = S.log.filter(l => !l.ok);
+  d.innerHTML = '<b>Issues this session</b><div class="muted" style="font-size:12px;margin-bottom:6px">Failures stay here until you close the session — nothing disappears after a few seconds.</div>'
+    + (f.length ? f.map(l => '<div class="fact bad" style="margin-bottom:6px"><i class="ti ti-alert-octagon"></i><span>' + l.t + ' · ' + esc(l.text) + '</span></div>').join("") : '<div class="muted">No failures. Try “Simulate: Amazon refuses the next action” in the yellow bar, then submit something.</div>');
+  document.body.appendChild(d);
+}
+
+/* ===== render ===== */
+function renderMain(){
+  const m = document.getElementById("main");
+  let html = S.screen === "home" ? renderHome() : S.screen === "listings" ? renderListings()
+           : S.screen === "orders" ? renderOrders() : renderMoney();
+  const pdp = S.screen === "listings" && S.open ? renderPdp() : "";
+  m.className = "main" + (pdp ? " split" : "");
+  m.innerHTML = '<section class="pane">' + html + '</section>' + pdp;
+  notesRefresh();
+}
+function render(){ renderCtx(); renderRail(); renderMain(); renderStatus(); }
+
+document.addEventListener("keydown", e => {
+  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k"){ e.preventDefault(); palette(); return; }
+  if(typing || document.querySelector(".pal,.modal-wrap")) return;
+  if(S.screen !== "listings") return;
+  const L = filtered();
+  if(e.key === "j"){ S.cur = Math.min(L.length - 1, S.cur + 1); if(S.open) openPdp(L[S.cur].sku); else render(); }
+  if(e.key === "k"){ S.cur = Math.max(0, S.cur - 1); if(S.open) openPdp(L[S.cur].sku); else render(); }
+  if(e.key === "Enter" && L[S.cur]) openPdp(L[S.cur].sku);
+  if(e.key === "x" && L[S.cur]) tick(L[S.cur].sku, !S.sel.has(L[S.cur].sku));
+  if(e.key === "Escape"){ S.open = null; render(); }
+  if(e.key === "/"){ e.preventDefault(); const q = document.getElementById("q"); if(q) q.focus(); }
+});
+
+protoBanner("A · Operations Cockpit");
+/* Open a given state from the address, e.g. #screen=listings&filter=all&open=<sku>&notes=1 */
+(function(){
+  const H = new URLSearchParams(location.hash.slice(1));
+  if(H.get("acct")){ S.acct = H.get("acct"); S.mkt = pAcct(S.acct).mkts[0]; }
+  if(H.get("screen")) S.screen = H.get("screen");
+  if(H.get("filter")) S.filter = H.get("filter");
+  if(H.get("orders")){ S.ordFilter = H.get("orders"); }
+  if(H.get("order")) S.orderOpen = H.get("order");
+  if(H.get("open")){ S.open = H.get("open"); S.tab = H.get("tab") || (pListings(S.acct).find(l => l.sku === S.open)?.issues.length ? "reply" : "overview"); }
+  if(H.get("stage")){ const [sku, k, v] = H.get("stage").split(","); S.staged[sku] = {[k]: Number(v)}; }
+  render(); notesInit();
+  if(H.get("notes")){ document.body.classList.add("notes"); notesRefresh(); }
+})();
+</script>
+</body>
+</html>

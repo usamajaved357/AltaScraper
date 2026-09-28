@@ -1,6 +1,11 @@
 # Design exploration — three directions (for the owner to choose)
 
-Status: **PROPOSAL, nothing built.** Milestone 7, 28 Sep 2026. Milestones 8
+**PARKED 28 Sep 2026.** The owner prefers his current app and named the pages to
+build on (see docs/proposals/liked-pages-anatomy.md and docs/decisions.md);
+design work is on hold. Clickable prototypes of the three directions below are
+in `prototypes/design-review/` (open `index.html`). Kept for later reference.
+
+Status (original): **PROPOSAL, nothing built.** Milestone 7, 28 Sep 2026. Milestones 8
 (final design system) and 9 (screen-by-screen migration) wait on the choice
 below, because the design system follows from it and the owner's written rule
 is that a new convention needs his approval (docs/design-system.md).

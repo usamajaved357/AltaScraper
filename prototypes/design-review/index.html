@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AltaScraper design review — compare A, B, C</title>
+<link rel="stylesheet" href="../../static/vendor/tabler-icons/tabler-icons.min.css">
+<link rel="stylesheet" href="shared/proto.css">
+<style>
+.wrap{max-width:1180px;margin:0 auto;padding:22px 20px 60px}
+h1{font-size:24px;margin:6px 0 4px} h2{font-size:19px;margin:34px 0 10px;padding-top:10px;border-top:1px solid var(--line)}
+h3{font-size:15.5px;margin:0 0 6px}
+p{margin:6px 0} .lead{color:var(--ink2)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.card .k{font:800 13px/1 system-ui;letter-spacing:.5px;color:var(--accent)}
+.card .open{margin-top:auto}
+.card ul{margin:4px 0;padding-left:18px;color:var(--ink2);font-size:13px}
+.box{background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:14px 16px;margin:10px 0}
+table.cmp{width:100%;border-collapse:collapse;font-size:13px}
+table.cmp th,table.cmp td{border:1px solid var(--line2);padding:8px 10px;vertical-align:top;text-align:left}
+table.cmp th{background:var(--panel2);font-size:12.5px}
+table.cmp td:first-child{font-weight:650;white-space:nowrap}
+table.cmp a{font-size:12px}
+.dir{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.dir .box{margin:0}
+.dir dt{color:var(--accent);font-weight:650;font-size:12.5px;margin-top:8px}
+.dir dd{margin:2px 0 0;font-size:13px}
+.how li{margin-bottom:5px}
+.tag{display:inline-block;background:var(--note);color:#231b00;font:700 11px/1 system-ui;padding:3px 6px;border-radius:5px}
+.rec{border-color:var(--accent-line);background:var(--accent-bg)}
+@media (max-width:900px){.dir{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="proto-banner"><span>⚠ <b>DESIGN REVIEW</b> — three prototypes with fake data. None of this is the real AltaScraper, and nothing here is decided.</span><span class="sp"></span></div>
+<div class="wrap">
+
+<h1>Three ways AltaScraper could work</h1>
+<p class="lead">Same fake accounts, same colours, same data in all three — so what differs is how the app <b>works</b>: navigation, where the account is shown, what the home screen is, how listings, the product page, orders and money are organised, and how errors, loading and confirmations behave.</p>
+
+<div class="box how">
+<h3>How to review them</h3>
+<ol>
+<li>Open a prototype below. Each has a yellow bar at the top.</li>
+<li>Press <b>Design notes</b> in the yellow bar: every major part gets a yellow tag (A1, B5, C3…). <b>Click a tag</b> to read <i>why</i> it is designed that way. A list of all parts on the screen appears bottom-right.</li>
+<li>Use <b>Simulate</b> in the yellow bar to see failure and loading: choose “Amazon refuses the next action”, then submit or save something; choose “slow loading”, then switch account.</li>
+<li>Switch accounts in each prototype (“Oakline Supplies” is an empty account, to see empty states).</li>
+<li>In A, try the keyboard: <b>Ctrl+K</b> (jump anywhere), <b>J/K</b> move through listings, <b>Enter</b> open, <b>X</b> tick, <b>Esc</b> close, <b>/</b> filter.</li>
+</ol>
+<p class="muted" style="font-size:12.5px">Nothing in these files talks to a server. They are plain files in <code>prototypes/design-review/</code>, outside the app; the real app never serves them.</p>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="k">A · OPERATIONS COCKPIT</div><h3>Dense, fast, keyboard-first</h3>
+    <p class="muted">One context bar that every screen obeys, six-place rail + Ctrl+K, dense tables with in-place edits, the product beside the table, a status line instead of toasts.</p>
+    <ul><li><a href="A-cockpit.html">Home — queue board</a></li><li><a href="A-cockpit.html#screen=listings&open=15.10_3Days_B0FAKE0003">Listings + product panel</a></li><li><a href="A-cockpit.html#screen=orders&order=206-1111111-0000001">Orders (expanded row)</a></li><li><a href="A-cockpit.html#screen=money">Money (P&amp;L)</a></li><li><a href="A-cockpit.html#acct=oakline_uk&screen=listings">Empty account</a></li></ul>
+    <a class="btn primary open" href="A-cockpit.html">Open A →</a></div>
+  <div class="card"><div class="k">B · TASK-LED WORKFLOW</div><h3>Guided journeys, one next step</h3>
+    <p class="muted">Four journeys instead of forty menu items. Listings as a left-to-right pipeline; the product page is a checklist; orders are Buy → Ship; money is three questions.</p>
+    <ul><li><a href="B-workflow.html">Start — pick a journey</a></li><li><a href="B-workflow.html#j=listings">Listing pipeline</a></li><li><a href="B-workflow.html#j=listings&open=15.10_3Days_B0FAKE0003">Product page as a checklist</a></li><li><a href="B-workflow.html#j=orders&stage=late">Orders flow</a></li><li><a href="B-workflow.html#j=money">Money as questions</a></li></ul>
+    <a class="btn primary open" href="B-workflow.html">Open B →</a></div>
+  <div class="card"><div class="k">C · EXCEPTION-FIRST</div><h3>The app tells you what needs you</h3>
+    <p class="muted">Home is “Today”: findings across every account, ranked by money at risk. Each finding opens the exact rows that fix it, with a progress bar. Normal things stay folded.</p>
+    <ul><li><a href="C-exceptions.html">Today — all accounts</a></li><li><a href="C-exceptions.html#finding=northfield_uk:refused">A finding opened (mission)</a></li><li><a href="C-exceptions.html#finding=northfield_uk:refused&open=15.10_3Days_B0FAKE0003">Product page: evidence first</a></li><li><a href="C-exceptions.html#scope=northfield_uk&screen=orders">Orders: exceptions on top</a></li><li><a href="C-exceptions.html#screen=money">Money: headline + waterfall</a></li></ul>
+    <a class="btn primary open" href="C-exceptions.html">Open C →</a></div>
+</div>
+
+<h2>1 · What each direction means</h2>
+<div class="dir">
+ <div class="box"><h3>A · Operations Cockpit</h3><dl>
+  <dt>What it means</dt><dd>The app is a control panel for someone who already knows the business. Everything is dense, one keystroke away, and edited in place.</dd>
+  <dt>Problem it solves</dt><dd>Too many screens and menus (~43), account/marketplace/date scattered across screens, and slow repeat work (open, close, find the next SKU).</dd>
+  <dt>How you work</dt><dd>Set the context bar once (account · marketplace · dates). Open a queue (e.g. “Refused”), move down the table with J/K; the product opens beside the table; fix, next, fix, next. Stage price/stock edits, save once.</dd>
+  <dt>Why information is where it is</dt><dd>Context on top because every screen obeys it; figures in columns so rows compare at a glance; the product beside (not over) the table so you never lose your place; results at the bottom edge so they don't cover work.</dd>
+  <dt>Main action</dt><dd>The row's state action (“Approve”, “Submit”, “Fix &amp; resubmit”) at the end of each row, and the same button at the top of the product panel.</dd>
+  <dt>Secondary</dt><dd>Delete, hold, duplicate, preview — in “More”. Rarely used screens only through Ctrl+K.</dd>
+  <dt>Advantages</dt><dd>Fastest for daily volume; least clicking; context can never be ambiguous; one place for every failure (Issues).</dd>
+  <dt>Disadvantages</dt><dd>Dense — harder for new staff; relies on learning shortcuts; tables are cramped on a phone.</dd>
+  <dt>Suits</dt><dd>You, working alone, doing lots of listings and orders every day.</dd></dl></div>
+ <div class="box"><h3>B · Task-Led Workflow</h3><dl>
+  <dt>What it means</dt><dd>The app is organised around the four jobs you do, each broken into steps, and every item tells you its one next step.</dd>
+  <dt>Problem it solves</dt><dd>“Where do I do X?”, remembering the next step (finding the new SKU, going back to approve), and the product page having no clear way through (audit UX #5).</dd>
+  <dt>How you work</dt><dd>Pick a journey (Create listings). The pipeline shows where work is piling up; click a card's one button; the product page opens on the first thing that is wrong; fix it; the button changes to the next step.</dd>
+  <dt>Why information is where it is</dt><dd>Stages are the layout (left to right = the listing's life), so position itself tells you status; the checklist on the left says where to start; one primary button at the bottom always says what it will do or why it can't.</dd>
+  <dt>Main action</dt><dd>The single “next step” on each card and at the bottom of the product page.</dd>
+  <dt>Secondary</dt><dd>Everything not on the path: raw fields, history, other tools live inside the journey that uses them.</dd>
+  <dt>Advantages</dt><dd>Easiest to learn and to hand to staff; no dead ends; errors come with the fix; restricted users see only their journeys.</dd>
+  <dt>Disadvantages</dt><dd>Slower for bulk work; a pipeline hides the “all listings” comparison; more screens between a problem and a fix when you know exactly what you want.</dd>
+  <dt>Suits</dt><dd>Adding staff (listers, fulfilment), or when the app is used occasionally rather than all day.</dd></dl></div>
+ <div class="box"><h3>C · Exception-First</h3><dl>
+  <dt>What it means</dt><dd>The app watches every account and brings you only what needs a decision, most money first. Everything that is fine stays quiet.</dd>
+  <dt>Problem it solves</dt><dd>Having to go and look (the morning check is 5th in a menu), problems noticed late, and “is the business OK?” answered in four places.</dd>
+  <dt>How you work</dt><dd>Open Today. Read the top finding, press its button — the app locks to that account and shows only the rows involved, with a progress bar. Fix them; the finding disappears; back to Today.</dd>
+  <dt>Why information is where it is</dt><dd>Profit first (the one question), then findings ranked by money at risk; the evidence (Amazon's words) on the row and at the top of the product page, because it is why you came.</dd>
+  <dt>Main action</dt><dd>The finding's button (“Fix them”, “Ship them”, “Set costs”).</dd>
+  <dt>Secondary</dt><dd>Normal rows are folded under “fine, not part of this”; rare screens under “Everything else”; snooze / not a problem.</dd>
+  <dt>Advantages</dt><dd>Nothing important is missed; least reading; works across all accounts at once; lowest build cost (existing screens reused).</dd>
+  <dt>Disadvantages</dt><dd>Only as good as the checks behind it (some Daily checks cannot run today); browsing and bulk work still need ordinary screens; risk of alert fatigue if findings are noisy.</dd>
+  <dt>Suits</dt><dd>Running several accounts, checking the business in short sessions, catching problems early.</dd></dl></div>
+</div>
+
+<h2>2 · Piece by piece</h2>
+<p class="lead">Each row is one part of the app. The codes match the yellow tags in Design notes, so you can say “use A2, C3, B5”.</p>
+<table class="cmp">
+<tr><th>Piece</th><th>A · Cockpit</th><th>B · Workflow</th><th>C · Exceptions</th></tr>
+<tr><td>1 Navigation</td><td><b>A1</b> 6-place icon rail + Ctrl+K command palette <br><a href="A-cockpit.html#notes=1">see</a></td><td><b>B1</b> 4 journeys as top tabs; rare tools inside journeys <br><a href="B-workflow.html#notes=1">see</a></td><td><b>C1</b> Today first, 3 work screens, “Everything else” folded <br><a href="C-exceptions.html#notes=1">see</a></td></tr>
+<tr><td>2 Account / market / dates</td><td><b>A2</b> one context bar on every screen, account colour swatch; dates set once</td><td><b>B2</b> “You are working in …” as the page title; change is a deliberate step that warns about unsaved work</td><td><b>C2</b> all accounts as chips with their counts; acting on a finding locks to its account with a coloured stripe</td></tr>
+<tr><td>3 Home</td><td><b>A3</b> board of queues (counts you can clear) + 3 figures</td><td><b>B3</b> “What do you want to do?” — journey cards with the next step</td><td><b>C3</b> “Today” — reconciled profit, what moved it, findings ranked by money at risk</td></tr>
+<tr><td>4 Listings</td><td><b>A4</b> dense table, queue chips, in-place price/stock (staged), keyboard <br><a href="A-cockpit.html#screen=listings">see</a></td><td><b>B4</b> 6-column pipeline; each card says why it is there and its next step <br><a href="B-workflow.html#j=listings">see</a></td><td><b>C4</b> table opened on the finding's rows only; evidence on the row; the rest folded <br><a href="C-exceptions.html#finding=northfield_uk:refused">see</a></td></tr>
+<tr><td>5 Product page</td><td><b>A5</b> panel BESIDE the table; blocking facts on top; tabs; J/K to next product <br><a href="A-cockpit.html#screen=listings&open=15.10_3Days_B0FAKE0003">see</a></td><td><b>B5</b> own page as a CHECKLIST; opens on the first problem; one button that explains when it is disabled <br><a href="B-workflow.html#j=listings&open=15.10_3Days_B0FAKE0003">see</a></td><td><b>C5</b> OVERLAY on the list (today's pattern); “Amazon said” first with the fix under it; details folded <br><a href="C-exceptions.html#finding=northfield_uk:refused&open=15.10_3Days_B0FAKE0003">see</a></td></tr>
+<tr><td>6 Orders</td><td><b>A6</b> one table sorted by urgency; row expands to money · supplier · shipping <br><a href="A-cockpit.html#screen=orders&order=206-1111111-0000001">see</a></td><td><b>B6</b> Buy → Ship → Shipped steps; each order card has one action <br><a href="B-workflow.html#j=orders&stage=to_buy">see</a></td><td><b>C6</b> late / unbought on top with the reason; on-time orders folded <br><a href="C-exceptions.html#scope=northfield_uk&screen=orders">see</a></td></tr>
+<tr><td>7 Money</td><td><b>A7</b> one reconciled P&amp;L table; each line says its source <br><a href="A-cockpit.html#screen=money">see</a></td><td><b>B7</b> three questions: kept? where did it go? what is missing (as tasks)? <br><a href="B-workflow.html#j=money">see</a></td><td><b>C7</b> profit headline per account + waterfall; never adds currencies <br><a href="C-exceptions.html#screen=money">see</a></td></tr>
+<tr><td>8 Feedback (errors, loading, empty)</td><td><b>A8</b> status line + Issues list; failures stay on the row; skeleton rows</td><td><b>B8</b> errors as “what went wrong / how to fix / Fix” inside the step; send progress timeline</td><td><b>C8</b> findings persist until fixed; mission bar shows progress; “All clear” state</td></tr>
+<tr><td>9 Confirmations</td><td><b>A9</b> staged edits saved together, confirm lists every old → new; bulk bar names the account</td><td><b>B9</b> “Check before sending” step; one primary action with its reason</td><td><b>C9</b> confirm names the account and the finding; a refused resubmit replaces the old reply in place</td></tr>
+</table>
+
+<h2>3 · What can be mixed</h2>
+<div class="box">
+<p><b>Mix freely</b> (independent of each other): A2 context bar · A1 Ctrl+K palette · A9 staged edits · A8 Issues list · B8 errors-with-the-fix · B9 “explain why the button is disabled” · C3 Today home · C7 money headline + waterfall · C8 mission bar · any Orders piece.</p>
+<p><b>Pick one of</b> (they compete for the same space):</p>
+<ul>
+ <li>Product page: <b>A5</b> beside the table · <b>B5</b> own checklist page · <b>C5</b> overlay with evidence first. (B5's checklist can live INSIDE A5 or C5 as a left column.)</li>
+ <li>Home: <b>A3</b> queue board · <b>B3</b> journey cards · <b>C3</b> Today findings. (A3 and C3 are close relatives: C3 is A3 ranked, explained and across accounts.)</li>
+ <li>Navigation: <b>A1</b> rail · <b>B1</b> journeys · <b>C1</b> Today-first. A1's Ctrl+K works with any of them.</li>
+ <li>Listings list: <b>A4</b> table · <b>B4</b> pipeline. (C4 is A4 filtered by a finding.)</li>
+</ul>
+<p><b>Conflicts to know about:</b> B2 (one account at a time) and C2 (all accounts on Today) are different ideas of context — they can coexist only as “Today is all accounts, everything else is one account”, which is what C already does.</p>
+</div>
+
+<h2>4 · Recommendation (mine — you decide)</h2>
+<div class="box rec">
+<p><b>C's home and flow, with A's context and tables, and C's product page carrying B's checklist.</b></p>
+<ol>
+ <li><b>C3 Today + C8 missions</b> as the way in: it answers “what needs me?” across all accounts, and every finding goes straight to the rows that fix it.</li>
+ <li><b>A2 context bar</b> on every other screen (account colour, marketplace, dates once) — the account/marketplace confusion is the most dangerous problem this app has had.</li>
+ <li><b>A4 tables + A9 staged edits + A8 Issues list</b> for the full lists and bulk work you do every day.</li>
+ <li><b>C5 product page</b> (overlay, evidence first) with <b>B5's checklist</b> as its left column for drafts.</li>
+ <li><b>A1 Ctrl+K</b> on top of a short menu, so rare screens stay reachable without 43 items.</li>
+</ol>
+<p><b>Why:</b> it keeps the screens you already know (lowest risk to build and learn), puts the account in view permanently, and replaces “go and look” with “here is what needs you”. The cockpit parts protect your speed on bulk days.</p>
+<p><b>Trade-offs:</b> C depends on the checks behind the findings being trustworthy — several Daily checks cannot run today, so some findings would start as “not known”. A mix has more parts to design consistently than a pure direction. B's pipeline view (seeing where listings pile up) is lost unless kept as a view inside Listings. Staff would get a less guided app than pure B.</p>
+</div>
+
+<h2>5 · Good ideas kept in all three</h2>
+<ul>
+ <li><b>Unknown is never zero</b> — missing cost, profit or ad spend says “not known” in every prototype.</li>
+ <li><b>Confirmations name the account, seller and marketplace</b> (shared confirmation in all three).</li>
+ <li><b>Amazon's reply stays visible as evidence</b> until the listing is resubmitted.</li>
+ <li><b>Spending money / changing Amazon is always a deliberate button</b> with a confirmation.</li>
+ <li><b>The GTIN exemption is only a tick you make</b>; the brand is always the account's own (CLAUDE.md Rule 1).</li>
+ <li><b>Account context is always visible</b> — three different ways, one per direction.</li>
+</ul>
+
+<h2>6 · What these prototypes cannot show</h2>
+<ul>
+ <li>Real volumes: hundreds of listings and orders, long titles, many marketplaces at once.</li>
+ <li>Real timing: Amazon's replies, report waits and rate limits are simulated.</li>
+ <li>Screens not built here: Image Studio, repricer, inventory, returns, PPC, keywords, trackers, settings, users/permissions.</li>
+ <li>Restricted users (lister/viewer): B's “fewer journeys” and permission-hidden actions are described, not built.</li>
+ <li>Phone layouts are only basic; accessibility was not tested with a screen reader.</li>
+ <li>Final colours, type and spacing: deliberately NOT designed yet — all three use today's colours on purpose.</li>
+</ul>
+</div>
+</body>
+</html>

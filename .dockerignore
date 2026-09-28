@@ -32,3 +32,5 @@ docs/
 .claude/
 active/
 current-work.md
+# Design-review prototypes (fake data, not part of the app)
+prototypes/

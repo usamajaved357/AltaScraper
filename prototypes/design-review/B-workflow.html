@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototype B — Task-Led Workflow</title>
+<link rel="stylesheet" href="../../static/vendor/tabler-icons/tabler-icons.min.css">
+<link rel="stylesheet" href="shared/proto.css">
+<style>
+/* ===== B: TASK-LED WORKFLOW =====
+   Four journeys instead of forty menu items. Each journey is a set of steps;
+   every item shows the ONE next thing to do; the product page is a checklist. */
+.ws{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);
+  border-bottom:1px solid var(--line)}
+.ws .who2{display:flex;align-items:center;gap:10px}
+.ws .badge{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:800;color:#0b0e14}
+.ws .name{font-size:16px;font-weight:700}
+.ws .sub{color:var(--ink2);font-size:12.5px}
+.ws .sp{flex:1}
+.journeys{display:flex;gap:4px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.journeys button{border:0;background:none;padding:12px 14px;color:var(--ink2);font-weight:600;
+  border-bottom:3px solid transparent;display:flex;gap:7px;align-items:center}
+.journeys button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.journeys .n{background:var(--warn-bg);color:var(--warn);border-radius:999px;padding:0 7px;font-size:11.5px}
+.page{max-width:1180px;margin:0 auto;padding:20px}
+h2{font-size:20px;margin:0 0 4px} .lead{color:var(--ink2);margin:0 0 18px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.jcard{background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:16px;text-align:left;display:flex;flex-direction:column;gap:8px}
+.jcard i.big{font-size:26px;color:var(--accent)}
+.jcard h3{margin:0;font-size:16px}
+.jcard .next{margin-top:auto;padding-top:8px;border-top:1px solid var(--line);font-size:13px}
+.pipe{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:10px;overflow:auto}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:200px}
+.col h4{margin:0 0 8px;font-size:12.5px;display:flex;gap:6px;align-items:center;color:var(--ink2);text-transform:uppercase;letter-spacing:.3px}
+.col h4 .c{margin-left:auto;background:var(--panel3);color:var(--ink);border-radius:999px;padding:0 7px}
+.col.hot{border-color:var(--warn-line)} .col.bad{border-color:var(--red-line)}
+.icard{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:9px;margin-bottom:8px;font-size:12.5px}
+.icard .t{font-weight:600;font-size:13px;margin-bottom:4px}
+.icard .why{color:var(--ink2);margin-bottom:6px}
+.icard .why.bad{color:var(--red)} .icard .why.warn{color:var(--warn)}
+.icard .btn{width:100%}
+.stepper{display:flex;gap:0;margin:0 0 16px;overflow:auto}
+.stepper div{flex:1;padding:8px 10px;border-bottom:3px solid var(--line2);color:var(--ink3);font-size:12.5px;white-space:nowrap}
+.stepper div.done{border-color:var(--accent-line);color:var(--ink2)}
+.stepper div.on{border-color:var(--accent);color:var(--ink);font-weight:650}
+.pdp{display:grid;grid-template-columns:270px 1fr;gap:18px}
+.check{background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:8px;height:max-content;position:sticky;top:46px}
+.check button{display:flex;width:100%;gap:10px;align-items:center;border:0;background:none;padding:9px 10px;border-radius:9px;text-align:left}
+.check button.on{background:var(--panel2)}
+.check .s{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;flex:none}
+.check .s.ok{background:var(--ok-bg);color:var(--ok)} .check .s.bad{background:var(--red-bg);color:var(--red)}
+.check .s.warn{background:var(--warn-bg);color:var(--warn)}
+.sect{background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:16px;margin-bottom:12px}
+.sect h3{margin:0 0 10px;font-size:15px}
+.field{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;align-items:center;margin-bottom:10px}
+.field label{color:var(--ink2);font-size:13px}
+.help{color:var(--ink3);font-size:12px;grid-column:2}
+.fix{border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.fix.bad{background:var(--red-bg);border:1px solid var(--red-line)}
+.fix.warn{background:var(--warn-bg);border:1px solid var(--warn-line)}
+.fix.ok{background:var(--ok-bg);border:1px solid var(--ok-line)}
+.fix h4{margin:0 0 4px;font-size:14px}
+.fix ol{margin:6px 0 8px;padding-left:18px}
+.actionbar{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;padding:12px 16px;margin-top:8px;
+  background:var(--panel);border:1px solid var(--line2);border-radius:12px;box-shadow:0 -8px 20px rgba(0,0,0,.3)}
+.actionbar .sp{flex:1}
+.decision{font-size:11.5px;color:var(--gold);border:1px dashed var(--gold-line);border-radius:6px;padding:2px 6px}
+.timeline{display:flex;gap:8px;align-items:center;margin:8px 0}
+.timeline .st{padding:5px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line2);font-size:12.5px;color:var(--ink3)}
+.timeline .st.on{color:var(--ink);border-color:var(--accent)} .timeline .st.ok{color:var(--ok);border-color:var(--ok-line)}
+.timeline .st.bad{color:var(--red);border-color:var(--red-line)}
+.ocard{display:grid;grid-template-columns:1fr auto;gap:10px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:12px;margin-bottom:10px}
+.ocard.late{border-color:var(--red-line)}
+.qs{display:grid;gap:14px}
+.q{background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:16px}
+.q h3{margin:0 0 6px;font-size:15px;color:var(--ink2);font-weight:600}
+.q .ans{font-size:24px;font-weight:750}
+.stack{display:flex;height:26px;border-radius:7px;overflow:hidden;margin:10px 0}
+.stack div{display:grid;place-items:center;font-size:11px;color:#0b0e14;font-weight:700;white-space:nowrap;overflow:hidden}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--ink2)}
+.task{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.empty{padding:40px;text-align:center;border:1px dashed var(--line2);border-radius:14px;color:var(--ink2)}
+.toast2{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:90;background:var(--panel3);
+  border:1px solid var(--line2);border-radius:10px;padding:10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+@media (max-width:900px){.pdp{grid-template-columns:1fr}.check{position:static}.pipe{grid-template-columns:repeat(6,220px)}
+  .field{grid-template-columns:1fr}.help{grid-column:1}.journeys{overflow:auto}}
+</style>
+</head>
+<body>
+
+<div class="ws" id="ws" data-piece="B2"
+  data-why="The account is the page title|You are always told, in large type, which company you are working for. The account has its own coloured badge and the marketplace is right beside it.
+Changing account is a deliberate step with its own button, and it warns you if you are in the middle of something (an unsaved checklist), because in a guided flow a silent switch would put your half-finished work in the wrong company."></div>
+<nav class="journeys" id="journeys" data-piece="B1"
+  data-why="Four journeys, not forty menu items|The top level is what you are trying to DO: create listings, fulfil orders, check money, see advertising.
+Staff with limited permissions would simply see fewer journeys (the permission table already knows which).
+Rare tools (Image Studio, keywords, trackers) sit inside the journey that uses them instead of in the main menu."></nav>
+<main class="page" id="page"></main>
+
+<script src="shared/data.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+const S = {acct: "northfield_uk", mkt: "UK", j: "start", open: null, sec: "basics",
+           ordStage: "to_buy", dirty: false, busy: null, flash: null};
+const A = () => pAcct(S.acct);
+function flash(msg, bad){
+  document.querySelectorAll(".toast2").forEach(t => t.remove());
+  const t = document.createElement("div"); t.className = "toast2"; t.setAttribute("role", "status");
+  t.innerHTML = (bad ? '<i class="ti ti-alert-octagon" style="color:var(--red)"></i> ' : '<i class="ti ti-circle-check" style="color:var(--ok)"></i> ') + esc(msg);
+  document.body.appendChild(t); setTimeout(() => t.remove(), bad ? 7000 : 3500);
+}
+
+/* ===== workspace header ===== */
+function renderWs(){
+  const a = A();
+  document.getElementById("ws").innerHTML = '<div class="who2"><div class="badge" style="background:' + a.colour + '">' + a.name[0] + '</div>'
+    + '<div><div class="sub">You are working in</div><div class="name">' + esc(a.name) + ' · ' + S.mkt + '</div></div></div>'
+    + '<button class="btn" onclick="changeAcct()"><i class="ti ti-switch-horizontal"></i> Change account</button>'
+    + (a.mkts.length > 1 ? '<select onchange="S.mkt=this.value;render()" aria-label="Marketplace">' + a.mkts.map(m => '<option ' + (m === S.mkt ? "selected" : "") + '>' + m + '</option>').join("") + '</select>' : '')
+    + '<span class="sp"></span><span class="sub">' + esc(a.seller) + '</span>';
+}
+async function changeAcct(){
+  if(S.dirty){
+    const ok = await confirmBox({title: "Leave this listing unfinished?", acct: A(), mkt: S.mkt,
+      body: "You have changes in the checklist that are not saved. Changing account puts them away — they will NOT follow you into the other account.", ok: "Leave it"});
+    if(!ok) return;
+  }
+  const w = document.createElement("div"); w.className = "modal-wrap";
+  w.innerHTML = '<div class="modal"><h3>Which account?</h3><div class="mb">' + P_ACCOUNTS.map(a => '<button class="jcard" style="width:100%;margin-bottom:8px;flex-direction:row;align-items:center" data-id="' + a.id + '"><span class="dot" style="background:' + a.colour + ';width:14px;height:14px"></span><b>' + esc(a.name) + '</b><span class="muted">' + a.mkts.join(" · ") + '</span></button>').join("") + '</div></div>';
+  w.addEventListener("click", e => { const b = e.target.closest("[data-id]"); if(b){ S.acct = b.dataset.id; S.mkt = pAcct(S.acct).mkts[0]; S.open = null; S.dirty = false; w.remove(); render(); flash("Now working in " + A().name + " · " + S.mkt + "."); } if(e.target === w) w.remove(); });
+  document.body.appendChild(w);
+}
+
+/* ===== journeys ===== */
+function counts(){
+  const L = pListings(S.acct), O = pOrders(S.acct);
+  return {list: L.filter(l => ["review","blocked","refused","ready","draft"].includes(l.status)).length,
+          orders: O.filter(o => ["to_buy","to_ship","late"].includes(o.stage)).length,
+          money: pSales(S.acct).totals ? 1 : 0};
+}
+function renderJourneys(){
+  const c = counts();
+  const J = [["start","ti-home","Start"],["listings","ti-wand","Create listings",c.list],["orders","ti-truck","Fulfil orders",c.orders],
+             ["money","ti-coin","Check money"],["ads","ti-target","Advertising"]];
+  document.getElementById("journeys").innerHTML = J.map(([k,i,l,n]) => '<button class="' + (S.j === k ? "on" : "") + '" onclick="goJ(\'' + k + '\')"><i class="ti ' + i + '"></i>' + l + (n ? '<span class="n">' + n + '</span>' : '') + '</button>').join("");
+}
+function goJ(k){ S.j = k; S.open = null; render(); }
+
+/* ===== START (home) ===== */
+function renderStart(){
+  const a = A(), L = pListings(S.acct), O = pOrders(S.acct), t = (pSales(S.acct).totals || {});
+  if(a.empty) return emptyJourney("This account has nothing yet", "Start the first journey: create a listing.", "Create a listing", "goJ('listings')");
+  const rev = L.filter(l => l.status === "review"), fix = L.filter(l => ["refused","blocked"].includes(l.status));
+  const buy = O.filter(o => o.stage === "to_buy"), late = O.filter(o => o.stage === "late");
+  return '<h2>What do you want to do?</h2><p class="lead">Each journey shows the one thing to do next in ' + esc(a.name) + '.</p>'
+    + '<div class="cards" data-piece="B3" data-why="Home = pick a journey, see its next step|The home screen asks one question: what are you here to do? Each card ends with the single next step and a count, so you can start work in one click without reading reports first.">'
+    + jcard("ti-wand", "Create listings", L.filter(l => l.status !== "live").length + " in progress, " + L.filter(l => l.status === "live").length + " live", fix.length ? fix.length + " need fixing first" : rev.length + " waiting for review", fix.length ? "Fix the first one" : "Review the next draft", "goJ('listings')")
+    + jcard("ti-truck", "Fulfil orders", O.length + " orders", late.length ? late.length + " LATE to ship" : buy.length + " to buy from the supplier", late.length ? "Ship the late one" : "Buy the next one", "S.ordStage='" + (late.length ? "late" : "to_buy") + "';goJ('orders')")
+    + jcard("ti-coin", "Check money", "Last 30 days", "Profit " + (t.profit != null ? money(t.profit, a.cur) : "not known") + " · " + (t.unitsNoCost || 0) + " units have no cost", "See where it went", "goJ('money')")
+    + jcard("ti-target", "Advertising", "Read-only", "Spend and search terms — changing bids stays in Seller Central", "Open", "goJ('ads')")
+    + '</div>';
+}
+function jcard(icon, title, sub, next, btn, run){
+  return '<div class="jcard"><i class="ti ' + icon + ' big"></i><h3>' + title + '</h3><div class="muted">' + sub + '</div>'
+    + '<div class="next"><div style="margin-bottom:8px">' + next + '</div><button class="btn primary" onclick="' + run + '">' + btn + ' →</button></div></div>';
+}
+
+/* ===== CREATE LISTINGS: the pipeline ===== */
+const COLS = [["draft","1 · Draft","ti-pencil"],["review","2 · Review","ti-eye"],["fix","3 · Fix","ti-tool"],
+              ["ready","4 · Ready","ti-check"],["submitted","5 · Sent","ti-send"],["live","6 · Live","ti-world"]];
+function colOf(l){ return ["refused","blocked"].includes(l.status) ? "fix" : l.status; }
+function renderPipeline(){
+  const a = A(), L = pListings(S.acct);
+  if(a.empty) return emptyJourney("No listings in " + a.name + " yet", "A listing starts as a draft: research a competitor ASIN or upload a template.", "Start a draft", "flash('Draft wizard would open here (not in this prototype).')");
+  return '<h2>Create listings</h2><p class="lead">Left to right is the life of a listing. Every card shows why it is where it is and the one step that moves it on.</p>'
+    + '<div class="pipe" data-piece="B4" data-why="The listing pipeline|Instead of one table with a status column, the stages ARE the layout. You see at a glance where work is piling up (the Fix column is red-edged) and you move a listing by doing its one next step.\nThe \'why\' line on each card is the reason it is in that column — e.g. Amazon\'s refusal — so you never open a listing just to find out what is wrong.">'
+    + COLS.map(([k, t, i]) => { const items = L.filter(l => colOf(l) === k);
+        return '<div class="col ' + (k === "fix" && items.length ? "bad" : k === "review" && items.length ? "hot" : "") + '"><h4><i class="ti ' + i + '"></i>' + t + '<span class="c">' + items.length + '</span></h4>'
+          + (items.length ? items.map(card).join("") : '<div class="muted" style="font-size:12px">Nothing here.</div>') + '</div>'; }).join("")
+    + '</div>';
+}
+function card(l){
+  const why = l.issues.length ? ['bad', l.issues[0].msg] : l.compliance ? [l.compliance.level === "prohibited" ? "bad" : "warn", l.compliance.note]
+            : l.cost == null ? ["warn", "No cost set — profit not known"] : ["", l.status === "live" ? l.sold30 + " sold in 30 days" : money(l.price, A().cur) + " · " + (pUnitProfit(l) == null ? "profit not known" : "profit " + money(pUnitProfit(l), A().cur))];
+  const next = {draft:"Finish the draft", review:"Review", refused:"Fix what Amazon said", blocked:"See the block", ready:"Send to Amazon", submitted:"Check status", live:"Open"}[l.status];
+  return '<div class="icard"><div class="t">' + esc(l.title) + '</div><div class="why ' + why[0] + '">' + esc(why[1]) + '</div>'
+    + '<button class="btn ' + (["review","refused","ready"].includes(l.status) ? "primary" : "") + '" onclick="openItem(\'' + l.sku + '\')">' + next + '</button></div>';
+}
+
+/* ===== PDP: the guided checklist ===== */
+function sections(l){
+  return [
+    ["basics", "Title & description", l.title ? "ok" : "bad"],
+    ["identifier", "Barcode or exemption", l.issues.some(i => i.kind === "identifier" || i.field === "barcode") ? "bad" : "ok"],
+    ["price", "Price & cost", l.price == null ? "bad" : l.cost == null ? "warn" : "ok"],
+    ["images", "Images", l.images >= 5 ? "ok" : "warn"],
+    ["checks", "Compliance checks", l.compliance ? (l.compliance.level === "prohibited" ? "bad" : "warn") : "ok"],
+    ["amazon", "Amazon's reply", l.issues.some(i => i.kind === "amazon") ? "bad" : "ok"],
+  ];
+}
+function openItem(sku){ S.open = sku; const l = P_LISTINGS.find(x => x.sku === sku); const bad = sections(l).find(s => s[2] === "bad"); S.sec = bad ? bad[0] : "basics"; render(); scrollTo(0, 0); }
+function renderPdp(){
+  const l = P_LISTINGS.find(x => x.sku === S.open), a = A(), secs = sections(l);
+  const blocking = secs.filter(s => s[2] === "bad");
+  const stages = ["Draft","Review","Fix","Ready","Sent","Live"], at = {draft:0, review:1, refused:2, blocked:2, ready:3, submitted:4, live:5}[l.status];
+  const primary = l.status === "review" ? (blocking.length ? ["Fix " + blocking.length + " item(s) first", true] : ["Approve", false])
+                : l.status === "ready" ? ["Send to Amazon…", false] : ["refused","blocked"].includes(l.status) ? (blocking.length ? ["Fix " + blocking.length + " item(s) first", true] : ["Send again…", false])
+                : l.status === "draft" ? ["Finish the draft", true] : ["Back to the pipeline", false];
+  let body = "";
+  const s = S.sec;
+  if(s === "amazon") body = l.issues.filter(i => i.kind === "amazon").map(i => '<div class="fix bad" data-piece="B8" data-why="Errors come with the way out|A failure is shown as three things: what went wrong (Amazon\'s own words), how to fix it, and a button that does the fix. It stays in the checklist until it is fixed — it is part of the work, not a notification."><h4>Amazon refused: ' + esc(i.field) + '</h4><div>' + esc(i.msg) + '</div><ol><li>Open the ' + esc(i.field) + ' field below.</li><li>Enter the value Amazon asks for.</li><li>Send again — the other fields are kept.</li></ol><button class="btn primary" onclick="fixIt(\'' + l.sku + '\',\'' + i.field + '\')">Fix ' + esc(i.field) + '</button></div>').join("")
+    || '<div class="fix ok"><h4>Amazon has not refused anything</h4>Nothing to do in this step.</div>';
+  if(s === "basics") body = '<div class="sect"><h3>Title & description</h3><div class="field"><label>Title</label><input value="' + esc(l.title) + '" oninput="S.dirty=true"><div class="help">Your brand name first, then what it is. ' + l.title.length + '/200</div></div><div class="field"><label>Brand</label><input value="' + esc(l.brand) + '" disabled><div class="help">Always your own brand for this account (Rule 1) — not editable here.</div></div></div>';
+  if(s === "identifier") body = '<div class="sect"><h3>Barcode or exemption</h3>' + (l.issues.find(i => i.kind === "identifier" || i.field === "barcode") ? '<div class="fix bad"><h4>' + esc(l.issues.find(i => i.kind === "identifier" || i.field === "barcode").msg) + '</h4>Enter a barcode you own, or tick the exemption if Amazon has approved one for this brand.</div>' : '')
+    + '<div class="field"><label>Barcode (EAN/UPC)</label><input value="' + esc(l.barcode) + '" oninput="S.dirty=true" placeholder="13 digits"></div><div class="field"><label>GTIN exemption</label><label><input type="checkbox"> Apply for GTIN exemption on this listing</label><div class="help">Only when you tick it. The app never claims it for you.</div></div></div>';
+  if(s === "price") body = '<div class="sect"><h3>Price & cost</h3><div class="field"><label>Price</label><input value="' + (l.price ?? "") + '" oninput="S.dirty=true"></div><div class="field"><label>Your cost</label><input value="' + (l.cost ?? "") + '" placeholder="not known" oninput="S.dirty=true"><div class="help">Without it, profit shows “not known”, never zero.</div></div><div class="field"><label>Profit per unit</label><span>' + money(pUnitProfit(l), a.cur) + '</span></div></div>';
+  if(s === "images") body = '<div class="sect"><h3>Images</h3><p class="muted">' + l.images + ' of 9 slots. Amazon wants at least 5; 7+ sells better.</p></div>';
+  if(s === "checks") body = l.compliance ? '<div class="fix ' + (l.compliance.level === "prohibited" ? "bad" : "warn") + '"><h4>' + (l.compliance.level === "prohibited" ? "Prohibited in this account" : "Gated — documents may be needed") + '</h4>' + esc(l.compliance.note) + '</div>' : '<div class="fix ok"><h4>No compliance flags</h4></div>';
+  return '<div style="margin-bottom:10px"><a href="#" onclick="S.open=null;render();return false">← Create listings</a></div>'
+    + '<div class="stepper">' + stages.map((t, i) => '<div class="' + (i < at ? "done" : i === at ? "on" : "") + '">' + (i + 1) + ' · ' + t + '</div>').join("") + '</div>'
+    + '<h2>' + esc(l.title) + '</h2><p class="lead">' + esc(a.name) + ' · ' + S.mkt + ' · <span class="pill ' + l.status + '">' + l.status + '</span></p>'
+    + '<div class="pdp" data-piece="B5" data-why="Product page = a checklist|The left column is every part of a listing with a tick, a warning or a cross. It opens on the first thing that is wrong, so the page tells you where to start.\nThe primary button at the bottom changes with the listing\'s stage and says WHY it is disabled (\'Fix 2 items first\') instead of just being grey.\nThis page is its own screen (not an overlay) because in this direction a listing is a task you finish, then return to the pipeline.">'
+    + '<div class="check">' + secs.map(([k, t, st]) => '<button class="' + (S.sec === k ? "on" : "") + '" onclick="S.sec=\'' + k + '\';render()"><span class="s ' + st + '">' + (st === "ok" ? "✓" : st === "bad" ? "✕" : "!") + '</span>' + t + '</button>').join("") + '</div>'
+    + '<div>' + body + (S.busy === l.sku ? progress(l) : "")
+    + '<div class="actionbar" data-piece="B9" data-why="One primary action, with its reason|Approve/Hold are shown here only to let you SEE them on the product page — whether the product page should have them is still your decision (deferred).\nSending to Amazon goes through a review step that names the account and seller.">'
+    + '<button class="btn" onclick="nextIn(-1)">← Previous</button><button class="btn" onclick="nextIn(1)">Next in this stage →</button><span class="sp"></span>'
+    + (l.status === "review" ? '<span class="decision">Approve/Hold here: your decision pending</span><button class="btn" onclick="hold(\'' + l.sku + '\')">Hold</button>' : '')
+    + '<button class="btn primary" ' + (primary[1] ? "disabled" : "") + ' onclick="primaryAct(\'' + l.sku + '\')">' + primary[0] + '</button></div></div></div>';
+}
+function progress(l){
+  const st = l._phase || "sending";
+  const p = ["sending","checking","done"], i = p.indexOf(st);
+  return '<div class="sect" data-piece="B8" data-why="What happened after I clicked|Sending shows each stage in place — sent, Amazon checking, result — instead of a two-second toast. If Amazon refuses, the result says so here and the checklist turns red at the right item."><h3>Sending to Amazon</h3><div class="timeline">'
+    + '<span class="st ' + (i >= 0 ? (i > 0 ? "ok" : "on") : "") + '">1 · Sent</span><span class="st ' + (i >= 1 ? (i > 1 ? "ok" : "on") : "") + '">2 · Amazon checking</span><span class="st ' + (st === "done" ? (l.status === "refused" ? "bad" : "ok") : "") + '">3 · ' + (st === "done" ? (l.status === "refused" ? "Refused" : "Accepted") : "Result") + '</span></div>'
+    + (st === "done" ? (l.status === "refused" ? '<div class="fix bad" style="margin:0"><h4>Amazon refused it</h4>See “Amazon’s reply” in the checklist — it is now marked ✕.</div>' : '<div class="fix ok" style="margin:0"><h4>Accepted</h4>It will show as live within a few minutes. It has moved to “5 · Sent”.</div>') : '<div class="muted">This usually takes under a minute. You can leave this page; the pipeline card will update.</div>') + '</div>';
+}
+async function primaryAct(sku){
+  const l = P_LISTINGS.find(x => x.sku === sku), a = A();
+  if(l.status === "review"){ l.status = "ready"; S.dirty = false; flash("Approved — it is now in “4 · Ready”."); render(); return; }
+  if(l.status === "ready" || ["refused","blocked"].includes(l.status)){
+    const ok = await confirmBox({title: "Check before sending", acct: a, mkt: S.mkt,
+      html: '<b style="color:var(--ink)">' + esc(l.title) + '</b><br>Brand: ' + esc(l.brand) + ' · Price: ' + money(l.price, a.cur) + ' · Barcode: ' + esc(l.barcode || "—"),
+      foot: "Creates a NEW listing under your brand. Nothing is charged.", ok: "Send to Amazon"});
+    if(!ok) return;
+    S.busy = sku; l._phase = "sending"; render(); await wait(sim() === "slow" ? 1500 : 700);
+    l._phase = "checking"; render(); await wait(sim() === "slow" ? 1800 : 900);
+    if(sim() === "fail"){ l.status = "refused"; l.issues.push({kind:"amazon", field:"item_weight", msg:"The attribute 'item_weight' is required but was not provided."}); }
+    else { l.status = "submitted"; S.dirty = false; }
+    l._phase = "done"; render(); return;
+  }
+  S.open = null; render();
+}
+function hold(sku){ flash("Held — it stays in Review with a note."); }
+function fixIt(sku, f){ const l = P_LISTINGS.find(x => x.sku === sku); l.issues = l.issues.filter(i => i.field !== f); S.dirty = true; if(!l.issues.length && !l.compliance) l.status = "ready"; flash("Fixed " + f + "."); S.sec = "basics"; render(); }
+function nextIn(d){ const l = P_LISTINGS.find(x => x.sku === S.open); const same = pListings(S.acct).filter(x => colOf(x) === colOf(l)); const i = same.indexOf(l); const n = same[(i + d + same.length) % same.length]; if(n) openItem(n.sku); }
+
+/* ===== FULFIL ORDERS ===== */
+function renderOrders(){
+  const a = A(), O = pOrders(S.acct);
+  if(a.empty) return emptyJourney("No orders in " + a.name, "Orders appear here as soon as Amazon reports them.", "Back to start", "goJ('start')");
+  const stages = [["late","Late","ti-alarm"],["to_buy","1 · Buy","ti-shopping-cart"],["to_ship","2 · Ship","ti-package"],["shipped","3 · Shipped","ti-truck"],["returned","Returns","ti-arrow-back-up"]];
+  const list = O.filter(o => o.stage === S.ordStage);
+  return '<h2>Fulfil orders</h2><p class="lead">Buy from the supplier, ship, done. Each order shows its one next step.</p>'
+    + '<div class="stepper" data-piece="B6" data-why="Orders as a short flow|Buy → Ship → Shipped. Late orders jump the queue as their own step. You never read a wide table to decide what to do: each card carries its next action, and doing it moves the order to the next step.">'
+    + stages.map(([k, t]) => { const n = O.filter(o => o.stage === k).length; return '<div class="' + (S.ordStage === k ? "on" : "") + '" style="cursor:pointer;' + (k === "late" && n ? "color:var(--red)" : "") + '" onclick="S.ordStage=\'' + k + '\';render()">' + t + ' (' + n + ')</div>'; }).join("") + '</div>'
+    + (list.length ? list.map(o => '<div class="ocard ' + (o.stage === "late" ? "late" : "") + '"><div><b>' + esc(o.title) + '</b> ×' + o.qty + '<div class="muted" style="font-size:12.5px">' + o.id + ' · ' + esc(o.buyer) + ' · ship by ' + o.shipBy + (o.stage === "late" ? ' <b style="color:var(--red)">— late</b>' : '') + '</div>'
+        + '<div style="font-size:12.5px;margin-top:4px">Sale ' + money(o.total, a.cur) + ' · paid supplier ' + money(o.paid, a.cur) + '</div></div><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'
+        + (o.paid == null ? '<button class="btn primary" onclick="buyFlow(\'' + o.id + '\')">Buy from supplier</button>' : o.stage !== "shipped" && o.stage !== "returned" ? '<button class="btn primary" onclick="shipFlow(\'' + o.id + '\')">Add tracking</button>' : '<span class="muted">' + esc(o.tracking) + '</span>')
+        + '</div></div>').join("") : '<div class="empty">Nothing in this step. <a href="#" onclick="S.ordStage=\'to_buy\';render();return false">See orders to buy</a></div>');
+}
+async function buyFlow(id){
+  const o = P_ORDERS.find(x => x.id === id), a = A();
+  const ok = await confirmBox({title: "Buy this from the supplier", acct: a, mkt: S.mkt,
+    html: '<ol style="color:var(--ink);padding-left:18px"><li>We open the supplier page in a new tab.</li><li>Buy it, sent to the customer’s address.</li><li>Come back and type what you paid.</li></ol>', ok: "Open supplier page"});
+  if(!ok) return;
+  const v = 11.40; o.paid = v; o.stage = o.stage === "late" ? "late" : "to_ship";
+  flash("Recorded " + a.cur + v.toFixed(2) + " paid. Next: add the tracking number."); S.ordStage = "to_ship"; render();
+}
+function shipFlow(id){ const o = P_ORDERS.find(x => x.id === id); o.tracking = "RM 000 111 222 GB"; o.stage = "shipped"; flash("Shipped. Remember to enter the same tracking in Seller Central — Amazon does not share it back."); render(); }
+
+/* ===== CHECK MONEY ===== */
+function renderMoney(){
+  const a = A(), s = pSales(S.acct), t = s.totals;
+  if(!t) return emptyJourney("No sales in " + a.name + " yet", "The money questions are answered once the first order is paid.", "Back to start", "goJ('start')");
+  const parts = [["Profit", t.profit, "var(--ok)"],["Goods", t.cogsKnown, "var(--ink3)"],["Amazon fees", t.fees, "var(--gold)"],["VAT", t.vat, "#6b7a90"],
+                 ["Ads", t.ads || 0, "var(--ai)"],["Refunds", t.refunds, "var(--red)"],["Overheads", t.overhead, "#4b5566"]];
+  const tot = parts.reduce((x, p) => x + Math.max(0, p[1]), 0);
+  return '<h2>Check money · last 30 days</h2><p class="lead">Three questions, answered in order.</p>'
+    + '<div class="qs" data-piece="B7" data-why="Money as questions|Instead of a report you have to interpret, the page asks the three questions an owner asks and answers each in a sentence, biggest number first.\nThe third question — what is MISSING from the answer — turns data gaps (no cost, ads not connected) into tasks with a button, which is how a gap gets fixed rather than just noticed.">'
+    + '<div class="q"><h3>1. How much did I keep?</h3><div class="ans">' + money(t.profit, a.cur) + '</div><div class="muted">from ' + money(t.revenue, a.cur) + ' of sales (' + t.units + ' units). ' + (t.profit >= t.prevProfit ? "Up" : "Down") + ' on the 30 days before. <b style="color:var(--warn)">Real profit is lower</b> — see question 3.</div></div>'
+    + '<div class="q"><h3>2. Where did the money go?</h3><div class="stack">' + parts.map(p => '<div style="width:' + (Math.max(0, p[1]) / tot * 100) + '%;background:' + p[2] + '" title="' + p[0] + '">' + (p[1] / tot > .09 ? p[0] : "") + '</div>').join("") + '</div>'
+    + '<div class="legend">' + parts.map(p => '<span><span class="dot" style="background:' + p[2] + '"></span> ' + p[0] + ' ' + (p[0] === "Ads" && t.ads == null ? '<span class="unknown">not connected</span>' : money(p[1], a.cur)) + '</span>').join("") + '</div></div>'
+    + '<div class="q"><h3>3. What is missing from this answer?</h3>'
+    + '<div class="task"><i class="ti ti-coin" style="color:var(--warn)"></i><div style="flex:1"><b>' + t.unitsNoCost + ' units sold with no cost set</b><div class="muted">Their profit is counted as not known — so the total above is too high.</div></div><button class="btn primary" onclick="goJ(\'listings\');flash(\'Filtered to listings without a cost (simulated).\')">Set costs</button></div>'
+    + (t.ads == null ? '<div class="task"><i class="ti ti-target" style="color:var(--warn)"></i><div style="flex:1"><b>Advertising is not connected</b><div class="muted">Ad spend is left out, not counted as zero.</div></div><button class="btn">How to connect</button></div>' : '')
+    + '</div></div>';
+}
+
+function renderAds(){ return '<h2>Advertising</h2><p class="lead">Read-only by design: spend, sales and search terms. Changing bids or budgets stays in Seller Central (CLAUDE.md Rule 8).</p><div class="empty">Not part of this prototype.</div>'; }
+function emptyJourney(t, d, b, run){
+  return '<div class="empty" data-piece="B8" data-why="Empty = the first step|An empty journey is not a blank page: it says what would normally be here and gives the first step of the journey as the only button."><i class="ti ti-map-2" style="font-size:30px"></i><h3 style="color:var(--ink)">' + esc(t) + '</h3><p>' + esc(d) + '</p><button class="btn primary" onclick="' + run + '">' + b + '</button></div>';
+}
+async function render(){
+  renderWs(); renderJourneys();
+  const p = document.getElementById("page");
+  if(sim() === "slow" && !S._loaded){ p.innerHTML = '<div class="sect"><div class="skel" style="width:40%;margin-bottom:12px"></div><div class="skel" style="margin-bottom:8px"></div><div class="skel" style="width:70%"></div><p class="muted">Getting ' + esc(A().name) + ' ready…</p></div>'; S._loaded = true; await wait(1200); }
+  p.innerHTML = S.open ? renderPdp() : S.j === "start" ? renderStart() : S.j === "listings" ? renderPipeline()
+              : S.j === "orders" ? renderOrders() : S.j === "money" ? renderMoney() : renderAds();
+  S._loaded = false;
+  notesRefresh();
+}
+protoBanner("B · Task-Led Workflow");
+/* Open a given state from the address, e.g. #j=listings&open=<sku>&sec=amazon&notes=1 */
+(async function(){
+  const H = new URLSearchParams(location.hash.slice(1));
+  if(H.get("acct")){ S.acct = H.get("acct"); S.mkt = pAcct(S.acct).mkts[0]; }
+  if(H.get("j")) S.j = H.get("j");
+  if(H.get("stage")) S.ordStage = H.get("stage");
+  if(H.get("open")){ S.open = H.get("open"); const l = P_LISTINGS.find(x => x.sku === S.open);
+    const bad = l && sections(l).find(s => s[2] === "bad"); S.sec = H.get("sec") || (bad ? bad[0] : "basics"); }
+  await render(); notesInit();
+  if(H.get("notes")){ document.body.classList.add("notes"); notesRefresh(); }
+})();
+</script>
+</body>
+</html>

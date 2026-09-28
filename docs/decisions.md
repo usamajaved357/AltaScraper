@@ -86,6 +86,17 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 
 ## UI
 
+- **28 Sep 2026 — The product page (PDP) is not to be redesigned.** "i love my
+  current pdp page i will not change it". Rules out PDP changes in any design
+  option.
+- **28 Sep 2026 — Redesign builds on the pages he likes, not on new
+  directions.** "nah i like my current app, look at the sales page and traffic
+  page, hourly sales page, all listings page 3 views i like to have all 3. and
+  then repricer page i like it and campaign analytics page, search terms page
+  ... you can take inspiration as a base from these and then design some
+  options". Supersedes the three directions in
+  docs/proposals/design-exploration.md as the basis for Milestones 8-9; the
+  three listing views stay.
 - **29 Aug 2026 — The listing drawer keeps the design file's literal hex
   colours, not Orbit tokens.** He was offered tokens and chose the mock's hex.
   **Every panel the design omitted was kept and folded closed**, not removed.
