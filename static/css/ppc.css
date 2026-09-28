@@ -413,6 +413,16 @@
 .ppc-tint-profit{ background: rgba(88,166,255,0.10); }
 
 .ppc-break table{ width: 100%; border-collapse: collapse; margin-top: 20px; }
+/* Ring beside the spend-per-day chart. minmax(0,1fr), not 1fr, so a wide chart
+   cannot push the column past the panel; on a phone the two stack, because at
+   390px a 260px ring left the chart about fifty pixels. */
+.ppc-break-grid{
+  display: grid; grid-template-columns: 260px minmax(0, 1fr);
+  gap: 24px; margin-top: 16px; align-items: center;
+}
+@media (max-width: 720px){
+  .ppc-break-grid{ grid-template-columns: minmax(0, 1fr); gap: 16px; }
+}
 .ppc-break th{
   font-size: 11px; color: var(--ppc-muted); padding: 8px 10px;
   font-weight: 600; border-bottom: 1px solid var(--ppc-border);

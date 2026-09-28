@@ -1157,6 +1157,17 @@ function scRearm(cid){
   altaChartsInView(wrap);
 }
 
+// A LINE MAY NAME ITS OWN COLOUR. SC_SERIES colours a series by its metric
+// key, which is right when the key IS the metric. A chart whose lines are
+// categories -- the match types on Campaign Analytics -- used to borrow metric
+// keys by position, so the 1st and 5th lines both came out ad_spend red and
+// Exact could not be told from Auto. The caller's `color` wins; everything
+// else (width, dash, fill) still comes from the key or the default.
+function _scSpec(l, dflt){
+  const base = SC_SERIES[l.key] || dflt;
+  return l.color ? Object.assign({}, base, {color: l.color}) : base;
+}
+
 function salesCombo(o){
   const cols  = o.columns || [];
   const bars  = o.bars || null;              // {key,label,values[]}
@@ -1280,7 +1291,7 @@ function salesCombo(o){
   // legend swatch.
   const shape = {};
   lines.forEach(function(l){
-    const spec = SC_SERIES[l.key] || {color: "#8fd694", width: 2, dash: ""};
+    const spec = _scSpec(l, {color: "#8fd694", width: 2, dash: ""});
     let run = [], runs = [];
     (l.values || []).forEach(function(v, i){
       const n = _scNum(v);
@@ -1384,7 +1395,7 @@ function salesCombo(o){
   // One gradient per series, since each fills in its own colour. Stops measured
   // off Orbit's: 0.30 at 5%, fading to 0 at 95%.
   const defs = "<defs>" + lines.map(function(l){
-    const spec = SC_SERIES[l.key] || {color: "#8fd694", fill: 0.30};
+    const spec = _scSpec(l, {color: "#8fd694", fill: 0.30});
     return `<linearGradient id="${cid0}_g_${l.key}" x1="0" y1="0" x2="0" y2="1">`
          + `<stop offset="5%" stop-color="${spec.color}" stop-opacity="${spec.fill}"/>`
          + `<stop offset="95%" stop-color="${spec.color}" stop-opacity="${
@@ -1412,7 +1423,7 @@ function salesCombo(o){
                  value: (bv === null ? "—" : String(Math.round(bv))), y: null});
     }
     lines.forEach(function(l){
-      const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694"};
+      const spec = _scSpec(l, {label: l.key, color: "#8fd694"});
       const v = _scNum((l.values || [])[i]);
       // THE CALLER'S OWN LABEL WINS. SC_SERIES names a series generically --
       // `cpc` is "CPC", `roas` is "ROAS" -- which is right on the Sales page
@@ -1483,7 +1494,7 @@ function salesCombo(o){
   // days it was actually known. That number is the useful one: "Profit, 5 of
   // 30 days" answers the question the faint line raises.
   drawable.forEach(function(l){
-    const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694", width: 2, dash: ""};
+    const spec = _scSpec(l, {label: l.key, color: "#8fd694", width: 2, dash: ""});
     const sh = (shape || {})[l.key] || {};
     const sparse = sh.points > 0 && !sh.solid;
     const mark = sparse

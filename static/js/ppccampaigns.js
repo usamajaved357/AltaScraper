@@ -311,10 +311,15 @@ function ppccBreakdown(j, cur){
                 SPONSORED_DISPLAY: "Sponsored Display (SD)"};
   const PCOL = {SPONSORED_PRODUCTS: "#f0c000", SPONSORED_BRANDS: "var(--ppc-blue)",
                 SPONSORED_DISPLAY: "var(--ppc-purple)"};
-  const MCOL = {BROAD: "var(--ppc-orange)", PHRASE: "var(--ppc-blue)",
-                EXACT: "var(--ppc-green)",
-                TARGETING_EXPRESSION: "var(--ppc-red)",
-                TARGETING_EXPRESSION_PREDEFINED: "var(--ppc-muted)"};
+  // ONE COLOUR PER MATCH TYPE, the design system's (foundations.css --as-viz-*),
+  // used by the ring, the table, the key AND the spend-per-day chart. Owner
+  // decision, 28 Sep 2026: "Exact = red, Auto = pink, they must be clearly
+  // distinguishable". Before this the ring said Exact was green while the chart
+  // drew it red, and Auto came out red on the chart as well.
+  const MCOL = {BROAD: "var(--as-viz-broad)", PHRASE: "var(--as-viz-phrase)",
+                EXACT: "var(--as-viz-exact)",
+                TARGETING_EXPRESSION: "var(--as-viz-product)",
+                TARGETING_EXPRESSION_PREDEFINED: "var(--as-viz-auto)"};
 
   const totalSpend = prods.reduce(function(a, p){ return a + (p.spend || 0); }, 0);
 
@@ -420,8 +425,10 @@ function ppccBreakdown(j, cur){
   // with two comparable products; with one it is a filled blob, and salesCombo
   // draws lines. The colours and the legend are the mockup's either way, and a
   // line is the shape you can hover a single day on.
-  const KEYMAP = {SPONSORED_PRODUCTS: "ad_spend", SPONSORED_BRANDS: "ad_sales",
-                  SPONSORED_DISPLAY: "roas"};
+  //
+  // EACH LINE WEARS ITS RING COLOUR (PCOL), keyed by the product itself. It used
+  // to borrow a metric key, so Sponsored Products was yellow on the ring and
+  // ad_spend red on the chart -- the red that now means Exact.
   let lines = (dbp.series || [])
     .filter(function(s){
       return (s.values || []).some(function(v){
@@ -429,8 +436,8 @@ function ppccBreakdown(j, cur){
     })
     .map(function(s){
       const k = String(s.key).toUpperCase();
-      return {key: KEYMAP[k] || "ad_spend", label: NICE[k] || s.key,
-              values: s.values};
+      return {key: "ap_" + k.replace(/[^A-Z0-9_]/g, ""), label: NICE[k] || s.key,
+              color: PCOL[k] || "var(--ppc-muted)", values: s.values};
     });
   let cols = dbp.dates || [];
   let chartNote = "Spend per day by ad product";
@@ -459,9 +466,18 @@ function ppccBreakdown(j, cur){
   const PKEY = ["ad_spend", "ad_sales", "roas", "clicks"];
   const mtd = j.match_type_daily || {};
   if(lines.length < 2 && (mtd.lines || []).length > 1){
+    // Keyed by the match type itself, not a borrowed metric key: two lines on
+    // one key would share a colour AND hide together when the key is clicked.
+    // The server groups by the stored spelling, so "exact" and "EXACT" could
+    // both arrive; the second gets its position added rather than sharing a key.
+    const seen = {};
     lines = mtd.lines.map(function(s, i){
-      return {key: PKEY[i % PKEY.length], label: s.name || s.key,
-              values: s.values};
+      const k = String(s.key || "").toUpperCase();
+      let key = "mt_" + k.replace(/[^A-Z0-9_]/g, "");
+      if(seen[key]) key += "_" + i;
+      seen[key] = true;
+      return {key: key, label: s.name || s.key,
+              color: MCOL[k] || "var(--ppc-muted)", values: s.values};
     });
     cols = mtd.columns || [];
     chartNote = "Spend per day by match type — this account runs one ad "
@@ -470,8 +486,14 @@ function ppccBreakdown(j, cur){
 
   const pd = j.placement_daily || {};
   if(lines.length < 2 && (pd.series || []).length > 1){
+    // Keyed by position, coloured as before for the first four; a fifth used
+    // to share the first one's key, colour and show/hide state.
     lines = pd.series.map(function(s, i){
-      return {key: PKEY[i % PKEY.length], label: s.label, values: s.values};
+      return {key: "pl_" + i, label: s.label,
+              color: (i < PKEY.length && typeof SC_SERIES !== "undefined"
+                      && SC_SERIES[PKEY[i]])
+                       ? SC_SERIES[PKEY[i]].color : "var(--ppc-muted)",
+              values: s.values};
     });
     cols = pd.dates || [];
     chartNote = "Spend per day by placement — this account runs one ad product, "
@@ -492,8 +514,7 @@ function ppccBreakdown(j, cur){
     +   '<span style="font-weight:400;font-size:12px;color:var(--ppc-muted);'
     +   'margin-left:6px">spend by ad product, and how each match type '
     +   'performed</span></div>'
-    + '<div style="display:grid;grid-template-columns:260px 1fr;gap:24px;'
-    +   'margin-top:16px;align-items:center">'
+    + '<div class="ppc-break-grid">'
     + '<div style="text-align:center">'
     +   ppcDonut(_ppccRing(prods, matches, NICE, PCOL, MCOL).segments, 220)
     +   '<div style="font-size:12px;color:var(--ppc-muted)">'
