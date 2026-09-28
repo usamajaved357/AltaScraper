@@ -1,0 +1,66 @@
+/* static/css/pnl.css -- the plain-language Profit & Loss (static/js/pnl.js,
+ * pnlPlainHtml). Design package 05 section 8, owner-approved: three tiles, then
+ * "Where your costs went". Every colour and size is a foundations.css token. */
+
+.pnl-plain{ margin: 0 0 var(--as-space-4); }
+
+.pnl-tiles{
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--as-space-3); margin: 0 0 var(--as-space-3);
+}
+.pnl-tile{
+  background: var(--as-surface-1); border: 1px solid var(--as-border);
+  border-radius: var(--as-radius-lg); padding: var(--as-space-3) var(--as-space-4);
+}
+.pnl-tl{ font: var(--as-text-small); color: var(--as-text-muted); }
+.pnl-tv{ font: var(--as-text-kpi-lg); color: var(--as-text-primary);
+  font-variant-numeric: tabular-nums; margin: var(--as-space-1) 0; }
+.pnl-ts{ font: var(--as-text-caption); color: var(--as-text-muted); }
+/* The one positive card -- and the danger tone when the window lost money. */
+.pnl-tile.kept{ background: var(--as-success-bg); border-color: var(--as-success-border); }
+.pnl-tile.kept .pnl-tv{ color: var(--as-success); }
+.pnl-tile.lost{ background: var(--as-danger-bg); border-color: var(--as-danger-border); }
+.pnl-tile.lost .pnl-tv{ color: var(--as-danger); }
+
+.pnl-where{
+  background: var(--as-surface-1); border: 1px solid var(--as-border);
+  border-radius: var(--as-radius-lg); padding: var(--as-space-3) var(--as-space-4);
+}
+.pnl-wh{ font: var(--as-text-card-title); color: var(--as-text-primary);
+  margin: 0 0 var(--as-space-2); }
+/* swatch · label+why · amount · 6px share bar · "x% of sales" */
+.pnl-row{
+  display: grid; align-items: center;
+  grid-template-columns: 10px minmax(0, 1.6fr) auto minmax(60px, 1fr) 84px;
+  gap: var(--as-space-3); padding: var(--as-space-2) 0;
+  border-top: 1px solid var(--as-border-subtle);
+}
+.pnl-wh + .pnl-row{ border-top: 0; }
+.pnl-sw{ width: 10px; height: 10px; border-radius: 3px; }
+.pnl-rl{ min-width: 0; font: var(--as-text-body); color: var(--as-text-primary); }
+.pnl-rl b{ font-weight: 600; margin-right: var(--as-space-2); }
+.pnl-rl span{ font: var(--as-text-caption); color: var(--as-text-muted); }
+.pnl-ra{ font: var(--as-text-body-strong); color: var(--as-text-primary);
+  font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.pnl-bar{ height: 6px; border-radius: var(--as-radius-pill);
+  background: var(--as-surface-3); overflow: hidden; }
+.pnl-bar i{ display: block; height: 100%; border-radius: inherit; }
+.pnl-rp{ font: var(--as-text-caption); color: var(--as-text-muted);
+  text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.pnl-alert{
+  margin: var(--as-space-3) 0 0; padding: var(--as-space-2) var(--as-space-3);
+  border-radius: var(--as-radius-md); font: var(--as-text-small);
+  background: var(--as-warning-bg); border: 1px solid var(--as-warning-border);
+  color: var(--as-text-primary);
+}
+.pnl-alert .ti{ color: var(--as-warning); }
+
+@media (max-width: 720px){
+  .pnl-tiles{ grid-template-columns: minmax(0, 1fr); }
+  /* On a phone the bar takes its own line under the label. */
+  .pnl-row{ grid-template-columns: 10px minmax(0, 1fr) auto;
+    grid-template-areas: "sw rl ra" ". bar rp"; row-gap: var(--as-space-1); }
+  .pnl-sw{ grid-area: sw; } .pnl-rl{ grid-area: rl; } .pnl-ra{ grid-area: ra; }
+  .pnl-bar{ grid-area: bar; } .pnl-rp{ grid-area: rp; }
+}
