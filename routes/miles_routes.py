@@ -314,8 +314,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                     _uploaded = [str(x).strip() for x in (_MILES_STATE.get("items") or [])
                                  if str(x).strip()]
                     if _uploaded:
-                        with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _itf:
-                            json.dump(_uploaded, _itf)
+                        from domain import jsonstore as _js   # atomic, as below
+                        if not _js.write_json_atomic(os.path.join(_base_g, "miles_items.json"), _uploaded):
+                            raise OSError("could not write miles_items.json")
                         yield (f"data: [items] {len(_uploaded)} uploaded item(s) in scope -- generating "
                                f"ONLY these (items in Drive but NOT in your list are ignored; existing "
                                f"rows are skipped)\n\n")
@@ -323,8 +324,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         _cfg_g = json.load(open(_cfg_path, encoding="utf-8"))
                         _drv_g, _derr_g = _MG.build_drive_rw(_cfg_g, _base_g)
                         _all_items = _MG.list_all_item_folders(_drv_g, log=lambda m: None) if _drv_g else []
-                        with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _itf:
-                            json.dump(_all_items, _itf)
+                        from domain import jsonstore as _js   # atomic
+                        if not _js.write_json_atomic(os.path.join(_base_g, "miles_items.json"), _all_items):
+                            raise OSError("could not write miles_items.json")
                         if _all_items:
                             yield (f"data: [items] no uploaded list this session -- {len(_all_items)} "
                                    f"item folder(s) in Drive; building the ones not already in the sheet\n\n")
@@ -520,8 +522,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                            f"these (items in Drive but NOT in your list are ignored; existing rows in "
                            f"the output tab are skipped)...\n\n")
                     try:
-                        with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _f:
-                            json.dump(_all, _f)
+                        from domain import jsonstore as _js   # atomic: a crash cannot empty it
+                        if not _js.write_json_atomic(os.path.join(_base_g, "miles_items.json"), _all):
+                            raise OSError("could not write miles_items.json")
                     except Exception as _we:
                         yield f"data: [error] could not write item list for generation: {_we}\n\n"
                         return

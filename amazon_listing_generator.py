@@ -2105,7 +2105,9 @@ def load_model_counter() -> dict:
     if not COUNTER_PATH.exists():
         return {}
     try:
-        with open(COUNTER_PATH) as f:
+        # UTF-8, as it is written (domain/jsonstore): the system default
+        # encoding would fail on any non-ASCII key and silently reset the counter.
+        with open(COUNTER_PATH, encoding="utf-8") as f:
             return json.load(f) or {}
     except Exception:
         return {}
@@ -2113,8 +2115,11 @@ def load_model_counter() -> dict:
 
 def save_model_counter(data: dict):
     try:
-        with open(COUNTER_PATH, "w") as f:
-            json.dump(data, f, indent=2)
+        # Atomically: emptied by a crash mid-write, the counter would restart
+        # and hand out model numbers already used (domain/jsonstore).
+        from domain import jsonstore as _js
+        if not _js.write_json_atomic(COUNTER_PATH, data, indent=2):
+            raise OSError("write failed")
     except Exception as e:
         console.print(f"  [yellow]Could not persist model counter: {e}[/yellow]")
 

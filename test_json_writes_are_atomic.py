@@ -45,6 +45,25 @@ for root, dirs, files in os.walk(HERE):
                 found.append("%s:%d" % (os.path.relpath(p, HERE), i))
 check("json.dump(..., open(path, 'w')) one-liners", found, [])
 
+# ...and the two-line form, `with open(p, "w") as f:` then `json.dump(..., f)`,
+# which the one-liner scan missed (found 28 Sep 2026: the model-number counter,
+# app_state.json, the Drive map, image instructions, Miles files). A write to a
+# `tmp` path that is then os.replace()d IS atomic and is allowed; so is scripts/.
+TWO = re.compile(r'with open\(([^\n]*?),\s*["\']w["\'][^\n]*\)\s+as\s+\w+:\s*\n\s*json\.dump\(')
+found2 = []
+for root, dirs, files in os.walk(HERE):
+    dirs[:] = [d for d in dirs if d not in SKIP_DIRS | {"scripts", "tools"}]
+    for f in files:
+        if not f.endswith(".py") or f.startswith("test_") or f.endswith(".baseline.py"):
+            continue
+        p = os.path.join(root, f)
+        s = open(p, encoding="utf-8", errors="replace").read()
+        for m in TWO.finditer(s):
+            if m.group(1).strip() in ("tmp", "_tmp", "tmp_path"):
+                continue
+            found2.append("%s:%d" % (os.path.relpath(p, HERE), s[:m.start()].count("\n") + 1))
+check("with open(path, 'w') then json.dump -- two-line form", found2, [])
+
 for rel, fn in (("monitor/asin_monitor.py", "def _save("),
                 ("monitor/checker.py", "def _save_hist(")):
     src = open(os.path.join(HERE, rel), encoding="utf-8").read()

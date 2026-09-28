@@ -367,8 +367,8 @@ def _save_active_state():
     try:
         data = {k: _state.shared(k) for k in _ACTIVE_KEYS
                 if _state.shared(k) is not None}
-        with open(_ACTIVE_STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        from domain import jsonstore as _js     # atomic (a crash cannot empty it)
+        _js.write_json_atomic(_ACTIVE_STATE_PATH, data, indent=2)
     except Exception:
         pass
 
@@ -1494,46 +1494,60 @@ def _drive_upload_image(parent_folder_id, sku, product_name, local_path, filenam
     }
 
 
-def _drive_map_path():
+def _drive_map_path(media_url=None):
     """Path to the sidecar that maps a local media relpath -> its Drive file id +
     URLs, so we can (a) reuse the Amazon-usable link and (b) delete from Drive when
-    the local copy is deleted. Kept next to config.json, per active account root."""
+    the local copy is deleted. Kept next to config.json, per account root.
+
+    THE ACCOUNT IS THE ONE IN THE URL when there is one ("/media/_acct/<id>/..."):
+    an image-generation worker has no request and so resolved the OPEN account,
+    filing the entry under the wrong map -- and deleting the image from its own
+    account then left the Drive copy behind (background-jobs audit)."""
     try:
+        u = str(media_url or "")
+        if u.startswith("/media/_acct/"):
+            _aid = u[len("/media/_acct/"):].split("/", 1)[0]
+            if _aid:
+                return os.path.join(_media_root(), "_acct", _safe_sku(_aid), "_drive_map.json")
         return os.path.join(_account_media_root(), "_drive_map.json")
     except Exception:
         return os.path.join(_media_root(), "_drive_map.json")
 
 
-def _drive_map_load():
+def _drive_map_load(media_url=None):
     try:
-        with open(_drive_map_path(), encoding="utf-8") as f:
+        with open(_drive_map_path(media_url), encoding="utf-8") as f:
             return json.load(f) or {}
     except Exception:
         return {}
 
 
-def _drive_map_save(m):
+def _drive_map_save(m, media_url=None):
+    # Atomically: a crash mid-write used to empty the map and orphan every
+    # Drive copy it listed (domain/jsonstore).
+    from domain import jsonstore as _js
+    _p = _drive_map_path(media_url)
     try:
-        with open(_drive_map_path(), "w", encoding="utf-8") as f:
-            json.dump(m, f)
+        os.makedirs(os.path.dirname(_p), exist_ok=True)
     except Exception:
         pass
+    _js.write_json_atomic(_p, m)
 
 
 def _drive_map_put(media_url, info):
-    m = _drive_map_load()
+    m = _drive_map_load(media_url)
     m[str(media_url)] = info
-    _drive_map_save(m)
+    _drive_map_save(m, media_url)
 
 
 def _drive_map_get(media_url):
-    return _drive_map_load().get(str(media_url))
+    return _drive_map_load(media_url).get(str(media_url))
 
 
 def _drive_map_remove(media_url):
-    m = _drive_map_load()
+    m = _drive_map_load(media_url)
     info = m.pop(str(media_url), None)
-    _drive_map_save(m)
+    _drive_map_save(m, media_url)
     return info
 
 
@@ -2398,9 +2412,8 @@ def _save_img_instructions(text, aid=None, scope="account"):
         else:
             aid = aid or _state.get("active_account_id", "") or ""
             d["by_account"][aid] = text or ""
-        with open(_img_instructions_path(), "w", encoding="utf-8") as f:
-            json.dump(d, f, indent=2)
-        return True
+        from domain import jsonstore as _js     # atomic (a crash cannot empty it)
+        return bool(_js.write_json_atomic(_img_instructions_path(), d, indent=2))
     except Exception:
         return False
 

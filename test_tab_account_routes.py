@@ -215,6 +215,12 @@ with app.test_request_context("/genimage/recipe?account=batch_account"):
           AIU.whose(), "batch_account")
 check("outside a request, the context as before", AIU.whose(), "last_browsed")
 
+dmp = DASH.split("def _drive_map_path(")[1].split("\ndef ")[0]
+check("the Drive map follows the account named in the image's own URL",
+      'u.startswith("/media/_acct/")' in dmp, True)
+check("  and put/get/remove pass the URL to it",
+      all(("_drive_map_load(media_url)" in DASH.split("def %s(" % fn)[1].split("\ndef ")[0])
+          for fn in ("_drive_map_put", "_drive_map_get", "_drive_map_remove")), True)
 GEN2 = src("routes/genimage_routes.py")
 ref = GEN2[GEN2.index('if ref_img == "__BRAND_REF__":'):][:900]
 check("the brand reference photo is never the open account's for another tab",
