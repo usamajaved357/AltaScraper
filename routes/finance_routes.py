@@ -9,6 +9,7 @@ import datetime as _dt
 from flask import request, jsonify
 
 from domain import contribution as _contrib
+from domain import finance_coverage as _fcov   # its SQL (architecture batch A6)
 from routes import scope as _scope_mod
 
 
@@ -65,10 +66,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         where money is read off.
         """
         try:
-            from data import db as _db
-            rows = _db.get_db(CONFIG_PATH).execute(
-                "SELECT DISTINCT marketplace FROM finance_daily "
-                "WHERE workspace_id=? LIMIT 2", (wsid,)).fetchall()
+            rows = _fcov.marketplaces_with_data(CONFIG_PATH, wsid)
             return rows[0]["marketplace"] if len(rows) == 1 else ""
         except Exception:
             return ""
@@ -139,18 +137,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         empty_note, have = "", {}
         if not rows:
             try:
-                from data import db as _db
-                r = _db.get_db(CONFIG_PATH).execute(
-                    "SELECT COUNT(*) n, MIN(date) a, MAX(date) b FROM finance_daily "
-                    "WHERE workspace_id=? AND marketplace=?",
-                    (wsid, mkt)).fetchone()
+                r = _fcov.span(CONFIG_PATH, wsid, mkt)
                 have = {"rows": (r["n"] if r else 0) or 0,
                         "first": (r["a"] if r else None),
                         "last": (r["b"] if r else None)}
-                other = _db.get_db(CONFIG_PATH).execute(
-                    "SELECT marketplace, COUNT(*) n FROM finance_daily "
-                    "WHERE workspace_id=? GROUP BY marketplace",
-                    (wsid,)).fetchall()
+                other = _fcov.rows_per_marketplace(CONFIG_PATH, wsid)
                 have["other_marketplaces"] = {x["marketplace"]: x["n"]
                                               for x in other
                                               if x["marketplace"] != mkt}
@@ -193,16 +184,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # second place for a caveat to hide.
         notes = _contrib.notes(rows, totals)
         try:
-            from data import db as _db
-            _c = _db.get_db(CONFIG_PATH)
-            _f = _c.execute(
-                "SELECT COUNT(DISTINCT asin) a, MAX(date) last FROM finance_daily "
-                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=?",
-                (wsid, mkt, start, end)).fetchone()
-            _s = _c.execute(
-                "SELECT COUNT(DISTINCT asin) a FROM sales_daily "
-                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
-                "  AND asin<>'*'", (wsid, mkt, start, end)).fetchone()
+            _c, _f, _s = _fcov.settled_and_sold(CONFIG_PATH, wsid, mkt, start, end)
             settled = int((_f["a"] if _f else 0) or 0)
             sold = int((_s["a"] if _s else 0) or 0)
             last = (_f["last"] if _f else None) or ""
@@ -221,11 +203,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 # "the last few days are not in the figures" about days with no
                 # sales is a warning about nothing, and those are the ones that
                 # teach a reader to skip the list.
-                _gap = _c.execute(
-                    "SELECT COALESCE(SUM(ordered_sales),0) s FROM sales_daily "
-                    "WHERE workspace_id=? AND marketplace=? AND asin='*' "
-                    "  AND date>? AND date<=?",
-                    (wsid, mkt, last, end)).fetchone()
+                _gap = _fcov.sales_after(_c, wsid, mkt, last, end)
                 if float((_gap["s"] if _gap else 0) or 0) > 0:
                     notes.append({"level": "info", "text": (
                         "Nothing has settled after %s yet, so the last few days "
