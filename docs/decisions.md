@@ -188,3 +188,20 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   types; memory project facts migrated into docs/ (originals kept); shared
   untracked `current-work.md` and `active/` in the main checkout.
   Source: read.txt, 27 Sep 2026.
+
+## Code structure
+
+- **28 Sep 2026 — Milestone 4 approved: split the big files by feature, batches
+  0–9 in the planned order.** "Approved for Milestone 4. Proceed with all batches
+  0–9 in the proposed order." Explicit OK to move functions out of dashboard.py
+  and the listing engine (batches 7–9, CLAUDE.md Rule 3). Duplicate CSS rules may
+  be merged "only where you can prove the rendered result remains identical".
+  Batch 8 may "pass the required shared app state explicitly to the
+  background-job modules". Rules out: rewriting build_api_attributes in this
+  milestone ("Leave it where it is; plan that separately later"); patching
+  around a regression ("revert that batch rather than patching around the
+  regression"); push, merge or deploy. Working style: "Continue autonomously
+  through all approved batches. Do not stop between batches for routine
+  questions; defer non-blocking issues to the final report."
+  Source: owner message, plan doc "AltaScraper — Milestone 4: splitting the big
+  files by feature".

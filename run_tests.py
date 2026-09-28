@@ -71,6 +71,15 @@ def _tmp_env():
     env["TMPDIR"] = _TMP_ROOT
     env["TEMP"] = _TMP_ROOT
     env["TMP"] = _TMP_ROOT
+    # A TEST READS A FEATURE, NOT A FILE (Milestone 4). The big files are being
+    # split by feature; a test that reads an original by its old path gets the
+    # whole feature back (tests_support/features.json). Python picks this up
+    # from sitecustomize.py on PYTHONPATH, Node from --require -- both in every
+    # process a test starts. See tests_support/README.md.
+    sup = os.path.join(ROOT, "tests_support")
+    env["PYTHONPATH"] = sup + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    req = "--require " + os.path.join(sup, "feature_read.js")
+    env["NODE_OPTIONS"] = (env.get("NODE_OPTIONS", "") + " " + req).strip()
     return env
 
 
