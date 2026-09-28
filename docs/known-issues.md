@@ -127,6 +127,21 @@ has these until the owner merges):
   up without one (a new warning would be a behaviour change); the generator's
   "Skipping main image" console message is unreachable (it reads the value
   after popping it) -- pre-existing, in the protected generator, not changed.
+- **Batches 11-12 (28 Sep 2026).** The Drive map (which Drive file backs which
+  app image) now lives in the account named by the image's own URL -- the image
+  worker filed entries under the open account, so deleting the image later left
+  its Drive copy behind (entries misfiled before this stay orphaned; they were
+  never findable). JSON files written truncate-then-write in the two-line form
+  the first scan missed are now atomic: the generator's MODEL-NUMBER COUNTER
+  (emptied by a crash it would restart and reuse numbers), app_state.json, the
+  Drive map, image instructions, Miles run metadata and item list; the test now
+  catches that form. ppc_brand_terms has one reader and one writer
+  (domain/ppc_view; audit A11 in part) -- the weekly screen had a second copy
+  of the read.
+  VERIFIED, NOT CHANGED (owner: no cleanup-only deletions): same-named escape
+  helpers defined in more than one file (_aiEsc, _sEsc twice in sales.js,
+  _esc) all escape identically, so which copy wins at load time changes
+  nothing.
 - **Batch 10 (28 Sep 2026): audit A16 done.** The Brand panel's markup is
   templates/brand_panel.html and its script static/js/brand_panel.js (moved
   byte-for-byte, then its native alert/confirm, hard-coded colours and one

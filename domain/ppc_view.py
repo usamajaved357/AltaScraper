@@ -103,6 +103,22 @@ def brand_terms(config_path, workspace_id):
         return []
 
 
+def change_brand_terms(config_path, workspace_id, add=(), drop=(), now=""):
+    """Add and remove brand words for one account -- the ONE writer of
+    ppc_brand_terms (moved out of routes/ppc_routes, audit A11 / Rule 12;
+    brand_terms() above is the one reader). Words arrive already normalised."""
+    from data import db as _db
+    conn = _db.get_db(config_path)
+    for t in add or ():
+        conn.execute("INSERT OR IGNORE INTO ppc_brand_terms "
+                     "(workspace_id, term, added_at) VALUES (?,?,?)",
+                     (workspace_id, t, now))
+    for t in drop or ():
+        conn.execute("DELETE FROM ppc_brand_terms WHERE "
+                     "workspace_id=? AND term=?", (workspace_id, t))
+    conn.commit()
+
+
 def is_branded(term, brands):
     """Does this search term contain one of the brand's own words?
 

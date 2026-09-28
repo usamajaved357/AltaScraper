@@ -59,15 +59,11 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         return aid, mkt
 
     def _brand_terms(wsid):
-        """The seller's own words, from the list the PPC screen already uses."""
-        try:
-            from data import db as _db
-            rows = _db.get_db(CONFIG_PATH).execute(
-                "SELECT term FROM ppc_brand_terms WHERE workspace_id=?",
-                (wsid,)).fetchall()
-            return [r["term"] for r in rows]
-        except Exception:
-            return []
+        """The seller's own words -- read by the SAME function the PPC screen
+        uses (domain/ppc_view.brand_terms; this was a second copy of its SQL,
+        Rule 12). Terms are stored lower-cased, so the words are the same."""
+        from domain import ppc_view as _pv
+        return _pv.brand_terms(CONFIG_PATH, wsid)
 
     # The half-built pack, per account+marketplace, while both reports are being
     # uploaded. In memory on purpose: it is the two minutes between dropping the
