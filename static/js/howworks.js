@@ -571,7 +571,7 @@ let ES=null;
 function showStop(on){ const b=document.getElementById("stopbtn"); if(b) b.disabled=!on; }
 async function stopRun(){
   const b=document.getElementById("stopbtn"); if(b) b.disabled=true;
-  try{ const r=await fetch("/stop",{method:"POST"}); const j=await r.json();
+  try{ const r=await fetch("/stop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(typeof acctBody==="function"?acctBody({}):{})}); const j=await r.json();
        toast(j.ok?"Stopping the run\u2026":("Stop: "+(j.error||"nothing running"))); }
   catch(e){ toast("Stop failed"); if(b) b.disabled=false; }
 }

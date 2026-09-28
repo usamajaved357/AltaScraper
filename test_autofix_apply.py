@@ -33,6 +33,45 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 os.chdir(HERE)
 
+# ---------------------------------------------------------------------------
+# A FIXTURE OF ITS OWN (28 Sep 2026). The round-trip section used to read the
+# owner's real config.json and database; it now builds a temp dir with a
+# stand-in config and seeds listings through the app's own store: three on
+# nestwell_goods (the account the bug was seen on, so the busiest workspace)
+# and one on jack_uk, so a row number that resolved into the wrong workspace
+# would show. Environment set BEFORE any app import.
+# ---------------------------------------------------------------------------
+import tempfile as _tmpf
+
+_FIX = _tmpf.mkdtemp(prefix="fixt_autofix_")
+CFG = os.path.join(_FIX, "config.json")
+_DBP = os.path.join(_FIX, "altascraper.db")
+with open(CFG, "w", encoding="utf-8") as _fh:
+    json.dump({"anthropic_api_key": "",
+               "google_spreadsheet_id": "test-placeholder-sheet",
+               "google_service_account_json": "test-placeholder-sa.json",
+               "accounts": [{"id": w, "name": w, "marketplace": "UK"}
+                            for w in ("nestwell_goods", "jack_uk")],
+               "repricer_enabled": False, "asin_monitor_enabled": False}, _fh)
+os.environ["CONFIG_PATH"] = CFG
+os.environ["ALTASCRAPER_DB"] = _DBP
+
+
+def _seed():
+    from data import db as _sdb
+    from data.store import ListingStore
+    assert os.path.abspath(_sdb.db_path(CFG)) == os.path.abspath(_DBP)
+    assert os.path.dirname(os.path.abspath(_DBP)) == os.path.abspath(_FIX)
+    for ws, sku in (("nestwell_goods", "10.99_3Days_B000FIXA01"),
+                    ("jack_uk", "8.99_3Days_B000FIXA02"),
+                    ("nestwell_goods", "11.99_3Days_B000FIXA03"),
+                    ("nestwell_goods", "12.99_3Days_B000FIXA04")):
+        ListingStore(ws, config_path=CFG).upsert_row(
+            {"SKU": sku, "Status": "GENERATED", "Title": "Fixture " + sku})
+
+
+_seed()
+
 fails = []
 
 
@@ -62,15 +101,15 @@ truthy("  and the store's own lookup uses it",
            os.path.join(HERE, "data", "store.py"), encoding="utf-8").read())
 
 # ---------------------------------------------------------------------------
-print("\n=== against the real database: every record can address itself ===")
+print("\n=== against the (fixture) database: every record can address itself ===")
 from data import choice as _choice
 
 cfg = None
 try:
-    cfg = json.load(open("config.json", encoding="utf-8"))
+    cfg = json.load(open(CFG, encoding="utf-8"))
 except Exception:
     pass
-backend = _choice.resolve(cfg or {}, "config.json")
+backend = _choice.resolve(cfg or {}, CFG)
 print("  store in use: %s" % backend)
 
 if backend != "db":
@@ -79,7 +118,7 @@ else:
     from data import backend as _data_backend
     from data import db as _db
 
-    conn = _db.get_db("config.json")
+    conn = _db.get_db(CFG)
     counts = {r["workspace_id"]: r["n"] for r in conn.execute(
         "SELECT workspace_id, COUNT(*) n FROM listings "
         "GROUP BY workspace_id ORDER BY n DESC")}
@@ -88,7 +127,7 @@ else:
 
     if wid:
         state = {"active_account_id": wid}
-        _ws, _records = _data_backend.make(state, config_path="config.json")
+        _ws, _records = _data_backend.make(state, config_path=CFG)
         ws = _ws()
         rows = _records(ws)
         check("  every stored listing came back", len(rows), counts[wid])

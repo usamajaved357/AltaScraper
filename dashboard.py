@@ -3580,8 +3580,8 @@ def _load_recipes():
 
 def _save_recipes(data):
     try:
-        json.dump(data, open(_recipes_path(), "w", encoding="utf-8"), indent=2)
-        return True
+        from domain import jsonstore   # atomic: a crash mid-save lost every recipe
+        return jsonstore.write_json_atomic(_recipes_path(), data, indent=2)
     except Exception:
         return False
 
@@ -3628,8 +3628,8 @@ def _load_miles_templates():
 
 def _save_miles_templates(data):
     try:
-        json.dump(data, open(_miles_tpl_index_path(), "w", encoding="utf-8"), indent=2)
-        return True
+        from domain import jsonstore   # atomic, as _save_recipes
+        return jsonstore.write_json_atomic(_miles_tpl_index_path(), data, indent=2)
     except Exception:
         return False
 

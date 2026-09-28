@@ -117,16 +117,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         then to the one that actually HAS a snapshot -- because a marketplace
         with cached listings is a better guess than none at all, and there is
         usually exactly one.
+
+        THE ACCOUNT THE PAGE NAMED, through the shared resolver (routes/scope,
+        Rule 12). This read ?id= only, and every GET from the Repricer sends
+        ?account= -- so the list, the candidates and the checks were answered
+        for the server's OPEN account, which is whichever tab switched last.
+        "__all__" is not a country and is dropped there; the marketplace
+        follows the named account; the only-one-with-data fallback is kept.
         """
-        acc = _active_account() or {}
-        body = request.get_json(silent=True) or {}
-        wsid = (request.args.get("id") or body.get("id")
-                or acc.get("id") or _state.get("active_account_id") or "")
-        mkt = (request.args.get("marketplace") or body.get("marketplace")
-               or _state.get("active_marketplace")
-               or acc.get("default_marketplace") or "").upper()
-        if not mkt and wsid:
-            mkt = _only_marketplace_with_data(wsid)
+        from routes import scope as _scope_mod
+        _acc, wsid, mkt = _scope_mod.for_request(
+            request, state=_state, active_account=_active_account, cfg=_cfg,
+            config_path=CONFIG_PATH, with_data=_only_marketplace_with_data)
         return wsid, mkt
 
     def _where_acc():
@@ -134,8 +136,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         wsid, mkt = _where()
         cfg = _cfg() if callable(_cfg) else (_cfg or {})
         acc = next((a for a in (cfg.get("accounts") or [])
-                    if str(a.get("id") or "") == str(wsid)), None) \
-              or (_active_account() or {})
+                    if str(a.get("id") or "") == str(wsid)), None)
+        if acc is None:
+            # The open account's record only if it IS the one named. Otherwise
+            # a named-but-unknown id was paired with another seller's
+            # credentials (see routes/scope.resolve); {} makes the route refuse.
+            _open = _active_account() or {}
+            acc = _open if (not wsid or str(_open.get("id") or "") == str(wsid)) else {}
         return acc, wsid, mkt
 
     def _only_marketplace_with_data(wsid):

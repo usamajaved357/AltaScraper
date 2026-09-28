@@ -955,7 +955,7 @@ async function sourcingTrackAll(btn){
   const old = btn ? btn.innerHTML : "";
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="genspin"></span> reading your listings…'; }
   try{
-    const cand = await (await fetch("/sourcing/candidates")).json();
+    const cand = await (await fetch(_srcUrl("/sourcing/candidates"))).json();
     const items = (cand && cand.items) || [];
     const todo = items.filter(function(x){ return !x.enrolled; }).map(function(x){ return x.sku; });
     if(!items.length){
@@ -1012,10 +1012,11 @@ let SRC_LASTBULK = null;
 async function sourcingClearSuppliers(){
   let c = null;
   try{
-    // No query string, like every other /sourcing call on this page: the
-    // server's _where() resolves the open account and marketplace, and adding a
-    // second way to say it here is how the two come to disagree.
-    c = await (await fetch("/sourcing/sources/count")).json();
+    // THE TAB'S ACCOUNT, like every other /sourcing call (_srcUrl). This used
+    // to send none and get the server's open account -- once _where() began
+    // reading ?account=, that meant counting and then DELETING another tab's
+    // account's suppliers (batch 1 review).
+    c = await (await fetch(_srcUrl("/sourcing/sources/count"))).json();
     if(!c || !c.ok){ toast((c && c.error) || "Could not read the suppliers."); return; }
   }catch(e){ toast(String(e)); return; }
 
@@ -1048,7 +1049,7 @@ async function sourcingClearSuppliers(){
   }
 
   try{
-    const r = await fetch("/sourcing/sources/clear", {
+    const r = await fetch(_srcUrl("/sourcing/sources/clear"), {
       method: "POST", headers: {"Content-Type": "application/json"},
       // The number agreed to goes back with it: if a sweep finished while the
       // dialog was open, the server refuses rather than deleting a different
@@ -1073,7 +1074,7 @@ async function sourcingUpload(inp){
   toast("Reading " + f.name + "…");
   let j;
   try{
-    j = await (await fetch("/sourcing/sources/upload", {method: "POST", body: fd})).json();
+    j = await (await fetch(_srcUrl("/sourcing/sources/upload"), {method: "POST", body: fd})).json();
   }catch(e){ toast(String(e)); return; }
   finally{ inp.value = ""; }
 
@@ -2279,7 +2280,7 @@ function _srcMoreMenu(j){
     + 'column of links -- the app matches each link to the right listing and '
     + 'starts tracking it. Nothing is priced.">'
     + '<i class="ti ti-table-import"></i><span>Suppliers from a sheet</span></label>'
-    + '<a class="rp-mi" href="/sourcing/template.csv" onclick="_srcMoreClose()" '
+    + '<a class="rp-mi" href="' + esc(_srcUrl("/sourcing/template.csv")) + '" onclick="_srcMoreClose()" '
     + 'title="A sheet already listing every SKU you are tracking, with its '
     + 'ASIN, product name and its suppliers across ten columns headed '
     + '&quot;supplier 1&quot; to &quot;supplier 10&quot;. Need more than ten? '

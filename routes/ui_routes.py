@@ -224,7 +224,13 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
         # Reacherd ended a Nestwell Goods submit that was halfway through.
         # Defaults to None when the caller did not inject state, in which case
         # Stop keeps its old meaning rather than silently stopping nothing.
-        acct = str((_state or {}).get("active_account_id", "") or "")
+        #
+        # THE TAB'S ACCOUNT FIRST. The server's global belongs to whichever tab
+        # switched last, so Stop pressed in a Nestwell tab while another tab had
+        # opened Jack stopped nothing (batch 1 review). The page names its own.
+        from domain import request_account as _req_acct
+        acct = (_req_acct.named(request)
+                or str((_state or {}).get("active_account_id", "") or ""))
         stopped = _SLOTS.stop(owner=(uid or None), account=(acct or None))
         # What was deliberately left alone, so Stop never silently does less
         # than it appears to.
@@ -242,8 +248,16 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
         # carried on spending. Now: if nothing of the caller's was stopped and
         # there is a live process, end it. `left` above already records what
         # belongs to somebody else, and that is what the reply reports.
-        if not stopped:
-            p = _running.get("proc")
+        #
+        # EXCEPT ANOTHER ACCOUNT'S. That handle is one slot for the whole server
+        # and holds whichever run started last -- so with Nestwell submitting,
+        # Stop pressed on Jack (nothing of Jack's running) ended Nestwell's run
+        # (master audit A15). A process attached to another account's slot is
+        # left alone, flags and all; it is counted in `left` above.
+        p = _running.get("proc")
+        if not stopped and _SLOTS.belongs_elsewhere(p, acct):
+            pass
+        elif not stopped:
             if p is not None:
                 try:
                     _kill_proc(p)

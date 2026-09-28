@@ -175,18 +175,44 @@ truthy("  with the measurement that found it",
 # The renderer already read it; that half was never broken.
 truthy("the row renderer was already reading it", "r.amazon_fees" in fn(LR, "lrFees"))
 truthy("  and the provenance beside it", "r.fee_source" in fn(LR, "lrFees"))
-# AND THE DATABASE REALLY HAS THEM -- measured here, not quoted.
+# AND THE DATABASE REALLY HAS THEM. This used to open the owner's real
+# altascraper.db beside the code (and skipped silently where there was none).
+# A FIXTURE NOW (28 Sep 2026): a temp database built by the app's own schema,
+# one listing written through the app's own store with a fee and its source,
+# and one with none -- so the round trip from column name to stored value is
+# what is tested, on any machine.
 try:
-    import sqlite3
-    _c = sqlite3.connect(os.path.join(HERE, "altascraper.db"))
+    import json as _jsonf
+    import tempfile as _tmpf
+    _FIX = _tmpf.mkdtemp(prefix="fixt_listrow_")
+    _CFG = os.path.join(_FIX, "config.json")
+    _DBP = os.path.join(_FIX, "altascraper.db")
+    with open(_CFG, "w", encoding="utf-8") as _fh:
+        _jsonf.dump({"accounts": [{"id": "jack_uk", "name": "Test",
+                                   "marketplace": "UK"}]}, _fh)
+    os.environ["CONFIG_PATH"] = _CFG
+    os.environ["ALTASCRAPER_DB"] = _DBP
+    from data import db as _db
+    from data.store import ListingStore
+    assert os.path.abspath(_db.db_path(_CFG)) == os.path.abspath(_DBP)
+    assert os.path.dirname(os.path.abspath(_DBP)) == os.path.abspath(_FIX)
+    _st = ListingStore("jack_uk", config_path=_CFG)
+    _st.upsert_row({"SKU": "8.99_3Days_B000FIXF01", "Status": "LIVE",
+                    "Amazon Fees (GBP)": "2.4", "Fee Source": "SP-API (exact)"})
+    _st.upsert_row({"SKU": "8.99_3Days_B000FIXF02", "Status": "GENERATED"})
+    _c = _db.get_db(_CFG)
     _cols = [r[1] for r in _c.execute("PRAGMA table_info(listings)")]
     truthy("the listings table has the column", "amazon_fees" in _cols)
     _n = _c.execute("SELECT COUNT(*) FROM listings WHERE amazon_fees IS NOT NULL "
                     "AND TRIM(amazon_fees)<>'' AND amazon_fees<>'0'").fetchone()[0]
     truthy("  and rows are actually carrying a fee (%d)" % _n, _n > 0)
-    _c.close()
-except Exception as e:                                   # no database here
-    print("  (database not readable, skipping the row count: %s)" % e)
+    _back = _st.get_row_by_sku("8.99_3Days_B000FIXF01") or {}
+    truthy("  and it reads back under the name the row dict asks for",
+           str(_back.get("Amazon Fees (GBP)") or "").startswith("2.4")
+           and _back.get("Fee Source") == "SP-API (exact)")
+except Exception as e:
+    # A fixture that cannot be built is a failure, not a skip.
+    check("the fixture database could be built and read", str(e)[:80], "")
 
 print("\n=== 2.5 the floors are loaded, and a dash means something ===")
 truthy("there is a rules-only route", '@app.route("/sourcing/rules_all")' in SR)

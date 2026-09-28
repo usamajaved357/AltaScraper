@@ -38,6 +38,56 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 os.chdir(HERE)
 
+# ---------------------------------------------------------------------------
+# A FIXTURE OF ITS OWN (28 Sep 2026). The clash checks used to run against the
+# owner's real store and his real EAN; they now run against a temp database
+# seeded with the same SHAPE of problem, with invented (check-digit valid)
+# barcodes and invented SKUs:
+#
+#   FIX_EAN   on jack_uk (LIVE), on nestwell_goods (the draft just submitted)
+#             and on green_haven_goods (a draft) -- one code on three listings
+#   FIX_EAN2  on two nestwell_goods drafts -- a second shared code
+#   one listing with a barcode nobody else has, which must not be reported
+# Environment set BEFORE any app import, so nothing resolves the real files.
+# ---------------------------------------------------------------------------
+import json as _jsonf
+import tempfile as _tmpf
+
+_FIX = _tmpf.mkdtemp(prefix="fixt_barcode_")
+CFG = os.path.join(_FIX, "config.json")
+_DBP = os.path.join(_FIX, "altascraper.db")
+with open(CFG, "w", encoding="utf-8") as _fh:
+    _jsonf.dump({"anthropic_api_key": "test-placeholder-not-a-key",
+                 "accounts": [{"id": w, "name": w, "marketplace": "UK"} for w in
+                              ("jack_uk", "nestwell_goods", "green_haven_goods")]},
+                _fh)
+os.environ["CONFIG_PATH"] = CFG
+os.environ["ALTASCRAPER_DB"] = _DBP
+
+FIX_EAN = "5012345678900"
+FIX_EAN2 = "4006381333931"
+LIVE_SKU = "8.99_5Days_B000FIXT01"       # jack_uk, LIVE -- owns FIX_EAN at Amazon
+NEW_SKU = "11.59_3Days_B000FIXT02"       # nestwell_goods, the one just submitted
+
+
+def _seed():
+    from data import db as _sdb
+    from data.store import ListingStore
+    assert os.path.abspath(_sdb.db_path(CFG)) == os.path.abspath(_DBP)
+    assert os.path.dirname(os.path.abspath(_DBP)) == os.path.abspath(_FIX)
+    for ws, sku, upc, st in (
+            ("jack_uk", LIVE_SKU, FIX_EAN, "LIVE"),
+            ("nestwell_goods", NEW_SKU, FIX_EAN, "GENERATED"),
+            ("green_haven_goods", "7.49_2Days_B000FIXT03", FIX_EAN, "GENERATED"),
+            ("nestwell_goods", "5.99_3Days_B000FIXT04", FIX_EAN2, "GENERATED"),
+            ("nestwell_goods", "6.99_3Days_B000FIXT05", FIX_EAN2, "GENERATED"),
+            ("jack_uk", "4.99_3Days_B000FIXT06", "9780201379624", "GENERATED")):
+        ListingStore(ws, config_path=CFG).upsert_row(
+            {"SKU": sku, "UPC": upc, "Status": st, "Title": "Fixture " + sku})
+
+
+_seed()
+
 FAILS = []
 
 
@@ -69,40 +119,50 @@ check("  and it is the EAN-13", seen.pop(), "4545644574860")
 check("rubbish is not a code", BC._code("not a barcode"), "")
 check("empty is not a code", BC._code(""), "")
 
-print("\n=== who else has it, on the owner's real data ===")
-cl = BC.others_with("config.json", "4545644574860",
+print("\n=== who else has it, on the fixture store (the owner's case, re-made) ===")
+cl = BC.others_with(CFG, FIX_EAN,
                     exclude_workspace="nestwell_goods",
-                    exclude_sku="11.59_3Days_B0DNJH3CRX")
+                    exclude_sku=NEW_SKU)
 truthy("the clash is found", len(cl) >= 1)
 if cl:
-    check("  it is the jack_uk listing", cl[0]["sku"], "8.99_5Days_B09BNLQG2Q")
+    check("  it is the jack_uk listing", cl[0]["sku"], LIVE_SKU)
     truthy("  and it is live, which is why Amazon refused", cl[0]["live"])
 # THE LIVE ONE FIRST. It is the listing Amazon says owns the code, so it is the
 # one the reader has to deal with.
 truthy("a live clash sorts to the front",
        all(c["live"] for c in cl[:1]) or not any(c["live"] for c in cl))
+# The draft on green_haven_goods sorts alphabetically BEFORE jack_uk, so the
+# live listing is only first because the live-first rule put it there -- this
+# is a real test of the ordering, not an accident of the names.
+check("  and every other holder is still reported", len(cl), 2)
 truthy("the padded form finds the same clash",
-       len(BC.others_with("config.json", "04545644574860")) ==
-       len(BC.others_with("config.json", "4545644574860")))
+       len(BC.others_with(CFG, "0" + FIX_EAN)) ==
+       len(BC.others_with(CFG, FIX_EAN)) == 3)
 check("a listing is not reported as clashing with itself",
-      [c for c in BC.others_with("config.json", "4545644574860",
+      [c for c in BC.others_with(CFG, FIX_EAN,
                                  exclude_workspace="jack_uk",
-                                 exclude_sku="8.99_5Days_B09BNLQG2Q")
-       if c["sku"] == "8.99_5Days_B09BNLQG2Q"], [])
+                                 exclude_sku=LIVE_SKU)
+       if c["sku"] == LIVE_SKU], [])
+check("a barcode on one listing only is no clash",
+      BC.others_with(CFG, "9780201379624", exclude_workspace="jack_uk",
+                     exclude_sku="4.99_3Days_B000FIXT06"), [])
 
 print("\n=== what it says ===")
-s = BC.sentence(cl, "4545644574860")
-truthy("it names the barcode", "4545644574860" in s)
-truthy("  and the listing that owns it", "8.99_5Days_B09BNLQG2Q" in s)
+s = BC.sentence(cl, FIX_EAN)
+truthy("it names the barcode", FIX_EAN in s)
+truthy("  and the listing that owns it", LIVE_SKU in s)
 truthy("  and what Amazon will do", "refuse" in s)
 truthy("  and the two ways out", "different barcode" in s and "exemption" in s)
 check("nothing to say when there is no clash", BC.sentence([]), "")
 
 print("\n=== the whole problem at once ===")
-allc = BC.scan("config.json")
+allc = BC.scan(CFG)
 truthy("more than one barcode is shared", len(allc) > 1)
 truthy("  the worst offender is listed first",
        allc[0]["count"] >= allc[-1]["count"])
+# Pinned to the fixture: 3-listing code first, and the unshared one absent.
+check("  exactly the two shared codes, worst first",
+      [(c["code"], c["count"]) for c in allc], [(FIX_EAN, 3), (FIX_EAN2, 2)])
 truthy("  and every entry names its listings",
        all(len(c["listings"]) == c["count"] for c in allc))
 print("     (%d barcodes on more than one listing right now)" % len(allc))
@@ -177,8 +237,11 @@ falsy("    which listings.js no longer does itself",
       "function setGtinExemption(" in JS)
 truthy("  the bulk route exists for several drafts at once",
        "function bulkGtinExemption(" in G)
+# RE-PINNED (28 Sep 2026): the bulk call now also passes the account the drafts
+# were selected in -- `_gtinWrite(sku, claim, acct)` -- so the match is on the
+# call's start. Still one fetch to /edit, still the same writer.
 truthy("    and goes through the SAME write, not a second one",
-       G.count("fetch(\"/edit\"") == 1 and "_gtinWrite(sku, claim)" in G)
+       G.count("fetch(\"/edit\"") == 1 and "_gtinWrite(sku, claim" in G)
 truthy("    drafts only -- a catalogue-only listing has no box to tick",
        "splitByDraft" in G)
 truthy("    and it says what is being declared before it does it",

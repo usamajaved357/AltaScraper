@@ -51,14 +51,17 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
    campaign detail, repricer rules/families (which pre-filled B's dialogs with
    A's floor), schema requests in flight, and the two paths that moved the
    marketplace without the switch reset.
-   STILL OPEN: S9 (navTo marks a screen fresh before its load finishes, so a
-   failed load looks fresh for 10 minutes); S10 (the shared-password owner and
-   background threads share one process-wide selection); an old request's
-   `finally`/`catch` can still clear the new request's busy flag or paint its
-   network error for a moment (low); and four older per-screen copies of the
-   "still the same account?" check (submit.js stillMine, miles_template
-   stillHere, sales _sFetch -- account only, orders loadId) are not yet on the
-   shared screenScope (Rule 12, work when those screens are next touched).
+   S9 is fixed where a load draws its failure through `uiError` (Hourly,
+   Traffic, Sales, Listings); screens that still draw failures their own way
+   stay "fresh" for 10 minutes after one. The stale `finally`/`catch` is fixed
+   for Hourly, Traffic, the PPC console and listing metrics (non-design batch 1).
+   STILL OPEN: S10 (the shared-password owner and background threads share one
+   process-wide selection). The four older "still the same account?" checks
+   are LEFT AS THEY ARE ON PURPOSE (28 Sep 2026): submit.js stillMine and
+   miles_template stillHere guard loaders that the switch itself calls again,
+   so the shared check's generation would drop replies nothing re-requests;
+   orders loadId is already reset by the switch (screenstate.js); sales
+   _sFetch is account-only by design. Revisit only with a test per screen.
 
 ## Left open from the Milestone 6 UI review (28 Sep 2026)
 
@@ -74,11 +77,42 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
   card (genimage.js, howworks.js) -- a performance point, not a fault.
 - Seven screens keep their own currency-symbol rule (see the design proposal,
   decision 3).
+- Repricer rows use `.rp-was`, `.rp-pen`, `.rp-held`, `.rp-m2y` and no CSS
+  styles them; the PPC charts compute reference lines that are never drawn
+  (docs/proposals/liked-pages-anatomy.md). Recorded, NOT restyled -- design
+  work is parked by the owner (28 Sep 2026).
 
 ## Fixed on the development branch, NOT yet in production
 
 On `claude-environment-setup` (local, not merged or deployed — production still
 has these until the owner merges):
+- **Non-design batch 1 (28 Sep 2026).** A failed load is now drawn as a
+  failure (pageui.js `uiError`: red, `role="alert"`, a Try again button) on
+  Hourly, Traffic, Sales and Generate instead of the grey "no data" box, and it
+  marks the screen stale so coming back retries (audit S9).
+  Traffic's sort arrows were mojibake ("â–´"); its legend dots now use the same
+  colours as the donut. The Sales chart key showed the bars in a different
+  colour from the bars. The Hourly, Traffic, PPC console and listing-metrics
+  loaders no longer let an old account's reply clear the new account's
+  "loading" flag after a switch.
+  ACCOUNT ISOLATION: ten route files and the Repricer took the marketplace
+  (and the Repricer the account) from the server's OPEN account instead of the
+  one the page named -- two tabs could answer a US account on UK. All now use
+  routes/scope. An account named in a GET body is ignored (the permission
+  check never saw it). Stop acts for the tab's account and no longer ends
+  another account's run through the legacy single-process fallback (audit A15).
+  The seven tests that needed the owner's real data now build their own
+  fixtures; the old test_real_amazon_fee changed the live fee_multipliers
+  table when run in the main checkout.
+  NOTE: with no marketplace sent, the resolution order is now "selected (if
+  the account sells there), then default" -- the copies used default first.
+  LEFT OPEN (low, from the review): (a) Repricer with "All marketplaces"
+  selected: "__all__" used to match nothing; now it resolves to the account's
+  default, or "" (= every marketplace) if it has none and several hold data --
+  every other gate (master switch, arming, floor) still applies, and the timer
+  already works that way. (b) Stop still ends another account's run whose
+  slot never attached its process (the legacy fallback cannot tell whose it
+  is). (c) pdp_imagegen.js still polls forever after a 404.
 - **Milestones 4-6 (28 Sep 2026).** Cost overrides (cogs_overrides.json) and
   the Miles bundle store are written atomically -- a crash mid-write could
   empty them, and a corrupt file was then saved back as `{}`. The live
@@ -233,23 +267,24 @@ States and rendering:
 
 ## Other defects seen by reading
 
-- **READ — config.json is still written directly (non-atomic, truncate first)**
-  by routes/settings_routes.py (AI settings, logic settings, eBay settings),
-  domain/accounts.py (seed, save, delete) and monitor/known_sellers.py, bypassing
-  `config/settings.write_raw`. A crash mid-write can empty config.json. The
-  phase6 memory note claimed this was finished; it has regressed or was partial.
-- **READ — Other truncate-then-write JSON files:** cogs_overrides.json,
-  app_state.json, asin_monitor*.json, miles_bundles*.json.
-- **READ — Unsafe inline handlers:** `onclick="fn('${esc(x)}')"` in listings.js
-  (tile menu, drawerMore), autofix.js, drawer.js, pdp.js toolbar. An apostrophe
-  in a SKU/key breaks the button or injects script. `jsArg()` is the fix.
-- **READ — Image-generation pollers never stop on 404** (genimage.js,
-  pdp_imagegen.js), e.g. after a restart loses `_IMG_JOBS`.
-- **READ — `_srcBody` / `_srcUrl` (sourcing.js) do not drop `__all__`.**
-- **READ — eBay token cache is one global**, not keyed by app id (api/ebay.py).
-- **READ — Toast renders behind modals** (z-index 80 vs 90+).
-- **READ — Some load errors look like empty states** (hourly.js draws "Could not
-  load" in `.empty`).
+- **FIXED (28 Sep 2026) — truncate-then-write JSON.** config.json writers went
+  through `config/settings.write_raw` in Milestone 1; the ASIN monitor store and
+  history, image recipes and the Miles template index now do too
+  (test_json_writes_are_atomic.py guards against new ones).
+- **FIXED — unsafe inline handlers** were moved to `jsArg()` (Milestone 7;
+  re-counted 28 Sep 2026: none left in listings/autofix/drawer/pdp/pdp_images).
+- **Image-generation pollers:** genimage.js now stops on 404 and says so
+  (28 Sep 2026). **pdp_imagegen.js still polls forever** -- left alone because
+  the PDP is not being changed without the owner.
+- **FIXED — `__all__` reaching the Repricer:** the server now drops it
+  (routes/sourcing_routes `_where` on the shared resolver, 28 Sep 2026), and
+  reads the account the page names -- it had read only `?id=`, so GETs sent
+  with `?account=` were answered for the server's open account.
+- **FIXED (28 Sep 2026) — eBay token cache** is tied to the app id that fetched
+  it; a caller with other keys or none no longer gets it (test_ebay_auth_cache).
+- **FIXED — toast behind modals** (it now sits above every overlay).
+- **FIXED — load errors drawn as empty states** on Hourly/Traffic/Sales/Listings
+  (`uiError`, 28 Sep 2026).
 - **READ — "All marketplaces" is honoured only by Sales**; Traffic, Hourly,
   Orders, Stock, Weekly and PPC silently answer for one marketplace.
   (memory: all-marketplaces-was-a-lie)

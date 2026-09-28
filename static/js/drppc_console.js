@@ -264,9 +264,12 @@ async function drpcLoad(force){
       drpcPlan();
     }
   }catch(e){
+    if(_gone()) return;
     drpcErr("Could not reach the console: " + e);
   }finally{
-    DRPC.loading = false;
+    // Only THIS request's own state: after a switch the new account's request
+    // owns the busy flag and the panel (Milestone 3 review, known-issues #5).
+    if(!_gone()) DRPC.loading = false;
   }
 }
 

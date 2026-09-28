@@ -984,7 +984,18 @@ async function studioRunBackground(kind, jobs, total){
     if(polling) return;          // the last tick has not answered yet
     polling=true;
     try{
-      const st=await (await fetch("/genimage/job_status?job="+encodeURIComponent(jobId))).json();
+      const _r=await fetch("/genimage/job_status?job="+encodeURIComponent(jobId));
+      // 404 IS FINAL, checked before the body is read (a 404 page need not be
+      // JSON): the server no longer has this job for you -- a restart empties
+      // the job list -- so asking every 2s forever changes nothing. Any other
+      // failure may be passing, and is retried as before.
+      if(_r.status===404){
+        clearInterval(STUDIO_POLL); STUDIO_POLL=null;
+        prog.innerHTML='<span style="color:var(--red)">This batch can no longer be followed (the app may have restarted). '
+          + 'Images that finished were saved to the media library; start the rest again.</span>';
+        return;
+      }
+      const st=await _r.json();
       if(!st.ok){ return; }
       // render any new results
       for(let i=0;i<st.results.length;i++){

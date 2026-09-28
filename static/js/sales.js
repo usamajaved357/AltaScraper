@@ -1083,7 +1083,7 @@ async function salesReload(){
     // because it went last. Calling them again here would fetch both twice.
   }catch(e){
     const g=document.getElementById("sales_grid");
-    if(g) g.innerHTML='<div class="empty">Could not load sales: '+_sEsc(String(e))+'</div>';
+    if(g) g.innerHTML=uiError("Sales could not be loaded", String(e), "salesReload", "sales");
   }finally{
     if(grid) grid.style.opacity="";
     SALES.busy=false;
@@ -2443,7 +2443,9 @@ function salesDrawCards(sum, av){
   if(!host) return;
   if(!sum || !sum.ok){
     host.innerHTML="";
-    if(note) note.innerHTML='<div class="empty">'+_sEsc((sum&&sum.error)||"No sales data")+'</div>';
+    if(note) note.innerHTML=(sum&&sum.error)
+      ? uiError("Sales could not be loaded", sum.error, "salesReload", "sales")
+      : '<div class="empty">No sales data</div>';
     return;
   }
   // ORBIT'S FIVE, IN ITS ORDER AND ITS WORDS: Total Sales, Daily Average,
@@ -2666,7 +2668,9 @@ function salesDrawGrid(ser){
   const host=document.getElementById("sales_grid");
   if(!host) return;
   if(!ser || !ser.ok){
-    host.innerHTML='<div class="empty">'+_sEsc((ser&&ser.error)||"No data")+'</div>';
+    host.innerHTML=(ser&&ser.error)
+      ? uiError("The sales grid could not be loaded", ser.error, "salesReload", "sales")
+      : '<div class="empty">No data</div>';
     return;
   }
   if(ser.empty || !(ser.metrics||[]).length){

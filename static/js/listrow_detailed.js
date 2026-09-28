@@ -93,6 +93,9 @@ async function lrLoadMetrics(rows, force){
   LR_LOADING = true;
   if(force) LR_ASKED = new Set();
   need.forEach(s => LR_ASKED.add(s));
+  // The account this request is for, visible to the finally below too.
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
+  const _gone = () => !!_sc && !screenStillIn(_sc);
   try{
     // A cap matching the route's own, so the URL cannot grow past what a
     // server will accept on a large catalogue.
@@ -131,9 +134,8 @@ async function lrLoadMetrics(rows, force){
     url += "&prices=" + encodeURIComponent(ask.map(s => priceOf(byS[s])).join(","))
          + "&asins="  + encodeURIComponent(ask.map(s => asinOf(byS[s])).join(","));
     if(force) url += "&fetch=1";
-    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
-    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    if(_gone()) return;   // switched account/marketplace meanwhile
     if(j && j.ok){
       // MERGED, not replaced. Several blocks contribute their own SKUs, and
       // assigning the reply would throw away whatever the previous block had
@@ -147,10 +149,15 @@ async function lrLoadMetrics(rows, force){
       LR_ERRORS = {all: (j && j.error) || "could not read the metrics"};
     }
   }catch(e){
+    if(_gone()) return;
     LR_ERRORS = {all: String((e && e.message) || e)};
   }finally{
-    LR_LOADING = false;
-    if(typeof render === "function") render();
+    // Only this request's own flag: after a switch the new account's request
+    // owns LR_LOADING (Milestone 3 review).
+    if(!_gone()){
+      LR_LOADING = false;
+      if(typeof render === "function") render();
+    }
   }
 }
 

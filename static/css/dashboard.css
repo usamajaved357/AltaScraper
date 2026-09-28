@@ -1303,6 +1303,9 @@
               color:rgb(243,244,246)}
   .ui-empty-b{font-size:12px;line-height:1.6;color:rgb(156,163,175);
               max-width:640px}
+  /* uiError(): the same block, marked as a failure (not a new look). */
+  .ui-error{border-color:var(--red-line);box-shadow:inset 3px 0 0 var(--red)}
+  .ui-error .ui-empty-t{color:var(--red)}
 
   /* ---- USER PERMISSIONS, THE WAY SELLER CENTRAL LAYS THEM OUT ----
      The area down the left, the three levels across the top, one radio per row.

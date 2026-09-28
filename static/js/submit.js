@@ -514,8 +514,8 @@ async function loadRows(){
     }catch(e){}
     if(!j || j._failed){
       const _g=document.getElementById("grid");
-      if(_g) _g.innerHTML='<div class="empty">Could not load listings: '+esc((j&&j.error)||"timed out")
-        +'<div style="margin-top:10px"><button class="mktbtn on" onclick="loadRows()"><i class="ti ti-refresh"></i> Retry</button></div></div>';
+      // A failure, with Try again (uiError, pageui.js) -- not the "no data" style.
+      if(_g) _g.innerHTML=uiError("Listings could not be loaded", (j&&j.error)||"timed out", "loadRows", "listings");
       else toast("Could not load listings: "+((j&&j.error)||"timeout"));
       return;
     }

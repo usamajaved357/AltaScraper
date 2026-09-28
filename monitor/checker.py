@@ -91,8 +91,11 @@ def _load_hist(config_path):
 
 
 def _save_hist(config_path, d):
-    with open(_hist_path(config_path), "w", encoding="utf-8") as f:
-        json.dump(d, f, indent=2, ensure_ascii=False)
+    # Atomically (domain/jsonstore): a crash mid-write used to leave the
+    # baselines empty, and every ASIN then read as newly changed. Still raises.
+    from domain import jsonstore
+    if not jsonstore.write_json_atomic(_hist_path(config_path), d, indent=2):
+        raise OSError("could not write asin_monitor_history.json")
 
 
 def _now():

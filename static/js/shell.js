@@ -630,7 +630,10 @@ function buildAccountMktSwitch(a){
   if(!WS_MARKET || (WS_MARKET!=="__all__" && mkts.indexOf(WS_MARKET)<0)){
     // Moving the marketplace is a change of product context (pdpLeaveContext).
     if(WS_MARKET && typeof pdpLeaveContext === "function"){ try{ pdpLeaveContext(); }catch(e){} }
-    const _moved = !!WS_MARKET && WS_MARKET !== mkts[0];
+    // From "" too: "Detect marketplaces" on an account that had none moves it
+    // from "" to its first, and a load in flight then sees a different scope,
+    // returns early and would leave its busy flag set (batch 1 review).
+    const _moved = WS_MARKET !== mkts[0];
     WS_MARKET=mkts[0];
     // A MOVED MARKETPLACE IS A SWITCH like any other: what screens hold, and
     // any reply in flight, belong to the old one (Milestone 3 review -- loads

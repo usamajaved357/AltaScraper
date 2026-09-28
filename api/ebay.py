@@ -148,7 +148,13 @@ def token(app_id, cert_id, timeout=15):
     do with "no token", and an exception out of a timer job would kill the sweep
     for every other SKU behind it.
     """
-    if _TOKEN_CACHE["token"] and time.time() < _TOKEN_CACHE["expires_at"] - 60:
+    # THE TOKEN BELONGS TO THE KEYS THAT FETCHED IT. One slot for the whole
+    # process handed the last token to any caller -- one with no keys at all,
+    # or new keys just saved in Settings, for up to two hours. A slot with no
+    # recorded app id (set directly, as tests do) still matches anyone.
+    _cached_for = _TOKEN_CACHE.get("app_id")
+    if (_TOKEN_CACHE["token"] and time.time() < _TOKEN_CACHE["expires_at"] - 60
+            and (_cached_for is None or _cached_for == app_id)):
         return _TOKEN_CACHE["token"]
     if not app_id or not cert_id:
         return ""
@@ -166,6 +172,7 @@ def token(app_id, cert_id, timeout=15):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             payload = json.loads(r.read().decode("utf-8"))
         _TOKEN_CACHE["token"] = payload.get("access_token", "")
+        _TOKEN_CACHE["app_id"] = app_id
         _TOKEN_CACHE["expires_at"] = time.time() + payload.get("expires_in", 7200)
         return _TOKEN_CACHE["token"]
     except Exception:

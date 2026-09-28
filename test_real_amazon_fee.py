@@ -1,4 +1,4 @@
-﻿"""The repricer prices from what Amazon actually charges, per product.
+"""The repricer prices from what Amazon actually charges, per product.
 
     "the fees of amazon reflecting in the details should be accurate and not
      estimate of 15 percent like i see right now in the app"
@@ -35,6 +35,79 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 os.chdir(HERE)
+
+# ---------------------------------------------------------------------------
+# A FIXTURE OF ITS OWN (28 Sep 2026). This used to read the owner's real
+# config.json and altascraper.db by relative path, so it passed only on his
+# machine -- and in the main checkout it read (and, in the multiplier section,
+# WROTE) his live database. It now builds a temp dir holding a stand-in config
+# and a database seeded with exactly what the assertions need. The figures are
+# invented but shaped like the measured ones quoted above:
+#
+#   jack_uk / UK, VAT-registered (vat_rate 0.2 in the stand-in config)
+#     finance_daily  73.00 of fees on 420.00 of principal + 80.00 of VAT
+#                    -> 14.6% over what buyers paid, the account's own rate
+#     order_lines    three settled orders of one SKU, 29.99 each
+#     order_fees     5.40 taken on each -> 18.0%, the product's ACTUAL rate
+#     fee_quotes     Amazon "quoted" 15% for that product's ASIN at 34.99,
+#                    just now -> a multiplier of 1.2 (taken / quoted)
+# Environment set BEFORE any app import, so nothing resolves the real files.
+# ---------------------------------------------------------------------------
+import datetime as _dtf
+import json as _jsonf
+import tempfile as _tmpf
+
+_FIX = _tmpf.mkdtemp(prefix="fixt_real_amazon_fee_")
+CFG = os.path.join(_FIX, "config.json")
+_DBP = os.path.join(_FIX, "altascraper.db")
+with open(CFG, "w", encoding="utf-8") as _fh:
+    _jsonf.dump({"anthropic_api_key": "test-placeholder-not-a-key",
+                 "accounts": [
+                     {"id": "jack_uk", "name": "Test Jack", "marketplace": "UK",
+                      "vat_rate": 0.2},
+                     {"id": "nestwell_goods", "name": "Test Nestwell",
+                      "marketplace": "UK"},
+                     {"id": "selvora_limited", "name": "Test Selvora",
+                      "marketplace": "UK"}]}, _fh)
+os.environ["CONFIG_PATH"] = CFG
+os.environ["ALTASCRAPER_DB"] = _DBP
+
+FIX_SKU = "9.99_3Days_B000FIXT01"
+FIX_ASIN = "B000FIXOUR"
+
+
+def _seed():
+    from data import db as _sdb
+    from domain import finance_data as _fd
+    assert os.path.abspath(_sdb.db_path(CFG)) == os.path.abspath(_DBP)
+    assert os.path.dirname(os.path.abspath(_DBP)) == os.path.abspath(_FIX)
+    c = _sdb.get_db(CFG)
+    today = _dtf.date.today()
+    _fd.store(CFG, "jack_uk", "UK", [{
+        "date": (today - _dtf.timedelta(days=10)).isoformat(), "asin": "*",
+        "referral_fees": 73.00, "fba_fees": 0.0, "other_fees": 0.0,
+        "principal": 420.00, "tax": 80.00, "currency": "GBP"}])
+    for i in range(3):
+        oid = "000-FIXTURE-%04d" % i
+        day = (today - _dtf.timedelta(days=20 + i)).isoformat()
+        c.execute("INSERT INTO order_lines(workspace_id, marketplace, order_id, "
+                  " purchase_date, asin, sku, units, revenue, shipping, currency,"
+                  " status) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                  ("jack_uk", "UK", oid, day + "T12:00:00Z", FIX_ASIN, FIX_SKU,
+                   1, 29.99, 0.0, "GBP", "Shipped"))
+        c.execute("INSERT INTO order_fees(workspace_id, marketplace, order_id, "
+                  " posted_date, referral_fees, principal, tax, units, currency)"
+                  " VALUES(?,?,?,?,?,?,?,?,?)",
+                  ("jack_uk", "UK", oid, day, 5.40, 24.99, 5.00, 1, "GBP"))
+    c.execute("INSERT INTO fee_quotes(workspace_id, marketplace, asin, rate, "
+              " referral, closing, quoted_price, currency, quoted_at) "
+              "VALUES(?,?,?,?,?,?,?,?,?)",
+              ("jack_uk", "UK", FIX_ASIN, 0.15, 5.25, 0.0, 34.99, "GBP",
+               _dtf.datetime.now().isoformat(" ", "seconds")))
+    c.commit()
+
+
+_seed()
 
 FAILS = []
 
@@ -76,7 +149,7 @@ print("     ...a 33.89 price returns %.1f%% ROI, not 20%%" % got["roi_pct"])
 
 print("\n=== the cache-only path never calls Amazon, and says so ===")
 rate, basis, detail = F.rate_for_asin(
-    "config.json", None, "jack_uk", "UK", None, "B0TESTASIN", 20.99,
+    CFG, None, "jack_uk", "UK", None, "B0TESTASIN", 20.99,
     allow_quote=False)
 check("it falls back to the account's measured rate", basis, F.ESTIMATED)
 # RE-PINNED 28 Sep 2026. The account's rate is now measured over what buyers
@@ -92,11 +165,11 @@ truthy("  and it says Amazon has not been asked yet",
 truthy("  naming the button that would ask", "Get Amazon" in detail)
 
 print("\n=== nothing is invented when there is nothing to ask about ===")
-r2, b2, d2 = F.rate_for_asin("config.json", None, "jack_uk", "UK", None,
+r2, b2, d2 = F.rate_for_asin(CFG, None, "jack_uk", "UK", None,
                              "", 20.99, allow_quote=True)
 check("no ASIN -> no quote", b2, F.ESTIMATED)
 truthy("  and it says why", "no ASIN" in d2)
-r3, b3, d3 = F.rate_for_asin("config.json", None, "jack_uk", "UK", None,
+r3, b3, d3 = F.rate_for_asin(CFG, None, "jack_uk", "UK", None,
                              "B0TESTASIN", None, allow_quote=True)
 check("no price -> no quote", b3, F.ESTIMATED)
 truthy("  and it says why", "no current price" in d3)
@@ -208,7 +281,7 @@ import sqlite3
 from domain import amazon_fees as AF
 from data import db as _db
 
-_conn = sqlite3.connect("file:%s?mode=ro" % _db.db_path("config.json").replace("\\", "/"),
+_conn = sqlite3.connect("file:%s?mode=ro" % _db.db_path(CFG).replace("\\", "/"),
                         uri=True)
 _conn.row_factory = sqlite3.Row
 _sold = _conn.execute(
@@ -218,7 +291,7 @@ _sold = _conn.execute(
     " ORDER BY n DESC LIMIT 1").fetchone()
 truthy("there is a SKU with settled sales to measure", _sold is not None)
 if _sold:
-    _r, _b, _d = AF.rate_from_orders("config.json", _sold["ws"], _sold["mkt"],
+    _r, _b, _d = AF.rate_from_orders(CFG, _sold["ws"], _sold["mkt"],
                                     _sold["sku"])
     print("     %s / %s -> %s" % (_sold["ws"], _sold["sku"],
                                   ("%.2f%%" % (_r * 100)) if _r else _d))
@@ -227,7 +300,7 @@ if _sold:
     truthy("    and it says how many orders it was measured from",
            "settled order" in _d)
     # THE WHOLE POINT: it outranks the quote and the average.
-    _r2, _b2, _d2 = AF.rate_for_listing("config.json", None, _sold["ws"],
+    _r2, _b2, _d2 = AF.rate_for_listing(CFG, None, _sold["ws"],
                                        _sold["mkt"], None, _sold["sku"],
                                        "B0TESTASIN", 30.00, allow_quote=False)
     check("  and the resolver prefers it over Amazon's quote", _b2, AF.ACTUAL)
@@ -235,7 +308,7 @@ if _sold:
 
 # A PRODUCT THAT HAS NEVER SOLD FALLS THROUGH, which is the case the owner
 # named: "This fixes the fee for new products that haven't sold yet."
-_r3, _b3, _d3 = AF.rate_for_listing("config.json", None, "jack_uk", "UK", None,
+_r3, _b3, _d3 = AF.rate_for_listing(CFG, None, "jack_uk", "UK", None,
                                    "NO-SUCH-SKU-EVER", "B0TESTASIN", 30.00,
                                    allow_quote=False)
 truthy("a product with no sales falls through to the next tier",
@@ -245,7 +318,7 @@ truthy("  and says the settled tier had nothing to measure",
 truthy("  without inventing a rate", 0.05 < _r3 < 0.35)
 
 # ONE SALE IS NOT A RATE.
-_F2 = AF.rate_from_orders("config.json", "jack_uk", "UK", "NO-SUCH-SKU-EVER",
+_F2 = AF.rate_from_orders(CFG, "jack_uk", "UK", "NO-SUCH-SKU-EVER",
                          min_orders=99)
 check("a SKU cannot clear a threshold it has no orders for", _F2[0], None)
 
@@ -275,7 +348,10 @@ truthy("  with the reason written down",
        "INC-VAT" in FEE.split("def rate_from_orders(")[1].split("\ndef ")[0])
 truthy("a discounted order is left out of the rate", 'r["promos"]' in _fo)
 truthy("  and so is a refunded one", 'r["refunds"]' in _fo)
-truthy("  and a cancelled line", "cancelled" in _fo)
+# RE-PINNED (28 Sep 2026): the cancelled-line exclusion moved with the query
+# into _settled_orders (see the re-pin above), so it is asserted where it
+# lives. It never left the code; this line was looking in the old place.
+truthy("  and a cancelled line", "'canceled','cancelled'" in _so)
 truthy("a multi-line order is shared by revenue, not counted whole",
        "mine / tot" in _fo)
 truthy("a database that cannot be read does not stop a price",
@@ -317,14 +393,14 @@ truthy("  and the fee path reads no VAT setting at all",
 
 _ws_with = None
 for _ws in ("jack_uk", "nestwell_goods", "selvora_limited"):
-    if AF.measure_multiplier("config.json", _ws, "UK"):
+    if AF.measure_multiplier(CFG, _ws, "UK"):
         _ws_with = _ws
         break
 truthy("an account with both quotes and settled sales can be measured",
        _ws_with is not None)
 if _ws_with:
-    _m = AF.measure_multiplier("config.json", _ws_with, "UK")
-    _mult, _why = AF.multiplier_for("config.json", _ws_with, "UK")
+    _m = AF.measure_multiplier(CFG, _ws_with, "UK")
+    _mult, _why = AF.multiplier_for(CFG, _ws_with, "UK")
     print("     %s -> x%.4f from %d product(s) (%.2f taken / %.2f quoted)"
           % (_ws_with, _mult, _m["samples"], _m["actual_fees"],
              _m["quoted_fees"]))
@@ -356,7 +432,7 @@ if _ws_with:
     truthy("  and it says what it was measured from", "measured across" in _why)
     # THE PROOF IT IS RIGHT: a product with no sales of its own, priced off the
     # scaled quote, lands on the same rate the account's settled orders show.
-    _r, _b, _d = AF.rate_for_listing("config.json", None, _ws_with, "UK", None,
+    _r, _b, _d = AF.rate_for_listing(CFG, None, _ws_with, "UK", None,
                                      "NEVER-SOLD-SKU-FOR-TEST",
                                      _m["products"][0][0], 34.99,
                                      allow_quote=False)
@@ -365,7 +441,7 @@ if _ws_with:
            "Amazon quoted" in _d and "measured across" in _d)
 
 # AN ACCOUNT WITH NOTHING TO COMPARE USES THE QUOTE AS IT IS.
-_m0, _w0 = AF.multiplier_for("config.json", "no-such-account", "UK")
+_m0, _w0 = AF.multiplier_for(CFG, "no-such-account", "UK")
 check("an account with no data multiplies by one", _m0, 1.0)
 truthy("  and says so rather than implying a measurement", "no product" in _w0)
 
@@ -373,7 +449,7 @@ truthy("  and says so rather than implying a measurement", "no product" in _w0)
 # measured from, so one more settled order or one more quote re-measures it.
 if _ws_with:
     from data import db as _db2
-    _c = _db2.get_db("config.json")
+    _c = _db2.get_db(CFG)
     _before = dict(_c.execute(
         "SELECT * FROM fee_multipliers WHERE workspace_id=? AND marketplace=?",
         (_ws_with, "UK")).fetchone())
@@ -381,7 +457,7 @@ if _ws_with:
     _c.execute("UPDATE fee_multipliers SET orders_seen=orders_seen-1 "
                " WHERE workspace_id=? AND marketplace=?", (_ws_with, "UK"))
     _c.commit()
-    AF.multiplier_for("config.json", _ws_with, "UK")
+    AF.multiplier_for(CFG, _ws_with, "UK")
     _after = dict(_c.execute(
         "SELECT * FROM fee_multipliers WHERE workspace_id=? AND marketplace=?",
         (_ws_with, "UK")).fetchone())

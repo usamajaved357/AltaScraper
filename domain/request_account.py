@@ -66,6 +66,13 @@ def _json_body(request):
     route and must be read here too (the guard had the same blind spot;
     Milestone 2). A form body is never touched: reading its raw stream here
     would empty request.files for the route."""
+    # A GET HAS NO BODY WORTH READING. The guard (auth/guard.py) checks only
+    # the query string on a GET, so an account named in a GET body was chosen
+    # here and never checked -- a restricted login could read another
+    # account's data with curl (non-design batch 1 review). Browsers cannot
+    # send one, so nothing legitimate is lost.
+    if str(getattr(request, "method", "") or "").upper() in ("GET", "HEAD"):
+        return {}
     ct = str(getattr(request, "content_type", "") or "").lower()
     if ct.startswith(("multipart/form-data", "application/x-www-form-urlencoded")):
         return {}

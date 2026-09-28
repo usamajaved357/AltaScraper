@@ -158,6 +158,27 @@ UI = open(_os_repo.path.join(_REPO, r"routes\ui_routes.py"), encoding="utf-8").r
 check("the fallback kill is no longer blocked by other runs existing",
       "if not stopped and not _SLOTS.busy():" in UI, False)
 
+# A15: the legacy single-proc handle holds whichever run started LAST. With
+# Nestwell's run in it and nothing of Jack's running, Stop pressed on Jack must
+# not reach it through the fallback.
+SLOTS._slots.clear()
+_ok, _kn = SLOTS.acquire("nestwell_goods", "SKU-N", owner="")
+_pn = _Proc()
+SLOTS.attach(_kn, _pn)
+check("another account's process is recognised as theirs",
+      SLOTS.belongs_elsewhere(_pn, "jack_uk"), True)
+check("  but not by its own account", SLOTS.belongs_elsewhere(_pn, "nestwell_goods"), False)
+check("  an unattached process belongs to nobody",
+      SLOTS.belongs_elsewhere(_Proc(), "jack_uk"), False)
+SLOTS._slots.clear()
+truthy("the /stop fallback asks before ending the shared handle",
+       "_SLOTS.belongs_elsewhere(p, acct)" in UI)
+truthy("  and Stop acts for the account the TAB names, not the global",
+       "_req_acct.named(request)" in UI.split('def stop(')[1].split("\n    @app")[0])
+HW = open(_os_repo.path.join(_REPO, r"static\js\howworks.js"), encoding="utf-8").read()
+truthy("  which the Stop button sends", 'fetch("/stop",{method:"POST",headers' in HW
+       and "acctBody(" in HW.split('fetch("/stop"')[1][:200])
+
 print("\n=== /stop reports what it deliberately left alone ===")
 USRC = open(_os_repo.path.join(_REPO, r"routes\ui_routes.py"), encoding="utf-8").read()
 truthy("it passes the account to the slots", "account=(acct or None)" in USRC)

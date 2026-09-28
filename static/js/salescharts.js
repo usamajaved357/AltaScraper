@@ -34,6 +34,9 @@
 //                     (prior-year's is fainter, 0.15, because context should
 //                      not compete with the subject)
 const SC_GOLD      = "#fbbf24";
+// The order bars, and the key's swatch for them, from ONE value each: the key
+// used to show var(--warn-bg), a colour no bar was ever drawn in.
+const SC_BAR_OPACITY = 0.3;
 const SC_COMPARE   = "#6b7280";
 const SC_PRIORYEAR = "#6366f1";
 const SC_DASH      = "5 5";     // the period before
@@ -1265,7 +1268,7 @@ function salesCombo(o){
       if(n === null || n <= 0) return;
       const top = yB(n), h = (padT + ih) - top;
       barsSvg += `<path class="bar" d="${_scBarPath(x(i) - bw / 2, top, bw, Math.max(0, h), 4)}"
-                        fill="#fbbf24" opacity="0.3"/>`;
+                        fill="${SC_GOLD}" opacity="${SC_BAR_OPACITY}"/>`;
     });
   }
 
@@ -1459,7 +1462,7 @@ function salesCombo(o){
   };
   let key = '<div class="sc-keys">';
   if(bars){
-    key += item('<span class="sc-key-sq" style="background:var(--warn-bg)"></span>',
+    key += item('<span class="sc-key-sq" style="background-color:' + SC_GOLD + ';opacity:' + SC_BAR_OPACITY + '"></span>',
                 bars.label || "Orders", "__bars", !!barsOn);
   }
   // THE SWATCH SHOWS WHAT WAS DRAWN, not what the series is supposed to look

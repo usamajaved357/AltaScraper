@@ -9,6 +9,43 @@ __pycache__/
 # Secrets — never bake into the image, seeded at runtime instead
 config.json
 service_account.json
+# ...and everything else .gitignore keeps out for the same reason. A local
+# `docker build` copies the WORKING FOLDER, not git, so an untracked secret or
+# a live database sitting here would be baked into the image (28 Sep 2026).
+config.json*
+*.pem
+*.key
+.env
+*.zip
+users.json
+image_url_key
+*.db
+*.db-wal
+*.db-shm
+*.bak-*
+*.baseline.py
+*.log
+app_state.json
+cogs_overrides.json
+live_snapshots.json
+miles_bundles_store.json
+miles_bundles.json
+asin_monitor.json
+asin_monitor_history.json
+trackers.json
+notify.json
+sales_day_*.csv
+sales_report_*.csv
+orders_*.csv
+listings_backup_*.csv
+order-costs-*.csv
+tracking-*.csv
+sheets_archive_*.json
+.run_tests.lock
+# Captures of other tools' screens, used only by tools/orbit_*.py
+orbit_shots/
+image_samples/
+Screenshot*.png
 
 # Local-only generated/output folders (become persistent-disk mounts at runtime)
 media/

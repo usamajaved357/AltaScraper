@@ -48,7 +48,7 @@ def workspace_id(*, state=None, account=None, asked=None):
     return ""
 
 
-def marketplace(*, state=None, account=None, asked=None, with_data=None):
+def marketplace(*, state=None, account=None, asked=None, with_data=None, wsid=None):
     """Which marketplace, by the order above. "" means genuinely unknown.
 
     `with_data` is an optional callable taking the workspace id and returning a
@@ -107,7 +107,12 @@ def marketplace(*, state=None, account=None, asked=None, with_data=None):
         if s:
             return s
     if with_data:
-        wsid = workspace_id(state=state, account=account)
+        # The account being answered for. resolve() passes it: with a named
+        # account it could not find, `account` is {} and workspace_id() would
+        # fall back to the OPEN account -- pairing the named id with another
+        # account's marketplace (batch 1 review).
+        if wsid is None:
+            wsid = workspace_id(state=state, account=account)
         if wsid:
             try:
                 return str(with_data(wsid) or "").strip().upper()
@@ -149,7 +154,7 @@ def resolve(*, state=None, account=None, asked_id=None, asked_marketplace=None,
         # No record means the route's own "no account" path refuses.
         acc = found or {}
     mkt = marketplace(state=state, account=acc, asked=asked_marketplace,
-                      with_data=with_data)
+                      with_data=with_data, wsid=wsid)
     return acc, wsid, mkt
 
 
@@ -174,7 +179,14 @@ def for_request(request, *, state, active_account, cfg, config_path,
         except Exception:
             return None
     asked_mkt = (request.args.get("marketplace") or "").strip()
-    if asked_mkt == "__all__":
+    if not asked_mkt:
+        # A POST names its marketplace in the body, as it names its account.
+        try:
+            asked_mkt = str(_req_acct._json_body(request).get("marketplace")
+                            or "").strip()
+        except Exception:
+            asked_mkt = ""
+    if asked_mkt.lower() == "__all__":
         asked_mkt = ""
     try:
         acc = active_account() or {}
@@ -184,6 +196,26 @@ def for_request(request, *, state, active_account, cfg, config_path,
                    asked_id=_req_acct.named_any(request),
                    asked_marketplace=asked_mkt, with_data=with_data,
                    load_account=_load)
+
+
+def pair(request, *, state, active_account, cfg, config_path, last_resort=""):
+    """(workspace_id, marketplace) for a Flask request -- for_request() without
+    the account record, for the screens that only read stored data.
+
+    THE MARKETPLACE FOLLOWS THE ACCOUNT THE PAGE NAMED. Ten route files each
+    had their own copy of this, and every copy filled a missing marketplace
+    from the server's OPEN account: ?account=sheelady_us with jack_uk open in
+    another tab was answered on jack's default, UK. That is the wrong-country
+    answer this module exists to prevent (CLAUDE.md Rule 12).
+
+    `last_resort` is what those copies fell back to when nothing at all
+    resolved ("UK" for most). Kept as an explicit argument so the guess is
+    visible at the call site rather than buried here; "" is the honest answer.
+    """
+    _acc, wsid, mkt = for_request(request, state=state,
+                                  active_account=active_account, cfg=cfg,
+                                  config_path=config_path)
+    return wsid, (mkt or last_resort)
 
 
 # What a screen should SAY when it still has nothing. One sentence, in the same

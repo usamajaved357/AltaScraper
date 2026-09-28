@@ -19,7 +19,8 @@ function _hEsc(s){
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function hourlyOnOpen(){ if(!HRLY.data) hourlyLoad(); else hourlyRender(); }
+// An error reply is not data: coming back retries it (audit S9, batch 1 review).
+function hourlyOnOpen(){ if(!HRLY.data || HRLY.data.error) hourlyLoad(); else hourlyRender(); }
 function hourlySetDays(d){ HRLY.days = d; hourlyLoad(); }
 function hourlySetMetric(m){ HRLY.metric = m; hourlyLoad(); }
 function hourlyToggle(asin){
@@ -52,11 +53,13 @@ async function hourlyLoad(){
     HRLY.data = j;
     hourlyRender();
   }catch(e){
-    if(host) host.innerHTML = '<div class="empty">Could not load: '
-      + _hEsc(String(e)) + '</div>';
+    if(sc && !screenStillIn(sc)) return;
+    // A failure, not "no data" (uiError, pageui.js).
+    if(host) host.innerHTML = uiError("Hourly sales could not be loaded", String(e), "hourlyLoad", "hourly");
   }finally{
-    HRLY.busy = false;
-    if(host) host.style.opacity = "";
+    // Only THIS request's own state: after a switch the new account's request
+    // owns the busy flag and the panel (Milestone 3 review, known-issues #5).
+    if(!sc || screenStillIn(sc)){ HRLY.busy = false; if(host) host.style.opacity = ""; }
   }
 }
 
@@ -115,7 +118,10 @@ function hourlyRender(){
   if(!host) return;
   const d = HRLY.data;
   if(!d || !d.ok){
-    host.innerHTML = '<div class="empty">' + _hEsc((d && d.error) || "No data") + '</div>';
+    // A refusal from the server is an error; no reply at all is "no data".
+    host.innerHTML = (d && d.error)
+      ? uiError("Hourly sales could not be loaded", d.error, "hourlyLoad", "hourly")
+      : '<div class="empty">No data</div>';
     return;
   }
   const cur = d.currency || "";

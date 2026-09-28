@@ -180,6 +180,31 @@ function uiSource(parts, note) {
     "</div>";
 }
 
+/* A LOAD THAT FAILED, drawn as a failure. uiEmpty's shape, marked as an
+ * error, so "could not load" can no longer look like "there is no data"
+ * (master audit, design-system States: several screens drew their load failure
+ * in the .empty style). `retry` is the name of a function to call, or omitted.
+ * `sec` is the screen that failed -- not always the one open, since a reply can
+ * land after you have moved on. Returns markup, like uiEmpty. */
+function uiError(title, detail, retry, sec) {
+  // A FAILED LOAD IS NOT FRESH. navTo marks a screen loaded as soon as its
+  // loader starts, so a failure was treated as good for 10 minutes and coming
+  // back did not retry (master audit S9). Deferred a tick: when the failure is
+  // drawn during navTo itself, navTo marks the screen fresh AFTER drawing, and
+  // an immediate "stale" would be overwritten (batch 1 review).
+  try {
+    const s = sec || (typeof CUR_SEC !== "undefined" ? CUR_SEC : "");
+    if (s && typeof screenStale === "function")
+      setTimeout(function () { try { screenStale(s); } catch (e) {} }, 0);
+  } catch (e) { /* never let the failure view itself fail */ }
+  return '<div class="ui-empty ui-error" role="alert">' +
+    '<div class="ui-empty-t">' + esc(title) + "</div>" +
+    (detail ? '<div class="ui-empty-b">' + esc(detail) + "</div>" : "") +
+    (retry ? '<div style="margin-top:11px"><button class="db-chip" onclick="' +
+             String(retry).replace(/[^\w.]/g, "") + '()">Try again</button></div>' : "") +
+    "</div>";
+}
+
 // An empty state that says what to DO. Every screen has one and most of them
 // said "nothing here", which is indistinguishable from broken.
 function uiEmpty(title, body, action) {
