@@ -642,7 +642,8 @@ async function refreshMonBadge(){
     if(j && j.ok) updateMonBadge(j.unread||0);
   }catch(e){}
 }
-setInterval(refreshMonBadge, 120000);
+// Not while the tab is hidden (poller.js altaEvery, Milestone 11).
+(typeof altaEvery === "function" ? altaEvery : setInterval)(refreshMonBadge, 120000);
 setTimeout(refreshMonBadge, 8000);
 
 async function loadMonitorList(){

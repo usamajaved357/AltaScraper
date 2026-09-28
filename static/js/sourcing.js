@@ -82,6 +82,13 @@ function _srcStillIn(scope){
   return now.id === scope.id && now.marketplace === scope.marketplace;
 }
 const _SRC_MOVED = "stopped — the account or marketplace was changed part-way";
+/* What a bulk loop that STOPPED says -- counted, and apart from the refusals,
+ * so "N refused" and "the rest were set" stay true (UI review, Milestone 6). */
+function _srcStopNote(stopped){
+  return stopped ? ("\n\nStopped: the account or marketplace was changed part-way, "
+                    + "so " + stopped + " were not attempted. Open it again to finish.")
+                 : "";
+}
 
 function _sesc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -607,11 +614,11 @@ async function sourcingMinPriceBulk(){
       });
       if(!go) return false;
 
-      let ok = 0;
+      let ok = 0, stopped = 0;
       const failed = [];
       toast("Setting " + plan.length + " floor(s)…");
       for(const p of plan){
-        if(!_srcStillIn(scope)){ failed.push(_SRC_MOVED); break; }
+        if(!_srcStillIn(scope)){ stopped = plan.length - ok - failed.length; break; }
         try{
           const j = await (await fetch("/sourcing/rules", {method: "POST",
             headers: {"Content-Type": "application/json"},
@@ -624,12 +631,14 @@ async function sourcingMinPriceBulk(){
       let msg = "Minimum price set on " + ok + " listing(s).";
       if(noPrice) msg += " " + noPrice + " left alone (no price read from Amazon).";
       toast(msg);
-      if(failed.length){
+      if(failed.length || stopped){
         await srcConfirm({
-          title: failed.length + " could not be set",
+          title: failed.length ? (failed.length + " could not be set")
+                               : ("Stopped after " + ok),
           body: failed.slice(0, 10).join("\n")
               + (failed.length > 10 ? "\n…and " + (failed.length - 10) + " more" : "")
-              + "\n\nThe rest were set. Nothing on Amazon has changed.",
+              + (stopped ? _srcStopNote(stopped)
+                         : "\n\nThe rest were set.") + " Nothing on Amazon has changed.",
           confirm: "OK",
         });
       }
@@ -726,9 +735,10 @@ async function sourcingHoldAtCurrent(){
   // (CLAUDE.md Rule 12).
   let ok = 0;
   const failed = [];
+  let stopped = 0;
   toast("Holding " + rows.length + " listing(s)…");
   for(const r of rows){
-    if(!_srcStillIn(scope)){ failed.push(_SRC_MOVED); break; }
+    if(!_srcStillIn(scope)){ stopped = rows.length - ok - failed.length; break; }
     try{
       const j = await (await fetch("/sourcing/rules", {method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -744,12 +754,14 @@ async function sourcingHoldAtCurrent(){
   let msg = "Held " + ok + " listing(s) at today's price.";
   if(noPrice) msg += " " + noPrice + " left alone (no price read from Amazon).";
   toast(msg);
-  if(failed.length){
+  if(failed.length || stopped){
     await srcConfirm({
-      title: failed.length + " could not be held",
+      title: failed.length ? (failed.length + " could not be held")
+                           : ("Stopped after " + ok),
       body: failed.slice(0, 10).join("\n")
           + (failed.length > 10 ? "\n…and " + (failed.length - 10) + " more" : "")
-          + "\n\nThe rest were held. Nothing on Amazon has changed.",
+          + (stopped ? _srcStopNote(stopped)
+                     : "\n\nThe rest were held.") + " Nothing on Amazon has changed.",
       confirm: "OK",
     });
   }
@@ -3109,17 +3121,17 @@ async function _srcBulkRule(rule, verb){
   const skus = _srcPicked();
   if(!skus.length) return;
   const scope = _srcScopeNow();
-  let ok = 0;
+  let ok = 0, stopped = 0;
   const bad = [];
   for(const sku of skus){
-    if(!_srcStillIn(scope)){ bad.push(_SRC_MOVED); break; }
+    if(!_srcStillIn(scope)){ stopped = skus.length - ok - bad.length; break; }
     const err = await sourcingSaveRuleQuiet(sku, rule, scope);
     if(err) bad.push(sku + ": " + err); else ok++;
   }
   toast(verb + " on " + ok + " SKU" + (ok === 1 ? "" : "s")
         + (bad.length ? " · " + bad.length + " refused" : ""));
-  if(bad.length) await uiAlert(bad.slice(0, 12).join("\n"),
-                               {title: bad.length + " could not be saved"});
+  if(bad.length || stopped) await uiAlert(bad.slice(0, 12).join("\n") + _srcStopNote(stopped),
+      {title: bad.length ? (bad.length + " could not be saved") : ("Stopped after " + ok)});
   await sourcingLoad(true);
 }
 
@@ -3222,10 +3234,10 @@ async function sourcingBulkArm(on){
        ok: "Arm them", danger: true});
     if(!ok) return;
   }
-  let done = 0;
+  let done = 0, stopped = 0;
   const bad = [];
   for(const sku of skus){
-    if(!_srcStillIn(scope)){ bad.push(_SRC_MOVED); break; }
+    if(!_srcStillIn(scope)){ stopped = skus.length - done - bad.length; break; }
     try{
       const j = await (await fetch("/sourcing/arm", {method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -3237,8 +3249,8 @@ async function sourcingBulkArm(on){
         + (bad.length ? " · " + bad.length + " refused" : ""));
   // WHY EACH REFUSAL HAPPENED, not just how many. Almost always a missing
   // floor, and that is fixable in one more click from the same bar.
-  if(bad.length) await uiAlert(bad.slice(0, 12).join("\n"),
-                               {title: bad.length + " could not be armed"});
+  if(bad.length || stopped) await uiAlert(bad.slice(0, 12).join("\n") + _srcStopNote(stopped),
+      {title: bad.length ? (bad.length + " could not be armed") : ("Stopped after " + done)});
   await sourcingLoad(true);
 }
 

@@ -60,6 +60,21 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
    stillHere, sales _sFetch -- account only, orders loadId) are not yet on the
    shared screenScope (Rule 12, work when those screens are next touched).
 
+## Left open from the Milestone 6 UI review (28 Sep 2026)
+
+- Bulk GTIN / Approve / Delete pin the ACCOUNT only; the repricer loops also
+  stop on a MARKETPLACE change. Drafts are stored per account, so this is
+  probably harmless -- not verified. One shared pin helper would settle it.
+- The long (fallback) order-cost form pre-fills the saved cost and clears it
+  without asking; the compact panel now asks. Emptying a pre-filled box is a
+  deliberate act, so low risk.
+- `jsArg` lives in users.js, loaded after its callers; it works because every
+  call happens at render time. A core escaper belongs in an early file.
+- `jsArg(j.data_url)` runs six regex passes over a multi-MB base64 image per
+  card (genimage.js, howworks.js) -- a performance point, not a fault.
+- Seven screens keep their own currency-symbol rule (see the design proposal,
+  decision 3).
+
 ## Fixed on the development branch, NOT yet in production
 
 On `claude-environment-setup` (local, not merged or deployed — production still
@@ -69,9 +84,7 @@ has these until the owner merges):
   empty them, and a corrupt file was then saved back as `{}`. The live
   refresher and the A+ route no longer `import dashboard` (a second copy of the
   app with a config cache nobody cleared: accounts added later were invisible
-  to live catch-up until a restart). Marketplace currency symbols come from
-  money.js's one map (Canada/Mexico/Singapore/Australia were "$" on some screens
-  and "C$"/"MX$"/"S$"/"A$" on others). UX: an untouched order-cost box no
+  to live catch-up until a restart). UX: an untouched order-cost box no
   longer wipes the saved cost on Save (it asks); the button after a template
   upload no longer opens the retired Generate screen; Generate no longer says
   "Nothing queued" when the queue panel simply has not been opened; toasts are
@@ -360,8 +373,9 @@ works is in CLAUDE.md Rule 19; these are the genuine remaining limits.
 
 ## Tests
 
-**Baseline after Milestones 1-2 (28 Sep 2026), `py -3.11 run_tests.py` in this
-worktree: 367 files, 353 passed, 12 failed, 2 could not run.** Every test runs
+**Baseline at the end of the 28 Sep 2026 run (Milestones 1-12), `py -3.11
+run_tests.py` in this worktree: 371 files, 362 passed, 7 failed, 2 could not
+run.** (After Milestones 1-2 it was 367/353/12/2.) Every test runs
 against the tree it lives in (141 used to hard-code `D:\AltaScraper` and so
 tested the main checkout). The runner gives each test file its own empty
 database and a STAND-IN config.json (`run_tests._safe_env` / `TEST_CONFIG`:
@@ -375,13 +389,22 @@ comparable.
 real sheelady_us credentials -- a live Amazon call), test_mockup_match.py (its
 `altascraper-listings-mockup.html` is not in git).
 
-**Failing because they need the owner's real data** (12; not app faults, not
-re-run with real data): test_ai_attribution, test_asin_has_a_name,
-test_autofix_apply, test_barcode_and_exemption, test_cogs_one_reader,
-test_handling_saved, test_listings_store, test_listrow_data,
-test_miles_column_shift, test_product_type_fill, test_real_amazon_fee (its code
-pins were re-pinned in Milestone 1 and pass; only the data checks fail),
-test_seller_draft_e2e. Next step (Testing milestone): give each a fixture.
+**Failing because they need the owner's real data** (7 after Milestone 10; not
+app faults, not re-run with real data): test_ai_attribution,
+test_autofix_apply, test_barcode_and_exemption, test_handling_saved,
+test_listings_store, test_listrow_data, test_real_amazon_fee (its code pins
+pass; only the data checks fail). These MEASURE the owner's data by design;
+they are meant to be run in his checkout.
+
+Converted in Milestone 10 (now run anywhere): test_seller_draft_e2e (a made-up
+account instead of COPYING THE OWNER'S FIRST ACCOUNT AND ITS CREDENTIALS into a
+temp file; two expectations were also stale -- drafts are never enrolled since
+the owner's 7 Sep rule), test_miles_column_shift (fixture accounts),
+test_cogs_one_reader (a throwaway config -- it WROTE and restored costs in the
+owner's real cogs_overrides.json when run in the main checkout),
+test_product_type_fill (the run's own database, not `<repo>/altascraper.db`),
+test_asin_has_a_name (the real-config check says "not checked" when there is
+no real config; its code checks run).
 
 **Watch out:** test_barcode_and_exemption.py crashes on its data checks BEFORE
 it reaches its CLAUDE.md wording checks, so a run never tests CLAUDE.md. Check

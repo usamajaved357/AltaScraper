@@ -230,7 +230,8 @@ async function genflowGenerate(){
   // queued" (master audit, UX #4). Reading the queue changes nothing.
   if(!n){
     try{
-      const j = await (await fetch("/input/rows")).json();
+      const j = await (await fetch(typeof acctUrl === "function"
+                                   ? acctUrl("/input/rows") : "/input/rows")).json();
       n = ((j && j.rows) || []).length;
       if(typeof IQ !== "undefined" && IQ && j && j.rows) IQ.rows = j.rows;
     }catch(e){}

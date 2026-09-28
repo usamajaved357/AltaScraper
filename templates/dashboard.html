@@ -291,13 +291,15 @@
          beside it. Ours does the same for the account above it. -->
     <div class="slbl">Account</div>
     <div class="navitem switchrow" id="nav_acctswitch" onclick="openAccountSwitch(event)"
-         title="Change account">
+         title="Change account" role="button" tabindex="0" aria-haspopup="menu"
+         aria-label="Change account">
       <i class="ti ti-building-store"></i>
       <span id="nav_acct_label" class="pii">No account</span>
       <i class="ti ti-chevron-down chev"></i>
     </div>
     <div class="navitem switchrow gold" id="nav_mktswitch" onclick="openMarketSwitch(event)"
-         title="Change marketplace">
+         title="Change marketplace" role="button" tabindex="0" aria-haspopup="menu"
+         aria-label="Change marketplace">
       <span id="nav_mkt_flag">🌐</span>
       <span id="nav_mkt_label">All</span>
       <i class="ti ti-chevron-down chev"></i>
@@ -495,7 +497,7 @@
              products FROM. A menu item named after it says the opposite.
              Reported as "why do i still see tabs in the listings page when i am
              not using any sheets". -->
-        <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-settings-cog"></i> Account settings</div>
+        <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()" role="button" tabindex="0"><i class="ti ti-settings-cog"></i> Account settings</div>
         <div class="navitem" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</div>
       </div>
     </div>
@@ -2230,6 +2232,8 @@
      calls them, which is all of them: no browser alert(), prompt() or
      confirm() is used anywhere in this app. -->
 <script src="/static/js/dialog.js?v={{ ASSET_V }}"></script>
+<!-- Enter/Space on any role="button" that is not a real <button> (Milestone 12). -->
+<script src="/static/js/a11y.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/money.js?v={{ ASSET_V }}"></script>
 <!-- One answer to "which brand is this listing", for the six screens that each
      had their own copy of it. Mirrors resolve_account_brand() on the server. -->

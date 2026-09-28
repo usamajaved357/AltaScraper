@@ -607,14 +607,22 @@ function _noneless(v){
  *     for "Saved" and for a two-sentence refusal from Amazon);
  *   - the element is a live region (templates/dashboard.html), so it is read
  *     out, not only shown. */
-const _TOAST_ERR = /^(could not|couldn.t|can.t|cannot|failed|error|refused|not saved|nothing (was )?saved|that .* (is not|isn.t)|stopped)/i;
-function toast(m){
+// Guessed from the wording for the 640 existing call sites; a caller that
+// KNOWS it is reporting a failure says so: toast(msg, {err: true}).
+// (UI review, Milestone 6: "Stopped tracking B0..." and "... 0 failed" are
+// successes; "That is not a cost." is a failure.)
+const _TOAST_ERR = /^(could not|couldn.t|can.t|cannot|failed|error|refused|not saved|nothing (was )?saved|that\b.*\b(is not|isn.t))/i;
+function toast(m, opts){
   const t = document.getElementById("toast");
   if(!t) return;
   const s = String(m == null ? "" : m);
-  const isErr = _TOAST_ERR.test(s.trim()) || /\b(failed|refused|error:)/i.test(s);
+  const isErr = (opts && typeof opts.err === "boolean") ? opts.err
+    : (_TOAST_ERR.test(s.trim())
+       || (/\b(failed|refused|error:)/i.test(s) && !/\b0 failed\b/i.test(s)));
   t.textContent = s;
   t.classList.toggle("err", isErr);
+  // A failure interrupts; anything else waits its turn.
+  t.setAttribute("aria-live", isErr ? "assertive" : "polite");
   t.classList.add("show");
   const ms = Math.min(9000, Math.max(isErr ? 4500 : 1800, 1200 + s.length * 45));
   clearTimeout(t._h);
@@ -2946,7 +2954,8 @@ async function pollHealth(){
 window.addEventListener("DOMContentLoaded", function(){
   applyListView();
   pollHealth();
-  setInterval(pollHealth, 60000);
+  // Not while the tab is hidden (poller.js altaEvery, Milestone 11).
+  (typeof altaEvery === "function" ? altaEvery : setInterval)(pollHealth, 60000);
 });
 
 /* WHAT YOU CAN DO TO A ROW -- built once, used by BOTH views.
@@ -2999,7 +3008,9 @@ function rowSelectBox(r, cls){
 function rowActions(r, cls, opts){
   cls = cls || "ib";
   opts = opts || {};
-  const sku = esc(r.sku);
+  // (No pre-escaped `sku` here any more: every handler below takes the RAW
+  //  r.sku through jsArg, and an escaped copy passed to jsArg is escaped
+  //  twice -- UI review, Milestone 6.)
   const live = opts.live === undefined ? isAmazonLive(r) : !!opts.live;
   return `
     ${live ? "" : `<button class="${cls}" title="Approve — mark this draft ready to send to Amazon"

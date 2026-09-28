@@ -556,8 +556,8 @@ function pdpHero(r){
     +       '<input class="pdp-barcode" id="pdp_barcode" '
     +       'value="' + esc(r.barcode || "") + '" placeholder="none" '
     +       'inputmode="numeric" autocomplete="off" spellcheck="false" '
-    // esc() with explicit quotes, which is this file's convention -- jsArg is
-    // declared in shell.js and is not in scope here.
+    // jsArg (users.js, one global scope) -- the one escaper for a value
+    // inside an inline handler (Milestone 2).
     +       'oninput="pdpBarcodeTyped(' + jsArg(r.sku) + ', this.value)" '
     +       'onchange="pdpBarcodeSave(' + jsArg(r.sku) + ', this.value)">'
     // THE STARTING VERDICT, from what the row already knows (r.identifier,

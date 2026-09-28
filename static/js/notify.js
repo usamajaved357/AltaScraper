@@ -388,7 +388,8 @@ async function notifReadAll() {
   const go = function () {
     notifPoll();
     if (BELL.timer) clearInterval(BELL.timer);
-    BELL.timer = setInterval(notifPoll, 120000);
+    // Not while the tab is hidden (poller.js altaEvery, Milestone 11).
+    BELL.timer = (typeof altaEvery === "function" ? altaEvery : setInterval)(notifPoll, 120000);
   };
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", go);

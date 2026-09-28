@@ -32,6 +32,7 @@
 "use strict";
 
 let _DLG_OPEN = null;
+let _DLG_SEQ = 0;           // unique ids for aria-labelledby
 
 function _dlgEsc(s) {
   return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -58,11 +59,17 @@ function _dlgOpen(o) {
     // this replaces, and it was never the desirable half of it.
     if (_DLG_OPEN) { try { _DLG_OPEN.close(null); } catch (e) { /* gone */ } }
 
+    // WHERE FOCUS WAS, to give it back (Milestone 12, audit section 14: the
+    // dialog had no focus return, so a keyboard user was dropped at the top of
+    // the page after every confirmation).
+    const opener = document.activeElement;
+    const tid = "uidlg_t" + (++_DLG_SEQ);
     const wrap = document.createElement("div");
     wrap.className = "uidlg-wrap";
     wrap.innerHTML =
-      '<div class="uidlg" role="dialog" aria-modal="true">'
-      + (o.title ? '<div class="uidlg-h">' + _dlgEsc(o.title) + "</div>" : "")
+      '<div class="uidlg" role="dialog" aria-modal="true"'
+      + (o.title ? ' aria-labelledby="' + tid + '"' : ' aria-label="Message"') + '>'
+      + (o.title ? '<div class="uidlg-h" id="' + tid + '">' + _dlgEsc(o.title) + "</div>" : "")
       + '<div class="uidlg-b">' + (o.html || _dlgBody(o.message)) + "</div>"
       + '<div class="uidlg-f">'
       + (o.buttons || []).map(function (b, i) {
@@ -80,10 +87,24 @@ function _dlgOpen(o) {
       _DLG_OPEN = null;
       document.removeEventListener("keydown", onKey, true);
       wrap.remove();
+      if (opener && opener.focus && document.contains(opener)) {
+        try { opener.focus(); } catch (e) { /* gone */ }
+      }
       resolve(value);
     };
     const onKey = function (e) {
       if (e.key === "Escape") { e.preventDefault(); close(o.cancelValue); }
+      // TAB STAYS INSIDE. aria-modal says the page behind is inert; without
+      // this, Tab walked straight out into it (audit section 14: no focus trap).
+      else if (e.key === "Tab") {
+        const f = Array.prototype.slice.call(wrap.querySelectorAll(
+          'button,input,textarea,select,a[href],[tabindex]:not([tabindex="-1"])'))
+          .filter(function (el) { return !el.disabled; });
+        if (!f.length) { e.preventDefault(); return; }
+        const i = f.indexOf(document.activeElement);
+        if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+      }
       // Enter accepts, but NEVER from inside a textarea, where it is a newline.
       else if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
         const ok = (o.buttons || []).filter(function (b) { return b.primary; })[0];

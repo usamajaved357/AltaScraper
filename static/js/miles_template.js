@@ -925,8 +925,9 @@ async function bulkStatus(status){
               +_draftOnlyNote(_s.amazonOnly, label.toLowerCase()))) return;
   let ok=0, fail=0;
   toast(label+"ing "+skus.length+"…");
+  let stopped=0;
   for(const sku of skus){
-    if(acctId()!==pin){ toast("Stopped — the account was changed part-way"); break; }
+    if(acctId()!==pin){ stopped = skus.length - ok - fail; break; }
     try{
       if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }   // multi-tab: target each card's own tab
       const res=await fetch("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -935,7 +936,15 @@ async function bulkStatus(status){
       if(j.ok) ok++; else fail++;
     }catch(e){ fail++; }
   }
-  toast(label+"d "+ok+(fail?(" / "+fail+" failed"):""));
+  // THE STOP IS PART OF THE ANSWER, not a toast the next one overwrites (UI
+  // review, Milestone 6).
+  if(stopped){
+    await uiAlert(label+"d "+ok+(fail?(", "+fail+" failed"):"")+".\n\nStopped: the account "
+      +"was changed part-way, so the other "+stopped+" were not "+label.toLowerCase()
+      +"d. Open that account again to finish them.");
+  }else{
+    toast(label+"d "+ok+(fail?(" / "+fail+" failed"):""));
+  }
   clearSelection(); loadRows();
 }
 async function bulkDelete(){
@@ -1194,15 +1203,22 @@ async function removeDeletedRows(){
               gone.map(r=>"  • "+r.sku).join("\n")+
               "\n\nThese listings no longer exist on Amazon. This cannot be undone.")) return;
   let done=0, failed=0;
+  let stopped=0;
   for(const r of gone){
-    if(acctId()!==pin){ toast("Stopped — the account was changed part-way"); break; }
+    if(acctId()!==pin){ stopped = gone.length - done - failed; break; }
     try{
       const res = await (await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify(acctBodyFor({sku:r.sku, row:r.row}, pin))})).json();
       if(res && res.ok){ done++; delete AMZ_STATE[String(r.sku)]; } else failed++;
     }catch(e){ failed++; }
   }
-  toast("Removed "+done+" row(s)"+(failed?(" · "+failed+" failed"):""));
+  if(stopped){
+    await uiAlert("Removed "+done+" row(s)"+(failed?(", "+failed+" failed"):"")+".\n\n"
+      +"Stopped: the account was changed part-way, so the other "+stopped
+      +" were not removed. Open that account again to finish them.");
+  }else{
+    toast("Removed "+done+" row(s)"+(failed?(" · "+failed+" failed"):""));
+  }
   loadRows();
 }
 let LIVE_SYNC_TIMER = null;   // auto-sync interval handle

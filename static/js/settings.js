@@ -157,13 +157,16 @@ async function loadMediaLibrary(){
           var _open = 'mediaOpenAt(' + jsArg(f.sku) + ',' + _ix + ')';
           return '<div class="mediacell"><img src="'+esc(typeof thumbUrl==="function"?thumbUrl(im.url,160):im.url)+'" loading="lazy" '+
             'title="Click to view it full size" style="cursor:zoom-in" '+
-            'onclick="'+esc(_open)+'">'+_grp+
+            'onclick="'+_open+'">'+_grp+   // _open is jsArg-built: already attribute-safe
             '<button class="mediadel" title="Delete" onclick="delMedia(' + jsArg(im.url) + ')"><i class="ti ti-x"></i></button>'+
             '<button class="mediaedit" title="Edit this image (AI changes only what you ask, keeps the rest)" onclick="editMediaImage(' + jsArg(im.url) + ',' + jsArg(f.sku) + ')"><i class="ti ti-wand"></i> Edit</button>'+
             '<button class="mediadl" title="Download this image" onclick="event.stopPropagation();'+
               (typeof ilDownloadOne === 'function'
-                ? esc('ilDownloadOne(' + jsArg(im.url) + ',' + jsArg(_nm) + ')')
-                : 'window.open(\''+esc(im.url)+'\')')+
+                // jsArg output is already safe in the attribute; esc() on
+                // top turned & into &amp;amp; -- a URL with ?a=1&b=2 broke
+                // (UI review, Milestone 6).
+                ? ('ilDownloadOne(' + jsArg(im.url) + ',' + jsArg(_nm) + ')')
+                : 'window.open(' + jsArg(im.url) + ')')+
               '"><i class="ti ti-download"></i></button>'+
             _meta+'</div>';
         }).join('')+'</div></details>';

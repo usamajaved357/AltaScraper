@@ -725,7 +725,7 @@
          z-index:9800;max-width:min(640px,calc(100vw - 32px))}
   .toast.show{opacity:1}
   /* A failure must not look like a success. */
-  .toast.err{border-color:var(--red,#ef5350);box-shadow:0 0 0 1px var(--red,#ef5350) inset}
+  .toast.err{border-color:var(--red);box-shadow:0 0 0 1px var(--red) inset}
   .b-API_READY{background:var(--accent-bg);color:var(--accent2);border:1px solid var(--accent-line)}
   .b-API_ERROR{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
   /* LIVE is deliberately NEUTRAL, per the brief -- grey, not green. A listing

@@ -91,7 +91,7 @@ function sandbox(extra){
     const SRC = read("sourcing.js");
     const ctx = sandbox({SRC_MASTER: true, sourcingLoad: async () => {}});
     vm.runInContext(
-      ["_srcBody", "_srcScopeNow", "_srcStillIn", "sourcingBulkArm"]
+      ["_srcBody", "_srcScopeNow", "_srcStillIn", "_srcStopNote", "sourcingBulkArm"]
         .map(n => extract(SRC, n)).join("\n")
       + '\nconst _SRC_MOVED = "moved";'
       + '\nfunction _srcPicked(){ return ["S1","S2","S3"]; }', ctx);
@@ -106,7 +106,7 @@ function sandbox(extra){
     const SRC = read("sourcing.js");
     const ctx = sandbox({sourcingLoad: async () => {}, SRC_ROWS: []});
     vm.runInContext(
-      ["_srcBody", "_srcScopeNow", "_srcStillIn", "_srcBulkRule",
+      ["_srcBody", "_srcScopeNow", "_srcStillIn", "_srcStopNote", "_srcBulkRule",
        "sourcingSaveRuleQuiet"].map(n => extract(SRC, n)).join("\n")
       + '\nconst _SRC_MOVED = "moved";'
       + '\nfunction _srcPicked(){ return ["S1","S2","S3"]; }', ctx);

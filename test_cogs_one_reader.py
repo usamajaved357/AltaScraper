@@ -65,6 +65,21 @@ RT = read("routes", "cogs_routes.py")
 CODE = "\n".join(l.split("//")[0] for l in JS.splitlines()
                  if not l.strip().startswith(("*", "/*", "//")))
 
+# A THROWAWAY CONFIG, never "<repo>/config.json" (Milestone 10). This test
+# WRITES costs (and puts them back): run in the main checkout that was the
+# owner's real cogs_overrides.json. The costs file and the catalogue snapshot
+# it reads both live beside whatever config path is given, so a temp one keeps
+# every write in a temp folder.
+CFG = os.path.join(tempfile.mkdtemp(prefix="cogs_reader_"), "config.json")
+with open(CFG, "w", encoding="utf-8") as _fh:
+    json.dump({"accounts": [{"id": "jack_uk", "name": "Test", "marketplaces": ["UK"]}]}, _fh)
+# The one SKU this account "sells", so a SKU that is NOT it can be counted
+# as unknown -- the check at the bottom. (It read the real snapshot before.)
+from domain import live_snapshots as _ls                               # noqa: E402
+_ls.save(CFG, "jack_uk", "A1F83G8C2ARO7P",
+         [{"sku": "15.10_2Days_B0F7D29MFZ", "asin": "B0F7D29MFZ", "title": "Grill"}],
+         report_source="test")
+
 print("== `price` is not a cost column, anywhere ==")
 from domain import cogs as _cogs
 falsy("domain/cogs.COST_COLS does not accept a bare 'price'",
@@ -79,7 +94,7 @@ from domain import source_bulk as _sb
 amz = ("seller-sku,asin1,item-name,price,quantity\n"
        "15.10_2Days_B0F7D29MFZ,B0F7D29MFZ,\"Grill, Large\",29.99,4\n")
 h, rows, err = _sb.read_table(amz.encode("utf-8"), "listings.csv")
-rep = _cogs.apply_sheet("config.json", "jack_uk", "A1F83G8C2ARO7P", h, rows)
+rep = _cogs.apply_sheet(CFG, "jack_uk", "A1F83G8C2ARO7P", h, rows)
 falsy("an Amazon listings export is refused as a cost sheet", rep.get("ok"))
 truthy("  and says which column it wanted", "cost" in str(rep.get("error", "")))
 
@@ -98,7 +113,7 @@ good = ('sku,asin,product,cost,cost now,where from\n'
         '15.10_2Days_B0F7D29MFZ,B0F7D29MFZ,"Grill, Large",£12.50,15.10,eBay\n'
         'BLANKROW,,"Untouched",,,\n')
 h2, rows2, _e = _sb.read_table(good.encode("utf-8"), "costs.csv")
-rep2 = _cogs.apply_sheet("config.json", "jack_uk", "A1F83G8C2ARO7P", h2, rows2)
+rep2 = _cogs.apply_sheet(CFG, "jack_uk", "A1F83G8C2ARO7P", h2, rows2)
 check("a quoted comma does not shift the columns",
       rep2["columns"]["cost"], "cost")
 check("  'cost' is read, not 'cost now'", rep2["columns"]["cost"], "cost")
@@ -111,10 +126,10 @@ falsy("  and no zero was produced", any(v == 0 for v in
 
 print("\n== nothing is written until it is confirmed ==")
 from domain import cogs_store as _cs
-_before = dict(_cs.all_overrides("config.json"))
-_cogs.apply_sheet("config.json", "jack_uk", "A1F83G8C2ARO7P", h2, rows2)
+_before = dict(_cs.all_overrides(CFG))
+_cogs.apply_sheet(CFG, "jack_uk", "A1F83G8C2ARO7P", h2, rows2)
 check("apply_sheet itself writes nothing",
-      dict(_cs.all_overrides("config.json")), _before)
+      dict(_cs.all_overrides(CFG)), _before)
 truthy("the route has a dry run", 'request.form.get("dry_run")' in RT)
 # The CODE, not the docstring above it that also says "dry_run".
 _body = RT.split("dry = str(request.form")[1][:400]
@@ -136,16 +151,16 @@ truthy("a refused row is reported rather than dropped", '"refused"' in RT)
 
 # Exercise it: the store refuses what the old path accepted.
 check("the store refuses a negative cost",
-      _cs.set_cost("config.json", "__t__", "__s__", -1), (None, False))
-check("  and text", _cs.set_cost("config.json", "__t__", "__s__", "abc"),
+      _cs.set_cost(CFG, "__t__", "__s__", -1), (None, False))
+check("  and text", _cs.set_cost(CFG, "__t__", "__s__", "abc"),
       (None, False))
-_v, _ok = _cs.set_cost("config.json", "__t__", "__s__", 4.25)
+_v, _ok = _cs.set_cost(CFG, "__t__", "__s__", 4.25)
 check("  and accepts a real one", (_v, _ok), (4.25, True))
 truthy("  visible through the reference handed out at startup",
        _cs.all_overrides().get("__t__::__s__") == 4.25)
-_cs.set_cost("config.json", "__t__", "__s__", None)
+_cs.set_cost(CFG, "__t__", "__s__", None)
 falsy("  and clearing removes it", "__t__::__s__" in _cs.all_overrides())
-check("the file is back as it was", dict(_cs.all_overrides("config.json")),
+check("the file is back as it was", dict(_cs.all_overrides(CFG)),
       _before)
 
 print("\n== a SKU that is on nothing here is named, not swallowed ==")
@@ -154,7 +169,7 @@ print("\n== a SKU that is on nothing here is named, not swallowed ==")
 # counted and said out loud.
 typo = ('sku,cost\n15.10_2Days_B0F7D29MFZ,12.50\nDEFINITELY_NOT_A_SKU,7.00\n')
 h3, rows3, _e3 = _sb.read_table(typo.encode("utf-8"), "t.csv")
-rep3 = _cogs.apply_sheet("config.json", "jack_uk", "A1F83G8C2ARO7P", h3, rows3)
+rep3 = _cogs.apply_sheet(CFG, "jack_uk", "A1F83G8C2ARO7P", h3, rows3)
 check("the typo is counted", rep3.get("unknown_sku"), 1)
 check("  the real SKU is not", len([r for r in rep3["rows"]
                                     if r.get("unknown_sku")]), 1)

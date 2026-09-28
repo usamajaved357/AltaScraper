@@ -91,7 +91,7 @@ the same screen.**
 
 | Helper | File | Use for |
 |---|---|---|
-| `toast(msg)` | listings.js | short confirmations (no error style; one slot; 1.8 s) |
+| `toast(msg, {err})` | listings.js | short messages; one slot; errors styled `.toast.err` and announced assertively; time grows with length (Milestone 6). Pass `{err:true}` when reporting a failure rather than relying on the wording. |
 | `uiAlert / uiConfirm / uiPrompt` | dialog.js | replacing native dialogs (test_no_native_dialogs.py forbids native) |
 | `uiInline(anchor, o)` | dialog.js | small popover editor |
 | `uiStat / uiStats / uiPanel / uiToolbar / uiSource / uiEmpty / uiCopy` | pageui.js | stat cards, panels, toolbars, provenance lines, empty states, copy |

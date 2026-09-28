@@ -127,8 +127,11 @@ Safe to do first, and visible only as consistency (proposal, not done):
 
 1. Which direction (1, 2, 3, or the recommended 3 + context bar)?
 2. May the PDP get Approve/Hold buttons (audit UX #5)?
-3. Canada/Mexico/Singapore/Australia currency: Milestone 5 made every screen
-   show "C$", "MX$", "S$", "A$" (money.js's documented choice) instead of a
-   bare "$" on some screens. Keep?
+3. Currency symbols for Canada/Mexico/Singapore/Australia: money.js says "C$",
+   "MX$", "S$", "A$" (a documented choice); marketplaces.js and seven screens
+   say a bare "$" -- or "£" for anything not US/EU (Sales, P&L, PPC, repricer).
+   One answer needs choosing, then every screen moved onto money.js. Tried in
+   Milestone 5 and REVERTED after the UI review: changing one table alone made
+   the tiles disagree with Sales.
 4. Should inline price/stock edits on live listings ask for confirmation (they
    change Amazon in one step today)? Deliberately NOT changed in this run.

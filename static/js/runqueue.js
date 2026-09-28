@@ -171,6 +171,9 @@ function rqEnqueue(sku, mode, minimal){
   else if(typeof rqTogglePanel === "function" && !RQ._panelOpen){
     try{ rqTogglePanel(); }catch(e){}
   }
+  // What it was before: a refusal puts it BACK, rather than switching off the
+  // protection another SKU's watched run may be relying on (UI review).
+  const _wasStreaming = !!window.RUN_STREAMING;
   window.RUN_STREAMING=true;
   fetch("/preview/enqueue",{method:"POST",headers:{"Content-Type":"application/json"},
     // Names the account (known-issues #4).
@@ -184,7 +187,7 @@ function rqEnqueue(sku, mode, minimal){
         const why = (r&&r.error)||"unknown";
         if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc(why)+'</span>';
         else if(typeof toast==="function") toast("Could not queue "+sku+": "+why);
-        window.RUN_STREAMING=false;
+        window.RUN_STREAMING=_wasStreaming;
         return;
       }
       rqGlobalPollNow();
@@ -192,7 +195,7 @@ function rqEnqueue(sku, mode, minimal){
     }).catch(e=>{
       if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc(String(e))+'</span>';
       else if(typeof toast==="function") toast("Could not queue "+sku+": "+e);
-      window.RUN_STREAMING=false;
+      window.RUN_STREAMING=_wasStreaming;
     });
 }
 

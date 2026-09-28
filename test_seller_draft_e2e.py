@@ -14,10 +14,23 @@ sys.path.insert(0, _REPO)
 
 TMP = tempfile.mkdtemp()
 CFG = os.path.join(TMP, "config.json")
-real = json.load(open(_os_repo.path.join(_REPO, r"config.json"), encoding="utf-8"))
-json.dump({"accounts": real.get("accounts", [])[:1],
+# A MADE-UP ACCOUNT, NOT THE OWNER'S. This copied the first account out of the
+# real config.json -- credentials and all -- into a temp file on every run, and
+# in any other checkout it simply crashed. eBay is stubbed below and nothing
+# here talks to Amazon, so an account with no credentials is all it needs
+# (Milestone 10, 28 Sep 2026).
+_E2E_ACCOUNT = {"id": "e2e_account", "name": "E2E test account",
+                "label": "E2E test account", "default_marketplace": "UK",
+                "marketplaces": ["UK"], "brand_name": "E2E Test Brand",
+                "brands": ["E2E Test Brand"]}
+real = {"accounts": [_E2E_ACCOUNT]}
+json.dump({"accounts": [_E2E_ACCOUNT],
            "db_path": os.path.join(TMP, "e2e.db"),
            "storage": "DB",
+           # visible placeholders, like run_tests.TEST_CONFIG -- not credentials
+           "anthropic_api_key": "test-placeholder-not-a-real-key",
+           "google_spreadsheet_id": "test-placeholder-sheet",
+           "google_service_account_json": "test-placeholder-service-account.json",
            "ebay_app_id": "x", "ebay_cert_id": "y"},
           open(CFG, "w", encoding="utf-8"))
 
@@ -79,7 +92,12 @@ with app.test_client() as c:
     print("\n=== what actually landed ===")
     check("the request succeeded", j.get("ok"), True)
     check("one parent plus three children were written", j.get("drafted"), 4)
-    check("three were enrolled -- the parent is not a product", j.get("enrolled"), 3)
+    # RE-PINNED (Milestone 10): drafts are NEVER enrolled. The owner's 7 Sep
+    # 2026 rule -- the repricer takes a listing "when the listing goes live,
+    # not on draft" -- is what routes/seller_routes.py does; this still
+    # expected 3 because it had not been able to run since (it needed the
+    # real config.json).
+    check("none were enrolled -- drafts wait for go-live", j.get("enrolled"), 0)
     check("no errors", j.get("errors"), [])
     skus = j.get("skus") or []
     check("four DISTINCT skus", len(set(skus)), 4)
@@ -97,8 +115,8 @@ with app.test_client() as c:
     print("  source rows: %d" % len(src))
     for s2 in src: print("     %-40s %s" % (s2["sku"], s2["url"]))
 
-    check("every enrollment is DRY RUN",
-          sorted({e["mode"] for e in enr}), ["dry_run"])
+    check("nothing is in the repricer yet (the supplier is recorded, not enrolled)",
+          len(enr), 0)
     check("the parent was never enrolled",
           any("PARENT" in e["sku"] for e in enr), False)
     check("each child got a source", len(src), 3)
