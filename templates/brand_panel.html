@@ -1,0 +1,162 @@
+
+<div style="max-width:880px">
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <span class="pill active" id="tab-brand" onclick="brandTab('brand')">Brand Settings</span>
+    <span class="pill" id="tab-conn" onclick="brandTab('conn')">Connections</span>
+  </div>
+
+  <!-- BRAND SETTINGS -->
+  <div id="pane-brand">
+    <!-- TWO DIFFERENT THINGS ARE CALLED "BRAND" AND THIS IS THE OTHER ONE.
+         Reported: "i tried adding A new brand by going to brand setup but the
+         screen is blank" -- the screen renders (measured in a browser: 1,178
+         characters, no errors), but it was the wrong screen for what was
+         wanted. This page holds a brand PROFILE: its voice, tone and language
+         for generated copy. Which trademarks an ACCOUNT may list under is a
+         different list, on the account itself, and that is the one that decides
+         what goes in the brand field. -->
+    <div class="cc" style="font-size:11.5px;line-height:1.55;margin:0 0 12px;max-width:760px;border-left:2px solid var(--line);padding-left:10px">
+      This page sets a brand&rsquo;s <b>voice and tone</b> for generated copy.
+      It does <b>not</b> decide which brands an account may list under.
+      <br><br>
+      <b>Neither does anything else in this app.</b> Whatever you type in a
+      listing&rsquo;s Brand field is sent to Amazon exactly as typed. Amazon
+      decides whether the account may use it, and refuses with code
+      <b>100550</b> (&ldquo;connect your brand&hellip;&rdquo;) if the brand is
+      not linked to <i>that selling account</i> in Seller Central &rsaquo;
+      <b>Manage Your Brands</b>. A brand linked to one of your accounts is not
+      linked to another &mdash; each selling account needs its own connection.
+      <br><br>
+      The <b>Trademarks / brands</b> field on the account (<b>Manage
+      accounts</b> &rsaquo; edit the account) is your own note of which brands
+      belong to it. It is used to point out a listing carrying something not on
+      that list; it no longer changes the value.
+    </div>
+    <div id="brand_cards" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
+    <table class="kv">
+      <tr><td class="k">Brand</td><td class="v">
+        <select class="ed" id="b_select" aria-label="Brand" onchange="brandLoad(this.value)"></select>
+        <span class="cc">or type a new name below to create one</span>
+      </td></tr>
+      <tr><td class="k">Brand name</td><td class="v"><input class="ed" id="b_name" aria-label="Brand name"></td></tr>
+      <tr><td class="k">Vendor mode</td><td class="v">
+        <select class="ed" id="b_vendor_mode" aria-label="Vendor mode">
+          <option value="single_brand">single_brand (one brand owns everything)</option>
+          <option value="reseller">reseller (multi-vendor store)</option>
+        </select></td></tr>
+      <tr><td class="k">Voice mode</td><td class="v">
+        <select class="ed" id="b_voice_mode" aria-label="Voice mode">
+          <option value="regenerate">regenerate (fresh optimised copy)</option>
+          <option value="preserve">preserve (keep brand phrasing, restructure)</option>
+        </select></td></tr>
+      <tr><td class="k">Tone / output language</td><td class="v">
+        <select class="ed" id="b_tone" aria-label="Tone / output language"></select>
+        <span class="cc">English is default; brand's source language appears if non-English</span>
+      </td></tr>
+      <tr><td class="k">Marketplace</td><td class="v">
+        <select class="ed" id="b_marketplace" aria-label="Marketplace"><option>UK</option><option>US</option></select></td></tr>
+      <tr><td class="k">Pricing</td><td class="v">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span class="cc">source currency</span>
+          <input class="ed" id="b_srccur" placeholder="SEK" style="width:70px;display:inline-block">
+          <span class="cc">× FX rate</span>
+          <input class="ed" id="b_fx" placeholder="0.075" style="width:80px;display:inline-block">
+          <span class="cc">× markup</span>
+          <input class="ed" id="b_markup" placeholder="1.0" style="width:70px;display:inline-block">
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+          <label class="cc"><input type="checkbox" id="b_round99"> round to .99</label>
+          <span class="cc" style="margin-left:10px">or fixed price</span>
+          <input class="ed" id="b_fixed" placeholder="(overrides)" style="width:90px;display:inline-block">
+        </div>
+        <span class="cc">Shopify price × FX × markup = Amazon price. e.g. 1490 SEK × 0.075 = £111.75</span>
+      </td></tr>
+      <tr><td class="k">Country of origin</td><td class="v">
+        <input class="ed" id="b_coo" placeholder="brand-stated, else leave blank"></td></tr>
+      <tr><td class="k">Lead title with brand</td><td class="v">
+        <select class="ed" id="b_lead" aria-label="Lead title with brand"><option value="true">Yes</option><option value="false">No</option></select></td></tr>
+      <tr><td class="k">SKU prefix</td><td class="v">
+        <select class="ed" id="b_prefix_on" aria-label="SKU prefix" style="width:auto;display:inline-block">
+          <option value="false">off (use brand SKU as-is)</option>
+          <option value="true">on</option></select>
+        <input class="ed" id="b_prefix" placeholder="e.g. LEECH" style="display:inline-block;width:auto;margin-left:8px">
+        <span class="cc">on -> LEECH-P2601B</span>
+      </td></tr>
+      <tr><td class="k">Shopify export path</td><td class="v">
+        <input class="ed" id="b_csv" placeholder="click Browse to upload, or type a path">
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+          <input type="file" id="b_csvfile" accept=".csv,.tsv,.txt" style="display:none" onchange="brandUpload(this)">
+          <button class="ghost" onclick="document.getElementById('b_csvfile').click()">Browse…</button>
+          <button class="ghost" onclick="brandPreview()">Preview export</button>
+          <span id="b_uploadstatus" class="cc"></span>
+        </div>
+        <div id="b_preview" class="cc" style="margin-top:6px"></div>
+        <div id="brandhow_import"></div>
+      </td></tr>
+      <tr><td class="k">Output Google Sheet</td><td class="v">
+        <input class="ed" id="b_outsheet" placeholder="Sheet ID (blank = use default sheet)">
+        <span class="cc">e.g. a US brand writes to your US sheet, not the UK one</span>
+      </td></tr>
+      <tr><td class="k">Output tab name</td><td class="v">
+        <input class="ed" id="b_outtab" placeholder="e.g. Listings v7.0 USA (blank = default tab)"></td></tr>
+      <tr><td class="k">Main image reference (AI)</td><td class="v">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="ed" id="b_mainimgref" style="flex:1" placeholder="https://... or upload from your computer \u2192">
+          <label class="uploadbtn" title="Upload from your computer">
+            <i class="ti ti-upload"></i> Upload
+            <input type="file" accept="image/*" style="display:none" onchange="uploadBrandRef(this)">
+          </label>
+        </div>
+        <div id="b_mainimgref_prev"></div>
+        <span class="cc">used when generating main images for this brand's products</span>
+      </td></tr>
+      <tr><td class="k">Claims-docs Drive folder</td><td class="v">
+        <input class="ed" id="b_drive" placeholder="https://drive.google.com/drive/folders/...">
+        <span class="cc">share this folder with the service-account email</span>
+      </td></tr>
+      <tr><td class="k">Competitor ASINs (optional)</td><td class="v">
+        <input class="ed" id="b_comp" placeholder="B0..., B0... (comma separated, optional)"></td></tr>
+      <tr><td class="k">Forbidden brands (IP)</td><td class="v">
+        <input class="ed" id="b_forbidden" placeholder="rival brand names, comma separated"></td></tr>
+      <tr><td class="k">Voice notes</td><td class="v">
+        <textarea class="ed" id="b_voicenotes" rows="3" placeholder="positioning, tone, words to favour/avoid"></textarea></td></tr>
+    </table>
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+      <button class="primary" onclick="brandSave()">Save brand</button>
+      <span style="margin-left:12px;color:var(--muted)">Test mode — generate only</span>
+      <input class="ed" id="b_testlimit" aria-label="Test mode: how many to generate" value="2" style="width:60px;display:inline-block">
+      <span style="color:var(--muted)">listing(s)</span>
+      <button class="ok" onclick="brandRun(true)">Test run (limited)</button>
+      <button class="danger" onclick="brandRun(false)" title="Generates ALL products — uses full credits">
+        Generate ALL listings</button>
+      <button class="danger" id="b_stopbtn" onclick="brandStop()" style="display:none">Stop</button>
+    </div>
+    <div id="brandhow_run"></div>
+    <pre id="brandlog" style="display:none;margin-top:12px;padding:10px;background:#0b0d11;
+      border:1px solid var(--line);border-radius:8px;max-height:260px;overflow:auto;
+      font:12px/1.5 ui-monospace,Consolas,monospace;color:#cbd3e1;white-space:pre-wrap"></pre>
+  </div>
+
+  <!-- CONNECTIONS -->
+  <div id="pane-conn" style="display:none">
+    <table class="kv">
+      <tr><td class="k">Auth method</td><td class="v">
+        <select class="ed" id="c_auth">
+          <option value="service_account">service account (default, headless)</option>
+          <option value="oauth">oauth (client accounts - coming soon)</option>
+        </select></td></tr>
+      <tr><td class="k">Service account JSON</td><td class="v">
+        <input class="ed" id="c_sa" placeholder="service_account.json"></td></tr>
+      <tr><td class="k">Default claims-docs folder</td><td class="v">
+        <input class="ed" id="c_drive" placeholder="https://drive.google.com/drive/folders/..."></td></tr>
+      <tr><td class="k">Label</td><td class="v"><input class="ed" id="c_label" placeholder="Owner (default)"></td></tr>
+    </table>
+    <div style="margin-top:8px" class="reqnote">
+      <b>Setup:</b> enable the Drive API on your Google Cloud project and share the
+      claims-docs folder with the service-account email. OAuth (for client-owned
+      Drives) activates in the client-onboarding phase.
+    </div>
+    <button class="primary" onclick="connSave()" style="margin-top:12px">Save connection</button>
+  </div>
+</div>
+

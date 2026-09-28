@@ -179,7 +179,9 @@ entities and brands: docs/product-context.md.
 ## 10. RESTRUCTURING
 
 The structural phases are done: routes are out of dashboard.py, HTML/CSS/JS
-are out of Python strings, the listing engine's movable parts are in listing/,
+are out of Python strings (one exception remains: dashboard_brand_patch.py still
+carries the brand-setup panel's markup and script -- master audit A16), the
+listing engine's movable parts are in listing/,
 and config/settings.py exists. `build_api_attributes` and the functions that
 read the mutable `MARKETPLACE_ID` stay in the engine on purpose. Any further
 move: `refactor-move` skill — move code, do not rewrite it; behaviour must be
