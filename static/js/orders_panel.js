@@ -238,7 +238,11 @@ function _opDaysLeft(shipBy){
   const when = (typeof _oWhen === "function") ? _oWhen(shipBy) : String(shipBy);
   out.title = "Amazon counts this order late if it is not dispatched by "
             + when + ".";
-  if(days < 0){ out.text = "overdue"; out.tone = "bad"; out.label = "Post by"; }
+  // PASSED IS OVERDUE, even later the same day: Amazon counts it late from
+  // the ship-by moment, and the board beside this reads the same rule
+  // (_ordShipMs in orders.js).
+  const ms = (typeof _ordShipMs === "function") ? _ordShipMs(shipBy) : null;
+  if(days < 0 || (ms !== null && ms < 0)){ out.text = "overdue"; out.tone = "bad"; out.label = "Post by"; }
   else if(days === 0){ out.text = "today"; out.tone = "bad"; }
   else if(days === 1){ out.text = "1 day"; out.tone = "good"; }
   else { out.text = days + " days"; out.tone = "good"; }

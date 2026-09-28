@@ -279,6 +279,7 @@ function screenForgetAll(){
   if(typeof ORD !== "undefined" && ORD){
     ORD.rows = []; ORD.summary = {}; ORD.meta = null;
     ORD.details = {}; ORD.open = ""; ORD.account = "";
+    ORD.sel = new Set();                     // ticked orders were that account's
     ORD.loadId = (ORD.loadId || 0) + 1;      // abandon any load in flight
     const _oa = document.getElementById("ord_account");
     if(_oa) _oa.value = "";

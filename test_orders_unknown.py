@@ -127,6 +127,9 @@ globalThis.CUR_SYMBOL = "£";
 globalThis.curSymbol = () => "£";
 vm.runInThisContext(fs.readFileSync("static/js/orders.js","utf8"),
                     {filename:"orders.js"});
+// The page loads the Orders layout helpers right after orders.js (29 Sep 2026).
+vm.runInThisContext(fs.readFileSync("static/js/orders_board.js","utf8"),
+                    {filename:"orders_board.js"});
 
 const run = function(meta, rows){
   // ordersRender takes no argument and reads ORD.meta and ORD.summary, which

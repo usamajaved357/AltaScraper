@@ -189,6 +189,18 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   untracked `current-work.md` and `active/` in the main checkout.
   Source: read.txt, 27 Sep 2026.
 
+## Orders
+
+- **29 Sep 2026 — Orders: build the full design layout first, with no real
+  actions.** After seeing the side-panel version the owner said "this orders page
+  is not according to our plan"; asked which version to build, he chose "Layout
+  first": status tabs with counts, supplier/cost columns, the dispatch countdown,
+  row selection, a card list on phones -- and the "Next step" and bulk buttons
+  only OPEN the right screen or order. Rules out, for now: any Orders button that
+  marks dispatched, uploads tracking, buys from a supplier or otherwise writes to
+  Amazon or spends money; each is wired later, one at a time, with his OK.
+  Source: owner answer to the Orders question, 29 Sep 2026.
+
 ## Code structure
 
 - **28 Sep 2026 — Milestone 4 approved: split the big files by feature, batches

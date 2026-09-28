@@ -235,3 +235,71 @@
   box-shadow: inset 3px 0 0 var(--as-action);
 }
 /* 380px, always: ORD_SIDE_MIN in orders.js is worked out on this width. */
+
+/* ---- THE ORDERS LAYOUT (orders_board.js; design package "Orders") -----------
+   Tabs by what each order needs, the next ship-by, a channel filter, the bulk
+   bar, the plan's columns -- and on a phone, each order as a card. */
+.ord-board{ display:flex; flex-direction:column; gap:var(--as-space-2,8px); margin:0 0 var(--as-space-3,12px); }
+.ord-due-head{ font:var(--as-text-small); color:var(--as-text-secondary); }
+.ord-due-head b{ color:var(--as-text-primary); }
+.ord-due-head.warn, .ord-due-head.warn b{ color:var(--as-warning); }
+.ord-due-head.bad, .ord-due-head.bad b{ color:var(--as-danger); }
+.ord-tabs{ display:flex; gap:2px; overflow-x:auto; border-bottom:1px solid var(--as-border); }
+.ord-tab{
+  flex:0 0 auto; background:none; border:0; border-bottom:2px solid transparent;
+  padding:8px 12px; font:var(--as-text-body); color:var(--as-text-secondary); cursor:pointer;
+}
+.ord-tab:hover{ color:var(--as-text-primary); }
+.ord-tab.on{ color:var(--as-text-primary); border-bottom-color:var(--as-action); font-weight:600; }
+.ord-tab-n{
+  display:inline-block; min-width:18px; padding:0 6px; margin-left:4px; border-radius:var(--as-radius-pill);
+  background:var(--as-surface-3); color:var(--as-text-secondary); font:var(--as-text-caption); text-align:center;
+}
+.ord-tab-n.bad{ background:var(--as-danger-bg); color:var(--as-danger); }
+.ord-filters{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.ord-bulk{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 12px;
+  background:var(--as-action-subtle); border:1px solid var(--as-action-subtle-border);
+  border-radius:var(--as-radius-md);
+}
+.ord-bulk .db-chip[disabled]{ opacity:.5; cursor:not-allowed; }
+.ord-selcell{ width:34px; text-align:center; }
+.ord-selcell input{ width:16px; height:16px; cursor:pointer; }
+table.ordtable tbody tr.ordrow.rowon{ background:var(--as-action-subtle); }
+.ord-ch{ font:var(--as-text-small); font-weight:600; }
+.ord-ch.fbm{ color:var(--as-warning); }
+.ord-ch.fba{ color:var(--as-viz-phrase); }
+.ord-due.warn{ color:var(--as-warning); }
+.ord-due.bad{ color:var(--as-danger); font-weight:600; }
+.ord-next{
+  white-space:nowrap; font:var(--as-text-small); font-weight:600; padding:5px 10px;
+  border-radius:var(--as-radius-sm); border:1px solid var(--as-border); cursor:pointer;
+  background:var(--as-surface-3); color:var(--as-text-primary); min-height:32px;
+}
+.ord-next.primary{ background:var(--as-action); border-color:var(--as-action); color:var(--as-action-fg); }
+.ord-next.danger{ background:var(--as-danger-bg); border-color:var(--as-danger-border); color:var(--as-danger); }
+/* On a phone: each order is a card -- a label beside each value, the
+   checkbox and the next step kept, nothing scrolls sideways. */
+@media (max-width: 640px){
+  table.ord-board-table{ min-width:0 !important; }
+  table.ord-board-table thead{ display:none; }
+  table.ord-board-table tbody tr.ordrow{
+    display:block; padding:10px 12px; border-bottom:1px solid var(--as-border-subtle);
+  }
+  /* Each cell a row of the card: its label on the left, its lines stacked on
+     the right (every child of the cell goes in the second column). */
+  table.ord-board-table tbody tr.ordrow > td{
+    display:grid; grid-template-columns:92px minmax(0,1fr); column-gap:10px;
+    padding:3px 0; border:0; white-space:normal !important; min-width:0 !important;
+  }
+  table.ord-board-table tbody tr.ordrow > td::before{
+    content:attr(data-label); grid-column:1; grid-row:1 / span 9;
+    font:var(--as-text-caption); color:var(--as-text-muted);
+  }
+  table.ord-board-table tbody tr.ordrow > td > *{ grid-column:2; justify-self:start; }
+  table.ord-board-table tbody tr.ordrow > td > .ord-next{ justify-self:stretch; }
+  table.ord-board-table tbody tr.ordrow > td.ord-selcell{ display:block; width:auto; text-align:left; }
+  table.ord-board-table tbody tr.ordrow > td.ord-selcell::before{ content:none; }
+}
+
+@media (max-width: 640px){ table.ord-board-table .ord-chev{ display:none; } }

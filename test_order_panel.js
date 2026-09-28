@@ -133,7 +133,9 @@ console.log("\n=== the list and the panel describe a status the same way ===");
 // something Unshipped while the panel called it something else.
 const tables = (CODE.match(/_ORD_STATUS\s*=/g) || []).length;
 check("  exactly one status table exists", tables, 1);
-truthy("  and the row reads its label from it", /st\.t \|\| r\.status/.test(CODE));
+// Since 29 Sep 2026 the row draws its state with _ordStateChip, the same
+// function the panel uses, which reads the one table.
+truthy("  and the row reads its label from it", /_ordStateChip\(r\.status/.test(CODE));
 
 console.log("\n=== the fee is not called an estimate once Amazon has settled ===");
 truthy("the panel asks which it got", /fees_basis === "actual"/.test(CODE));

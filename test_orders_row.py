@@ -67,9 +67,14 @@ check("an empty order says nothing rather than crashing",
 
 print("\n=== the screen ===")
 JS = open(_os_repo.path.join(_REPO, r"static\js\orders.js"), encoding="utf-8").read()
-truthy("there is an Item column", "'Item', 'Order'" in JS)
+# Since 29 Sep 2026 the table follows the design plan's Orders layout (owner:
+# "Layout first"): select, Order, Item, Channel, State, Due / next, Cost,
+# Profit (margin and ROI under it), Next step. What these checks protect --
+# the item and its picture, and margin and ROI visible on the row -- stays.
+truthy("there is an Item column", "'sel', 'Order', 'Item'" in JS)
 truthy("  with a picture", "_ordItemImage(" in JS)
-truthy("margin and ROI have their own columns", "'Margin', 'ROI'" in JS)
+truthy("margin and ROI are on the row, under Profit",
+       "'Cost', 'Profit', 'Next step'" in JS and "' · ROI ' + _ordPct(r.roi_pct" in JS)
 truthy("  coloured against their own thresholds",
        "_ordPct(r.margin_pct, 20, 8" in JS and "_ordPct(r.roi_pct, 30, 12" in JS)
 truthy("  and neither is invented when unknown",
@@ -79,7 +84,7 @@ truthy("the account column only appears when there is more than one",
 truthy("the table is narrower than it was", "min-width:760px" in JS)
 truthy("  and no longer 900", "min-width:900px" not in JS)
 truthy("the Item column gets the width, not the four-character money ones",
-       "width:34%" in JS and "_narrow[t]" in JS)
+       "(t === 'Item' ? ' style=\"width:26%\"'" in JS)
 truthy("  and a long product name wraps rather than being cut to nothing",
        "-webkit-line-clamp:2" in JS)
 

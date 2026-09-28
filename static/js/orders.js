@@ -265,6 +265,7 @@ function ordersOnOpen(){
     ORD.rows = [];
     ORD.details = {};        // per-order panels belong to those rows too
     ORD.open = "";
+    ORD.sel = new Set();     // ticked orders belong to those rows too
     ORD.rowsFor = _ws;
   }
   if(!ORD.rows.length) ordersLoad(); else ordersRender();
@@ -329,6 +330,11 @@ async function ordersLoad(){
       return;
     }
     ORD.rows = j.rows || []; ORD.summary = j.summary || {}; ORD.meta = j;
+    // Ticks only for orders still in the list (days or search changed).
+    if(ORD.sel){
+      const _ids = new Set(ORD.rows.map(function(r){ return String(r.order_id); }));
+      ORD.sel = new Set([...ORD.sel].filter(function(id){ return _ids.has(id); }));
+    }
     // Stamped with WHOSE rows these are, so ordersOnOpen can tell a redraw of
     // the right list from a redraw of the last one.
     ORD.rowsFor = nowWs || askedFor;
@@ -693,21 +699,29 @@ function ordersRender(){
     Total: "buyer paid", Profit: "after fees and cost",
     Margin: "of the price", ROI: "on the cost",
   };
-  const cols = ['Item', 'Order'].concat(_multi ? ['Account'] : [])
-               .concat(['Placed', 'Status', 'Parcel', 'Total', 'Profit',
-                        'Margin', 'ROI']);
-  // The Item column gets the room. The money columns need four characters each
-  // and were taking a ninth of the screen apiece, which is why the product name
-  // -- the thing the column exists for -- was cut to nothing.
-  const _narrow = {'Total':1, 'Profit':1, 'Margin':1, 'ROI':1, 'Status':1};
-  // IN A PANEL, LIKE EVERY OTHER SCREEN. This table sat bare on the page
-  // background, at 6px row padding, with two lines of text in most cells and no
-  // line between rows -- so one order's small print ran straight into the next
-  // order's title. "i see text written into one another, no proper spacing and
-  // good visuals like other pages".
+  // THE PLAN'S LAYOUT (design package Direction A, "Orders"; owner, 29 Sep 2026:
+  // "Layout first"). Tabs by what each order needs, the next ship-by as a
+  // countdown, a channel filter, ticking rows, and the plan's columns. Read
+  // only: every "Next step" opens the order -- see static/js/orders_board.js.
   //
-  // .panelcard and .ordtable are the shared vocabulary; the numbers live in
-  // dashboard.css beside every other table's, not in this string.
+  // NOTHING THE OWNER ASKED TO SEE ON THE ROW IS LOST ("i want to see the item
+  // picture and name of the item and profit and roi and margin of each order
+  // without opening the order details"): picture and name in Item, margin and
+  // ROI under Profit, and the total the buyer paid under the order number.
+  _COLSUB.Order = "ID, placed, paid";
+  _COLSUB.Item = "product, ASIN";
+  _COLSUB.Channel = "who ships it";
+  _COLSUB.State = "Amazon's word";
+  _COLSUB["Due / next"] = "ship-by, or the parcel";
+  _COLSUB.Cost = "stock";
+  _COLSUB.Profit = "margin · ROI";
+  _COLSUB["Next step"] = "opens the order";
+  const cols = ['sel', 'Order', 'Item'].concat(_multi ? ['Account'] : [])
+               .concat(['Channel', 'State', 'Due / next', 'Cost', 'Profit', 'Next step']);
+  const _shown = _ordVisible(ORD.rows);
+  h += '<div class="ord-board">' + _ordCountdownHtml(ORD.rows) + _ordTabsHtml(ORD.rows)
+    +  _ordFiltersHtml(_shown.length, ORD.rows.length) + _ordBulkBar() + '</div>';
+  const _allTicked = _shown.length > 0 && _shown.every(function(r){ return _ordSel().has(String(r.order_id)); });
   // THE ORDER BESIDE THE TABLE, on a laptop or wider (owner decision, 28 Sep
   // 2026: "keep the Orders table as the main view; selecting an order may open
   // the side detail panel; the panel must not replace the table workflow").
@@ -719,82 +733,71 @@ function ordersRender(){
     ? ORD.rows.filter(function(r){ return r.order_id === ORD.open; })[0] : null;
   if(_openRow) h += '<div class="ord-split"><div class="ord-main">';
   h += '<div class="panelcard" style="padding:0;overflow:hidden">'
-    +  '<div style="overflow-x:auto"><table class="kv ordtable" '
+    +  '<div style="overflow-x:auto"><table class="kv ordtable ord-board-table" '
     +  'style="width:100%;min-width:760px">'
     +  '<thead><tr>'
     +  cols.map(function(t){
-         return '<th'
-              + (t === 'Item' ? ' style="width:34%"' : (_narrow[t] ? ' style="width:9%"' : ''))
-              + '>' + t
+         if(t === 'sel'){
+           return '<th class="ord-selcell"><input type="checkbox" data-fk="selall" aria-label="Select every order shown"'
+                + (_allTicked ? ' checked' : '') + ' onchange="ordersSelAllShown(this.checked)"></th>';
+         }
+         return '<th' + (t === 'Item' ? ' style="width:26%"' : '') + '>' + t
               + (_COLSUB[t] ? '<span class="th-sub">' + _oEsc(_COLSUB[t]) + '</span>' : '')
               + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
 
-  ORD.rows.forEach(function(r){
-    const st = _ORD_STATUS[r.status] || {c:"var(--ink2)"};
+  if(!_shown.length){
+    h += '<tr><td colspan="' + cols.length + '" class="cc" style="padding:16px">'
+      +  'Nothing in this tab' + (ORD.channel ? ' for this channel' : '') + '. '
+      +  (ORD.rows.length ? 'The other tabs hold the rest of the ' + ORD.rows.length + ' orders.' : '')
+      +  '</td></tr>';
+  }
+  _shown.forEach(function(r){
     const isOpen = (ORD.open === r.order_id);
+    const ticked = _ordSel().has(String(r.order_id));
     // Reachable from the keyboard: Tab to a row, Enter or Space opens it.
-    h += '<tr class="ordrow' + (isOpen ? ' isopen' : '') + '" tabindex="0"'
+    h += '<tr class="ordrow' + (isOpen ? ' isopen' : '') + (ticked ? ' rowon' : '') + '" tabindex="0"'
       +  ' aria-expanded="' + (isOpen ? 'true' : 'false') + '"'
       +  ' data-oid="' + _oEsc(r.order_id) + '"'
       +  ' onkeydown="ordersRowKey(event,' + jsArg(r.order_id) + ',' + jsArg(r.account_id) + ')"'
       +  ' onclick="ordersToggle('
       +  jsArg(r.order_id) + ',' + jsArg(r.account_id) + ')">'
-      // WHAT WAS SOLD, which is the first thing anyone wants from a list of
-      // orders and was not on it at all. The picture comes from the live
-      // catalogue this app already holds -- no extra call -- and falls back to
-      // an icon rather than a broken image.
-      +  '<td style="min-width:230px">' + _ordItemCell(r) + '</td>'
-      +  '<td style="white-space:nowrap">'
+      +  '<td class="ord-selcell" onclick="event.stopPropagation()"><input type="checkbox"'
+      +  ' data-fk="sel:' + _oEsc(r.order_id) + '"'
+      +  ' aria-label="Select order ' + _oEsc(r.order_id) + '"' + (ticked ? ' checked' : '')
+      +  ' onchange="ordersSelToggle(' + jsArg(r.order_id) + ', this.checked)"></td>'
+      +  '<td data-label="Order" style="white-space:nowrap">'
       +  '<code style="font-size:11px;color:var(--accent2)">' + _oEsc(r.order_id)
-      +  '</code>' + (isOpen ? ' <i class="ti ti-chevron-down"></i>'
-                             : ' <i class="ti ti-chevron-right" style="opacity:.4"></i>')
-      +  '<div class="cc" style="font-size:10px">' + (r.units||0) + ' unit'
-      +  ((r.units||0) === 1 ? '' : 's') + '</div>'
+      +  '</code>' + (isOpen ? ' <i class="ti ti-chevron-down ord-chev"></i>'
+                             : ' <i class="ti ti-chevron-right ord-chev" style="opacity:.4"></i>')
+      +  '<div class="cc" style="font-size:10.5px;white-space:normal">' + _ordWhenCell(r.purchased) + '</div>'
+      +  '<div class="cc" style="font-size:10.5px">' + _oEsc(_oMoney(r.total, r.currency))
+      +  ' · ' + (r.units||0) + ' unit' + ((r.units||0) === 1 ? '' : 's') + '</div>'
       +  '</td>'
-      +  (_multi ? ('<td style="font-size:11.5px">'
-                    + _oEsc(r.account) + '</td>') : '')
-      // NOT nowrap on the whole cell. It was, and the small print underneath --
-      // "MFN · SMETHWICK, West Midlands, B67 7LW, GB" -- could not wrap, so it
-      // ran straight out of its column and printed over the Status beside it.
-      // That is the "text written into one another" on this screen. The DATE
-      // keeps its nowrap, because a date broken across two lines is worse than
-      // a wide column; the address wraps.
-      +  '<td style="font-size:11.5px;max-width:210px">'
-      // The DATE and the TIME each stay whole, but the time may take the next
-      // line: kept as one unbreakable "Sep 21, 2026, 03:00 PM" it was wider
-      // than this fixed-layout column and printed over the Status beside it.
-      +  _ordWhenCell(r.purchased)
-      // The two columns that used to sit on the right, as small print here.
-      +  '<div class="cc" style="font-size:10px;white-space:normal;'
-      +  'overflow-wrap:anywhere">'
-      +  _oEsc(r.fulfilment || '') + (r.prime ? ' · Prime' : '')
-      +  (r.business ? ' · Business' : '')
-      +  (r.region ? ' · ' + _oEsc(r.region) : '') + '</div>'
+      +  '<td data-label="Item" style="min-width:200px">' + _ordItemCell(r) + '</td>'
+      +  (_multi ? ('<td data-label="Account" style="font-size:11.5px">' + _oEsc(r.account) + '</td>') : '')
+      +  '<td data-label="Channel">' + _ordChannelCell(r)
+      +  ((r.prime || r.business) ? '<div class="cc" style="font-size:10px">'
+          + (r.prime ? 'Prime' : '') + (r.prime && r.business ? ' · ' : '') + (r.business ? 'Business' : '') + '</div>' : '')
       +  '</td>'
-      // AMAZON'S WORD, WITH WHAT IT MEANS ON HOVER. "Pending" and "Unshipped"
-      // are the two that cost money to misread, and the raw word said nothing.
-      // Same table the panel uses, so the list and the panel cannot describe
+      // AMAZON'S WORD, WITH WHAT IT MEANS ON HOVER -- the same chip the order
+      // panel uses (_ordStateChip), so the list and the panel cannot describe
       // one status two ways (Rule 12).
-      +  '<td style="font-size:11.5px;color:' + st.c + '" title="'
-      +  _oEsc([st.m, st.d].filter(Boolean).join(" ")) + '">'
-      +  '<span style="white-space:nowrap">' + _oEsc(st.t || r.status) + '</span>'
-      // On its own line rather than trailing the status: "Unshipped (1 to ship)"
-      // is too wide for a 9% column and wrapped into the cell above it.
+      +  '<td data-label="State" style="font-size:11.5px">'
+      +  _ordStateChip(r.status, r.item && r.item.cancel_requested)
       +  (r.unshipped ? '<div class="cc" style="font-size:10px;white-space:nowrap">'
                         + r.unshipped + ' to ship</div>' : '')
       +  '</td>'
-      // WHERE THE PARCEL IS. Amazon's status beside it answers a different
-      // question -- "have I marked this shipped" is about us, "out for
-      // delivery" is about the parcel -- so they are two columns, not one.
-      +  '<td style="font-size:11.5px">' + _ordParcelCell(r) + '</td>'
-      +  '<td style="font-size:11.5px;white-space:nowrap">'
-      +  _oEsc(_oMoney(r.total, r.currency)) + '</td>'
+      +  '<td data-label="Due / next" style="font-size:11.5px">' + _ordDueCell(r) + '</td>'
+      +  '<td data-label="Cost" style="font-size:11.5px;white-space:nowrap">'
+      +  (r.cogs != null ? _oEsc(_oMoney(r.cogs, r.currency))
+                         : '<span class="cc" style="opacity:.5" title="No cost recorded for what sold">—</span>')
+      +  '</td>'
       // WHAT IT EARNED. Blank rather than zero when a cost is unknown -- a
       // partial cost only ever makes an order look better than it was, and the
       // order whose cost is missing is exactly the one someone would use to
       // justify buying more.
-      +  '<td style="font-size:11.5px;white-space:nowrap"'
+      +  '<td data-label="Profit" style="font-size:11.5px;white-space:nowrap"'
       +  (r.profit_note ? ' title="' + _oEsc(r.profit_note) + '"' : '') + '>'
       +  (r.profit === undefined
           ? '<span class="cc" style="opacity:.5">—</span>'
@@ -803,20 +806,14 @@ function ordersRender(){
               + '">not known</span>'
             : '<span style="color:' + (r.profit > 0 ? "var(--ok,#8fd694)" : "var(--red)")
               + '">' + _oEsc(_oMoney(r.profit, r.currency)) + '</span>')
+      // MARGIN AND ROI answer different questions -- margin says whether the
+      // PRICE is any good, ROI whether the stock was worth BUYING -- so each
+      // keeps its own threshold, and neither is invented when the cost is not.
+      +  '<div style="font-size:10.5px">'
+      +  _ordPct(r.margin_pct, 20, 8, 'Profit as a share of what the buyer paid, after VAT')
+      +  ' · ROI ' + _ordPct(r.roi_pct, 30, 12, 'Profit as a share of what the stock cost') + '</div>'
       +  '</td>'
-      // MARGIN AND ROI, in their own columns. They answer different questions --
-      // margin says whether the PRICE is any good, ROI says whether the stock
-      // was worth BUYING -- so they are coloured against different thresholds
-      // rather than one shared rule of thumb, and neither is invented when the
-      // cost behind it is unknown.
-      +  '<td style="font-size:11.5px;white-space:nowrap">'
-      +  _ordPct(r.margin_pct, 20, 8,
-                'Profit as a share of what the buyer paid, after VAT') + '</td>'
-      +  '<td style="font-size:11.5px;white-space:nowrap"'
-      +  (r.cogs != null ? ' title="on ' + _oEsc(_oMoney(r.cogs, r.currency))
-                           + ' of stock"' : '') + '>'
-      +  _ordPct(r.roi_pct, 30, 12,
-                'Profit as a share of what the stock cost') + '</td>'
+      +  '<td data-label="Next step">' + _ordNextBtn(r) + '</td>'
       +  '</tr>';
     if(isOpen && !_openRow){
       h += '<tr class="orddetail"><td colspan="' + cols.length + '">'
@@ -1723,6 +1720,15 @@ function _ordWhenCell(iso){
        + '<span style="white-space:nowrap">' + _oEsc(w.slice(k + 2)) + '</span>';
 }
 
+/* THE ONE SHIP-BY RULE for the Orders screen (Rule 12): milliseconds until
+ * Amazon's LatestShipDate, negative once it has passed -- which is when Amazon
+ * counts the order late. null when Amazon gave no date. The board's tabs and
+ * countdown and the order panel's "Post by" all read it. */
+function _ordShipMs(shipBy){
+  const t = Date.parse(shipBy || "");
+  return isNaN(t) ? null : t - Date.now();
+}
+
 /* Two columns (table + order panel) only where there is ROOM for both: a
  * laptop-or-wider window AND an Orders area wide enough that the table keeps
  * its 760px beside a 380px panel. The window alone was not enough -- with the
@@ -1768,13 +1774,19 @@ function ordersRowKey(e, orderId, accountId){
 function _ordFocusedOid(){
   const a = document.activeElement;
   if(!a || !a.closest) return "";
+  // Any Orders control that names itself (tab, channel, checkbox, next step,
+  // bulk button): restored by that name after the redraw.
+  if(a.getAttribute && a.getAttribute("data-fk")) return "fk:" + a.getAttribute("data-fk");
   if(a.classList.contains("ordrow")) return a.getAttribute("data-oid") || "";
   if(a.classList.contains("ord-side-x")) return a.getAttribute("data-oid") || "";
   return "";
 }
 function _ordRefocus(orderId){
-  const row = document.querySelector('tr.ordrow[data-oid="' + String(orderId).replace(/["\\]/g, "") + '"]');
-  if(row) row.focus({preventScroll: true});
+  const k = String(orderId);
+  const el = k.indexOf("fk:") === 0
+    ? document.querySelector('[data-fk="' + k.slice(3).replace(/["\\]/g, "") + '"]')
+    : document.querySelector('tr.ordrow[data-oid="' + k.replace(/["\\]/g, "") + '"]');
+  if(el) el.focus({preventScroll: true});
 }
 
 // When the room changes (window resized, sidebar opened or closed) an open
