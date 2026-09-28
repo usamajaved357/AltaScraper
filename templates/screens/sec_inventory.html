@@ -1,0 +1,90 @@
+    <div id="sec_inventory" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2>Inventory</h2>
+        <div class="sub">What you have, how fast it is going, and when it runs out.</div></div>
+        <span class="spacer" style="flex:1"></span>
+        <button class="db-chip" onclick="openGuide('stock')"
+                title="What this page does and what every figure on it means.">
+          <i class="ti ti-book"></i> How this page works</button>
+        <button class="db-chip" onclick="stockLoad(true)"
+                title="Re-read the listing quantities, sales and supplier times.">
+          <i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+
+      <!-- THE STOCK COCKPIT.
+           "now start building the inventory feature same like orbit in our app"
+
+           Built from data the app already holds, so there is nothing to upload
+           and no Amazon report to wait for. The replenishment tool below is a
+           separate thing that needs an FBA report and a 3PL file; this needs
+           neither, which is why it is the part of the screen you see first. -->
+      <div id="stockwrap"></div>
+
+      <!-- THE OLDER TOOL, KEPT AND NOW LABELLED. It lost its heading when the
+           panel's own <h2> became "Inventory", and an unlabelled block of
+           number boxes under a table reads as part of the table. It answers a
+           different question -- "how much should I SEND to Amazon" -- and it
+           needs an FBA report and a 3PL file, so it is folded away until
+           somebody wants it. -->
+      <details class="foldgroup" style="margin-top:18px">
+        <summary><i class="ti ti-truck-loading"></i> FBA replenishment planner
+          <span class="cc">— the automated port of the Lure Essentials control
+          sheet. Needs an FBA inventory report and a 3PL stock file, and answers
+          how much to send to Amazon.</span></summary>
+      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+          <div>
+            <label class="cc" style="font-size:11px">Target normal FBA DOS</label>
+            <input id="inv2_normal" type="number" value="85" min="0" max="365"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div>
+            <label class="cc" style="font-size:11px">Reorder cycle days</label>
+            <input id="inv2_reorder" type="number" value="5" min="0" max="90"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div>
+            <label class="cc" style="font-size:11px">Long-horizon 3PL DOS</label>
+            <input id="inv2_long" type="number" value="110" min="0" max="365"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div>
+            <label class="cc" style="font-size:11px">Sales window (days)</label>
+            <input id="inv2_window" type="number" value="30" min="7" max="180"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div>
+            <label class="cc" style="font-size:11px">3PL stock CSV (optional) — matches your existing sheet columns</label>
+            <input type="file" id="inv2_3pl" accept=".csv,.tsv,.txt"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+            <div class="cc" style="font-size:10px;margin-top:2px;opacity:.65">
+              Cols: Natural SKUs · SKUs · Product Name · ASIN · 3PL Stock · In-Transit · Ordered Qty
+            </div>
+          </div>
+          <div>
+            <label class="cc" style="font-size:11px">Cache lifetime (hours) — protects Seller Central from report spam</label>
+            <input id="inv2_cache" type="number" value="6" min="0" max="72"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+            <div class="cc" style="font-size:10px;margin-top:2px;opacity:.65">
+              6h = at most 4 reports/day per account. Set to 0 to always fetch fresh (creates a Seller Central report each run).
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+          <label style="font-size:12px;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="inv2_force"> Force refresh (bypass cache, generates new Seller Central report)
+          </label>
+          <button class="mktbtn on" onclick="inv2Run()"><i class="ti ti-package"></i> Run inventory model</button>
+        </div>
+        <div id="inv2_result" style="margin-top:12px"></div>
+
+        <div style="margin-top:14px;padding:10px;border:1px solid #263145;border-radius:8px;background:#0d1220;font-size:11px;line-height:1.6;opacity:.8">
+          <b>How it works:</b> Fetches FBA inventory via the SP-API <code>GET_FBA_MYI_ALL_INVENTORY_DATA</code> report (cached 6h by default). Fetches sales velocity per SKU via the Orders API over the sales window. Classifies each SKU as <b>ACTIVE</b> (has sales), <b>NEW_LAUNCH</b> (0 sales but &lt;60 days old), <b>DORMANT</b> (0 sales, 60-365 days), or <b>DEAD</b> (0 sales &gt;365 days or Discontinued). Only ACTIVE and NEW_LAUNCH SKUs get reorder recommendations. The red badge in the sidebar shows count of SKUs needing reorder.
+        </div>
+      </div>
+      </details>
+    </div>

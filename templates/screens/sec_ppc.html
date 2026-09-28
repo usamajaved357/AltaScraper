@@ -1,0 +1,152 @@
+    <div id="sec_ppc" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2>PPC</h2>
+        <div class="sub">What the advertising is doing, and what it is wasting. Every figure comes from your own Search Term Report — nothing here changes a bid, a budget or a campaign.</div></div>
+        <span class="spacer" style="flex:1"></span>
+        <button class="db-chip" onclick="openGuide('ppc')"
+                title="What this page does, where the figures come from, and what each one means.">
+          <i class="ti ti-book"></i> How this page works</button>
+        <input type="file" id="ppc_report_file" accept=".csv,.tsv,.txt,.xlsx"
+               style="display:none" onchange="ppcReportUpload(this)">
+        <label class="db-chip" for="ppc_report_file" style="cursor:pointer"
+               title="Seller Central > Advertising > Measurement &amp; Reporting > Sponsored Products > Search Term Report. Nothing is sent to Amazon.">
+          <i class="ti ti-table-import"></i> Upload Search Term Report</label>
+        <button class="db-chip" onclick="ppcAnalyticsLoad(true)">
+          <i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+
+      <!-- PPC ANALYTICS. Orbit's advertising screens, rebuilt on a report that
+           can be downloaded from Seller Central today -- see
+           orbit_ppc_complete.md. The Advertising API is a separate OAuth this
+           app does not have, so nothing here waits for it. -->
+      <div id="ppcwrap"></div>
+
+      <details class="foldgroup" style="margin:18px 0 14px">
+        <summary><i class="ti ti-tools"></i> Campaign builder, harvester and the agent
+          <span class="cc">— the tools that MAKE things: bulk campaign files,
+          harvest and negative lists, audits and weekly decks.</span></summary>
+      <div style="display:grid;grid-template-columns:340px 1fr;gap:14px;min-height:420px">
+        <!-- Left: shortcut buttons -->
+        <div>
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px;opacity:.85">Shortcuts</div>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenBuilder()"><i class="ti ti-plus"></i> Build campaigns from keywords</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenHarvest()"><i class="ti ti-tractor"></i> Harvest search-term report</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('auditor', 'Audit account PPC health', 'Upload the SP bulk export + a campaign performance report (last 30 days is fine). Optionally add the SP Search Term Report. I audit clusters, budget benchmarks, match-type pyramid, funnel coverage, and bid-gap; deliver as docx.')"><i class="ti ti-stethoscope"></i> Audit account PPC health</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('dashboard', 'Control-Room dashboard', 'Upload the SP bulk export + a campaign performance report. I build the interactive Control-Room dashboard as HTML. Optionally add an organic ranking XLSX to unlock the Targeting Opportunity Map.')"><i class="ti ti-dashboard"></i> Control-Room dashboard</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('forecaster', 'Sales forecast', 'Upload the Amazon business report (session/units data) + SQP files (Brand Analytics), and tell me your target TACOS and net margin %. I build 3-scenario revenue+unit forecasts with growth-rate decay. If required data is missing I stop and ask — I never fabricate numbers.')"><i class="ti ti-chart-line"></i> Sales forecast</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('weekly-deck', 'Weekly client deck', 'Upload this week and last week performance data (business report + Ads campaign report per week). Give me the brand name, week ending, and any context. I produce a strategic PPC deck (pptx).')"><i class="ti ti-presentation"></i> Weekly client deck</button>
+          <div style="font-size:11px;opacity:.65;margin-top:12px;line-height:1.5">
+            <b>Hard rules baked in:</b><br>
+            · Match types spelled out (Exact/Phrase/Broad)<br>
+            · SKU (never ASIN) on Product Ads<br>
+            · Keywords + Product Targets never share an ad group<br>
+            · Never sets bids/budgets on its own initiative
+          </div>
+        </div>
+
+        <!-- Right: agent chat -->
+        <div style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden">
+          <div id="ppc_chatlog" style="flex:1;padding:14px;overflow-y:auto;min-height:360px;max-height:520px;background:#0d1220">
+            <div style="opacity:.75;font-size:13px;line-height:1.5">
+              <b>PPC Agent.</b> Describe what you want — build campaigns, harvest a search-term report, audit, dashboard, forecast, weekly deck. The agent knows the full PPC skill set from the handover doc and applies your standing rules (never touches bids/budgets without your value; SKU on ads; kw + PT never share; every kw in all 3 match types).
+              <br><br>
+              Scoped to: <b id="ppc_ctx">this workspace</b>.
+            </div>
+          </div>
+          <div style="padding:10px;border-top:1px solid var(--line);background:#141b2b">
+            <div style="display:flex;gap:8px">
+              <textarea id="ppc_input" placeholder="e.g. Build campaigns for ASIN B0EXAMPLE1, SKU MYSKU-001…" rows="2" style="flex:1;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:8px;padding:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+              <button class="mktbtn on" style="align-self:stretch;padding:0 16px" onclick="ppcAgentSend()">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </details>
+
+      <!-- Campaign-builder shortcut modal -->
+      <div id="ppc_builder_modal" class="modalwrap">
+        <div class="modal" style="max-width:640px">
+          <button class="x" onclick="ppcCloseBuilder()">×</button>
+          <h3><i class="ti ti-plus"></i> Build Sponsored Products campaigns</h3>
+          <div class="cc" style="margin:6px 0 12px">Feed a keyword export + ASIN/SKU. The tool buckets keywords (drop/head/comp/core), builds 5 campaigns with the full-coverage structure, and validates before letting you download.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div><label class="cc" style="font-size:11px">ASIN</label><input id="pb_asin" placeholder="B0EXAMPLE1" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Seller SKU (NOT ASIN)</label><input id="pb_sku" placeholder="MYSKU-001" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Product short name (for campaign names)</label><input id="pb_name" placeholder="BodyScale" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Daily budget (£/$)</label><input id="pb_budget" type="number" step="0.01" value="8.00" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Flat bid (£/$) — you set this, never auto</label><input id="pb_bid" type="number" step="0.01" value="0.30" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Conquest ASINs (comma-sep, optional)</label><input id="pb_conquest" placeholder="B0COMP0001, B0COMP0002" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Competitor brand names (comma-sep, for bucketing)</label>
+            <input id="pb_compbrands" placeholder="dyson, shark, vax" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Category-head terms (comma-sep — go to Phrase discovery)</label>
+            <input id="pb_headterms" placeholder="vacuum, hoover" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Keyword file (CSV) — DataDive / Helium 10 / SQP</label>
+            <input type="file" id="pb_file" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="mktbtn" onclick="ppcCloseBuilder()">Cancel</button>
+            <button class="mktbtn on" onclick="ppcRunBuilder()">Build bulk file</button>
+          </div>
+          <div id="pb_result" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <!-- Harvest shortcut modal -->
+      <div id="ppc_harvest_modal" class="modalwrap">
+        <div class="modal" style="max-width:640px">
+          <button class="x" onclick="ppcCloseHarvest()">×</button>
+          <h3><i class="ti ti-tractor"></i> Harvest a Sponsored Products Search Term Report</h3>
+          <div class="cc" style="margin:6px 0 12px">Applies the $10 rule + break-even ACOS: converters → harvest bulk (3 match types); past-$10 zero-order → negatives bulk; everything else → colour-coded status sheet. Already-targeted keywords are excluded from harvest to prevent duplicate (keyword, match-type) pairs on upload.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div><label class="cc" style="font-size:11px">ASIN</label><input id="ph_asin" placeholder="B0EXAMPLE1" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Seller SKU (NOT ASIN)</label><input id="ph_sku" placeholder="MYSKU-001" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Product short name</label><input id="ph_name" placeholder="BodyScale" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Break-even ACOS (0-1) — from your unit economics</label><input id="ph_be" type="number" step="0.01" value="0.35" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Bid for harvested keywords (you set — never auto)</label><input id="ph_bid" type="number" step="0.01" value="0.30" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Daily budget for new campaign (if none set)</label><input id="ph_budget" type="number" step="0.01" value="8.00" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">SP Search Term Report (CSV) — required</label>
+            <input type="file" id="ph_file" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Already-targeted keywords file (CSV, optional) — excluded from harvest</label>
+            <input type="file" id="ph_targeted" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="mktbtn" onclick="ppcCloseHarvest()">Cancel</button>
+            <button class="mktbtn on" onclick="ppcRunHarvest()">Run harvest</button>
+          </div>
+          <div id="ph_result" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <!-- Unified deliverable modal: audit / dashboard / forecast / weekly-deck -->
+      <div id="ppc_deliv_modal" class="modalwrap">
+        <div class="modal" style="max-width:640px">
+          <button class="x" onclick="ppcCloseDeliv()">×</button>
+          <h3 id="pd_title"><i class="ti ti-file"></i> PPC Deliverable</h3>
+          <div class="cc" style="margin:6px 0 12px" id="pd_desc">…</div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Files (multi-select; drop the right family for the task)</label>
+            <input type="file" id="pd_files" multiple style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+            <div class="cc" style="font-size:11px;margin-top:4px;opacity:.7">Accepted families: SP bulk export, Search Term Report, Business Report, Brand Analytics SQP, Scale Insights exports. I auto-detect from column headers.</div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Context / notes (optional — brand, week, targets, whatever helps)</label>
+            <textarea id="pd_context" rows="3" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px;font-family:inherit;font-size:13px"></textarea>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="mktbtn" onclick="ppcCloseDeliv()">Cancel</button>
+            <button class="mktbtn on" onclick="ppcRunDeliv()">Send to PPC agent</button>
+          </div>
+          <div id="pd_result" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>

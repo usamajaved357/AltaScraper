@@ -1,0 +1,14 @@
+    <div id="sec_kwasin" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-target-arrow"></i> ASIN Insights</h2>
+        <div class="sub">The search queries that produced impressions, clicks and purchases for one of <b>your</b> ASINs. Amazon does not share another seller&rsquo;s query performance, so a competitor&rsquo;s ASIN returns nothing.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="kwa_asin" class="ed" placeholder="One of YOUR ASINs&hellip;" style="min-width:170px"
+                 onkeydown="if(event.key==='Enter')kwAsinSearch()">
+          <label class="cc">Week <input id="kwa_start" type="date" class="ed"></label>
+          <label class="cc">to <input id="kwa_end" type="date" class="ed"></label>
+          <button class="db-chip" onclick="kwAsinSearch()"><i class="ti ti-search"></i> Search</button>
+        </div>
+      </div>
+      <div id="kwasinbody" style="padding:4px 0"></div>
+    </div>

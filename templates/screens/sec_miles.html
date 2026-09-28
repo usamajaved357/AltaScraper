@@ -1,0 +1,72 @@
+    <div id="sec_miles" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2>Miles Lubricants Import</h2>
+        <div class="sub">Harvest products from mileslubricants.com by item number — pulls page text, spec table, and the PDF spec/SDS sheets into Drive, then drafts Amazon listings with compliance &amp; IP checks.</div></div>
+      </div>
+
+      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+        <div style="font-size:13px;opacity:.85;margin-bottom:10px">
+          <b>Step 1.</b> Upload a CSV or Excel file with one column of item numbers (e.g. <code>M001000603</code>). One item number = one product = one listing.
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input type="file" id="miles_file" aria-label="Item-number file (CSV or Excel)" accept=".csv,.xlsx,.xls" onchange="milesPickFile(this)"
+                 style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+          <span id="miles_filestatus" style="font-size:12px;opacity:.7"></span>
+        </div>
+        <div id="miles_items" style="font-size:12px;opacity:.6;margin-top:8px"></div>
+      </div>
+
+      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+        <div style="font-size:13px;opacity:.85;margin-bottom:10px">
+          <b>Step 2.</b> Where should the listing copy go? Paste the Google Sheet ID (or full URL) and the tab name. Leave blank to use the account default.
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="miles_sheet" placeholder="Output Sheet ID or URL" onchange="milesSavePref()"
+                 style="flex:1;min-width:260px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+          <input type="text" id="miles_tab" placeholder="Tab name (e.g. Sheet2)" onchange="milesSavePref()"
+                 style="width:180px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+          <input type="number" id="miles_limit" min="1" placeholder="How many? (blank = all)"
+                 style="width:170px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+        </div>
+        <div style="font-size:11px;opacity:.6;margin-top:8px">
+          Columns written: SKU, Title, Bullet Point 1-5, Description, Backend Keywords, Compliance Report, Uploaded. Enter a number (e.g. 5) to generate just that many this run.
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="miles_use_ba" style="width:16px;height:16px">
+          Use real Amazon search data (Brand Analytics) to seed keywords — needs Brand Registry on the account
+        </label>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="primary" id="miles_runbtn" onclick="milesRun()" disabled><i class="ti ti-player-play"></i> Harvest &amp; draft</button>
+        <button id="miles_genbtn" onclick="milesGenerate()"><i class="ti ti-file-text"></i> Generate drafts</button>
+        <button id="miles_optbtn" onclick="milesOptimize()" title="Pull real Search Query Performance for live ASINs and front-load converting keywords"><i class="ti ti-trending-up"></i> Optimize live listings (SQP)</button>
+        <button class="danger" id="miles_stopbtn" onclick="milesStop()" title="Stop the current run — also force-clears a stuck 'a run is already in progress' lock">Stop</button>
+      </div>
+
+      <div class="reqnote" style="margin-bottom:10px">
+        Files are saved to your Drive master folder, one subfolder per item number. Industrial lubricants are hazmat on Amazon — the SDS sheet drives the compliance fields.
+        <br><b>Optimize live listings</b> pulls each ASIN's real Search Query Performance (the searches that actually drove sales) and rewrites the copy to front-load those — use it 2–4 weeks after listings go live.
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="miles_skip_done" checked> Skip item numbers already harvested
+        </label>
+        <button class="browsemodels sm" onclick="milesClearHistory()" title="Forget which items were harvested so they can run again">Clear harvested history</button>
+      </div>
+
+      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid #2c4a6b;border-radius:8px;background:var(--accent-bg);font-size:13px"></div>
+
+      <pre id="miles_log" style="display:none;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;margin:8px 0"></pre>
+
+      <div id="miles_runs_panel" style="margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <b style="font-size:13px"><i class="ti ti-history"></i> Past runs</b>
+          <button class="browsemodels sm" onclick="milesLoadRuns()" title="Refresh the saved run history"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+        <div id="miles_runs_list" style="font-size:12px;opacity:.85">Loading…</div>
+      </div>
+
+      <div id="miles_results" style="margin-top:14px"></div>
+    </div>

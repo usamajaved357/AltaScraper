@@ -1,0 +1,14 @@
+    <div id="sec_kwspy" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-radar"></i> Keyword Spy</h2>
+        <div class="sub">The marketplace&rsquo;s top search terms for a week, filtered to your word. Not a search sent to Amazon &mdash; Amazon returns the whole report and this filters it. Every search is saved, so your history builds as you use it.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="kws_q" class="ed" placeholder="A word to look for&hellip;" style="min-width:200px"
+                 onkeydown="if(event.key==='Enter')kwSpySearch()">
+          <label class="cc">Week <input id="kws_start" type="date" class="ed"></label>
+          <label class="cc">to <input id="kws_end" type="date" class="ed"></label>
+          <button class="db-chip" onclick="kwSpySearch()"><i class="ti ti-search"></i> Search</button>
+        </div>
+      </div>
+      <div id="kwspybody" style="padding:4px 0"></div>
+    </div>

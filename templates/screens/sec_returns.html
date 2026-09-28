@@ -1,0 +1,63 @@
+    <div id="sec_returns" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-arrow-back-up"></i> Returns Intelligence</h2>
+        <div class="sub">Why things come back, which of it you can fix, and what it actually cost you. Amazon's fifty reason codes grouped into the four things you can do something about.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="returnsSetDays(7)">7 days</button>
+          <button class="db-chip" onclick="returnsSetDays(30)">30 days</button>
+          <button class="db-chip" onclick="returnsSetDays(60)" title="Amazon will not build this report for a wider window than 60 days">60 days</button>
+          <button class="db-chip" onclick="returnsLoad()"><i class="ti ti-refresh"></i> Pull from Amazon</button>
+          <!-- ONE BUTTON PER REPORT, because there are two and they fill in
+               different halves of this page. A single "upload a report" button
+               does not say which report, and picking the wrong one and being
+               told afterwards is the whole problem. Each button names its
+               report, and the panel below says where to find it in Seller
+               Central. The file is still identified by its COLUMNS, so
+               choosing the wrong button is corrected rather than punished. -->
+          <!-- MULTIPLE FILES, because a year does not come as one. Amazon caps
+               a seller-fulfilled report at 60 days, so year-to-date is four or
+               five downloads, and an account with both FBA and seller-fulfilled
+               returns needs one of each. They ADD to what is loaded and are
+               de-duplicated on the returns themselves, so overlapping windows
+               are safe and the same file twice changes nothing. -->
+          <button class="db-chip" onclick="returnsUploadOpen('fba')"
+                  title="Seller Central → Reports → Fulfilment → Customer Concessions → FBA Customer Returns. Pick several files at once if you have them."><i class="ti ti-file-upload"></i> Add FBA returns</button>
+          <button class="db-chip" onclick="returnsUploadOpen('mfn')"
+                  title="Seller Central → Reports → Return Reports → Seller-fulfilled returns. Amazon caps these at 60 days, so pick all of your year-to-date files at once."><i class="ti ti-file-upload"></i> Add seller-fulfilled returns</button>
+          <input type="file" id="ret_file" accept=".csv,.tsv,.txt" multiple style="display:none" onchange="returnsUploadFile(this)">
+          <!-- A THIRD FILE, and the only source for three columns on this page.
+               Whether Amazon is showing the "frequently returned item" badge on
+               a listing, its CX Health grade, and the reason Amazon itself puts
+               at the top are in neither returns report and in no API this app
+               has. They are only in the Voice of the Customer export.
+               NAMED AFTER THE REPORT, not after what it fills in: "Upload
+               listing quality" did not tell anyone which file to go and get. -->
+          <button class="db-chip" onclick="returnsQualityOpen()"
+                  title="Seller Central → Brands → Customer Experience → Voice of the Customer → Download. This is the only report that says whether Amazon is showing the 'frequently returned item' badge."><i class="ti ti-shield-exclamation"></i> Add Voice of the Customer</button>
+          <button class="db-chip" onclick="returnsClear()"
+                  title="Forget every returns file loaded for this account and start again"><i class="ti ti-trash"></i> Start again</button>
+          <input type="file" id="ret_quality" accept=".csv,.txt" style="display:none" onchange="returnsQualityFile(this)">
+          <button class="db-chip" onclick="returnsExport()"
+                  title="Every table on this page as an eight-sheet workbook, built from exactly what you are looking at"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
+        </div>
+      </div>
+      <!-- TWO QUESTIONS, TWO VIEWS, ONE SCREEN.
+           "Analysis" is why things come back and what it costs -- reasons
+           grouped into causes, rates, trends. "All returns" is the operational
+           list: one row per return, Amazon's own status on it, and a detail
+           view for a single one.
+
+           They read different sources on purpose. Analysis reads what was just
+           pulled or uploaded; the list reads what has been KEPT. Amazon caps
+           its seller-fulfilled report at 60 days, so a return from four months
+           ago cannot be re-fetched -- only remembered. -->
+      <div class="mktswitch" style="margin:2px 0 8px">
+        <button class="mktbtn on" id="retview_analysis"
+                onclick="returnsSetView('analysis')">Analysis</button>
+        <button class="mktbtn" id="retview_list"
+                onclick="returnsSetView('list')"
+                title="Every return this app has stored, with its status, reason and amounts">All returns</button>
+      </div>
+      <div id="retbody" style="padding:4px 0"></div>
+      <div id="returns_list" style="padding:4px 0;display:none"></div>
+    </div>

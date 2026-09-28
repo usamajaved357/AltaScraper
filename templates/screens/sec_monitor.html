@@ -1,0 +1,67 @@
+    <div id="sec_monitor" class="wspanel">
+      <!-- THE SAME HEADER EVERY OTHER SCREEN HAS. This used the one-off
+           .pagehead / .pagetitle / .panelsub trio and .mktbtn buttons, so it
+           was the only page in the app with its own title size, its own
+           spacing and its own button shape -- reported as "the current theme of
+           the page is not alligned with our all other app". .wstoolbar + h2 +
+           .sub + .db-chip is what Listings, Sales, Returns and the rest use. -->
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
+        <div class="sub">Who else is selling on the ASINs you watch. Read-only — it never writes to, or affects, the listings it watches.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip btn-primary" id="mon_checkbtn" onclick="monCheckNow()"><i class="ti ti-refresh"></i> Check now</button>
+          <button class="db-chip" id="mon_rescanbtn" onclick="monRescanAll()" title="Check EVERY selected marketplace once, including ones currently skipped as having no offers — use after expanding into a new marketplace"><i class="ti ti-world-search"></i> Re-scan all markets</button>
+          <button class="db-chip" onclick="monSellersPick()" title="Upload a CSV of seller IDs and who they are — names them everywhere at once, instead of one at a time"><i class="ti ti-users"></i> Import seller names</button>
+          <input type="file" id="mon_sellerfile" accept=".csv,.txt,.xlsx" style="display:none" onchange="monSellersUpload(this)">
+          <button class="db-chip" onclick="monDownloadExcel()" title="Download the current results as an Excel file"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
+          <button class="db-chip" onclick="monMarkAllRead()">Mark all read</button>
+        </div>
+      </div>
+
+      <div class="monalertbar">
+        <span id="mon_status" class="cc"></span>
+      </div>
+
+      <div id="mon_chart"></div>
+
+      <!-- WHEN THIS RUNS, AND WHETHER IT RUNS AT ALL.
+           "i dont want the asin monitor to be working always, give 2 options.
+            option 1 is to recheck the status of the buybox by clicking a
+            button. option two is to setup a time of your choice."
+           Option 1 is Check now, above. This is option 2, off by default.
+           Drawn by monSchedRender() in static/js/monitor.js. -->
+      <div class="monsched" id="mon_sched"></div>
+
+      <div id="mon_alerts" style="margin:10px 0 6px"></div>
+
+      <div class="monadd">
+        <div class="monrow">
+          <div class="monfield" style="flex:0 0 170px">
+            <label class="monlbl">ASIN</label>
+            <input id="mon_asin" class="monin" placeholder="B0XXXXXXXX" maxlength="10" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div class="monfield" style="flex:1 1 220px">
+            <label class="monlbl">Label / product name <span class="cc">(your reference)</span></label>
+            <input id="mon_label" class="monin" placeholder="e.g. Green Haven bamboo airer" autocomplete="off">
+          </div>
+        </div>
+        <div class="monfield" style="margin-top:10px">
+          <label class="monlbl">Marketplaces to check <span class="cc">(default: all European)</span>
+            <button class="linkbtn" type="button" onclick="monMarketsAll(true)">all</button> ·
+            <button class="linkbtn" type="button" onclick="monMarketsAll(false)">none</button></label>
+          <div id="mon_markets" class="monmkts"></div>
+        </div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button id="mon_addbtn" class="mktbtn on" onclick="addMonitorAsin()"><i class="ti ti-plus"></i> Add ASIN to watch</button>
+          <button class="mktbtn" onclick="monPickFile()" title="Upload a CSV, TXT or XLSX list of ASINs — the column is auto-detected, no template needed"><i class="ti ti-upload"></i> Upload list</button>
+          <input type="file" id="mon_file" accept=".csv,.txt,.xlsx" style="display:none" onchange="monBulkUpload(this)">
+          <span id="mon_count" class="cc" style="margin-left:4px"></span>
+        </div>
+      </div>
+
+      <div id="mon_list" style="margin-top:16px"></div>
+
+      <div class="cc" style="margin-top:16px;font-size:11.5px;opacity:.8">
+        The hourly checker is live — it runs every 60 min while the app is open. Hit <b>Check now</b> above to run it immediately (the first check just records a baseline; changes after that raise alerts). Use the <b>History</b> button on any ASIN to see its offer timeline.
+      </div>
+    </div>

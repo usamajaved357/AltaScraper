@@ -549,288 +549,7 @@
          border:1px solid #3a3320;background:#241f10;border-radius:7px;font-size:12px"></div>
 
     <!-- LISTINGS section -->
-    <div id="sec_listings">
-      <div class="wstoolbar">
-        <div><h2 id="ws_title">Listings</h2><div class="sub" id="ws_rowsub"></div></div>
-        <span class="spacer"></span>
-        <div id="srcswitch" class="mktswitch">
-          <button class="mktbtn on" data-src="drafts" onclick="setListSource('drafts')">Drafts</button>
-          <button class="mktbtn" data-src="live" onclick="setListSource('live')">Live on Amazon</button>
-          <button class="mktbtn" data-src="all" onclick="setListSource('all')">All</button>
-          <!-- WHERE DELETED LISTINGS GO.
-               They were already kept -- never auto-deleted -- but they were
-               hidden from every view, and the only trace was a red line naming
-               the first three SKUs. So there was nothing to click and nowhere
-               they lived. Asked for as: "i also asked you to give me a button
-               where the deleted listings go when they are deleted from amazon
-               but they are stored in the app". -->
-          <button class="mktbtn" data-src="removed" id="srcbtn_removed"
-                  title="Listings this app still holds that Amazon no longer has. Nothing is ever deleted automatically."
-                  onclick="setListSource('removed')" style="display:none">Removed</button>
-          <!-- WHY THIS EXISTS WHEN THE LABEL BESIDE IT SAYS "synced 4m ago".
-               "why do have that sync button if the listings are already been
-                synced upto some minutes?"
-               Fair question, and the old tooltip ("Sync live listings from
-               Amazon now") answered none of it -- it described the button as a
-               repeat of something the page appears to do already. It is not.
-               Opening the tab shows a SAVED copy and, at most, reuses a report
-               Amazon has already built; it never fetches a listing's contents.
-               These four things happen ONLY when this is pressed, which is why
-               the tooltip now names them instead of saying "sync". -->
-          <button class="mktbtn" onclick="syncLive()" title="Not a repeat of the automatic refresh — four things happen only when you press this:&#10;&#10;• Amazon builds a BRAND NEW listings report. Opening this tab reuses the last one, so the list can be right about which listings exist and still be behind on price, stock and status.&#10;• Each listing's actual CONTENTS are pulled — images, A+, bullets, description, variations, and Amazon's own handling time. Nothing else on this screen ever fetches these.&#10;• Drafts you have submitted are checked against Amazon and marked live where Amazon has published them.&#10;• Listings deleted or deactivated on Amazon are settled against what this app holds.&#10;&#10;It takes a few minutes on a large catalogue. The label beside this button says when Amazon was last actually read."><i class="ti ti-refresh"></i> Sync</button>
-          <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
-          <!-- COSTS ▾ -- the sheet, the upload and the explainer behind one
-               button. They were three of seventeen toolbar buttons. Clear COGS
-               is NOT here: on the owner's redesign it moved to the ⋯ menu,
-               with the other rarely-pressed and destructive actions. -->
-          <button class="mktbtn" id="costs_btn" onclick="toolbarMenu(event, 'tpl_costs')"
-                  title="The cost sheet, uploading it back, and how costs work"><i class="ti ti-coins"></i> Costs <i class="ti ti-chevron-down" style="font-size:10px"></i></button>
-          <input type="file" id="cogs_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls" style="display:none" onchange="cogsUploadFile(this)">
-          <!-- THE COSTS ▾ MENU. A <template> is inert until toolbarMenu()
-               (genflow.js) copies it into the shared .tilemenu, so the buttons
-               stay HTML here -- not strings built in JavaScript -- and each
-               still calls exactly the function it always called. The menu
-               closes itself on the click that presses an item.
-               THE SHEET TO FILL IN comes before the upload that takes it back:
-               there was an upload and no template once, so every SKU was typed by
-               hand, and a hand-typed SKU silently matches nothing. ONE UPLOAD,
-               the one that dry-runs the file and asks first ("uploading the cogs
-               sheet should be in the one place, not scattered everywhere"). -->
-          <template id="tpl_costs">
-            <button onclick="location.href=(typeof acctUrl==='function'?acctUrl('/cogs/template.csv'):'/cogs/template.csv')"
-               title="Downloads a sheet listing every SKU on this account, with its ASIN, product name, the cost the app uses now and where that came from. Fill in the 'cost' column for the ones you want to set, and upload it back. Rows you leave blank are not changed."><i class="ti ti-file-download"></i> Cost sheet</button>
-            <button onclick="cogsUploadOpen()" title="Upload the cost sheet back — or any CSV or spreadsheet with a sku (or asin) column and a cost column. Shows what it would change and asks before writing. Only rows with a cost filled in are applied."><i class="ti ti-upload"></i> Upload costs</button>
-            <button onclick="cogsExplain()" title="Where every cost comes from, which one wins, and how profit is worked out"><i class="ti ti-help-circle"></i> How costs</button>
-          </template>
-        </div>
-        <!-- The marketplace strip used to sit here as well as in the sidebar.
-             Two controls for one setting, and the toolbar one was the wider of
-             the two on a screen already carrying six other buttons. Removed on
-             request: "i already have the marketplace section now at the left
-             side of the screen so remove it from the header". Its two
-             non-duplicate actions -- set-as-default and detect -- moved into
-             the sidebar menu rather than being dropped with it. -->
-        <select id="statussel" onchange="setFilterVal(this.value)" title="Filter by status"
-          style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px">
-          <!-- EVERY FILTER THE TILES CAN SET NEEDS AN OPTION HERE.
-               metricFilter() does `sel.value = v` and then applies the filter
-               regardless. When there is no matching <option>, the assignment
-               silently does nothing and the dropdown goes BLANK while the list
-               below it is filtered -- so the control that is supposed to tell
-               you what you are looking at stops saying anything. The four
-               live_* filters and the two hold halves were all missing. -->
-          <option value="all">All statuses</option>
-          <!-- THE FOUR STATUSES. Every filter a tile can set needs an option
-               here or the dropdown goes blank while the list below it is
-               filtered -- see the note below. "warned" is not a status: it is
-               "carries at least one warning", which cuts across all four. -->
-          <option value="queued">Queued</option>
-          <option value="generated">Generated</option>
-          <option value="submitted">Submitted</option>
-          <option value="warned">— with warnings</option>
-          <option value="review">Needs review (old)</option>
-          <option value="holds">Blocked or refused</option>
-          <option value="blocked">— blocked by our own checks</option>
-          <option value="refused">— refused by Amazon</option>
-          <option value="approved">Approved</option>
-          <option value="live">Live</option>
-          <optgroup label="Live on Amazon">
-            <option value="live_all">All live listings</option>
-            <option value="live_notshowing">Not showing</option>
-            <option value="live_nocost">No cost set</option>
-            <option value="live_oos">Out of stock</option>
-          </optgroup>
-        </select>
-        <!-- THREE VIEWS, as before the 26 Sep redesign: the owner asked for the
-             card view back ("Keep Card view as its own toggle with its own
-             features"), and for the detailed row as it was. -->
-        <span class="viewtoggle" id="viewtoggle" title="Table or card view — remembered on this browser">
-          <button data-view="table" class="on" onclick="setListView('table')" title="Table view"><i class="ti ti-list"></i></button>
-          <button data-view="detailed" onclick="setListView('detailed')" title="Detailed view — Amazon's Manage All Inventory layout: performance, inventory and pricing beside each listing"><i class="ti ti-list-details"></i></button>
-          <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
-        </span>
-        <!-- UPLOAD TEMPLATE — opens the generation flow (#genflow) above the
-             table. Folded by default; this is the only way it opens, so the
-             drafts table keeps the screen until an upload is actually wanted. -->
-        <button class="ghost" id="genflow_btn" onclick="genflowToggle()"
-                title="Add products to generate: drop a CSV or spreadsheet, or type one in. Opens above the table — the drafts stay in view."><i class="ti ti-upload"></i> Upload template</button>
-        <!-- GENERATE, on the page the drafts land on. It was one of six equal
-             buttons on a screen you had to navigate to; here it is the one that
-             starts a run, and the only one on this toolbar that spends money. -->
-        <button class="ghost" onclick="genflowGenerate()"
-                title="Generate every queued product that is not already in the app. This is the step that spends AI credit — the queue and the skip count are under Upload template."><i class="ti ti-player-play"></i> Generate</button>
-        <!-- THE FIVE DEMOTED RUN ACTIONS, kept rather than deleted.
-             Retry holds, Export, Preview, Submit and Stop were a permanent bar
-             of six on the generate screen. They are rare — but Preview is the
-             only way to check against Amazon without sending, and Stop is the
-             only way to end a run, so none of them may be dropped. Behind one
-             button, in the same .tilemenu the rows already use. -->
-        <button class="ghost" id="genflow_more" onclick="genflowRunMenu(event)"
-                title="Fix product types, Diagnose, Paste, Reload list, the run actions (Retry holds, Export, Preview, Submit, Stop) and Clear COGS"><i class="ti ti-dots"></i></button>
-        <!-- WHAT THE ⋯ MENU ADDS TO THE RUN ACTIONS. Moved off the toolbar on
-             the owner's redesign: occasional tools above the run actions, the
-             one destructive action below them. genflowRunMenu() copies these in;
-             every button calls the function it called on the toolbar. -->
-        <template id="tpl_more_tools">
-          <button title="Checks every unsent draft against its competitor ASIN's product type in Amazon's catalogue, shows what would change, and asks before saving anything. Submitted and live listings are not touched." onclick="ptFixDrafts()"><i class="ti ti-category"></i> Fix product types</button>
-          <button title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose</button>
-          <button onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste</button>
-          <!-- REFRESH, KEPT HERE rather than deleted. Sync does everything this
-               does, but also pulls every listing's full contents from Amazon --
-               minutes, and up to 300 calls. This is the light reload: the
-               drafts again, and on Live/All a fresh list from Amazon. -->
-          <button onclick="refreshView()" title="Reload this workspace's listings, and re-check the live catalog against Amazon when the live view is shown. Lighter than Sync: it does not pull every listing's full contents."><i class="ti ti-refresh"></i> Reload list</button>
-        </template>
-        <template id="tpl_more_danger">
-          <!-- THE WAY BACK OUT of a cost sheet uploaded against the wrong
-               account. Destructive, so it is last and red, and it asks first. -->
-          <button class="danger cogswipe" title="Delete every cost you have typed or uploaded for this account. Asks first, and says how many. Those products are then left with no cost, so their profit, margin and ROI show blank until a cost is set again." onclick="cogsClearAll()"><i class="ti ti-eraser"></i> Clear COGS</button>
-        </template>
-      </div>
-      <!-- ===== THE GENERATION FLOW, ON THE PAGE THE DRAFTS ARE ON =====
-           Upload a template, check the queue, press Generate, watch the
-           progress, review the drafts below — without changing screens.
-
-           MOVED here from #sec_generate rather than rewritten (Rule 10). The
-           drop zone is still inputupload.js's, the queue is still
-           inputqueue.js's, and the pre-flight count is still genplan.js's, so
-           every measured behaviour in those three files is untouched. What is
-           new is WHERE they sit and that they start folded.
-
-           Folded by default: the drafts table is what this page is for, and a
-           drop zone above it every time you open Listings would push the table
-           off the screen for the 99 visits out of 100 that are not an upload. -->
-      <div id="genflow" class="genflow" hidden>
-        <!-- The drop zone. inputupload.js owns the dropping, the validation and
-             the error card that names the headers your file actually had. -->
-        <div id="inputupload"></div>
-
-        <!-- THE PRODUCT QUEUE — what Generate will make, added and edited here.
-             UPLOADS ADD, and that is deliberate: a second file joins the first
-             rather than replacing it, so two uploads in a row cannot silently
-             bin the first one's rows. Emptying the queue is therefore its own
-             visible button rather than a side effect of pressing Upload. -->
-        <div id="inputsheetwrap" class="genflow-queue">
-          <div class="genflow-qhead">
-            <b class="genflow-qtitle"><i class="ti ti-list-check"></i> Products to generate</b>
-            <span class="cc genflow-qmeta" id="inputsheet_meta"></span>
-            <!-- WHAT GENERATE WOULD DO, BEFORE IT DOES IT — genplan.js, moved
-                 into this header rather than deleted. The spec called it clutter
-                 and the block it drew was; the numbers are not. They are the
-                 only way to see the duplicate check working WITHOUT pressing
-                 Generate, and by the time the log says "skipped" the AI spend
-                 has already started. It also catches a full queue with nothing
-                 on record, which is what a broken duplicate check looks like
-                 and is otherwise indistinguishable from a genuine first run. -->
-            <div id="genplan" class="genplan genplan-inline"></div>
-            <span class="spacer" style="flex:1"></span>
-            <input id="inputsheet_filter" class="genflow-filter" placeholder="Filter…"
-                   oninput="filterInputSheet()">
-            <button class="ib" onclick="inputQueueLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-            <button class="ib genflow-clear" onclick="genflowClearQueue()"
-                    title="Empty the queue. Asks first, and says how many products it would remove. Nothing that has already been generated is touched.">
-              <i class="ti ti-eraser"></i> Clear queue</button>
-            <button class="ib genflow-go" onclick="genflowGenerate()"
-                    title="Generate every queued product that is not already in the app. This is the step that spends AI credit."><i class="ti ti-player-play"></i> Generate now</button>
-          </div>
-          <div id="inputsheet_body" class="genflow-qbody">
-            <div class="cc" style="padding:16px;opacity:.6">Loading…</div>
-          </div>
-        </div>
-      </div>
-      <div id="gridhow"></div>
-      <div id="ws_datasrc" class="datasrc"></div>
-      <div id="tabfilter" class="tabfilter" style="display:none"></div>
-      <div id="selbar" class="selbar" style="display:none">
-        <span id="selcount">0 selected</span>
-        <span class="spacer"></span>
-        <!-- SUBMIT SELECTED — the spec's bulk submit. It calls submitLive(),
-             which ALREADY scopes the run to selectedSkus(), already runs the
-             local-image precheck, and already makes you confirm the destination
-             account by name before anything is sent. So this is a visible way in
-             with a live count, not a second submit path (Rule 12) — inventing
-             one would be inventing a way to publish to Amazon.
-             Styled as the one consequential button in this bar, because it is
-             the only one here that reaches the live catalogue. -->
-        <button id="selsubmit" class="selsubmit" onclick="submitLive()"
-                title="Publish the selected listings to Amazon. Shows the destination account and asks before anything is sent. Listings that are already live are skipped."><i class="ti ti-cloud-upload"></i> Submit selected</button>
-        <button onclick="bulkStatus('APPROVED')" title="Approve all selected listings"><i class="ti ti-check"></i> Approve</button>
-        <button onclick="bulkStatus('HOLD')" title="Put all selected listings on hold"><i class="ti ti-player-pause"></i> Hold</button>
-        <span class="handlingwrap" title="Set the handling time (lead time to ship, in days) on the selected listings — saves it here and pushes the change live to Amazon">
-          <i class="ti ti-clock-hour-4"></i>
-          <input id="handlingdays" type="number" min="0" max="30" step="1" placeholder="days" class="handlingdays">
-          <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>
-        </span>
-        <!-- STOCK, beside handling time because they are the same Amazon
-             attribute: fulfillment_availability carries the quantity and the
-             lead time together, and Amazon replaces the whole thing on a patch.
-             Seller-fulfilled only — on an FBA listing the stock is whatever is
-             in Amazon's warehouse, which is reported per SKU rather than
-             silently failing. -->
-        <span class="handlingwrap" title="Set the stock quantity on the selected listings and push it live to Amazon. Seller-fulfilled listings only — FBA stock lives in Amazon's warehouse and cannot be typed in here.">
-          <i class="ti ti-package"></i>
-          <input id="stockqty" type="number" min="0" step="1" placeholder="units" class="handlingdays">
-          <button id="stockbtn" onclick="bulkQuantity()">Set stock</button>
-        </span>
-        <!-- PRICE BY PERCENTAGE. A percentage is not a price — it is a
-             different number on every listing — so this shows what each one
-             becomes before anything is sent, and then sends those figures
-             rather than the percentage again. -->
-        <span class="handlingwrap" title="Raise or lower the selling price of every selected listing by a percentage. You see exactly what each listing becomes before anything is sent.">
-          <i class="ti ti-percentage"></i>
-          <input id="pricepct" type="number" step="0.5" placeholder="+10 or -5" class="handlingdays" style="width:92px">
-          <button id="pricepctbtn" onclick="bulkPricePercent()">Change price %</button>
-        </span>
-        <button onclick="bulkPreview()" title="Check every selected listing against Amazon in one run. Nothing is sent. Each listing's Amazon warnings are replaced with the new reply; a submitted listing stays Submitted."><i class="ti ti-eye"></i> Preview</button>
-        <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:var(--accent);color:var(--accent2)"><i class="ti ti-wand"></i> Auto-fix</button>
-        <!-- GTIN EXEMPTION, THE ONLY WAY TO CLAIM IT IN BULK.
-             The app never claims it on its own: an empty barcode box now sends
-             Amazon no identifier at all rather than a silent declaration that
-             the product has none. This button and the tick box on a single
-             listing are the two deliberate ways in, which is what was asked for
-             — "ONLY EXEMPT WHEN USER SELECTS MULTIPLE DRAFTS AND CLICK ON APPLY
-             FOR GTIN EXEMPTION OR DO IT INSIDE THE PDP ONE BY ONE". -->
-        <button id="gtinexemptbtn" onclick="bulkGtinExemption(true)" title="Declare to Amazon that the selected products have no barcode. Needs GTIN-exemption approval for the brand and category. Nothing is sent now — it is claimed on the next submit."><i class="ti ti-barcode-off"></i> Apply for GTIN exemption</button>
-        <!-- The cost upload used to sit here as well as on the toolbar. A price
-             list covers the whole account, not the rows that happen to be
-             ticked, so a selection bar was never its home -- and having it in
-             two places with two different behaviours is what "scattered
-             everywhere" meant. It is on the toolbar now, beside the Cost sheet
-             it takes back. The per-row way is still to click the COGS cell. -->
-        <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
-        <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
-        <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
-        <button onclick="batchAutoGenerate('secondary')" title="Strategist proposes secondary-image ideas and generates them for every selected product — runs in the background, no pop-up" style="border-color:var(--accent)"><i class="ti ti-bolt"></i> Auto-generate (Secondary)</button>
-        <button onclick="batchAutoGenerate('aplus')" title="Strategist proposes A+ modules and generates them for every selected product — runs in the background, no pop-up" style="border-color:var(--accent)"><i class="ti ti-bolt"></i> Auto-generate (A+)</button>
-        <button onclick="bulkDelete()" title="Delete all selected listings" style="color:var(--red);border-color:var(--red-line)"><i class="ti ti-trash"></i> Delete</button>
-        <button onclick="rescanFlags()" title="Re-judge compliance and IP flags on already-generated rows using the current rules. Costs nothing and never touches your copy — only Status, Notes, Compliance Risk and IP Risk, and only on rows that are NEEDS_REVIEW or held." style="border-color:var(--ok);color:var(--ok)"><i class="ti ti-shield-check"></i> Re-check flags</button>
-        <button onclick="selectAllVisible(true)">Select all</button>
-        <button onclick="clearSelection()">Clear</button>
-      </div>
-      <div id="summary">Loading…</div>
-      <!-- Honest run state. Fed by /run/health (heartbeat file + real process
-           liveness), NOT by the log stream below -- a frozen log cannot fake it. -->
-      <div id="runhealth" class="runhealth" style="display:none">
-        <span id="rh_dot" class="rh_dot"></span>
-        <span id="rh_state" class="rh_state">—</span>
-        <span id="rh_detail" class="rh_detail"></span>
-        <button id="rh_why" class="rh_why" style="display:none"
-                onclick="whyStuck()">Why is it stuck?</button>
-      </div>
-      <!-- The generator's progress, rendered. genui.js fills this while a run
-         streams; the <pre> below is the old raw terminal, kept as the fallback
-         for when genui.js has not loaded (it is hidden while the panel is in
-         use, and the raw text is still available folded inside the panel). -->
-    <div id="genui"></div>
-    <pre id="log"></pre>
-      <!-- Where the "these are samples" bar goes, above the listings rather than
-     inside the grid: the grid is rewritten on every render and filter, and a
-     warning that disappears when you click a filter is worse than none. -->
-<div id="rows_demo"></div>
-<main id="grid"><div class="empty">Loading listings…</div></main>
-      <div id="drawerscrim" class="drawerscrim" onclick="closeDrawer()"></div>
-      <aside id="drawer" class="drawer"><div id="drawerbody"></div></aside>
-    </div>
+{% include "screens/sec_listings.html" %}
 
     <!-- THE FULL-SCREEN PRODUCT PAGE.
          A sibling of the sections, not an overlay: pdp.css hides the grid and
@@ -842,15 +561,10 @@
     <div id="pdp"></div>
 
     <!-- IMAGE REFS section -->
-    <div id="sec_imagerefs" class="wspanel">
-      <div class="wstoolbar bleed"><div><h2>Image references</h2><div class="sub">Saved reference images used for AI main-image generation in this workspace</div></div></div>
-      <div id="imagerefsbody"></div>
-    </div>
+{% include "screens/sec_imagerefs.html" %}
 
     <!-- BRAND SETUP section -->
-    <div id="sec_setup" class="wspanel">
-      <div id="brandpanel"></div>
-    </div>
+{% include "screens/sec_setup.html" %}
 
     <!-- THE 'GENERATE & SUBMIT' SECTION STOOD HERE, and is gone.
 
@@ -885,190 +599,7 @@
          side, then the Sales Report panel carrying its own toolbar, figures and
          one combined chart. The chrome is at the end of dashboard.css and every
          value in it came off Orbit's live page. -->
-    <div id="sec_sales" class="wspanel">
-      <!-- The size and weight are unchanged; they now come from .pagehead so
-           every other screen can be the same size as this one. -->
-      <div class="pagehead">
-        <div class="pagetitle" id="sales_title">Sales</div>
-        <div class="panelsub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div>
-      </div>
-
-      <!-- ALL MARKETPLACES AT ONCE lives here, and the single-marketplace
-           panels below are put away while it is showing. Every panel in
-           #sales_body is built for one marketplace and one currency -- a chart
-           cannot plot pounds and euros on one axis -- so instead of pretending,
-           the screen shows a row per marketplace. See static/js/brandview.js
-           for what the sidebar's "All marketplaces" used to do instead. -->
-      <div id="brandview" class="salespanel" style="display:none"></div>
-
-      <div id="sales_body">
-      <div class="sales-toprow">
-        <div class="salespanel">
-          <div class="panelhead">
-            <div>
-              <p class="paneltitle">Live Sales</p>
-              <p class="panelsub">Based on order dates<span class="infodot"
-                 title="Orders as Amazon records them arriving. A different measurement from the settled figures below, and it will not tie out to them.">i</span><span
-                 class="panelnote" id="sales_today_note"></span></p>
-            </div>
-            <span class="spacer"></span>
-            <!-- The marketplace's OWN clock, which is what Orbit puts here:
-                 "Pacific Time (PDT): 5:14 PM". This app is run from Pakistan
-                 against UK and US stores, where "today so far" is three
-                 different days, so whose today it is has to be on the card. -->
-            <span id="sales_today_clock" class="panelclock"></span>
-            <!-- The key sits HERE, on the title's own line, because that is where
-                 Orbit's is -- measured: "This Week", "Last Week" and the change
-                 badge share the header row. Ours drew it between the header and
-                 the chart, which pushed the chart down and gave the card a band
-                 of small print Orbit does not have. -->
-            <span id="sales_today_key"></span>
-            <span id="sales_today_delta"></span>
-          </div>
-          <div id="sales_today"></div>
-        </div>
-        <div class="salespanel">
-          <div class="panelhead">
-            <div>
-              <p class="paneltitle">Week to Date</p>
-              <p class="panelsub">Based on order dates<span class="infodot"
-                 title="Monday to today, drawn against the same days of last week.">i</span><span
-                 class="panelnote" id="sales_week_note"></span></p>
-            </div>
-            <span class="spacer"></span>
-            <span id="sales_week_key"></span>
-            <span id="sales_week_delta"></span>
-          </div>
-          <div id="sales_week"></div>
-        </div>
-      </div>
-
-      <div class="salespanel">
-      <div class="panelhead">
-        <div>
-          <p class="paneltitle">Sales Report</p>
-          <!-- The tooltip described the MONEY calendar -- "dated when the money
-               moved" -- which is what this screen was on before, and is the
-               opposite of what the line above it says. Corrected: everything
-               here is now dated by the day the ORDER was placed. -->
-          <p class="panelsub">Based on order dates<span class="infodot"
-             title="Every figure on this screen is dated by the day the customer placed the order, including Amazon's fees.&#10;&#10;Amazon settles a fee about ten to twelve days after the sale. Those settled amounts are moved back onto the order's own day, so a row reads across: what sold, what Amazon took for it, what was left. Orders Amazon has not settled yet have their fee estimated at the rate this account actually pays.">i</span></p>
-        </div>
-      </div>
-
-      <div class="salesbar" id="sales_filters">
-        <span class="mktswitch" id="sales_presets"></span>
-        <!-- The last three whole months, as Orbit has them beside the presets.
-             A month is the unit a business actually reports in, and picking one
-             from two date boxes is the step nobody takes. -->
-        <span class="mktswitch" id="sales_months"></span>
-        <span class="mktswitch" id="sales_gran"></span>
-        <span id="sales_custom" style="display:none;gap:6px;align-items:center">
-          <input type="date" class="rc-in" id="sales_start" style="width:auto;margin:0"
-                 onchange="salesSetDates()" aria-label="Range start">
-          <span class="cc">to</span>
-          <input type="date" class="rc-in" id="sales_end" style="width:auto;margin:0"
-                 onchange="salesSetDates()" aria-label="Range end">
-        </span>
-        <select class="rc-in" id="sales_asin" style="width:auto;margin:0"
-                onchange="salesSetAsin(this.value)" aria-label="Product filter">
-          <option value="">All products</option>
-        </select>
-        <!-- COMPARE TO, as Orbit has it. The dashed line and every "was: …"
-             figure follow this. Two choices only, because they are the two
-             that mean something: the period immediately before answers "is
-             this week better than last", and the same period a year ago
-             answers it for anything seasonal. -->
-        <!-- Orbit's exact label and its exact option names, read off the live
-             page: "Compare to" at 11px weight 600 in sentence case (ours was
-             uppercased by CSS), then "Prior Year" and "Previous Period".
-             Orbit's third option is "Custom Range", which is a feature this app
-             does not have; "Nothing" is kept in that slot because turning the
-             second line off is worth having and dropping it would remove
-             something that works. -->
-        <span style="font-size:11px;font-weight:600;color:rgb(156,163,175)">Compare to</span>
-        <select class="rc-in" id="sales_compare" style="width:auto;margin:0"
-                onchange="salesSetCompare(this.value)" aria-label="Compare against">
-          <option value="year">Prior Year</option>
-          <option value="period">Previous Period</option>
-          <option value="none">Nothing</option>
-        </select>
-        <span class="spacer" style="flex:1"></span>
-        <span id="sales_range" class="cc" style="font-size:11.5px"></span>
-        <button class="mktbtn" onclick="salesSync(this)" title="Pull the days Amazon has not sent yet"><i class="ti ti-refresh"></i> Sync</button>
-        <button class="mktbtn" onclick="salesExport()" title="Download this exact grid as CSV"><i class="ti ti-download"></i> Export</button>
-      </div>
-
-      <!-- sales_today moved into its own card at the top of the screen, where
-           Orbit puts "Live Sales": it answers a different question from
-           everything below it (orders as placed, not money as settled) and
-           reading it in the middle of the settled figures invited exactly the
-           comparison it does not support. -->
-      <div id="sales_cards" class="stat-row"></div>
-      <div id="sales_note"></div>
-      <!-- WHAT THE STOCK COST, and how it is worked out. Directly under the
-           Profit card because that is the card it explains: a profit with
-           uncosted units in it is knowingly too high, and the fix is one click
-           from the number rather than on a screen nobody thinks to open. -->
-      <div id="sales_cogsbar"></div>
-      <!-- Shape first, then which products made it, then the full grid. Reading
-           order matches the questions people actually ask, in that order. -->
-      <div id="sales_charts"></div>
-      </div>
-
-      <!-- ORGANIC VS PPC. Orbit's split of what sold by itself against what was
-           paid for. The advertising figures are not connected yet, so the panel
-           is built and says exactly what it is missing rather than being absent
-           until the day the API arrives. -->
-      <div class="salespanel" style="margin-top:16px">
-        <div class="panelhead">
-          <div>
-            <p class="paneltitle">Organic vs PPC Sales</p>
-            <p class="panelsub">Daily breakdown of organic and paid sales revenue<span class="infodot"
-               title="Organic is total sales minus sales attributed to advertising. Both come from Amazon: the totals from the Sales & Traffic report, the attributed half from the Advertising API.">i</span></p>
-          </div>
-        </div>
-        <!-- WHAT THE ADVERTISING COST AND RETURNED, above the split it explains.
-             Empty until ads_daily has rows: the row draws nothing at all rather
-             than five zeros, because "£0 spend" and "we cannot see your spend"
-             are different claims and only one of them is true here. -->
-        <div id="sales_ppccards" class="stat-row"></div>
-        <div id="sales_orgppc"></div>
-      </div>
-
-      <!-- THE PROFIT AND LOSS, line by line.
-           /sales/pnl has existed since the fee work and nothing in the browser
-           called it -- a finished endpoint with no way to reach it is a feature
-           nobody has. It answers for the same window as the rest of this page.
-
-           It is also where the two things the statement cannot know on its own
-           are asked for: the costs Amazon never sees (the accountant, the
-           software, the packaging), and whether VAT applies. Neither is ever
-           assumed -- VAT is shown both ways and taken off nothing. -->
-      <div class="wspanel-sec">
-        <div class="wstoolbar bleed" style="margin-top:18px">
-          <div><h3 style="margin:0"><i class="ti ti-report-money"></i> Profit and loss</h3>
-          <div class="sub">Every line, with what Amazon actually charged where it has settled and this account's own measured rate where it has not. Nothing is assumed: a figure that cannot be known says so.</div></div>
-          <span class="spacer" style="flex:1"></span>
-          <button class="db-chip" onclick="pnlLoad()"><i class="ti ti-refresh"></i> Work it out</button>
-        </div>
-        <div id="pnl_body" style="padding:4px 0"></div>
-      </div>
-
-      <!-- WHICH CAMPAIGN SPENT IT. The split above says how much of the revenue
-           was paid for; this says what each campaign cost to get it, over the
-           same period the rest of the screen is showing. Sortable, and it opens
-           on spend because the question is where the money went. -->
-      <div class="salespanel" style="margin-top:16px">
-        <div id="sales_campaigns"></div>
-      </div>
-
-      <div class="salespanel" style="margin-top:16px">
-        <div id="sales_breakdown"></div>
-        <div id="sales_grid"></div>
-      </div>
-      </div><!-- /#sales_body -->
-    </div>
+{% include "screens/sec_sales.html" %}
 
     <!-- PPC section -->
     <!-- PPC ANALYTICS.
@@ -1086,373 +617,27 @@
          each is a whole mockup rather than a body inside the app's chrome. The
          wstoolbar the other screens carry is deliberately absent: it would put
          a second title above the mockup's own. -->
-    <div id="sec_ppcanalytics" class="wspanel"><div id="ppca_body"></div></div>
-    <div id="sec_ppcterms" class="wspanel"><div id="ppct_body"></div></div>
-    <div id="sec_ppccampaigns" class="wspanel"><div id="ppcc_body"></div></div>
-    <div id="sec_ppclive" class="wspanel"><div id="ppcl_body"></div></div>
-    <div id="sec_drppcconsole" class="wspanel"><div id="drppcconsole_body"></div></div>
+{% include "screens/sec_ppcanalytics.html" %}
+{% include "screens/sec_ppcterms.html" %}
+{% include "screens/sec_ppccampaigns.html" %}
+{% include "screens/sec_ppclive.html" %}
+{% include "screens/sec_drppcconsole.html" %}
 
-    <div id="sec_ppc" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2>PPC</h2>
-        <div class="sub">What the advertising is doing, and what it is wasting. Every figure comes from your own Search Term Report — nothing here changes a bid, a budget or a campaign.</div></div>
-        <span class="spacer" style="flex:1"></span>
-        <button class="db-chip" onclick="openGuide('ppc')"
-                title="What this page does, where the figures come from, and what each one means.">
-          <i class="ti ti-book"></i> How this page works</button>
-        <input type="file" id="ppc_report_file" accept=".csv,.tsv,.txt,.xlsx"
-               style="display:none" onchange="ppcReportUpload(this)">
-        <label class="db-chip" for="ppc_report_file" style="cursor:pointer"
-               title="Seller Central > Advertising > Measurement &amp; Reporting > Sponsored Products > Search Term Report. Nothing is sent to Amazon.">
-          <i class="ti ti-table-import"></i> Upload Search Term Report</label>
-        <button class="db-chip" onclick="ppcAnalyticsLoad(true)">
-          <i class="ti ti-refresh"></i> Refresh</button>
-      </div>
-
-      <!-- PPC ANALYTICS. Orbit's advertising screens, rebuilt on a report that
-           can be downloaded from Seller Central today -- see
-           orbit_ppc_complete.md. The Advertising API is a separate OAuth this
-           app does not have, so nothing here waits for it. -->
-      <div id="ppcwrap"></div>
-
-      <details class="foldgroup" style="margin:18px 0 14px">
-        <summary><i class="ti ti-tools"></i> Campaign builder, harvester and the agent
-          <span class="cc">— the tools that MAKE things: bulk campaign files,
-          harvest and negative lists, audits and weekly decks.</span></summary>
-      <div style="display:grid;grid-template-columns:340px 1fr;gap:14px;min-height:420px">
-        <!-- Left: shortcut buttons -->
-        <div>
-          <div style="font-weight:600;margin-bottom:8px;font-size:13px;opacity:.85">Shortcuts</div>
-          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenBuilder()"><i class="ti ti-plus"></i> Build campaigns from keywords</button>
-          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenHarvest()"><i class="ti ti-tractor"></i> Harvest search-term report</button>
-          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('auditor', 'Audit account PPC health', 'Upload the SP bulk export + a campaign performance report (last 30 days is fine). Optionally add the SP Search Term Report. I audit clusters, budget benchmarks, match-type pyramid, funnel coverage, and bid-gap; deliver as docx.')"><i class="ti ti-stethoscope"></i> Audit account PPC health</button>
-          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('dashboard', 'Control-Room dashboard', 'Upload the SP bulk export + a campaign performance report. I build the interactive Control-Room dashboard as HTML. Optionally add an organic ranking XLSX to unlock the Targeting Opportunity Map.')"><i class="ti ti-dashboard"></i> Control-Room dashboard</button>
-          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('forecaster', 'Sales forecast', 'Upload the Amazon business report (session/units data) + SQP files (Brand Analytics), and tell me your target TACOS and net margin %. I build 3-scenario revenue+unit forecasts with growth-rate decay. If required data is missing I stop and ask — I never fabricate numbers.')"><i class="ti ti-chart-line"></i> Sales forecast</button>
-          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('weekly-deck', 'Weekly client deck', 'Upload this week and last week performance data (business report + Ads campaign report per week). Give me the brand name, week ending, and any context. I produce a strategic PPC deck (pptx).')"><i class="ti ti-presentation"></i> Weekly client deck</button>
-          <div style="font-size:11px;opacity:.65;margin-top:12px;line-height:1.5">
-            <b>Hard rules baked in:</b><br>
-            · Match types spelled out (Exact/Phrase/Broad)<br>
-            · SKU (never ASIN) on Product Ads<br>
-            · Keywords + Product Targets never share an ad group<br>
-            · Never sets bids/budgets on its own initiative
-          </div>
-        </div>
-
-        <!-- Right: agent chat -->
-        <div style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden">
-          <div id="ppc_chatlog" style="flex:1;padding:14px;overflow-y:auto;min-height:360px;max-height:520px;background:#0d1220">
-            <div style="opacity:.75;font-size:13px;line-height:1.5">
-              <b>PPC Agent.</b> Describe what you want — build campaigns, harvest a search-term report, audit, dashboard, forecast, weekly deck. The agent knows the full PPC skill set from the handover doc and applies your standing rules (never touches bids/budgets without your value; SKU on ads; kw + PT never share; every kw in all 3 match types).
-              <br><br>
-              Scoped to: <b id="ppc_ctx">this workspace</b>.
-            </div>
-          </div>
-          <div style="padding:10px;border-top:1px solid var(--line);background:#141b2b">
-            <div style="display:flex;gap:8px">
-              <textarea id="ppc_input" placeholder="e.g. Build campaigns for ASIN B0EXAMPLE1, SKU MYSKU-001…" rows="2" style="flex:1;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:8px;padding:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
-              <button class="mktbtn on" style="align-self:stretch;padding:0 16px" onclick="ppcAgentSend()">Send</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      </details>
-
-      <!-- Campaign-builder shortcut modal -->
-      <div id="ppc_builder_modal" class="modalwrap">
-        <div class="modal" style="max-width:640px">
-          <button class="x" onclick="ppcCloseBuilder()">×</button>
-          <h3><i class="ti ti-plus"></i> Build Sponsored Products campaigns</h3>
-          <div class="cc" style="margin:6px 0 12px">Feed a keyword export + ASIN/SKU. The tool buckets keywords (drop/head/comp/core), builds 5 campaigns with the full-coverage structure, and validates before letting you download.</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-            <div><label class="cc" style="font-size:11px">ASIN</label><input id="pb_asin" placeholder="B0EXAMPLE1" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Seller SKU (NOT ASIN)</label><input id="pb_sku" placeholder="MYSKU-001" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Product short name (for campaign names)</label><input id="pb_name" placeholder="BodyScale" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Daily budget (£/$)</label><input id="pb_budget" type="number" step="0.01" value="8.00" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Flat bid (£/$) — you set this, never auto</label><input id="pb_bid" type="number" step="0.01" value="0.30" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Conquest ASINs (comma-sep, optional)</label><input id="pb_conquest" placeholder="B0COMP0001, B0COMP0002" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-          </div>
-          <div style="margin-bottom:10px">
-            <label class="cc" style="font-size:11px">Competitor brand names (comma-sep, for bucketing)</label>
-            <input id="pb_compbrands" placeholder="dyson, shark, vax" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-          <div style="margin-bottom:10px">
-            <label class="cc" style="font-size:11px">Category-head terms (comma-sep — go to Phrase discovery)</label>
-            <input id="pb_headterms" placeholder="vacuum, hoover" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-          <div style="margin-bottom:10px">
-            <label class="cc" style="font-size:11px">Keyword file (CSV) — DataDive / Helium 10 / SQP</label>
-            <input type="file" id="pb_file" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="mktbtn" onclick="ppcCloseBuilder()">Cancel</button>
-            <button class="mktbtn on" onclick="ppcRunBuilder()">Build bulk file</button>
-          </div>
-          <div id="pb_result" style="margin-top:12px"></div>
-        </div>
-      </div>
-
-      <!-- Harvest shortcut modal -->
-      <div id="ppc_harvest_modal" class="modalwrap">
-        <div class="modal" style="max-width:640px">
-          <button class="x" onclick="ppcCloseHarvest()">×</button>
-          <h3><i class="ti ti-tractor"></i> Harvest a Sponsored Products Search Term Report</h3>
-          <div class="cc" style="margin:6px 0 12px">Applies the $10 rule + break-even ACOS: converters → harvest bulk (3 match types); past-$10 zero-order → negatives bulk; everything else → colour-coded status sheet. Already-targeted keywords are excluded from harvest to prevent duplicate (keyword, match-type) pairs on upload.</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-            <div><label class="cc" style="font-size:11px">ASIN</label><input id="ph_asin" placeholder="B0EXAMPLE1" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Seller SKU (NOT ASIN)</label><input id="ph_sku" placeholder="MYSKU-001" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Product short name</label><input id="ph_name" placeholder="BodyScale" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Break-even ACOS (0-1) — from your unit economics</label><input id="ph_be" type="number" step="0.01" value="0.35" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Bid for harvested keywords (you set — never auto)</label><input id="ph_bid" type="number" step="0.01" value="0.30" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-            <div><label class="cc" style="font-size:11px">Daily budget for new campaign (if none set)</label><input id="ph_budget" type="number" step="0.01" value="8.00" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
-          </div>
-          <div style="margin-bottom:10px">
-            <label class="cc" style="font-size:11px">SP Search Term Report (CSV) — required</label>
-            <input type="file" id="ph_file" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-          <div style="margin-bottom:10px">
-            <label class="cc" style="font-size:11px">Already-targeted keywords file (CSV, optional) — excluded from harvest</label>
-            <input type="file" id="ph_targeted" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="mktbtn" onclick="ppcCloseHarvest()">Cancel</button>
-            <button class="mktbtn on" onclick="ppcRunHarvest()">Run harvest</button>
-          </div>
-          <div id="ph_result" style="margin-top:12px"></div>
-        </div>
-      </div>
-
-      <!-- Unified deliverable modal: audit / dashboard / forecast / weekly-deck -->
-      <div id="ppc_deliv_modal" class="modalwrap">
-        <div class="modal" style="max-width:640px">
-          <button class="x" onclick="ppcCloseDeliv()">×</button>
-          <h3 id="pd_title"><i class="ti ti-file"></i> PPC Deliverable</h3>
-          <div class="cc" style="margin:6px 0 12px" id="pd_desc">…</div>
-          <div style="margin-bottom:10px">
-            <label class="cc" style="font-size:11px">Files (multi-select; drop the right family for the task)</label>
-            <input type="file" id="pd_files" multiple style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-            <div class="cc" style="font-size:11px;margin-top:4px;opacity:.7">Accepted families: SP bulk export, Search Term Report, Business Report, Brand Analytics SQP, Scale Insights exports. I auto-detect from column headers.</div>
-          </div>
-          <div style="margin-bottom:10px">
-            <label class="cc" style="font-size:11px">Context / notes (optional — brand, week, targets, whatever helps)</label>
-            <textarea id="pd_context" rows="3" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px;font-family:inherit;font-size:13px"></textarea>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="mktbtn" onclick="ppcCloseDeliv()">Cancel</button>
-            <button class="mktbtn on" onclick="ppcRunDeliv()">Send to PPC agent</button>
-          </div>
-          <div id="pd_result" style="margin-top:12px"></div>
-        </div>
-      </div>
-    </div>
+{% include "screens/sec_ppc.html" %}
 
     <!-- INVENTORY REPLENISHMENT -->
-    <div id="sec_inventory" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2>Inventory</h2>
-        <div class="sub">What you have, how fast it is going, and when it runs out.</div></div>
-        <span class="spacer" style="flex:1"></span>
-        <button class="db-chip" onclick="openGuide('stock')"
-                title="What this page does and what every figure on it means.">
-          <i class="ti ti-book"></i> How this page works</button>
-        <button class="db-chip" onclick="stockLoad(true)"
-                title="Re-read the listing quantities, sales and supplier times.">
-          <i class="ti ti-refresh"></i> Refresh</button>
-      </div>
-
-      <!-- THE STOCK COCKPIT.
-           "now start building the inventory feature same like orbit in our app"
-
-           Built from data the app already holds, so there is nothing to upload
-           and no Amazon report to wait for. The replenishment tool below is a
-           separate thing that needs an FBA report and a 3PL file; this needs
-           neither, which is why it is the part of the screen you see first. -->
-      <div id="stockwrap"></div>
-
-      <!-- THE OLDER TOOL, KEPT AND NOW LABELLED. It lost its heading when the
-           panel's own <h2> became "Inventory", and an unlabelled block of
-           number boxes under a table reads as part of the table. It answers a
-           different question -- "how much should I SEND to Amazon" -- and it
-           needs an FBA report and a 3PL file, so it is folded away until
-           somebody wants it. -->
-      <details class="foldgroup" style="margin-top:18px">
-        <summary><i class="ti ti-truck-loading"></i> FBA replenishment planner
-          <span class="cc">— the automated port of the Lure Essentials control
-          sheet. Needs an FBA inventory report and a 3PL stock file, and answers
-          how much to send to Amazon.</span></summary>
-      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
-          <div>
-            <label class="cc" style="font-size:11px">Target normal FBA DOS</label>
-            <input id="inv2_normal" type="number" value="85" min="0" max="365"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-          <div>
-            <label class="cc" style="font-size:11px">Reorder cycle days</label>
-            <input id="inv2_reorder" type="number" value="5" min="0" max="90"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-          <div>
-            <label class="cc" style="font-size:11px">Long-horizon 3PL DOS</label>
-            <input id="inv2_long" type="number" value="110" min="0" max="365"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-          <div>
-            <label class="cc" style="font-size:11px">Sales window (days)</label>
-            <input id="inv2_window" type="number" value="30" min="7" max="180"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-          <div>
-            <label class="cc" style="font-size:11px">3PL stock CSV (optional) — matches your existing sheet columns</label>
-            <input type="file" id="inv2_3pl" accept=".csv,.tsv,.txt"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-            <div class="cc" style="font-size:10px;margin-top:2px;opacity:.65">
-              Cols: Natural SKUs · SKUs · Product Name · ASIN · 3PL Stock · In-Transit · Ordered Qty
-            </div>
-          </div>
-          <div>
-            <label class="cc" style="font-size:11px">Cache lifetime (hours) — protects Seller Central from report spam</label>
-            <input id="inv2_cache" type="number" value="6" min="0" max="72"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
-            <div class="cc" style="font-size:10px;margin-top:2px;opacity:.65">
-              6h = at most 4 reports/day per account. Set to 0 to always fetch fresh (creates a Seller Central report each run).
-            </div>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
-          <label style="font-size:12px;display:flex;align-items:center;gap:6px">
-            <input type="checkbox" id="inv2_force"> Force refresh (bypass cache, generates new Seller Central report)
-          </label>
-          <button class="mktbtn on" onclick="inv2Run()"><i class="ti ti-package"></i> Run inventory model</button>
-        </div>
-        <div id="inv2_result" style="margin-top:12px"></div>
-
-        <div style="margin-top:14px;padding:10px;border:1px solid #263145;border-radius:8px;background:#0d1220;font-size:11px;line-height:1.6;opacity:.8">
-          <b>How it works:</b> Fetches FBA inventory via the SP-API <code>GET_FBA_MYI_ALL_INVENTORY_DATA</code> report (cached 6h by default). Fetches sales velocity per SKU via the Orders API over the sales window. Classifies each SKU as <b>ACTIVE</b> (has sales), <b>NEW_LAUNCH</b> (0 sales but &lt;60 days old), <b>DORMANT</b> (0 sales, 60-365 days), or <b>DEAD</b> (0 sales &gt;365 days or Discontinued). Only ACTIVE and NEW_LAUNCH SKUs get reorder recommendations. The red badge in the sidebar shows count of SKUs needing reorder.
-        </div>
-      </div>
-      </details>
-    </div>
+{% include "screens/sec_inventory.html" %}
 
     <!-- MILES LUBRICANTS IMPORT -->
-    <div id="sec_sellerimport" class="wspanel">
-      <div class="pagehead">
-        <div class="pagetitle"><i class="ti ti-download"></i> Import an eBay seller</div>
-        <div class="panelsub">Find everything a seller lists, review it with the pictures, check what Amazon allows, and draft the ones you want. Nothing is sent to Amazon &mdash; they arrive here as drafts and you publish them the usual way.</div>
-      </div>
-      <div id="simpbody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_sellerimport.html" %}
 
-    <div id="sec_variations" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-binary-tree"></i> Variation families
-          <!-- "i am not able to understand how to create variations using it.
-               give me a how this page works button on the variations page" -->
-          <button class="db-chip" style="margin-left:10px;font-size:11.5px;vertical-align:middle"
-                  onclick="openGuide('variations')"><i class="ti ti-book"></i> How this page works</button>
-        </h2>
-        <div class="sub">Group listings that are the same product in different sizes, colours or styles, so they show as one product with a picker instead of competing with each other. Nothing is sent until you have seen exactly what would be.</div></div>
-      </div>
-      <div id="varbody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_variations.html" %}
 
     <!-- ORDERS: every account in one list, newest first. Clicking an order
          number opens its lines. What Amazon withholds — the customer's name,
          street and phone — is stated on the screen rather than left as an
          empty column. -->
-    <div id="sec_orders" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-receipt"></i> Orders</h2>
-        <div class="sub">Every account's orders in one list, newest first, so you do not have to open each Amazon account in turn. Click an order number to see what was in it.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <input id="ord_q" placeholder="Order number, town, status…" oninput="ordersFilter(this.value)"
-                 style="font-size:12px;padding:5px 9px;min-width:190px">
-          <!-- COSTS FOR MANY ORDERS AT ONCE.
-               The app can already correct ONE order's cost, which is the right
-               shape for a mistake and the wrong shape for a hundred of them.
-               A cost written this way is marked 'manual-order' -- the top of
-               the trust order in domain/order_cogs.py -- so nothing later
-               overwrites it: not a re-sync, not a supplier price change, not
-               switching costing mode.
-
-               Download first, because the template arrives with the order,
-               the product and the cost the app CURRENTLY believes already in
-               it. That turns filling it in into correcting what is wrong
-               rather than retyping what is already right, and it means an
-               unedited upload changes nothing. -->
-          <button class="db-chip" onclick="orderCostsTemplate(false)"
-                  title="Download every order in this window as a sheet, with the cost the app currently believes beside each one. Fill in the 'cost' column and upload it back.">
-            <i class="ti ti-download"></i> Cost sheet</button>
-          <button class="db-chip" onclick="orderCostsTemplate(true)"
-                  title="The same sheet, but only the orders that have no cost at all yet — usually the ones actually worth filling in.">
-            <i class="ti ti-download"></i> Uncosted only</button>
-          <button class="db-chip" onclick="orderCostsUploadOpen()"
-                  title="Upload the filled-in sheet. Rows with the cost left blank are skipped, so an unedited file changes nothing.">
-            <i class="ti ti-file-upload"></i> Upload costs</button>
-          <input type="file" id="ordcost_file" accept=".csv,.tsv,.txt,.xlsx,.xls"
-                 style="display:none" onchange="orderCostsUpload(this)">
-          <!-- WHERE THE PARCELS ARE.
-               Amazon does not hand back the tracking a seller uploads --
-               measured against every endpoint that could carry it, see
-               domain/tracking.py -- so the numbers come in on a sheet, in
-               exactly the shape the costs above already use. Same download-
-               first reason: the sheet arrives with the orders and whatever
-               tracking is already recorded, so a blank row means "leave this
-               alone" and an unedited upload changes nothing.
-
-               Check now is SEPARATE and deliberate: it is the only button here
-               that contacts anyone outside this app, and it does nothing at
-               all until a tracking service is set up in Settings. -->
-          <button class="db-chip" onclick="trackingTemplate(false)"
-                  title="Download every order in this window as a sheet, with any tracking already recorded beside it. Fill in the 'tracking' and 'carrier' columns and upload it back.">
-            <i class="ti ti-download"></i> Tracking sheet</button>
-          <button class="db-chip" onclick="trackingTemplate(true)"
-                  title="The same sheet, but only the orders with no tracking recorded yet.">
-            <i class="ti ti-download"></i> Untracked only</button>
-          <button class="db-chip" onclick="trackingUploadOpen()"
-                  title="Upload the filled-in tracking sheet. Rows with the tracking left blank are skipped, so an unedited file changes nothing.">
-            <i class="ti ti-file-upload"></i> Upload tracking</button>
-          <input type="file" id="ordtrack_file" accept=".csv,.tsv,.txt,.xlsx,.xls"
-                 style="display:none" onchange="trackingUpload(this)">
-          <button class="db-chip" id="ord_trackcheck" onclick="trackingCheck()"
-                  title="Ask the carrier where each parcel is now. Needs a tracking service key in Settings — without one, nothing is checked and it says so rather than showing a made-up status.">
-            <i class="ti ti-truck-delivery"></i> Check parcels</button>
-          <button class="db-chip" onclick="ordersLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-        </div>
-      </div>
-      <div id="ordcost_result" style="margin:0 0 8px"></div>
-      <div id="ordtrack_result" style="margin:0 0 8px"></div>
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
-        <div id="ord_days" style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="db-chip" onclick="ordersSetDays(7)">7 days</button>
-          <button class="db-chip" onclick="ordersSetDays(30)">30 days</button>
-          <button class="db-chip" onclick="ordersSetDays(90)">90 days</button>
-        </div>
-        <!-- THE PICKER IS GONE, AND SO IS "EVERY ACCOUNT".
-             "i do not want that option which enables the user to see all the
-              orders on every account by being in 1 account. i am in nestwell
-              goods why am i able to see the orders of jack reacherd"
-             These are separate limited companies with separate customers, and
-             one's orders under another's name is that customer's name and
-             address in the wrong company's screen. There is no longer a way to
-             ask for it — the endpoint refuses it too, because a rule that only
-             exists in the browser is not a rule. -->
-        <span class="cc" id="ord_scope" style="font-size:11.5px"
-              title="Orders belong to the account you have open. Each account is a separate business with its own customers.">this account only</span>
-        <!-- ON by default, and starts that way: this is what fills the Item
-             column with the product, its picture, the margin and the ROI. It
-             costs one Amazon call per order, so it runs as a second pass after
-             the list is already drawn. Pressing this turns it OFF. -->
-        <button class="db-chip on" id="ord_profit" onclick="ordersToggleProfit()"
-                title="Read what was in each order and what it earned — the product and its picture, profit, margin and ROI. One Amazon call per order, so it fills in just after the list appears. Press to turn it off.">
-          <i class="ti ti-coins"></i> Work out profit
-        </button>
-      </div>
-      <div id="ordbody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_orders.html" %}
 
     <!-- HOURLY SALES. Which hour of which day each product sells in.
          Amazon publishes no hourly report: the Sales & Traffic report is
@@ -1461,13 +646,7 @@
          in it, which costs one further call per order. Every order it learns
          about is therefore kept, and the pull is a button rather than
          something that happens while you wait. -->
-    <div id="sec_hourly" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-clock-hour-4"></i> Hourly Sales</h2>
-        <div class="sub">Total ordered sales per ASIN by local hour of week, trailing 30 days. Each row shows the ASIN's sales by hour of day, colour-scaled to its own peak hour; click a row for the full Mon&ndash;Sun grid.</div></div>
-      </div>
-      <div id="hrlybody"></div>
-    </div>
+{% include "screens/sec_hourly.html" %}
 
     <!-- TRAFFIC & CONVERSIONS. Built to Orbit's page of the same name, on
          figures this app has been storing per ASIN and per day all along
@@ -1476,84 +655,13 @@
 
          The whole page comes from ONE request, so the tiles, the charts and
          the table cannot disagree about a number they all describe. -->
-    <div id="sec_traffic" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-chart-arcs"></i> Traffic &amp; Conversions</h2>
-        <div class="sub">Sessions, page views, conversion rate, and buy box analytics<span class="infodot"
-             title="All of this comes from Amazon's Sales &amp; Traffic report, which is dated by ORDER date and runs a day or two behind. It will not tie out to the Finance figures, which are dated when the money moved.">i</span></div></div>
-        <span class="spacer" style="flex:1"></span>
-        <button class="mktbtn" onclick="trafficLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-      </div>
-      <div id="trafbody"></div>
-    </div>
+{% include "screens/sec_traffic.html" %}
 
     <!-- RETURNS: why things come back, and what it costs. Two ways in — pull
          the report, or upload one. An FBA returns file carries two columns the
          API will not give a seller-fulfilled account, so the upload is not a
          fallback: it is how the richest two sections get filled at all. -->
-    <div id="sec_returns" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-arrow-back-up"></i> Returns Intelligence</h2>
-        <div class="sub">Why things come back, which of it you can fix, and what it actually cost you. Amazon's fifty reason codes grouped into the four things you can do something about.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="returnsSetDays(7)">7 days</button>
-          <button class="db-chip" onclick="returnsSetDays(30)">30 days</button>
-          <button class="db-chip" onclick="returnsSetDays(60)" title="Amazon will not build this report for a wider window than 60 days">60 days</button>
-          <button class="db-chip" onclick="returnsLoad()"><i class="ti ti-refresh"></i> Pull from Amazon</button>
-          <!-- ONE BUTTON PER REPORT, because there are two and they fill in
-               different halves of this page. A single "upload a report" button
-               does not say which report, and picking the wrong one and being
-               told afterwards is the whole problem. Each button names its
-               report, and the panel below says where to find it in Seller
-               Central. The file is still identified by its COLUMNS, so
-               choosing the wrong button is corrected rather than punished. -->
-          <!-- MULTIPLE FILES, because a year does not come as one. Amazon caps
-               a seller-fulfilled report at 60 days, so year-to-date is four or
-               five downloads, and an account with both FBA and seller-fulfilled
-               returns needs one of each. They ADD to what is loaded and are
-               de-duplicated on the returns themselves, so overlapping windows
-               are safe and the same file twice changes nothing. -->
-          <button class="db-chip" onclick="returnsUploadOpen('fba')"
-                  title="Seller Central → Reports → Fulfilment → Customer Concessions → FBA Customer Returns. Pick several files at once if you have them."><i class="ti ti-file-upload"></i> Add FBA returns</button>
-          <button class="db-chip" onclick="returnsUploadOpen('mfn')"
-                  title="Seller Central → Reports → Return Reports → Seller-fulfilled returns. Amazon caps these at 60 days, so pick all of your year-to-date files at once."><i class="ti ti-file-upload"></i> Add seller-fulfilled returns</button>
-          <input type="file" id="ret_file" accept=".csv,.tsv,.txt" multiple style="display:none" onchange="returnsUploadFile(this)">
-          <!-- A THIRD FILE, and the only source for three columns on this page.
-               Whether Amazon is showing the "frequently returned item" badge on
-               a listing, its CX Health grade, and the reason Amazon itself puts
-               at the top are in neither returns report and in no API this app
-               has. They are only in the Voice of the Customer export.
-               NAMED AFTER THE REPORT, not after what it fills in: "Upload
-               listing quality" did not tell anyone which file to go and get. -->
-          <button class="db-chip" onclick="returnsQualityOpen()"
-                  title="Seller Central → Brands → Customer Experience → Voice of the Customer → Download. This is the only report that says whether Amazon is showing the 'frequently returned item' badge."><i class="ti ti-shield-exclamation"></i> Add Voice of the Customer</button>
-          <button class="db-chip" onclick="returnsClear()"
-                  title="Forget every returns file loaded for this account and start again"><i class="ti ti-trash"></i> Start again</button>
-          <input type="file" id="ret_quality" accept=".csv,.txt" style="display:none" onchange="returnsQualityFile(this)">
-          <button class="db-chip" onclick="returnsExport()"
-                  title="Every table on this page as an eight-sheet workbook, built from exactly what you are looking at"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
-        </div>
-      </div>
-      <!-- TWO QUESTIONS, TWO VIEWS, ONE SCREEN.
-           "Analysis" is why things come back and what it costs -- reasons
-           grouped into causes, rates, trends. "All returns" is the operational
-           list: one row per return, Amazon's own status on it, and a detail
-           view for a single one.
-
-           They read different sources on purpose. Analysis reads what was just
-           pulled or uploaded; the list reads what has been KEPT. Amazon caps
-           its seller-fulfilled report at 60 days, so a return from four months
-           ago cannot be re-fetched -- only remembered. -->
-      <div class="mktswitch" style="margin:2px 0 8px">
-        <button class="mktbtn on" id="retview_analysis"
-                onclick="returnsSetView('analysis')">Analysis</button>
-        <button class="mktbtn" id="retview_list"
-                onclick="returnsSetView('list')"
-                title="Every return this app has stored, with its status, reason and amounts">All returns</button>
-      </div>
-      <div id="retbody" style="padding:4px 0"></div>
-      <div id="returns_list" style="padding:4px 0;display:none"></div>
-    </div>
+{% include "screens/sec_returns.html" %}
     <script>
       /* Which half of the Returns screen is showing. Deliberately not a route
          or a stored preference: it is one click either way, and a remembered
@@ -1583,95 +691,25 @@
          say WHICH report, and being told afterwards is the whole frustration.
          The file is still identified by its COLUMNS, so pressing the wrong
          button is corrected rather than punished. -->
-    <div id="sec_weekly" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-calendar-stats"></i> Weekly KPIs</h2>
-        <div class="sub">One week, every headline figure, frozen so it cannot change afterwards. Built from the Business Report and the Campaign Manager export — uploaded, or read from what this app already syncs.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <span class="cc" style="font-size:11px">week of</span>
-          <input type="date" id="wk_week" onchange="weeklyLoad()"
-                 style="font-size:12px;padding:4px 6px"
-                 title="Any day in the week you are reporting on. The week runs Sunday to Saturday.">
-          <button class="db-chip" onclick="weeklyPull()"
-                  title="Build the week from the data this app already holds. No files needed."><i class="ti ti-refresh"></i> Build from connected account</button>
-          <button class="db-chip" onclick="weeklyUploadOpen('business')"
-                  title="Seller Central → Reports → Business Reports → Detail Page Sales and Traffic by Child Item"><i class="ti ti-file-upload"></i> Upload Business Report</button>
-          <button class="db-chip" onclick="weeklyUploadOpen('campaign')"
-                  title="Campaign Manager → the campaign table → Export"><i class="ti ti-file-upload"></i> Upload Campaign export</button>
-          <input type="file" id="wk_file" accept=".csv,.tsv,.txt,.xlsx" style="display:none" onchange="weeklyUploadFile(this)">
-          <!-- WHICH ASINs THE FOUR PRODUCT SECTIONS LIST. The reference sheet
-               lists parent ASINs, which is the useful view for a weekly pack --
-               a shoe in 14 sizes is one product. "Each child" is there for the
-               per-variation read. -->
-          <span class="cc" style="font-size:11px">rows</span>
-          <select class="db-chip" id="wk_group" aria-label="Rows" style="width:auto">
-            <option value="parent">By parent ASIN</option>
-            <option value="child">Each child ASIN</option>
-          </select>
-          <button class="db-chip" onclick="weeklyExport()"
-                  title="Every saved week as a column, newest on the left — the layout of the KPI sheet"><i class="ti ti-download"></i> Export CSV</button>
-          <!-- THE WAY BACK OUT. Weeks could be uploaded and re-uploaded but never
-               removed, so a week loaded against the wrong account or from the
-               wrong export stayed in the pack for good and every comparison
-               after it read against a week that should not have been there.
-               Asked for as "delete or clear all data which is already UPLOADED
-               ... to avoid any confusion". Red, because it cannot be undone. -->
-          <button class="db-chip wkwipe" onclick="weeklyClearAll()"
-                  title="Delete the stored weeks for this account and marketplace so you can upload fresh reports. Asks first, and says how many."><i class="ti ti-eraser"></i> Clear stored weeks</button>
-          <button class="db-chip" onclick="weeklySheetSync()"
-                  title="Write the same grid into this account's weekly Google Sheet. Shows you what it would do before it does it."><i class="ti ti-brand-google-drive"></i> Sync to Google Sheet</button>
-        </div>
-      </div>
-      <div id="wk_sheetmsg"></div>
-      <div id="wk_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_weekly.html" %}
 
     <!-- THE DAILY ROUND. Replaces a Fillout checklist of fourteen things
          somebody works through in Seller Central every morning and ticks off.
          The looking is what a computer should do; the only output that matters
          is the short list of what is wrong today. -->
-    <div id="sec_daily" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-checklist"></i> Daily round</h2>
-        <div class="sub">Everything the morning check looks at, run by the app. What needs attention is first; what could not be checked says so rather than showing a tick.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="dailyLoad()"><i class="ti ti-refresh"></i> Run again</button>
-        </div>
-      </div>
-      <div id="dy_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_daily.html" %}
 
     <!-- THE FOUR TRACKERS, on one screen with a tab each.
          Orbit lists them as five separate menu items (All Trackers, BSR, Buy
          Box, Price, Fee). They are the same table with a different number in
          it, so five menu items would be five ways to reach one screen -- the
          tabs do that in one place, and "All" is simply no filter. -->
-    <div id="sec_trackers" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-chart-dots"></i> Trackers</h2>
-        <div class="sub">Watch a number on a listing — its sales rank, its Buy Box price, your price, or Amazon's cut — and be told when it drifts from what you wanted. Nothing is read until you press Check now.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" id="trk_refresh" onclick="trkRefresh()"><i class="ti ti-refresh"></i> Check now</button>
-          <button class="db-chip" onclick="trkLoad()"><i class="ti ti-reload"></i> Reload</button>
-        </div>
-      </div>
-      <div id="trk_tabs" class="stk-tabbar"></div>
-      <div id="trk_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_trackers.html" %}
 
     <!-- ALERTS -- the off-track rows from all four trackers in one list.
          One count, not four badges: four is four chances to miss the one that
          mattered. -->
-    <div id="sec_alerts" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-bell"></i> Alerts</h2>
-        <div class="sub">Everything currently off the target you set, worst first. A number that could not be read is listed as unknown rather than counted as fine.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="alertsLoad()"><i class="ti ti-refresh"></i> Reload</button>
-        </div>
-      </div>
-      <div id="alr_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_alerts.html" %}
 
     <!-- USER PERMISSIONS, its own page.
          "make the user permission a separate page exact copy paste of like
@@ -1680,16 +718,7 @@
          None / View / View &amp; Edit across the top, one radio per row, and a
          "set all" on every group heading. A column of radios can be read down;
          seventeen dropdowns each have to be opened to be read. -->
-    <div id="sec_permissions" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-users-group"></i> User permissions</h2>
-        <div class="sub">Who can open which accounts, and what they can do inside them. An area set to <b>No access</b> is not shown to that person at all &mdash; not greyed out, no trace of it in the menu.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="permLoad()"><i class="ti ti-refresh"></i> Reload</button>
-        </div>
-      </div>
-      <div id="perm_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_permissions.html" %}
 
     <!-- IMAGE LIBRARY, its own page.
          "i should not have to go from one page to another to just create
@@ -1698,79 +727,27 @@
          the SAME library (listingimages.js renders into this page instead of
          its modal) with a product picker beside it. The row button still opens
          the modal, unchanged. -->
-    <div id="sec_imagelib" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-library-photo"></i> Image Library</h2>
-        <div class="sub">Every product's images in one place &mdash; pick a product on the left and work on it without leaving the page.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="imgpLoad()"><i class="ti ti-refresh"></i> Reload products</button>
-        </div>
-      </div>
-      <div class="imgp-split">
-        <div class="imgp-left"><div id="imgp_picker"></div></div>
-        <div class="imgp-right">
-          <div id="imgp_which" style="padding:0 0 8px"></div>
-          <div id="imgp_lib"></div>
-        </div>
-      </div>
-    </div>
+{% include "screens/sec_imagelib.html" %}
 
     <!-- UPLOAD HISTORY, like Seller Central's "Spreadsheet upload status".
          "i want to track which files were uploaded recently for creating
           listings like amazon has it". Every file that changed data, kept for
           ever with its processing report. See domain/upload_log.py. -->
-    <div id="sec_uploads" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-file-upload"></i> Upload history</h2>
-        <div class="sub">Every file uploaded to this account &mdash; the original file and what it did, row by row.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <select id="uph_kind" aria-label="Which uploads" class="ed" style="width:auto" onchange="uploadsLoad()"><option value="">All uploads</option></select>
-          <button class="db-chip" onclick="uploadsLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-        </div>
-      </div>
-      <div id="uph_body"></div>
-    </div>
+{% include "screens/sec_uploads.html" %}
 
     <!-- DR PPC CONSOLE -- reads the advertising data and says what is wrong.
          Built BEFORE the Advertising API is connected, so the day credentials
          arrive there is a screen to point at them. It recommends and stops:
          nothing in this app can write a bid (CLAUDE.md Rule 8). -->
-    <div id="sec_drppc" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-stethoscope"></i> Dr PPC</h2>
-        <div class="sub">Wasted spend, ACOS against your target, search terms worth turning into keywords, and campaigns held back by their budget. Every finding names the exact change &mdash; and leaves it to you.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="drpStatus()"><i class="ti ti-plug"></i> Connection</button>
-        </div>
-      </div>
-      <div id="drp_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_drppc.html" %}
 
     <!-- CATEGORY EXPLORER -- where this account's products sit in Amazon's
          category tree. One Catalog call per product, so it is a button. -->
-    <div id="sec_categories" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-sitemap"></i> Category Explorer</h2>
-        <div class="sub">Which Amazon categories your products are actually ranked in, and how many are in none. A product with no rank usually means it has not sold &mdash; which is different from one nobody has looked up.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="catsLoad()"><i class="ti ti-refresh"></i> Reload</button>
-        </div>
-      </div>
-      <div id="cats_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_categories.html" %}
 
         <!-- COMPLIANCE CHECKER -- runs this app's own rules against what is LIVE on
          Amazon, rather than against copy it is about to submit. Reads only. -->
-    <div id="sec_compliance" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-shield-search"></i> Compliance checker</h2>
-        <div class="sub">Scan a live listing against the rules this app already uses when it writes copy &mdash; forbidden brand names, restricted phrasing, category claims, IP. Until now those only ran on listings this app was about to submit.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="cmpLoad()"><i class="ti ti-refresh"></i> Reload</button>
-        </div>
-      </div>
-      <div id="cmp_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_compliance.html" %}
 
     <!-- REIMBURSEMENTS -- money Amazon owes back, found by checking its own
          published rule against what it actually took. The check lived as the
@@ -1778,16 +755,7 @@
          stock, not about money you are owed. Same engine, same renderer
          (static/js/reimbursements.js), its own page. Reads only; files
          nothing. -->
-    <div id="sec_reimbursements" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-cash-banknote"></i> Reimbursements</h2>
-        <div class="sub">Money Amazon owes back, found by checking its own published rule against what it actually took &mdash; and shown with the whole sum, so you can check it rather than believe it. Nothing here is filed for you.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="rbLoad(true)"><i class="ti ti-refresh"></i> Re-check</button>
-        </div>
-      </div>
-      <div id="rb_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_reimbursements.html" %}
 
     <!-- THE WEEKLY BRIEF -- the only screen NOT scoped to the open account.
          Every other page answers for the account you chose, which is right for
@@ -1795,44 +763,17 @@
          the one nobody opened. What could NOT be read is drawn at the top,
          because a brief with a silent hole in it reads as "nothing to report"
          for the part it never looked at. See domain/weekly_brief.py. -->
-    <div id="sec_brief" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-news"></i> Weekly brief</h2>
-        <div class="sub">Every account at once &mdash; what moved, what is outside its normal range, what runs out, and whether the profit can be trusted. Seven whole days against the seven before. Nothing is added across currencies.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="briefLoad()"><i class="ti ti-refresh"></i> Rebuild</button>
-        </div>
-      </div>
-      <div id="brief_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_brief.html" %}
 
     <!-- PRODUCT CATALOG (Orbit's ASINs page) -- every product ranked, with the
          four findings that each change a decision. Reads the app's own sales
          table and catalogue snapshot; calls Amazon for nothing. -->
-    <div id="sec_catalog" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-package-import"></i> Product Catalog</h2>
-        <div class="sub">Every product you sell, ranked by what it earns &mdash; with how concentrated the revenue is, what your best product is worth, and which products are listed and earning nothing.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="catpLoad()"><i class="ti ti-refresh"></i> Reload</button>
-        </div>
-      </div>
-      <div id="catp_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_catalog.html" %}
 
     <!-- KEYWORDS (SQP) -- the only report that shows the SEARCH rather than what
          happened after somebody arrived. Its value is the share: your slice of
          what a query produced across every seller. -->
-    <div id="sec_sqp" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-search"></i> Keywords</h2>
-        <div class="sub">What people actually typed, and where your funnel breaks for each search &mdash; not seen, not clicked, not added, or not bought. Four different jobs; averaged into &ldquo;conversion is bad&rdquo; they are none of them.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="sqpLoad()"><i class="ti ti-refresh"></i> Get the report</button>
-        </div>
-      </div>
-      <div id="sqp_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_sqp.html" %}
 
     <!-- ============ PHASE 1 ANALYTICS: KEYWORDS ============
          Four new screens, all manual. Nothing here runs on a timer: history
@@ -1840,312 +781,45 @@
          read domain/brand_analytics.py and store through
          domain/keyword_store.py; no existing tool is touched. -->
 
-    <div id="sec_kwspy" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-radar"></i> Keyword Spy</h2>
-        <div class="sub">The marketplace&rsquo;s top search terms for a week, filtered to your word. Not a search sent to Amazon &mdash; Amazon returns the whole report and this filters it. Every search is saved, so your history builds as you use it.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <input id="kws_q" class="ed" placeholder="A word to look for&hellip;" style="min-width:200px"
-                 onkeydown="if(event.key==='Enter')kwSpySearch()">
-          <label class="cc">Week <input id="kws_start" type="date" class="ed"></label>
-          <label class="cc">to <input id="kws_end" type="date" class="ed"></label>
-          <button class="db-chip" onclick="kwSpySearch()"><i class="ti ti-search"></i> Search</button>
-        </div>
-      </div>
-      <div id="kwspybody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_kwspy.html" %}
 
-    <div id="sec_kwasin" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-target-arrow"></i> ASIN Insights</h2>
-        <div class="sub">The search queries that produced impressions, clicks and purchases for one of <b>your</b> ASINs. Amazon does not share another seller&rsquo;s query performance, so a competitor&rsquo;s ASIN returns nothing.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <input id="kwa_asin" class="ed" placeholder="One of YOUR ASINs&hellip;" style="min-width:170px"
-                 onkeydown="if(event.key==='Enter')kwAsinSearch()">
-          <label class="cc">Week <input id="kwa_start" type="date" class="ed"></label>
-          <label class="cc">to <input id="kwa_end" type="date" class="ed"></label>
-          <button class="db-chip" onclick="kwAsinSearch()"><i class="ti ti-search"></i> Search</button>
-        </div>
-      </div>
-      <div id="kwasinbody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_kwasin.html" %}
 
-    <div id="sec_ranktracker" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-chart-line"></i> Rank Tracker</h2>
-        <div class="sub">Keywords and ASINs you follow, checked <b>only when you press the button</b>. It measures search visibility &mdash; impressions, clicks, purchases &mdash; not organic position, which no source available here can give.</div></div>
-      </div>
-      <div id="ranktrackerbody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_ranktracker.html" %}
 
     <!-- ASIN STUDIO. Any ASIN in, a branded DRAFT out. The ASIN is a reference
          for the product facts (CLAUDE.md Rule 1) -- nothing here claims it. -->
-    <div id="sec_asinstudio" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-wand"></i> ASIN Studio</h2>
-        <div class="sub">Put in any ASIN, optionally its competitors, and the brand you want the listing to carry. Out comes a draft in this account &mdash; copy, attributes and images &mdash; with every compliance and IP check still applied. The ASIN is a <b>reference</b>: this creates a new product under your own brand and never joins that listing.</div></div>
-      </div>
-      <div id="asinstudiobody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_asinstudio.html" %}
 
-    <div id="sec_kwhistory" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-history"></i> Keyword History</h2>
-        <div class="sub">Everything the other keyword screens have already pulled, week against week. Never calls Amazon &mdash; it is the record, so it opens instantly and costs nothing.</div></div>
-      </div>
-      <div id="kwhistorybody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_kwhistory.html" %}
 
     <!-- NOTIFICATIONS -- where alerts go when nobody has the app open.
          Nothing sends until a channel is added AND switched on, and nothing is
          on a timer: posting into somebody's Slack is outward-facing and cannot
          be taken back, so it happens when a person asks for it. -->
-    <div id="sec_notify" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-send"></i> Notifications</h2>
-        <div class="sub">Alerts are only visible inside this app until you add somewhere for them to go. A new channel arrives switched off — send a test first, then turn it on.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="ntfLoad()"><i class="ti ti-refresh"></i> Reload</button>
-        </div>
-      </div>
-      <div id="ntf_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_notify.html" %}
 
     <!-- LEADING INDICATORS -- yesterday against its own history, in standard
          deviations. Nothing is fetched from Amazon here: it is a new reading of
          the daily figures the app has been storing all along. -->
-    <div id="sec_leading" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-activity-heartbeat"></i> Leading Indicators</h2>
-        <div class="sub">Yesterday's figures against what this account normally does. "Down 22%" means nothing on its own — if a figure swings that much every week it is Tuesday, and if it has never moved 4% it is an emergency. This says which.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="leadLoad()"><i class="ti ti-refresh"></i> Reload</button>
-        </div>
-      </div>
-      <div id="ld_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_leading.html" %}
 
     <!-- IMAGE STUDIO, its own screen rather than a dialog over Listings. -->
-    <div id="sec_imagestudio" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-photo-edit"></i> Image Studio</h2>
-        <div class="sub">Make a listing's main and secondary images from its source photographs. Nothing here reaches Amazon &mdash; images are generated, reviewed and saved to the listing's library; sending one to a live slot is a separate, deliberate step.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="navTo('listings')"
-                  title="Back to the listings, to pick a different product"><i class="ti ti-arrow-left"></i> Listings</button>
-        </div>
-      </div>
-      <!-- THE STUDIO PICKS ITS OWN PRODUCT NOW.
-           Its empty state used to say "Open Listings and press the photo
-           button", which IS the round trip being complained about. The picker
-           is the shared one (productpicker.js), so this page and the Image
-           Library cannot disagree about what this account sells. -->
-      <div id="studio_picker"></div>
-      <div id="studiobody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_imagestudio.html" %}
 
     <!-- AI SPEND: what the AI cost, per account and per feature. Read-only —
          this screen spends nothing itself. Shown as a chart AND written out in
          words, because the chart answers "is it going up" while the tables
          answer "which account, doing what". -->
-    <div id="sec_aiusage" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-cpu"></i> AI spend</h2>
-        <div class="sub">Every AI call this app makes, what it was for, and which account it belongs to. Across all accounts by default — this is the screen for comparing them. A model with no known price is counted as unknown, never as free, so the total reads as a minimum rather than a guess.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="aiUsageSetDays(7)">7 days</button>
-          <button class="db-chip" onclick="aiUsageSetDays(30)">30 days</button>
-          <button class="db-chip" onclick="aiUsageSetDays(90)">90 days</button>
-          <button class="db-chip" onclick="aiUsageLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-        </div>
-      </div>
-      <div id="aiu_body" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_aiusage.html" %}
 
-    <div id="sec_finance" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-report-money"></i> Product contribution margin</h2>
-        <div class="sub">What each product left behind after Amazon's fees, refunds and what the stock cost. Everything here is on the money basis — units shipped, dated when the money moved — so the fees and the units beside them describe the same sales.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <input type="date" id="fin_start" aria-label="Start date" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
-          <span class="cc" style="font-size:11px">to</span>
-          <input type="date" id="fin_end" aria-label="End date" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
-          <button class="db-chip" onclick="financeLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-        </div>
-      </div>
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
-        <div id="fin_presets" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-        <div id="fin_filters" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-        <label class="cc" style="font-size:11.5px;display:flex;gap:5px;align-items:center;cursor:pointer">
-          <input type="checkbox" id="fin_by_parent" onchange="financeRender()"> Group by parent
-        </label>
-      </div>
-      <div id="finbody" style="padding:4px 0"></div>
-    </div>
+{% include "screens/sec_finance.html" %}
 
-    <div id="sec_sourcing" class="wspanel">
-      <div class="pagehead">
-        <div class="pagetitle"><i class="ti ti-arrows-down-up"></i> Repricer</div>
-        <div class="panelsub">Tracks what every enrolled SKU actually costs at its
-          supplier, and works out what it would price at<span class="infodot"
-          title="When a supplier's price moves, the price it proposes moves with it. When they run out, it would take the listing out of stock. When they slow down, the handling time stretches. Only SKUs enrolled here are ever read, and auto-pricing is a separate switch.">i</span></div>
-      </div>
-      <div id="srcpick" style="display:none;padding:4px 0"></div>
-      <div id="srcbody" style="padding:4px 0"></div>
-      <!-- WHICH SKUs cannot be bought from, by name. BELOW the table now, and
-           folded shut.
-             "one compact alert ... Nothing else between the stat cards and the
-              table."
-           It used to sit above everything as two full-width banners listing
-           thirteen SKUs in three columns and then six more -- about 400 pixels
-           of page before the first price, and a table pretending to be a
-           warning: every SKU it named has a row in the real table with a red
-           dot in its state column. The COUNTS are still above the table, in the
-           one alert bar; this is the list, kept for when you want to work
-           through it. Filled by sourcingAlerts() in static/js/sourcing.js. -->
-      <div id="srcalerts" style="padding:8px 0 0"></div>
-    </div>
+{% include "screens/sec_sourcing.html" %}
 
-    <div id="sec_monitor" class="wspanel">
-      <!-- THE SAME HEADER EVERY OTHER SCREEN HAS. This used the one-off
-           .pagehead / .pagetitle / .panelsub trio and .mktbtn buttons, so it
-           was the only page in the app with its own title size, its own
-           spacing and its own button shape -- reported as "the current theme of
-           the page is not alligned with our all other app". .wstoolbar + h2 +
-           .sub + .db-chip is what Listings, Sales, Returns and the rest use. -->
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
-        <div class="sub">Who else is selling on the ASINs you watch. Read-only — it never writes to, or affects, the listings it watches.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip btn-primary" id="mon_checkbtn" onclick="monCheckNow()"><i class="ti ti-refresh"></i> Check now</button>
-          <button class="db-chip" id="mon_rescanbtn" onclick="monRescanAll()" title="Check EVERY selected marketplace once, including ones currently skipped as having no offers — use after expanding into a new marketplace"><i class="ti ti-world-search"></i> Re-scan all markets</button>
-          <button class="db-chip" onclick="monSellersPick()" title="Upload a CSV of seller IDs and who they are — names them everywhere at once, instead of one at a time"><i class="ti ti-users"></i> Import seller names</button>
-          <input type="file" id="mon_sellerfile" accept=".csv,.txt,.xlsx" style="display:none" onchange="monSellersUpload(this)">
-          <button class="db-chip" onclick="monDownloadExcel()" title="Download the current results as an Excel file"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
-          <button class="db-chip" onclick="monMarkAllRead()">Mark all read</button>
-        </div>
-      </div>
+{% include "screens/sec_monitor.html" %}
 
-      <div class="monalertbar">
-        <span id="mon_status" class="cc"></span>
-      </div>
-
-      <div id="mon_chart"></div>
-
-      <!-- WHEN THIS RUNS, AND WHETHER IT RUNS AT ALL.
-           "i dont want the asin monitor to be working always, give 2 options.
-            option 1 is to recheck the status of the buybox by clicking a
-            button. option two is to setup a time of your choice."
-           Option 1 is Check now, above. This is option 2, off by default.
-           Drawn by monSchedRender() in static/js/monitor.js. -->
-      <div class="monsched" id="mon_sched"></div>
-
-      <div id="mon_alerts" style="margin:10px 0 6px"></div>
-
-      <div class="monadd">
-        <div class="monrow">
-          <div class="monfield" style="flex:0 0 170px">
-            <label class="monlbl">ASIN</label>
-            <input id="mon_asin" class="monin" placeholder="B0XXXXXXXX" maxlength="10" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
-          </div>
-          <div class="monfield" style="flex:1 1 220px">
-            <label class="monlbl">Label / product name <span class="cc">(your reference)</span></label>
-            <input id="mon_label" class="monin" placeholder="e.g. Green Haven bamboo airer" autocomplete="off">
-          </div>
-        </div>
-        <div class="monfield" style="margin-top:10px">
-          <label class="monlbl">Marketplaces to check <span class="cc">(default: all European)</span>
-            <button class="linkbtn" type="button" onclick="monMarketsAll(true)">all</button> ·
-            <button class="linkbtn" type="button" onclick="monMarketsAll(false)">none</button></label>
-          <div id="mon_markets" class="monmkts"></div>
-        </div>
-        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <button id="mon_addbtn" class="mktbtn on" onclick="addMonitorAsin()"><i class="ti ti-plus"></i> Add ASIN to watch</button>
-          <button class="mktbtn" onclick="monPickFile()" title="Upload a CSV, TXT or XLSX list of ASINs — the column is auto-detected, no template needed"><i class="ti ti-upload"></i> Upload list</button>
-          <input type="file" id="mon_file" accept=".csv,.txt,.xlsx" style="display:none" onchange="monBulkUpload(this)">
-          <span id="mon_count" class="cc" style="margin-left:4px"></span>
-        </div>
-      </div>
-
-      <div id="mon_list" style="margin-top:16px"></div>
-
-      <div class="cc" style="margin-top:16px;font-size:11.5px;opacity:.8">
-        The hourly checker is live — it runs every 60 min while the app is open. Hit <b>Check now</b> above to run it immediately (the first check just records a baseline; changes after that raise alerts). Use the <b>History</b> button on any ASIN to see its offer timeline.
-      </div>
-    </div>
-
-    <div id="sec_miles" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2>Miles Lubricants Import</h2>
-        <div class="sub">Harvest products from mileslubricants.com by item number — pulls page text, spec table, and the PDF spec/SDS sheets into Drive, then drafts Amazon listings with compliance &amp; IP checks.</div></div>
-      </div>
-
-      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
-        <div style="font-size:13px;opacity:.85;margin-bottom:10px">
-          <b>Step 1.</b> Upload a CSV or Excel file with one column of item numbers (e.g. <code>M001000603</code>). One item number = one product = one listing.
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <input type="file" id="miles_file" aria-label="Item-number file (CSV or Excel)" accept=".csv,.xlsx,.xls" onchange="milesPickFile(this)"
-                 style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
-          <span id="miles_filestatus" style="font-size:12px;opacity:.7"></span>
-        </div>
-        <div id="miles_items" style="font-size:12px;opacity:.6;margin-top:8px"></div>
-      </div>
-
-      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
-        <div style="font-size:13px;opacity:.85;margin-bottom:10px">
-          <b>Step 2.</b> Where should the listing copy go? Paste the Google Sheet ID (or full URL) and the tab name. Leave blank to use the account default.
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <input type="text" id="miles_sheet" placeholder="Output Sheet ID or URL" onchange="milesSavePref()"
-                 style="flex:1;min-width:260px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
-          <input type="text" id="miles_tab" placeholder="Tab name (e.g. Sheet2)" onchange="milesSavePref()"
-                 style="width:180px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
-          <input type="number" id="miles_limit" min="1" placeholder="How many? (blank = all)"
-                 style="width:170px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
-        </div>
-        <div style="font-size:11px;opacity:.6;margin-top:8px">
-          Columns written: SKU, Title, Bullet Point 1-5, Description, Backend Keywords, Compliance Report, Uploaded. Enter a number (e.g. 5) to generate just that many this run.
-        </div>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="miles_use_ba" style="width:16px;height:16px">
-          Use real Amazon search data (Brand Analytics) to seed keywords — needs Brand Registry on the account
-        </label>
-      </div>
-
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-        <button class="primary" id="miles_runbtn" onclick="milesRun()" disabled><i class="ti ti-player-play"></i> Harvest &amp; draft</button>
-        <button id="miles_genbtn" onclick="milesGenerate()"><i class="ti ti-file-text"></i> Generate drafts</button>
-        <button id="miles_optbtn" onclick="milesOptimize()" title="Pull real Search Query Performance for live ASINs and front-load converting keywords"><i class="ti ti-trending-up"></i> Optimize live listings (SQP)</button>
-        <button class="danger" id="miles_stopbtn" onclick="milesStop()" title="Stop the current run — also force-clears a stuck 'a run is already in progress' lock">Stop</button>
-      </div>
-
-      <div class="reqnote" style="margin-bottom:10px">
-        Files are saved to your Drive master folder, one subfolder per item number. Industrial lubricants are hazmat on Amazon — the SDS sheet drives the compliance fields.
-        <br><b>Optimize live listings</b> pulls each ASIN's real Search Query Performance (the searches that actually drove sales) and rewrites the copy to front-load those — use it 2–4 weeks after listings go live.
-      </div>
-
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-        <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="miles_skip_done" checked> Skip item numbers already harvested
-        </label>
-        <button class="browsemodels sm" onclick="milesClearHistory()" title="Forget which items were harvested so they can run again">Clear harvested history</button>
-      </div>
-
-      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid #2c4a6b;border-radius:8px;background:var(--accent-bg);font-size:13px"></div>
-
-      <pre id="miles_log" style="display:none;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;margin:8px 0"></pre>
-
-      <div id="miles_runs_panel" style="margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <b style="font-size:13px"><i class="ti ti-history"></i> Past runs</b>
-          <button class="browsemodels sm" onclick="milesLoadRuns()" title="Refresh the saved run history"><i class="ti ti-refresh"></i> Refresh</button>
-        </div>
-        <div id="miles_runs_list" style="font-size:12px;opacity:.85">Loading…</div>
-      </div>
-
-      <div id="miles_results" style="margin-top:14px"></div>
-    </div>
+{% include "screens/sec_miles.html" %}
   </div>
 </div>
 
@@ -2165,62 +839,7 @@
   </div>
 </div>
 
-<div id="sec_sync" class="wspanel">
-  <div class="wstoolbar bleed">
-    <div><h2>Compare with Amazon</h2>
-    <div class="sub">When the app and Amazon disagree about a listing, this shows you both, field by field, and lets you pick which side wins for each.</div></div>
-  </div>
-
-  <!-- WHAT IT IS FOR, IN THE CASE THAT BRINGS PEOPLE HERE.
-       The screen was called "Amazon ↔ App sync" and opened with an empty SKU
-       box and a capability matrix — so it read as a diagnostic panel with no
-       obvious purpose, which is exactly how it was described. It does one
-       useful thing and the name now says it. -->
-  <div style="font-size:12.5px;margin:2px 0 14px;padding:11px 13px;
-       border:1px solid #26303f;border-radius:8px;line-height:1.55">
-    <b>When you would use this.</b> You changed a title in the app but Amazon
-    still shows the old one. Or someone edited the listing in Seller Central and
-    the app does not know. Pull brings Amazon's version in so you can see exactly
-    what differs; push sends yours the other way.
-    <div class="cc" style="margin-top:6px">
-      <b>You do not normally come here directly.</b> Press the
-      <i class="ti ti-arrows-exchange"></i> button on any live listing and it
-      opens here with that SKU filled in and already checked.
-    </div>
-    <div class="cc" style="margin-top:6px">
-      Nothing is overwritten without your per-field choice. Push stays locked
-      until you unlock it, refuses borrowed credentials, and the first live write
-      is a reviewed one-listing test.
-    </div>
-  </div>
-
-  <div>
-    <h4 style="margin:0 0 8px">Compare one listing</h4>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <input id="sync_sku" placeholder="SKU" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit">
-      <button class="btn" onclick="syncCheckStatus()">Check status</button>
-      <span id="sync_pill"></span>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
-      <button class="btn" id="sync_pull_btn" onclick="syncPull()"><i class="ti ti-download"></i> Pull from Amazon</button>
-      <button class="btn" id="sync_push_btn" onclick="syncPush()" disabled title="Push is locked"><i class="ti ti-upload"></i> Push to Amazon</button>
-    </div>
-    <label class="minlbl" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px">
-      <input type="checkbox" id="sync_push_unlock" onchange="syncTogglePushLock(this)"> Unlock push buttons (backend still halts the actual write until the reviewed first-push test, and always refuses borrowed credentials)
-    </label>
-  </div>
-
-  <!-- The capability matrix, moved BELOW the thing people come here to do and
-       folded away. It is a real diagnostic — what each account's credentials can
-       actually reach — but it was the first thing on the screen, which made a
-       one-job screen look like a control panel. -->
-  <details class="foldgroup" style="margin-top:20px">
-    <summary><i class="ti ti-stethoscope"></i> What each account's Amazon connection can do
-      <span class="cc">&mdash; a diagnostic, only useful when something is refusing to work</span>
-    </summary>
-    <div id="sync_matrix" class="cc" style="margin-top:10px">Loading&hellip;</div>
-  </details>
-</div>
+{% include "screens/sec_sync.html" %}
 
 <div class="modalwrap" id="sync_modal">
   <div class="modal" style="max-width:940px">
