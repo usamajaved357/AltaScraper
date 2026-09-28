@@ -618,101 +618,13 @@ def _require_publish(acc: dict = None):
     return acc
 
 
-_SUBFIELD_PLUMBING = {"language_tag", "marketplace_id", "audience"}
+from listing.subfields import (_SUBFIELD_PLUMBING, _sf_enum_of, _sf_kind, _extract_subfields)  # moved (Milestone 4)
 
 
-def _sf_enum_of(node):
-    """Enum list for a schema node, unwrapping a localized array+items.value wrapper."""
-    if not isinstance(node, dict):
-        return None
-    if isinstance(node.get("enum"), list):
-        return [str(x) for x in node["enum"]]
-    # Amazon writes this shape two ways, and until now only the first was read:
-    #
-    #   with the array wrapper     node.items.properties.value.enum
-    #   without it                 node.properties.value.enum
-    #
-    # unit_count.type is the second kind -- a plain object whose `value` carries
-    # the closed list ["gram", "millilitre"] on MACHINE_LUBRICANT. Returning
-    # None for it meant auto-fix drew a free-text box, the AI answered "Count"
-    # from the field's description, and Amazon refused it every time. The
-    # surrounding code already guards against Amazon omitting the array marker
-    # (see _extract_subfields); this is the same omission, one level in.
-    for _src in (node.get("items"), node):
-        if not isinstance(_src, dict):
-            continue
-        props = _src.get("properties")
-        vp = props.get("value") if isinstance(props, dict) else None
-        if isinstance(vp, dict) and isinstance(vp.get("enum"), list):
-            return [str(x) for x in vp["enum"]]
-    return None
 
 
-def _sf_kind(node):
-    t = node.get("type") if isinstance(node, dict) else None
-    return "number" if t in ("number", "integer") else "text"
 
 
-def _extract_subfields(prop) -> list:
-    """Return the fillable sub-field controls Amazon expects under ONE attribute.
-    [] -> plain single-value attribute. Otherwise a list of {path,label,kind,enum}.
-    'path' is dot-joined keys UNDER the attribute, saved flat as '<field>.<path>'.
-
-    Handles Amazon's habit of nesting attributes two levels deep -- e.g.
-    `cable.length` in MASSAGER is itself a `{value, unit}` object, not a scalar.
-    Without walking into the child's inner `items.properties` we'd expose
-    `cable.length` as a single box and the AI would fill only the number OR
-    only the unit, producing 'invalid value for cable' rejections. Amazon's
-    schema often omits an explicit `type: "array"` marker on the inner wrapper,
-    so we probe for `items.properties` and `properties` regardless of the
-    marker. Same fix applies to `leg.length` (HARDWARE_TUBING) and any other
-    attribute where the second level is itself a value+unit pair."""
-    if not isinstance(prop, dict):
-        return []
-    node = prop
-    if isinstance(node.get("items"), dict):
-        # Unwrap array wrapper whether or not the "type": "array" marker is
-        # present -- Amazon frequently omits it on inner wrappers.
-        node = node["items"]
-    sub = node.get("properties") if isinstance(node, dict) else None
-    if not isinstance(sub, dict):
-        return []
-    keys = [k for k in sub.keys() if k not in _SUBFIELD_PLUMBING]
-    if keys == ["value"]:
-        return []
-    out = []
-    for k in keys:
-        child = sub[k]
-        cnode = child
-        # Unwrap child's array/items wrapper regardless of "type" marker
-        if isinstance(child, dict) and isinstance(child.get("items"), dict):
-            cnode = child["items"]
-        cprops = {}
-        if isinstance(cnode, dict) and isinstance(cnode.get("properties"), dict):
-            cprops = {ck: cv for ck, cv in cnode["properties"].items()
-                      if ck not in _SUBFIELD_PLUMBING}
-        if set(cprops.keys()) == {"value", "unit"}:
-            out.append({"path": k + ".value", "label": (k + " value").replace("_", " "),
-                        "kind": _sf_kind(cprops["value"]), "enum": _sf_enum_of(cprops["value"])})
-            out.append({"path": k + ".unit", "label": (k + " unit").replace("_", " "),
-                        "kind": "text", "enum": _sf_enum_of(cprops["unit"])})
-        elif cprops:
-            # Grandchildren present but not the plain value+unit shape: recurse
-            # so multi-level nested objects (like some battery.capacity variants)
-            # get exposed at every leaf. Prevents "invalid value" rejections
-            # on nested composites the AI could otherwise only half-fill.
-            grand = _extract_subfields(child)
-            if grand:
-                for g in grand:
-                    out.append({"path": k + "." + g["path"], "label": (k + " " + g["label"]),
-                                "kind": g.get("kind"), "enum": g.get("enum")})
-            else:
-                out.append({"path": k, "label": k.replace("_", " "),
-                            "kind": _sf_kind(child), "enum": _sf_enum_of(child)})
-        else:
-            out.append({"path": k, "label": k.replace("_", " "),
-                        "kind": _sf_kind(child), "enum": _sf_enum_of(child)})
-    return out
 
 
 def _load_schema(pt: str) -> dict:
@@ -1312,19 +1224,7 @@ _URL_RE    = re.compile(r"https?://[^\s)>\]]+")
 CHAT_MODEL = "claude-sonnet-4-6"
 
 
-def _fetch_image_b64(url: str):
-    """Fetch an image URL -> (media_type, base64_str). None on failure / non-image / >5MB."""
-    try:
-        import urllib.request
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            ct   = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-            data = r.read()
-        if not ct.startswith("image/") or len(data) > 5_000_000:
-            return None
-        return ct, base64.b64encode(data).decode("ascii")
-    except Exception:
-        return None
+from domain.image_bytes import (_fetch_image_b64, _sniff_image_ext, _to_jpeg_bytes, _imgresult)  # moved (Milestone 4)
 
 
 import os
@@ -1354,28 +1254,8 @@ def _safe_sku(sku):
     return re.sub(r"[^A-Za-z0-9._-]", "_", str(sku or "_misc"))[:120] or "_misc"
 
 
-# ---- Google Drive image storage -------------------------------------------
-# Each account can set a master Drive FOLDER (its URL). Generated images for that
-# account are uploaded into per-product subfolders named "{SKU}_{ProductName}".
-# IMPORTANT: the Google service account email must be granted access (Editor) to
-# that Drive folder, exactly like sharing a Google Sheet with it.
-_DRIVE_FOLDER_CACHE = {}   # {"<parent>::<name>": folder_id}
+from api.google_drive import (_DRIVE_FOLDER_CACHE, _drive_folder_id_from_url, _drive_get_or_create_subfolder, _drive_direct_url, _drive_make_public)  # moved (Milestone 4)
 
-def _drive_folder_id_from_url(url):
-    """Pull the Drive folder ID out of a folder URL or accept a raw ID."""
-    s = str(url or "").strip()
-    if not s:
-        return ""
-    m = re.search(r"/folders/([A-Za-z0-9_-]+)", s)
-    if m:
-        return m.group(1)
-    m = re.search(r"[?&]id=([A-Za-z0-9_-]+)", s)
-    if m:
-        return m.group(1)
-    # raw id (no slashes/spaces)
-    if re.fullmatch(r"[A-Za-z0-9_-]{20,}", s):
-        return s
-    return ""
 
 def _drive_service():
     """Build a Drive API client using the same service account as Sheets.
@@ -1398,52 +1278,9 @@ def _drive_service():
             pass  # delegation not set up -> fall back to normal service-account creds
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
-def _drive_get_or_create_subfolder(svc, parent_id, name):
-    """Return the ID of subfolder `name` under `parent_id`, creating it if needed."""
-    name = str(name or "").strip()[:200] or "_misc"
-    ck = f"{parent_id}::{name}"
-    if ck in _DRIVE_FOLDER_CACHE:
-        return _DRIVE_FOLDER_CACHE[ck]
-    # look for an existing folder with this name under the parent
-    safe_name = name.replace("'", "\\'")
-    q = (f"name = '{safe_name}' and mimeType = 'application/vnd.google-apps.folder' "
-         f"and '{parent_id}' in parents and trashed = false")
-    try:
-        res = svc.files().list(q=q, fields="files(id,name)", pageSize=1,
-                               supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-        files = res.get("files", [])
-        if files:
-            _DRIVE_FOLDER_CACHE[ck] = files[0]["id"]
-            return files[0]["id"]
-    except Exception:
-        pass
-    # create it
-    meta = {"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]}
-    created = svc.files().create(body=meta, fields="id", supportsAllDrives=True).execute()
-    fid = created["id"]
-    _DRIVE_FOLDER_CACHE[ck] = fid
-    return fid
-
-def _drive_direct_url(file_id):
-    """Convert a Drive file id into a DIRECT image URL that external platforms
-    (Amazon, eBay) can fetch. The reliable format is lh3.googleusercontent.com/d/<id>
-    (the older drive.google.com/uc?export=view redirect is flaky). The file must
-    also be shared 'anyone with link: reader' for this to load -- see _drive_make_public."""
-    fid = str(file_id or "").strip()
-    return f"https://lh3.googleusercontent.com/d/{fid}" if fid else ""
 
 
-def _drive_make_public(svc, file_id):
-    """Grant 'anyone with the link: reader' on a Drive file so external platforms
-    can fetch the image. Idempotent -- ignores 'already exists' style errors."""
-    try:
-        svc.permissions().create(
-            fileId=file_id,
-            body={"type": "anyone", "role": "reader"},
-            supportsAllDrives=True,
-        ).execute()
-    except Exception:
-        pass  # already public, or permission already present -> fine
+
 
 
 def _drive_upload_image(parent_folder_id, sku, product_name, local_path, filename=None, subpath=""):
@@ -1563,44 +1400,8 @@ def _drive_delete_file(file_id):
         return False
 
 
-def _sniff_image_ext(raw: bytes, fallback: str = "jpg") -> str:
-    """Return the TRUE image extension by reading the file's magic-number bytes,
-    not the (often-wrong) mime label the AI model claims. Amazon rejects a file
-    whose bytes don't match its extension (e.g. JPEG bytes named .png), so the
-    saved filename must reflect the actual format.
-
-    THE BODY MOVED to domain/media_kinds.sniff_ext. It was defined here and
-    injected into two route modules -- and the route that saves generated images
-    was not one of them, so that path used the mime label and wrote JPEGs called
-    .png. A helper only the injected callers can reach is a helper the next
-    writer will not use, so it now lives with the rest of the image-file rules
-    and this delegates (rule 12)."""
-    from domain import media_kinds as _mk
-    return _mk.sniff_ext(raw, fallback)
 
 
-def _to_jpeg_bytes(raw: bytes, quality: int = 90) -> bytes:
-    """Convert any image bytes (PNG/WebP/GIF/JPEG) to JPEG bytes. Amazon prefers
-    JPEG for listing images and they're much smaller than PNG. Transparency is
-    flattened onto a white background (Amazon main images need white anyway).
-    Falls back to the original bytes if PIL/conversion fails."""
-    try:
-        from io import BytesIO
-        from PIL import Image as _PImg
-        im = _PImg.open(BytesIO(raw))
-        # flatten alpha onto white so JPEG (no transparency) looks right
-        if im.mode in ("RGBA", "LA", "P"):
-            im = im.convert("RGBA")
-            bg = _PImg.new("RGB", im.size, (255, 255, 255))
-            bg.paste(im, mask=im.split()[-1])
-            im = bg
-        else:
-            im = im.convert("RGB")
-        out = BytesIO()
-        im.save(out, format="JPEG", quality=quality, optimize=True)
-        return out.getvalue()
-    except Exception:
-        return raw
 
 
 def _sku_dir(sku):
@@ -2109,21 +1910,7 @@ os.makedirs(_PPC_OUT_DIR, exist_ok=True)
 
 
 
-def _parse_pct_from_context(ctx: str, key: str, default=None):
-    """Find something like 'TACOS 15%' or 'target tacos: 15' in the user's
-    context string. Returns None if not found -- caller adds to `missing` list.
-    NEVER invents a value."""
-    import re
-    if not ctx:
-        return default
-    pat = re.compile(rf"{key}\s*[:=]?\s*(\d+(?:\.\d+)?)\s*%?", re.I)
-    m = pat.search(ctx)
-    if m:
-        try:
-            return float(m.group(1))
-        except ValueError:
-            return default
-    return default
+from domain.report_parsers import (_parse_pct_from_context, _parse_3pl_csv, _num, _parse_sales_csv, _parse_uplift_csv, _parse_listings_report, _REPORT_BARCODE_TYPES, _report_barcode, _parse_required_missing)  # moved (Milestone 4)
 
 
 # ---------- Inventory replenishment endpoints ----------
@@ -2252,124 +2039,12 @@ def _fetch_fba_inventory_via_spapi(marketplace: str) -> dict:
     return out
 
 
-def _parse_3pl_csv(raw_bytes: bytes) -> dict:
-    """Parse an uploaded 3PL stock CSV. Expected columns (order-insensitive):
-      sku (or SKUs, natural sku, sku)
-      3PL Stock (Available at Warehouse)
-      In-Transit Stock (Sea/Truck to 3PL)
-      Ordered Quantity
-    Returns dict keyed by SKU.
-    """
-    import csv, io
-    try:
-        text = raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw_bytes.decode("latin-1")
-    reader = csv.DictReader(io.StringIO(text))
-    by_sku = {}
-    # tolerant column name matching
-    def _pick(row, options):
-        for opt in options:
-            for k in row:
-                if k and k.strip().lower() == opt.lower():
-                    return row[k]
-        # fuzzier: substring match
-        for opt in options:
-            for k in row:
-                if k and opt.lower() in k.strip().lower():
-                    return row[k]
-        return ""
-    for row in reader:
-        sku = _pick(row, ["sku", "skus", "seller sku", "natural sku"])
-        if not sku:
-            continue
-        by_sku[sku.strip()] = {
-            "sku":            sku.strip(),
-            "pl3_available":  _num(_pick(row, ["3pl stock", "available at warehouse", "warehouse stock"])),
-            "pl3_in_transit": _num(_pick(row, ["in-transit", "in transit", "sea/truck"])),
-            "pl3_ordered":    _num(_pick(row, ["ordered quantity", "on order", "ordered qty"])),
-        }
-    return by_sku
 
 
-def _num(x, default=0.0) -> float:
-    if x is None or x == "":
-        return default
-    try:
-        s = str(x).replace(",", "").strip()
-        return float(s) if s else default
-    except (ValueError, TypeError):
-        return default
 
 
-def _parse_sales_csv(raw_bytes: bytes) -> dict:
-    """Parse a Daily Sales CSV. Only needs SKU + per-day rate (units/day).
-    Expected columns: sku, daily_rate  OR  sku, sales_last_30, window_days.
-    Returns {sku: {sales_last_n, sales_window_days}}.
-    """
-    import csv, io
-    try:
-        text = raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw_bytes.decode("latin-1")
-    reader = csv.DictReader(io.StringIO(text))
-    by_sku = {}
-    def _pick(row, options):
-        for opt in options:
-            for k in row:
-                if k and k.strip().lower() == opt.lower():
-                    return row[k]
-        for opt in options:
-            for k in row:
-                if k and opt.lower() in k.strip().lower():
-                    return row[k]
-        return ""
-    for row in reader:
-        sku = _pick(row, ["sku", "seller sku"])
-        if not sku:
-            continue
-        # daily_rate is preferred; fallback to sales/window
-        daily = _pick(row, ["daily rate", "daily_rate", "units per day", "sales per day"])
-        sales_n = _pick(row, ["sales_last_n", "sales", "units", "sales last 30"])
-        window = _pick(row, ["window_days", "window", "days"])
-        if daily != "":
-            by_sku[sku.strip()] = {
-                "sales_last_n":       _num(daily),
-                "sales_window_days":  1,
-            }
-        else:
-            by_sku[sku.strip()] = {
-                "sales_last_n":       _num(sales_n),
-                "sales_window_days":  _num(window, default=30) or 30,
-            }
-    return by_sku
 
 
-def _parse_uplift_csv(raw_bytes: bytes, field: str) -> dict:
-    """Parse a YoY or PD uplift CSV (sku -> uplift fraction).
-    field: 'yoy_uplift' or 'pd_uplift'
-    Expected columns: sku, uplift (or the specific field name)
-    """
-    import csv, io
-    try:
-        text = raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw_bytes.decode("latin-1")
-    reader = csv.DictReader(io.StringIO(text))
-    by_sku = {}
-    def _pick(row, options):
-        for opt in options:
-            for k in row:
-                if k and k.strip().lower() == opt.lower():
-                    return row[k]
-        return ""
-    for row in reader:
-        sku = _pick(row, ["sku", "seller sku"])
-        if not sku:
-            continue
-        val = _pick(row, [field, "uplift", "increment", "yoy", "pd"])
-        by_sku[sku.strip()] = _num(val)
-    return by_sku
 
 
 
@@ -2785,10 +2460,7 @@ def _save_cogs_overrides():
 from domain import cogs as _cogs_mod
 
 
-def _cogs_from_sku(sku):
-    """Generated SKUs are formatted {source_price}_{N}Days_{ASIN}; the first
-    number is the source cost (incl. shipping). Returns float or None."""
-    return _cogs_mod.cost_from_sku(sku)
+from domain.cogs_estimate import (_cogs_from_sku, _estimate_profit)  # moved (Milestone 4)
 
 
 def _resolve_cogs(account_id, sku):
@@ -2797,191 +2469,12 @@ def _resolve_cogs(account_id, sku):
     return _cogs_mod.resolve(_COGS_OVERRIDE, account_id, sku)
 
 
-def _estimate_profit(price, cogs, referral_rate=0.15):
-    """Quick profit estimate: price - cogs - referral fee (default 15%).
-    FBA fee is not included in the fast estimate (use the Fees API for exact)."""
-    try:
-        price = float(str(price).replace(",", "").strip() or 0)
-    except Exception:
-        return None
-    if not price or cogs is None:
-        return None
-    referral = price * referral_rate
-    net = price - float(cogs) - referral
-    margin = (net / price) if price else 0
-    # MARGIN and ROI answer different questions and the card only ever showed the
-    # first. Margin is "how much of the sale price do I keep" -- it decides
-    # whether a price is healthy. ROI is "how hard is my cash working" -- it
-    # decides what to buy next, and on cheap stock it is a far bigger number:
-    # 9.50 of goods sold at 18.24 keeps 14.6% margin and returns 28% on the cash.
-    roi = (net / float(cogs)) if float(cogs) else None
-    return {"price": round(price, 2), "cogs": round(float(cogs), 2),
-            "referral": round(referral, 2), "net": round(net, 2),
-            "margin": round(margin * 100, 1),
-            "roi": (round(roi * 100, 1) if roi is not None else None)}
 
 
 
 
 
-def _build_patches(changes, marketplace_id=""):
-    """Translate approved {field:value} into SP-API JSON-Patch attribute ops.
-
-    marketplace_id is the SELECTOR Amazon files each value under, and for IMAGES
-    leaving it out was a silent no-op: the schema requires only media_location,
-    so Amazon answered ACCEPTED, reported no issues, and filed the image against
-    no marketplace. Images pushed from the app never arrived and nothing said
-    why. Every *_image_locator patch is now built by listing/images.build_patch,
-    which is the same builder /listing/image_push and the new-listing submit
-    already use -- one shape, three callers (Rule 12), instead of three shapes.
-
-    It defaults to "" so an old caller still works, but a caller that wants an
-    image to actually land must pass it.
-    """
-    from listing import images as _img
-    patches = []
-    if "title" in changes:
-        patches.append({"op": "replace", "path": "/attributes/item_name",
-                        "value": [{"value": changes["title"]}]})
-    if "description" in changes:
-        patches.append({"op": "replace", "path": "/attributes/product_description",
-                        "value": [{"value": changes["description"]}]})
-    if "bullets" in changes:
-        bl = changes["bullets"]
-        if isinstance(bl, str):
-            bl = [x for x in bl.split("\n") if x.strip()]
-        patches.append({"op": "replace", "path": "/attributes/bullet_point",
-                        "value": [{"value": x} for x in bl]})
-    if "price" in changes and changes["price"]:
-        patches.append({"op": "replace", "path": "/attributes/purchasable_offer",
-                        "value": [{"our_price": [{"schedule": [{"value_with_tax": float(changes["price"])}]}]}]})
-    if "main_image" in changes and changes["main_image"]:
-        patches.append(_img.build_patch(_img.MAIN, changes["main_image"],
-                                        marketplace_id))
-    # generic attributes from the full editable list (keys like "attr:<name>")
-    for k, v in changes.items():
-        if not k.startswith("attr:"):
-            continue
-        name = k[5:]
-        val = v
-        if isinstance(val, str) and " | " in val:
-            # multi-value attribute -> split back into list of {value}
-            parts = [p.strip() for p in val.split(" | ") if p.strip()]
-            if "image_locator" in name:
-                patches.append(_img.build_patch(name, parts, marketplace_id))
-            else:
-                patches.append({"op": "replace", "path": f"/attributes/{name}",
-                                "value": [{"value": p} for p in parts]})
-        else:
-            if "image_locator" in name:
-                patches.append(_img.build_patch(name, val, marketplace_id))
-            else:
-                patches.append({"op": "replace", "path": f"/attributes/{name}",
-                                "value": [{"value": val}]})
-    return patches
-
-
-
-
-
-
-def _parse_listings_report(text):
-    """Parse the TSV from GET_MERCHANT_LISTINGS_ALL_DATA into compact dicts.
-    Header names vary slightly between accounts/marketplaces, so match flexibly."""
-    if not text:
-        return []
-    lines = text.splitlines()
-    if not lines:
-        return []
-    header = [h.strip().lower().replace("_", "-") for h in lines[0].split("\t")]
-    # WHAT THIS REPORT DOES NOT CONTAIN (checked, not assumed -- rule 4).
-    # The 30 columns Amazon sends for GET_MERCHANT_LISTINGS_ALL_DATA were dumped
-    # for jack_uk/UK on 2026-08-20 and there is NO handling-time column. The
-    # nearest-looking candidate, will-ship-internationally, reads a constant 3 on
-    # every row -- including SKUs named 2Days and 5Days -- so it is not a
-    # disguised handling time. Do not add a col(r, "handling", ...) here hoping
-    # it turns up; the figure comes from getListingsItem
-    # (attributes.fulfillment_availability[0].lead_time_to_ship_max_days) and is
-    # merged into the catalogue in routes/live_routes.py.
-
-    def col(row, *names):
-        # exact match first
-        for n in names:
-            if n in header:
-                i = header.index(n)
-                if i < len(row):
-                    return row[i].strip()
-        # fuzzy: any header that contains the wanted token
-        for n in names:
-            for i, h in enumerate(header):
-                if n in h and i < len(row):
-                    v = row[i].strip()
-                    if v:
-                        return v
-        return ""
-
-    out = []
-    for ln in lines[1:]:
-        if not ln.strip():
-            continue
-        r = ln.split("\t")
-        title = col(r, "item-name", "title", "product-name")
-        out.append({
-            "sku":   col(r, "seller-sku", "sku"),
-            "asin":  col(r, "asin1", "asin"),
-            "title": title,
-            "price": col(r, "price"),
-            "qty":   col(r, "quantity"),
-            "status": col(r, "status", "listing-status") or "Active",
-            "brand": col(r, "brand", "brand-name"),
-            "fulfillment": col(r, "fulfillment-channel", "fulfilment-channel"),
-            "ship_group": col(r, "merchant-shipping-group", "merchant-shipping-group-name"),
-            # THE BARCODE, WHICH THIS REPORT HAS BEEN CARRYING ALL ALONG.
-            #
-            #     "my listings on all listings page shows ean none, this is not
-            #      possible, my every listing has ean"
-            #
-            # He is right, and the database agrees: 271 of 303 listings hold a
-            # UPC, and 86 of 86 on nestwell_goods. The rows saying "none" are
-            # the ones that come from THIS report rather than from a draft --
-            # Amazon's own catalogue -- and it was parsed without ever reading
-            # the identifier column.
-            #
-            # ONLY WHEN IT IS ACTUALLY A BARCODE. Amazon's product-id column
-            # holds whichever identifier the listing was created with, and
-            # product-id-type says which: 1 ASIN, 2 ISBN, 3 UPC, 4 EAN. An ASIN
-            # printed under the word EAN would be worse than the blank it
-            # replaces, so the type is checked and anything that is not a
-            # barcode is left out. A report with neither column simply yields
-            # "", which is what happened before this line existed.
-            "barcode": _report_barcode(col(r, "product-id", "product_id"),
-                                       col(r, "product-id-type", "product_id_type")),
-        })
-    return out
-
-
-# The values Amazon uses in product-id-type. 1 and 2 are an ASIN and an ISBN,
-# which are not barcodes and must never be shown as one.
-_REPORT_BARCODE_TYPES = {"3", "4", "UPC", "EAN", "GTIN", "GCID"}
-
-
-def _report_barcode(value, kind):
-    """The product id from a listings report, but only when it IS a barcode.
-
-    Returns "" for an ASIN, an ISBN, an unknown type, or a missing column --
-    the same empty string the parser produced before it read this at all, so a
-    report shaped differently from the ones seen here loses nothing.
-    """
-    v = str(value or "").strip()
-    if not v:
-        return ""
-    k = str(kind or "").strip().upper()
-    if not k:
-        # NO TYPE COLUMN AT ALL. A bare 12-14 digit number is a UPC or an EAN;
-        # an ASIN is ten characters and starts with a letter, so the two cannot
-        # be confused by length. Anything else is left alone.
-        return v if (v.isdigit() and 12 <= len(v) <= 14) else ""
-    return v if k in _REPORT_BARCODE_TYPES else ""
+from listing.patches import (_build_patches)  # moved (Milestone 4)
 
 
 
@@ -2992,19 +2485,16 @@ def _report_barcode(value, kind):
 
 
 
-def _parse_required_missing(note: str):
-    """Pull field keys out of an API-preview note like
-    "[E] warranty_description 'Product Warranty' is required but missing."."""
-    import re
-    out = []
-    for m in re.finditer(r"\[E\]\s*([a-z0-9_]+)", note or ""):
-        if m.group(1) not in out:
-            out.append(m.group(1))
-    # also catch "'x' is required"
-    for m in re.finditer(r"([a-z0-9_]{3,})\s+'[^']+'\s+is required", note or ""):
-        if m.group(1) not in out:
-            out.append(m.group(1))
-    return out
+
+
+
+
+
+
+
+
+
+
 
 
 def _marketplace_for_row(row):
@@ -3764,29 +3254,6 @@ _CREATIVE_STRATEGIES = {
 
 
 
-def _imgresult(res, extra=None):
-    if res.get("image_b64"):
-        data_url = f"data:{res.get('mime','image/png')};base64,{res['image_b64']}"
-    elif res.get("image_url"):
-        data_url = res["image_url"]
-    else:
-        return jsonify({"ok": False, "error": "no image returned"}), 400
-    out = {"ok": True, "data_url": data_url,
-           "detailed_prompt": res.get("detailed_prompt", ""),
-           # WAS THE BRIEF REWORDED TO GET PAST THE SAFETY FILTER?
-           #
-           # Some product words (slasher, blade, weapon-ish nouns) trip the image
-           # provider's filter -- a real weed slasher came back as "the input text
-           # may contain sensitive information". run_pipeline now rewords once and
-           # retries instead of failing, which is right, but the picture is then
-           # made from words the user did not write. Carry the flag through so the
-           # screen can say so; detailed_prompt above is the wording actually used.
-           "softened_prompt": bool(res.get("softened_prompt")),
-           "text_provider": res.get("text_provider"),
-           "image_provider": res.get("image_provider")}
-    if extra:
-        out.update(extra)
-    return jsonify(out)
 
 
 

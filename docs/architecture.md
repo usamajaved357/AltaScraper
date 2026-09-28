@@ -429,3 +429,29 @@ stylesheet the dashboard loads, raw and gzipped.
 
 Many tests still assert source text rather than behaviour; about 11 need the
 owner's real data. Details and the baseline: docs/known-issues.md "Tests".
+
+## 15. Milestone 4 — where the big files went (28 Sep 2026)
+
+Code MOVED word for word, never rewritten; every old name still resolves
+(`dashboard.X is new_module.X`). Test support: tests_support/README.md.
+
+- **Styles:** `static/css/dashboard.css` = base; the rest is
+  `static/css/dashboard/01-shell.css` … `21-density.css`, linked right after it
+  in number order (together they ARE the old file — do not reorder).
+- **Page:** `templates/dashboard.html` = shell; each screen is
+  `templates/screens/sec_<name>.html`, pulled in with `{% include %}`.
+- **Browser helpers:** `static/js/core_util.js` (esc, toast, badges), loaded
+  just before listings.js.
+- **Sales:** `sales.js` + `sales_breakdown / _week / _campaigns / _live / _cards / _grid.js`.
+- **Listings:** `listings.js` + `listings_selection / _search / _dups / _summary /
+  _ppc / _grid / _drawer_build / _rows / _panels / _open.js`.
+- **Repricer:** `sourcing.js` + `sourcing_actions / _dialogs / _chart / _detail /
+  _menu / _bulk / _row / _row_actions.js`.
+  Every split JS file loads right after its original; a one-line pointer marks
+  each old spot.
+- **dashboard.py helpers (batch 7):** `domain/report_parsers.py`,
+  `api/google_drive.py`, `domain/image_bytes.py`, `listing/subfields.py`,
+  `domain/cogs_estimate.py`, `listing/patches.py`. Only functions that need
+  nothing of dashboard.py's changeable state moved; anything reading
+  `CONFIG_PATH`, `_state` or `_cfg` stayed, because tests (and the app) replace
+  `dashboard.CONFIG_PATH` at run time and a moved copy would not see it.

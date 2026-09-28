@@ -1,7 +1,13 @@
 {
   "_what": "Milestone 4 (28 Sep 2026): the big files are being split by feature, code moved word for word. Tests read these files AS TEXT by their old path; the test runner makes such a read return the whole feature -- every file listed here for it, in this order (page load order for JS/CSS/HTML, the original first for Python). See tests_support/README.md. A list with only the original in it changes nothing.",
   "dashboard.py": [
-    "dashboard.py"
+    "dashboard.py",
+    "domain/report_parsers.py",
+    "api/google_drive.py",
+    "domain/image_bytes.py",
+    "listing/subfields.py",
+    "domain/cogs_estimate.py",
+    "listing/patches.py"
   ],
   "amazon_listing_generator.py": [
     "amazon_listing_generator.py"
