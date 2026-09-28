@@ -49,8 +49,10 @@ function _dyRow(c){
   const icon = c.status === "off" ? "ti-alert-triangle"
              : c.status === "unknown" ? "ti-help-circle" : "ti-check";
   return '<div class="dy-row ' + c.status + '">'
-    + '<i class="ti ' + icon + ' dy-ico"></i>'
+    + '<i class="ti ' + icon + ' dy-ico" aria-hidden="true"></i>'
     + '<div class="dy-main">'
+    // The area first, as an overline (design package A·H2).
+    +   (c.group ? '<span class="dy-g">' + _dyEsc(c.group) + '</span>' : '')
     +   '<div class="dy-t">' + _dyEsc(c.title)
     +     (c.value ? ' <span class="dy-v">' + _dyEsc(c.value) + '</span>' : '')
     +   '</div>'
@@ -62,7 +64,6 @@ function _dyRow(c){
                  + '</div>' : '')
     +   (c.action ? '<div class="dy-act">' + _dyEsc(c.action) + '</div>' : '')
     + '</div>'
-    + '<span class="dy-g cc">' + _dyEsc(c.group) + '</span>'
     + '</div>';
 }
 
@@ -96,8 +97,16 @@ function dailyRender(){
     + (d.ran_at ? ' · run ' + _dyEsc(d.ran_at) : '') + '</div></div>';
 
   if(off.length){
-    h += '<div class="dy-group"><div class="dy-gh">Needs attention today</div>'
+    h += '<div class="dy-group"><div class="dy-gh">Needs attention today'
+      + '<span class="dy-count bad">' + off.length + '</span></div>'
       + off.map(_dyRow).join("") + '</div>';
+  }else if(!unk.length && ok.length){
+    // ALL CLEAR, SAID WITH WHAT WAS LOOKED AT, so an empty list reads as the
+    // app having worked rather than as a blank page (design package 3.1).
+    h += '<div class="dy-group"><div class="dy-gh">Nothing needs you right now</div>'
+      + '<div class="dy-row ok"><div class="dy-main"><div class="dy-d">Checked: '
+      + _dyEsc(ok.map(function(c){ return c.title; }).join(", "))
+      + (d.ran_at ? '. Run ' + _dyEsc(d.ran_at) + '.' : '.') + '</div></div></div></div>';
   }
 
   if(unk.length){
@@ -105,14 +114,17 @@ function dailyRender(){
       + '<span class="infodot" title="These are shown rather than left off. A '
       + 'round that silently drops what it cannot do looks complete and is not, '
       + 'and somebody still has to go and look at these by hand.">i</span>'
+      + '<span class="dy-count">' + unk.length + '</span>'
       + '</div>' + unk.map(_dyRow).join("") + '</div>';
   }
 
   if(ok.length){
     h += '<div class="dy-group">'
-      + '<div class="dy-gh" style="cursor:pointer" onclick="dailyToggleOk()">'
-      + '<i class="ti ti-chevron-' + (DAILY.showOk ? "down" : "right") + '"></i> '
-      + 'Checked and fine (' + ok.length + ')</div>'
+      + '<div class="dy-gh dy-fold" role="button" tabindex="0" aria-expanded="'
+      + (DAILY.showOk ? 'true' : 'false') + '" onclick="dailyToggleOk()"'
+      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();dailyToggleOk();}">'
+      + '<i class="ti ti-chevron-' + (DAILY.showOk ? "down" : "right") + '" aria-hidden="true"></i> '
+      + 'Checked and fine<span class="dy-count">' + ok.length + '</span></div>'
       + (DAILY.showOk ? ok.map(_dyRow).join("") : "")
       + '</div>';
   }

@@ -3572,47 +3572,62 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    its own group with the reason on every row -- never a tick, because a check
    that cannot run and looks fine is the paper checklist's exact failure. */
 .dy-head{
-  border:1px solid var(--line); border-left-width:3px; border-radius:10px;
-  background:var(--panel); padding:15px 17px; margin-bottom:14px;
+  border:1px solid var(--as-border); border-left-width:4px; border-radius:var(--as-radius-lg);
+  background:var(--as-surface-1); padding:var(--as-space-4) var(--as-space-4); margin-bottom:var(--as-space-4);
 }
-.dy-head.bad{ border-left-color:var(--red); }
-.dy-head.part{ border-left-color:var(--warn); }
-.dy-head.good{ border-left-color:var(--ok); }
-.dy-eyebrow{ font-size:11px; font-weight:700; letter-spacing:.88px;
-             text-transform:uppercase; color:var(--ink3); }
-.dy-headline{ font-size:23px; font-weight:700; line-height:1.2; margin:5px 0 5px; }
-.dy-head.bad .dy-headline{ color:#fca5a5; }
-.dy-head.good .dy-headline{ color:var(--ok); }
-.dy-sub{ font-size:12px; }
+.dy-head.bad{ border-left-color:var(--as-danger); }
+.dy-head.part{ border-left-color:var(--as-warning); }
+.dy-head.good{ border-left-color:var(--as-success); }
+.dy-eyebrow{ font:var(--as-text-overline); letter-spacing:.06em;
+             text-transform:uppercase; color:var(--as-text-muted); }
+.dy-headline{ font:var(--as-text-section); margin:var(--as-space-1) 0; color:var(--as-text-primary); }
+.dy-head.bad .dy-headline{ color:var(--as-danger); }
+.dy-head.good .dy-headline{ color:var(--as-success); }
+.dy-sub{ font:var(--as-text-small); color:var(--as-text-muted); }
 
-.dy-group{ margin-bottom:14px; }
+/* A group is one card ("Needs attention", "Could not be checked", ...), its
+   rows divided by a subtle rule -- design package A·H2. */
+.dy-group{
+  margin-bottom:var(--as-space-4); background:var(--as-surface-1);
+  border:1px solid var(--as-border); border-radius:var(--as-radius-lg); overflow:hidden;
+}
 .dy-gh{
-  font-size:11px; font-weight:700; letter-spacing:.7px; text-transform:uppercase;
-  color:var(--ink3); margin:0 0 7px; display:flex; gap:6px; align-items:center;
+  font:var(--as-text-card-title); color:var(--as-text-primary);
+  padding:var(--as-space-3) var(--as-space-4); margin:0;
+  border-bottom:1px solid var(--as-border-subtle);
+  display:flex; gap:var(--as-space-2); align-items:center;
 }
+.dy-count{
+  font:var(--as-text-overline); padding:1px 8px; border-radius:var(--as-radius-pill);
+  background:var(--as-surface-3); color:var(--as-text-secondary);
+}
+.dy-count.bad{ background:var(--as-danger-bg); color:var(--as-danger); }
 .dy-row{
-  display:flex; gap:11px; align-items:flex-start;
-  border:1px solid var(--line); border-left-width:3px; border-radius:8px;
-  background:var(--panel); padding:11px 13px; margin-bottom:6px;
+  display:flex; gap:var(--as-space-3); align-items:flex-start;
+  border-left:4px solid transparent; padding:var(--as-space-3) var(--as-space-4);
 }
-.dy-row.off{ border-left-color:var(--red); }
-.dy-row.unknown{ border-left-color:var(--line); opacity:.9; }
-.dy-row.ok{ border-left-color:var(--ok); }
-.dy-ico{ font-size:16px; flex:0 0 auto; margin-top:1px; }
-.dy-row.off .dy-ico{ color:#fca5a5; }
-.dy-row.unknown .dy-ico{ color:var(--ink4); }
-.dy-row.ok .dy-ico{ color:var(--ok); }
+.dy-row + .dy-row{ border-top:1px solid var(--as-border-subtle); }
+.dy-row.off{ border-left-color:var(--as-danger); }
+.dy-row.unknown{ border-left-color:var(--as-border-strong); }
+.dy-row.ok{ border-left-color:var(--as-success); }
+.dy-ico{ font-size:16px; flex:0 0 auto; margin-top:14px; }
+.dy-row.off .dy-ico{ color:var(--as-danger); }
+.dy-row.unknown .dy-ico{ color:var(--as-text-muted); }
+.dy-row.ok .dy-ico{ color:var(--as-success); }
 .dy-main{ flex:1; min-width:0; }
-.dy-t{ font-size:13px; font-weight:600; line-height:1.35; }
+/* The area, as an overline above the title (it used to sit at the far right). */
+.dy-g{ display:block; font:var(--as-text-overline); letter-spacing:.06em;
+       text-transform:uppercase; color:var(--as-text-muted); margin-bottom:2px; }
+.dy-t{ font:var(--as-text-body-strong); color:var(--as-text-primary); }
 /* The figure, always shown -- "fine" with no number is not something anybody
    can act on tomorrow. */
 .dy-v{ font-weight:700; font-variant-numeric:tabular-nums; margin-left:5px; }
-.dy-row.off .dy-v{ color:#fca5a5; }
-.dy-d{ font-size:12px; color:var(--ink2); line-height:1.5; margin-top:3px; }
-.dy-needs{ font-size:12px; color:var(--ink3); line-height:1.5; margin-top:3px;
-           font-style:italic; }
-.dy-act{ font-size:12px; color:var(--accent); line-height:1.5; margin-top:4px; }
-.dy-g{ font-size:10px; white-space:nowrap; flex:0 0 auto; margin-top:2px; }
+.dy-row.off .dy-v{ color:var(--as-danger); }
+.dy-d{ font:var(--as-text-small); color:var(--as-text-secondary); margin-top:3px; }
+.dy-needs{ font:var(--as-text-small); color:var(--as-text-muted); margin-top:3px; font-style:italic; }
+.dy-act{ font:var(--as-text-small); color:var(--as-text-link); margin-top:4px; }
+.dy-fold{ cursor:pointer; }
+.dy-fold:focus-visible{ outline:var(--as-focus-w) solid var(--as-focus-ring); outline-offset:-2px; }
 
 /* ---- how the finished image is branded ----------------------------------
    "let the user chose the brand name for its item, whether he wants the images
