@@ -212,6 +212,37 @@ def _visit(page, sec, log, shots, tag):
     except Exception:
         log["slow"].append("%s:%s" % (tag, sec))
     page.wait_for_timeout(400)
+    # NOTHING POKES OUT PAST THE RIGHT EDGE (design package 04). The app's
+    # containers clip, so the page never scrolls sideways -- content that is too
+    # wide is CUT OFF instead, which is worse. Wide tables must scroll inside
+    # their own box, so an element past the edge is only fine when an ancestor
+    # between it and #wsmain scrolls sideways. Reported with where it is.
+    if tag == "A":
+        try:
+            hs = page.evaluate("""() => {
+              const W = document.documentElement.clientWidth;
+              const main = document.getElementById('wsmain'); if (!main) return null;
+              const scrolls = e => { for (let a = e.parentElement; a && a !== main; a = a.parentElement) {
+                  const o = getComputedStyle(a).overflowX; if (o === 'auto' || o === 'scroll') return true; }
+                return false; };
+              const out = [];
+              main.querySelectorAll('*').forEach(e => {
+                if (out.length >= 3 || !e.getClientRects().length) return;
+                const r = e.getBoundingClientRect();
+                if (r.width < 8 || r.right <= W + 2 || getComputedStyle(e).position === 'fixed') return;
+                if (e.closest('[style*="display: none"],[hidden]') || scrolls(e)) return;
+                const p = e.parentElement;
+                if (p && p !== main && p.getBoundingClientRect().right > W + 2 && !scrolls(p)) return;  // report the outermost
+                out.push((e.id ? '#' + e.id : e.tagName.toLowerCase()) +
+                  (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') +
+                  ' +' + Math.round(r.right - W) + 'px');
+              });
+              return out.length ? out : null;
+            }""")
+            if hs:
+                log.setdefault("hscroll", {})[sec] = hs
+        except Exception as _e:
+            log.setdefault("hscroll", {})[sec] = ["check failed: " + str(_e)[:120]]
     if tag == "A" and "a11y" in log:
         try:
             r = page.evaluate(_A11Y_JS)
@@ -362,6 +393,17 @@ def main(argv):
                     # listing rows, which another screen has not loaded.
                     page.evaluate("() => navTo('listings')")
                     page.wait_for_load_state("networkidle")
+                    # AS A PERSON WOULD: only once the row is on the list. Right
+                    # after an account switch the rows can still be loading when
+                    # the network first goes quiet, and pdpOpen then (rightly)
+                    # says nothing is known about the SKU -- which made this check
+                    # fail about half the time for a reason no user can hit.
+                    try:
+                        page.wait_for_function(
+                            "s => typeof ROWS !== 'undefined' && (ROWS || []).some(r => String(r.sku) === s)",
+                            arg=shared, timeout=10000)
+                    except Exception:
+                        log.setdefault("slow", []).append("pdp rows never loaded (%s)" % mode)
                     page.evaluate("s => pdpOpen(s)", shared)
                     if mode == "settled":
                         page.wait_for_load_state("networkidle")

@@ -560,3 +560,30 @@
   .drp-stats{ flex-wrap: wrap; }
   .drp-stat{ min-width: 25%; }
 }
+
+/* ON A PHONE (390px) the header's button and the panel's "Save configuration"
+   were pushed up to 154px past the right edge -- off screen and unreachable --
+   because the header rows never wrapped and the fields kept two columns. The
+   browser harness's overflow check found it. */
+@media (max-width: 720px){
+  /* THE ROOT CAUSE: the console's own 200px section menu stayed beside the
+     content, leaving it about 130px. On a phone the menu goes on top, its
+     sections a row you can swipe along. */
+  .drp-shell{ flex-direction: column; min-width: 0; max-width: 100%; }
+  .drp-side{ width: auto; flex: none; position: static; max-height: none; min-width: 0;
+    max-width: 100%; border-right: 0; border-bottom: 1px solid var(--ppc-border); }
+  /* min-width 0 so the row scrolls inside itself instead of widening the page. */
+  .drp-nav{ display: flex; overflow-x: auto; min-width: 0; max-width: 100%; }
+  .drp-nav a{ flex: 0 0 auto; border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .drp-nav a.on{ border-bottom-color: var(--ppc-cyan); }
+  .drp-side-foot{ display: none; }
+  .drp-main{ padding: 16px 14px 40px; }
+  .drp-head, .drp-light-head{ flex-wrap: wrap; gap: 10px; }
+  .drp-head > div, .drp-light-head > div{ min-width: 0; flex: 1 1 100%; }
+  .drp-fields, .drp-fields.two, .drp-fields.four{ grid-template-columns: minmax(0, 1fr); }
+  .drp-checks{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The three toggles side by side set the panel's minimum width. Stacked. */
+  .drp-toggles{ flex-direction: column; }
+  .drp-toggle{ min-width: 0; }
+  .drp-toggle + .drp-toggle{ border-left: 0; border-top: 1px solid var(--drp-light-border); }
+}

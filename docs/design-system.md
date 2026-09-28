@@ -1,153 +1,183 @@
-# Design system (as it exists)
+# Design system
 
-This file DESCRIBES the UI system the app already has, including its
-inconsistencies, so changes reuse what is there. It does not invent a new one.
+The UI system the app implements, and the rules for changing it. It was
+DESCRIPTIVE until 28 Sep 2026; since the owner approved Direction A ("Operations
+Cockpit", read.txt #7) the parts marked **[decided]** are the standard new work
+follows. Where an owner-locked look differs from the package, the owner's look
+wins and is recorded here (section 12).
 
-- Claude records **observed** facts here automatically.
-- A **new convention** (for example "all new primary buttons use X") needs the
-  owner's approval, and is then recorded in docs/decisions.md and here, marked
-  **[decided]**. Nothing below is marked decided yet except where stated.
+- Claude records observed facts here.
+- A new convention needs the owner's approval; it is then recorded in
+  docs/decisions.md and here, marked **[decided]**.
 
-Source: the 27 Sep 2026 UI analysis, DESIGN_RULES.md (root), the
-drawer-redesign-decisions memory note.
+Sources: the design package (`Locking design elements.zip`: README, 01-07),
+the 27 Sep 2026 UI analysis, DESIGN_RULES.md, the drawer-redesign-decisions and
+design-base-liked-pages memory notes. Implementation map and conflicts:
+`active/design-migration-map.md` (git-ignored).
 
 ---
 
-## 1. Principles already in force
+## 1. Principles  [decided]
 
-From DESIGN_RULES.md (the owner's redesign rules):
-- **Show the judgment signals, hide the plumbing.** Surface what helps judge a
-  listing (status, compliance, price, image count); put rare actions (delete,
-  push image, raw preview, source, hold) in a `⋯` menu.
-- **Status = colour, always the same mapping:** needs review = amber, blocked =
-  red, ready = green, live = neutral. One status pill per item.
-- **One primary button, and it changes with state:** needs review -> Review;
-  blocked -> See why (never Submit); ready -> Submit; live -> View.
-- **Warnings only when real.** A clean listing shows no compliance panel.
-- **Every number is real.** Never ship placeholder counts; show "unknown" rather
-  than 0 when there is no data (see decisions: profit is measured).
+- **Show the judgment signals, hide the plumbing.** Status, compliance, price,
+  profit on the row; rare actions in a `···` menu.
+- **Status = colour, one mapping everywhere:** needs review = warning (amber),
+  blocked = danger (red), ready = success (green), live = neutral.
+- **One primary action per row or card: Review** (opens the product page) plus
+  `···` for everything else. (Catalogue-only live rows have no draft to review
+  and open on click instead; owner's reason, kept on `liveTableRow`.)
+- **Every number is real.** "Not known" rather than 0; estimates say so.
+- **Preserve what the owner likes** (section 12) and standardise the rest.
 
-Plus: the whole app is **dark theme only** (no light mode anywhere). Section
-changes have **no transition** on purpose (removed to match Orbit).
+## 2. Tokens  [decided]
 
-## 2. Colour systems (four, by surface)
+One file: **`static/css/foundations.css`** (the package's `tokens.css`, renamed
+because a filename containing "token" is barred from commits by CLAUDE.md
+Rule 2). Everything is a `--as-*` custom property.
 
-| Surface | Tokens | Accent | Notes |
-|---|---|---|---|
-| App shell, grid, most screens | `dashboard.css` `:root` (`--bg --panel --panel2 --line --ink.. --accent --ok --warn --red --radius-*`) | teal `#2dd4a8` | Legacy aliases (`--muted --green --amber --fg --text --bd --card`) are still used and must stay. `--fs-*` type scale exists but most rules use px. |
-| Product page (PDP) | `--pdp-*`, scoped to `#pdp` (pdp.css) | teal `#2dd4bf` (differs from the shell teal) | favicon also uses #2dd4bf |
-| Listing drawer | **literal hex, on purpose** (drawer.css, drawer_attributes.css, draftsources.css) | blue `#3b7dd4` | **[decided]** by the owner, 29 Aug 2026: the drawer keeps the design file's hex. Do not convert to tokens without asking. |
-| PPC / Dr PPC | `--ppc-*` (ppc.css), `--drp-*` (drppc.css) | GitHub-dark palette; Dr PPC has a light panel and gold buttons | scoped under `.ppc-page` |
-
-JS must not name colours (test_one_palette.py), with existing exceptions such as
-chart colours in salescharts.js.
-
-## 3. CSS load order (it carries meaning)
-
-`dashboard.css` -> `dialog.css` -> `datatable.css` -> `genui.css` ->
-`repricer.css` -> `inputupload.css` -> `genflow.css` -> `drawer.css` ->
-`drawer_attributes.css` -> `draftsources.css` -> `pdp.css` -> `pdp_images.css`
--> `listrow_detailed.css` -> `listrow_edit.css` -> `revenue.css` ->
-`orders_panel.css` -> `ppc.css` -> `drppc.css` -> `mobile.css` (last).
-
-Stated dependencies (comments in dashboard.html): drawer.css overrides
-`.drawer`; pdp.css must beat drawer.css; listrow_edit.css must beat
-listrow_detailed.css; mobile.css must come last. A new stylesheet goes where its
-overrides need it, and the reason is written in a comment beside the `<link>`.
-
-## 4. Layer order (z-index)
-
-App bar 20 · drawer scrim 70 · drawer 75 · PDP 78 · tile menu 85 ·
-modals 90 (some inline: `#genpanel` 115, `#usersmodal` 120) · inline popover
-9550 · dialogs 9600 · **toast 9800** · tooltips 9999. The PDP's layer reasoning
-is written in pdp.css. (Milestone 6: the toast was at 80, so one fired from
-inside a modal was hidden behind it. It is a live region, `role=status`, and a
-failure is styled `.toast.err`.)
-One global Escape handler (escape.js) closes the topmost open layer.
-
-## 5. Buttons (families in use)
-
-| Family | Look | Typical use |
+| Group | Tokens | Notes |
 |---|---|---|
-| `.db-chip` (+ `.go`, `.risk`, `.primary`) | pill | most common (about 200 uses); dialog buttons |
-| `button.primary` | teal fill, dark ink | main action on older screens |
-| `button.ghost` | transparent | secondary |
-| `button.danger` | literal `#7a1f1f` fill | destructive |
-| `.mktbtn` (+ `.on`) | 8px radius | toggles/segments, sometimes actions |
-| `.ib` | 30px icon button | row actions |
-| `.barbtn` | app bar only | |
-| `.linkbtn` | text link | inline actions |
-| `.pdp-tb` (+ `.accent`, `.success`) | PDP toolbar | white text on teal (breaks the dark-ink-on-teal rule) |
-| `.dw2-foot button` (+ `.primary` blue, `.success`) | drawer footer | |
-| `.lr-sb-save` / `.lr-sb-cancel` | staged-edit bar | |
-| `.o-btn`, `.ppc-btn`, `.drp-*-btn` | orders, PPC, Dr PPC | |
-| `.tilemenu button.danger` | red text | menu items |
+| Surfaces | `--as-bg-canvas`, `--as-bg-rail`, `--as-surface-1/2/3`, `--as-surface-raised` | 1 = cards/tables, 2 = table header/inset/segmented track, 3 = hover/summary strip |
+| Borders | `--as-border-subtle`, `--as-border`, `--as-border-strong` | |
+| Text | `--as-text-primary/secondary/muted/disabled/link` | muted lightened to `#919aad` for AA on surface-3 |
+| Action | `--as-action`, `--as-action-hover`, `--as-action-fg`, `--as-action-subtle(-border)` | teal; dark ink on teal |
+| Status | `--as-success/warning/danger` + `-bg`, `-border`; `--as-danger-solid` | danger lightened to `#f07575` for AA |
+| Data viz | `--as-viz-*` | match types: exact red, phrase blue, broad teal, product green, **auto pink**; P&L: stock, ads, fees, postage, refunds; compare, grid, axis, pending |
+| Type | `--as-text-display/page/section/panel-title/card-title/kpi/kpi-lg/body/body-strong/small/caption/overline/id` | shorthand `font:` values; tabular numbers on the body |
+| Space | `--as-space-0 … -12` (4px grid) | |
+| Radius | `--as-radius-xs 4 · sm 6 · md 8 · lg 10 · xl 12 · pill` | cards/tables lg, buttons sm, modals xl |
+| Shadow | `--as-shadow-card/dropdown/modal/drawer` | |
+| Focus | `--as-focus-ring`, `--as-focus-w` | |
+| Layers | `--as-z-*` | see section 7 |
 
-The primary action has at least five looks and the danger action at least four.
-Until the owner picks one per role, **new UI copies the family already used on
-the same screen.**
+**Legacy variables are aliases.** `dashboard.css :root` keeps `--bg --panel
+--panel2 --panel3 --input --line --line2 --ink.. --accent.. --ok --warn --red
+--radius-*` and points each at a `--as-*` token, so the old rules re-skinned
+without renaming. New CSS uses `--as-*` directly. Scoped palettes remain:
+`--pdp-*` (pdp.css), `--ppc-*` (ppc.css), `--drp-*` (drppc.css), and the drawer's
+literal hex (**[decided]** by the owner, 29 Aug 2026 — do not tokenise).
+
+JS must not name colours (test_one_palette.py); chart series colours in
+salescharts.js and the viz tokens are the exception.
+
+## 3. Themes
+
+`<html data-theme="dark|light">`; dark is the default. `static/js/theme.js`
+(`altaTheme.get/set/toggle`, key `alta_theme`) runs in `<head>` so there is no
+flash. **Light is defined in foundations.css but not offered** (`LIGHT_READY =
+false`) until every screen has had a light-theme QA pass. Measured 28 Sep 2026:
+about 1,100 literal colours remain in CSS (dashboard.css 527, drawer.css 212,
+drawer_attributes.css 66, ppc.css 61, pdp.css 61, …) and 226 hex literals in JS;
+the drawer's ~294 are owner-locked, so light mode needs an owner decision on the
+drawer before it can be finished.
+
+## 4. CSS load order (it carries meaning)
+
+`foundations.css` → `dashboard.css` → `dialog.css` → `datatable.css` →
+`genui.css` → `repricer.css` → `inputupload.css` → `genflow.css` → `drawer.css`
+→ `drawer_attributes.css` → `draftsources.css` → `pdp.css` → `pdp_images.css` →
+`listrow_detailed.css` → `listrow_edit.css` → `revenue.css` → `pnl.css` →
+`orders_panel.css` → `ppc.css` → `drppc.css` → `mobile.css` → **`floating.css`
+(last)**. drawer.css overrides `.drawer`; pdp.css must beat drawer.css;
+listrow_edit.css must beat listrow_detailed.css; floating.css owns the
+bottom-right corner and must win. Each `<link>` carries its reason.
+
+## 5. Components  [decided]
+
+| Component | Implementation | Rules |
+|---|---|---|
+| Button | `button.primary`, `.ghost`, `.danger`, `.db-chip` (pill), `.mktbtn`, `.ib`, `.dotb` | primary = action fill + action-fg; `:active` pressed; danger = danger-solid. New UI copies the family already on that screen. |
+| Segmented | `.seg` tray (surface-2, radius-md) | Sales presets keep the gold `.on` (owner-locked) |
+| Stat tile | `uiStat` / `.ui-stat`, `.rp-mc`, `.dt-mc` | radius-lg, border, token focus ring; selectable tiles act as filters |
+| Card / panel | `.panelcard` = `.salespanel` (one definition), `uiPanel` | side-by-side cards inside a grid never take the stacking margin |
+| Table | datatable.css (`.lt`, `.rp-tbl`, `.stk-table`), `table.kv` | sticky header; wide tables scroll in their own box; long cells wrap rather than overprint (fixed layout) |
+| Menu (`···`) | `.tilemenu` + **`uiMenuKeys(menu, opener, close)`** (dialog.js) | role=menu/menuitem, focus first item, ↑↓ Home End, Esc returns focus to the opener, Tab closes; opens upward when there is no room |
+| Dialog | dialog.js `uiAlert/uiConfirm/uiPrompt` (`.uidlg`) | canonical; legacy `.modalwrap` gets role=dialog, focus in/out and a Tab trap from an observer in dialog.js |
+| Confirmation | `uiConfirm` / `srcConfirm` | title is a question, the verb on the button ("Disarm", "Stop tracking"), never OK/Yes; used for anything that stops automation, is destructive or bulk. The account is fixed before asking and checked after. |
+| Product page (PDP) | `#pdp` overlay, max 680px (owner mockup) | role=dialog, focus in, Tab trapped (stands aside for layers on top), Esc closes, focus returns to the opener |
+| Side panel | Orders `.ord-split` / `.ord-side` | a second grid column, not an overlay; only where the table keeps its width beside it (`ORD_SIDE_MIN`), inline below that |
+| Toast | `#toast`, `toast(msg,{err})` | bottom centre (clear of the corner buttons), role=status, errors `.toast.err` |
+| Empty / error / loading | `uiEmpty`, `uiError`, `.empty`, motion.js skeletons | a failure never looks like "no data"; all-clear says what was checked |
+| Plain P&L | pnl.js `pnlSummary/pnlPlainHtml`, pnl.css | reads the statement's own lines; rows always total "Your costs" |
+| Needs-attention list | daily.js `.dy-*` | card per group, count badge, 4px tone bar, area overline, one action |
 
 ## 6. Shared helpers (reuse these)
 
 | Helper | File | Use for |
 |---|---|---|
-| `toast(msg, {err})` | listings.js | short messages; one slot; errors styled `.toast.err` and announced assertively; time grows with length (Milestone 6). Pass `{err:true}` when reporting a failure rather than relying on the wording. |
-| `uiAlert / uiConfirm / uiPrompt` | dialog.js | replacing native dialogs (test_no_native_dialogs.py forbids native) |
-| `uiInline(anchor, o)` | dialog.js | small popover editor |
-| `uiStat / uiStats / uiPanel / uiToolbar / uiSource / uiEmpty / uiCopy` | pageui.js | stat cards, panels, toolbars, provenance lines, empty states, copy |
-| `esc(s)` | listings.js | HTML text escaping (escapes `& < > " '`) |
-| `jsArg(s)` | users.js | **data inside an inline JS handler** |
-| `dwSection / dwFold / dwFieldRow / dwTitleParts / dwEditBlock` | drawer.js | drawer and PDP field layout (shared) |
-| `saveEdit / editField` | autofix.js | save-on-blur field edits (`POST /edit`) |
-| `lrEditBox / lrEditStage` + save bar | listrow_edit.js | staged "Save all" edits on list rows |
-| `altaSkeletonRows / Cards / Chart / Screen / Into`, `altaCountUp`, `altaStagger` | motion.js | skeleton loading, count-up, stagger |
-| `screenNeedsLoad / screenLoaded` | screenstate.js | skip reloading a screen revisited within 10 min |
-| `altaPoller` | poller.js | adaptive polling that backs off and pauses when hidden |
+| `toast(msg, {err})` | listings.js | short messages |
+| `uiAlert / uiConfirm / uiPrompt`, `uiInline`, `uiTrapTab`, `uiFocusInLayer`, `uiMenuKeys` | dialog.js | dialogs, popovers, focus traps, menus (native dialogs are forbidden: test_no_native_dialogs.py) |
+| `uiStat / uiStats / uiPanel / uiToolbar / uiSource / uiEmpty / uiCopy / uiError` | pageui.js | page building blocks |
+| `esc(s)` / `jsArg(s)` | listings.js / users.js | HTML text / data inside an inline handler |
+| `dwSection / dwFold / dwFieldRow / …` | drawer.js | drawer and PDP fields |
+| `saveEdit / editField`, `lrEditBox / lrEditStage` | autofix.js, listrow_edit.js | field edits |
+| `altaSkeleton*`, `altaCountUp`, `altaStagger` | motion.js | loading and motion |
+| `screenScope / screenStillIn`, `_srcScopeNow / _srcStillIn` | screenstate.js, sourcing.js | a reply or a confirmed write stays in the account it started in |
 | `acctBody / acctUrl / scopeQs` | reqscope.js, scopeq.js | naming the account on every request |
-| shared tables | datatable.css (`.stk-table`, `.rp-tbl`, `table.lt`) | tables |
+| `salesCombo` (lines may carry their own `color`) | salescharts.js | every line/area chart |
 
-Unused shared pieces (do not assume they work): `uiSeg` / `.segbtn`,
-`.dt-tbl` / `.dt-card`.
+## 7. Layers (z-index)
 
-## 7. States
+Package order: base 0 · sticky 10 · shell 20 · dropdown 30 · assistant 40 ·
+mobile nav 45 · drawer 50 · modal/PDP 60 · toast 70 · tooltip 80 (`--as-z-*`).
+The app's **measured** order, which is what the code guarantees and must not be
+reshuffled without checking every overlay: app bar 20 · product chat 60 ·
+drawer 75 · PDP 78 · tile menu 85 · modals 90–120 · runs badge 1200 · popover
+9550 · assistant button 9599 · assistant panel/dialogs 9600 · toast 9800 ·
+tooltips 9999. One global Escape handler (escape.js) closes the topmost layer.
 
-- **Loading:** inline `<span class="genspin">` (defined twice in dashboard.css,
-  the later teal one wins); "Loading…" text; skeletons only on the listings
-  grid and Sales.
-- **Errors:** `toast()` for small failures; `uiAlert` for blocking ones; inline
-  red text (`color:var(--red)`) in a panel; account banners `.acctbanner`;
-  PDP `.pdp-error` / `.pdp-err`. Some screens draw a load failure in `.empty`
-  style (hourly.js) — a failure must not look like "no data".
-- **Empty:** `.empty` (centred, muted), `.emptynote` (dashed), `uiEmpty()`
-  (actionable, preferred for new screens).
-- **Saving:** `.saving` -> `.saved` / `.err` classes on the field, plus a toast.
-  There is no inline per-field error text.
+**The bottom-right corner** (floating.css): assistant button, product chat and
+runs badge stack in one column; both chat panels open above it; under 1100px the
+chat buttons are 44px icons (text kept for screen readers). Pages have 110px
+(140px ≤720px) of bottom padding so nothing is covered. The browser harness
+checks each is hit at its centre and corners.
 
 ## 8. Rendering model
 
-- HTML strings assigned with `innerHTML`; the listings grid is redrawn in full
-  by `render()` (static/js/miles_template.js); the PDP by `pdpRender()`;
-  `pdpHeroRefresh()` swaps only the hero so focus survives a blur-save.
-- Handlers are mostly inline `onclick="..."` strings.
-- **Escaping rule:** `onclick="fn('${esc(x)}')"` is unsafe — the browser decodes
-  `&#39;` back to `'` before the handler runs, so an apostrophe in a SKU breaks
-  or injects. Use `onclick="fn(${jsArg(x)})"`. Many existing handlers still use
-  the unsafe form (listed in docs/known-issues.md); new code must not.
-- About 40 private escape copies exist (`_sEsc`, `_oEsc`, ...); most do not
-  escape `'`. New code uses `esc` / `jsArg`.
-- Focus/caret is preserved only in a few places (search box caret jumps to the
-  end; staged edits restored by `lrEditRestore`).
+- HTML strings via `innerHTML`; handlers are inline `onclick` strings.
+- **Escaping rule:** `onclick="fn('${esc(x)}')"` is unsafe; use `jsArg(x)`.
+- A redraw replaces the focused element; screens that redraw on interaction put
+  focus back (Orders rows, PDP) — new ones must too.
 
-## 9. Responsive
+## 9. Responsive  [decided]
 
-`mobile.css` loads last and is measured against Orbit at 390x844; its main
-breakpoints are 860px and 520px. The sidebar is an overlay drawer at every
-width (mobilenav.js, sidebar.js). Other files use their own max-widths (16
-distinct values: 420-1400). Wide tables scroll inside their own box. Minimum
-touch height 34px for `.mktbtn` / `.db-chip`. Honour `prefers-reduced-motion`.
+Test widths **390 / 768 / 1024 / 1366 / 1920**. `mobile.css` (measured at
+390×844, breakpoints 860 / 520) loads before floating.css. Grids use
+`minmax(0,1fr)` so a wide child cannot push a column past its panel; two-column
+layouts stack at ≤720px. Touch targets ≥44px for icon buttons. The top context
+bar (account · marketplace · currency) stays pinned while scrolling at every
+width. Honour `prefers-reduced-motion`.
 
-## 10. Icons and fonts
+## 10. Accessibility  [decided]
 
-Tabler Icons 3.5.0, full set, self-hosted (`static/vendor/tabler-icons`),
-`<i class="ti ti-name">`. Font stack starts with Inter (not loaded; used if
-installed), then the system font. Body is 14px.
+Skip link to `#wsmain`; token focus ring on `:focus-visible`; every icon-only
+button has an accessible name; overlays trap and restore focus; menus and
+focusable rows work from the keyboard; text contrast AA (test_contrast.py).
+
+## 11. Motion
+
+Section changes have no transition (matches Orbit). Charts sweep in once, held
+until scrolled into view (motion.js). Durations and easing are tokens.
+
+## 12. Owner-locked looks (they win over the package)
+
+- Listing drawer's literal hex palette (29 Aug 2026).
+- PDP overlay: its layout, interaction and 680px width (the package said 720).
+- Sales charts, Traffic, Hourly, the three Listings views, Repricer structure,
+  PPC/Campaign Analytics concepts, Search terms (design-base-liked-pages).
+- Sales preset segmented control is gold.
+- Listings toolbar consolidation (Costs ▾) is the owner's own earlier redesign.
+- **Navigation is an overlay sidebar at every width** ("i want sidebar overlay",
+  recorded in sidebar.js). The package's always-visible icon rail is NOT built:
+  it would reverse that decision. Owner question.
+- The detailed Listings view keeps its own "···" (drawerMore) and no Review
+  button; the row itself opens the product page.
+- Search terms badge colours (Broad orange, Phrase green, Exact cyan) are left
+  as they were although Campaign Analytics now uses the viz tokens — an owner
+  question.
+
+## 13. Icons and fonts
+
+Tabler Icons 3.5.0, self-hosted (`static/vendor/tabler-icons`). Font stack
+starts with Inter (used if installed), then the system font. Body 13px/1.5 with
+tabular numbers.
