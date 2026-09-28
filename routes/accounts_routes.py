@@ -13,6 +13,7 @@ Routes: POST /accounts/detect_brands, POST /accounts/detect_marketplaces,
         stays in dashboard.py for now.)
 """
 from flask import request, jsonify
+from domain.request_account import id_or_open as _id_or_open   # arch A5
 
 
 def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
@@ -586,7 +587,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         mkt = (b.get("marketplace", "") or "").upper()
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
@@ -611,7 +612,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         brand = (b.get("brand", "") or "").strip()
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         if not brand:
             return jsonify({"ok": False, "error": "no brand specified"}), 400
         if not aid:

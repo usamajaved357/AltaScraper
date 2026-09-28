@@ -10,6 +10,7 @@ Routes:
   POST /cogs/upload       -> bulk COGS upload {rows:[{sku,cost}]}
 """
 from flask import request, jsonify, Response
+from domain.request_account import id_or_open as _id_or_open   # arch A5
 
 
 def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_profit,
@@ -309,7 +310,7 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
         """
         from domain import cogs_store as _cs
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         rows = b.get("rows", []) or []
         n = 0
         refused = []

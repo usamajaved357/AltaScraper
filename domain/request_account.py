@@ -163,6 +163,24 @@ def current(state):
     return named_now() or str((state or {}).get("active_account_id", "") or "")
 
 
+def id_or_open(asked, state):
+    """The account id the ROUTE was handed (`asked`), else the server's open one.
+
+    EXACTLY the expression fifteen route sites wrote out by hand (architecture batch
+    A5, 29 Sep 2026):
+
+        aid = b.get("id", "") or _state.get("active_account_id", "")
+
+    -- same order, same "" default, no stripping or str() added, so no caller's
+    answer changes. It exists so the fallback to the open account has ONE name
+    that can be found, audited and later tightened in one place. It is not
+    current(): that one also reads the account the page names in ?account=,
+    which these routes have never done, and switching them to it would change
+    what they answer.
+    """
+    return asked or state.get("active_account_id", "")
+
+
 def sheet_mismatch(state):
     """Why the SERVER'S sheet must not be used for this request, or "".
 

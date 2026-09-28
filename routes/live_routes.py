@@ -4,6 +4,7 @@ Auto-extracted @app.route("/live...") funcs; shared helpers injected. Verified w
 verify_free_vars.py.
 """
 from flask import request, jsonify, Response, send_from_directory
+from domain.request_account import id_or_open as _id_or_open   # arch A5
 import urllib
 import datetime as _dt
 
@@ -175,7 +176,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -306,7 +307,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -387,7 +388,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -658,7 +659,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -1461,7 +1462,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -1532,7 +1533,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         """Return already-mirrored data (no network) for a batch of SKUs. Body: {id, marketplace,
         skus:[...]} -> {ok, mirror:{sku:{...}}}. Powers the read-only 'Actual on Amazon' view."""
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad

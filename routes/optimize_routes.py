@@ -13,6 +13,7 @@ import json
 import re
 
 from flask import request, jsonify
+from domain.request_account import id_or_open as _id_or_open   # arch A5
 
 
 def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish=lambda acc=None: acc):
@@ -57,7 +58,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -133,7 +134,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -280,7 +281,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             _require_publish()
         except Exception as _e:
             return jsonify({"ok": False, "read_only": True, "error": str(_e)}), 403
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -399,7 +400,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
         current = b.get("current", {}) or {}        # current title/bullets/description
         product_type = b.get("product_type", "")
         instruction = (b.get("instruction", "") or "").strip()   # user's custom request to the AI
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad

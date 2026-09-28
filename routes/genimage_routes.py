@@ -4,6 +4,7 @@ Auto-extracted @app.route("/genimage...") funcs; shared helpers injected. Verifi
 verify_free_vars.py.
 """
 from flask import request, jsonify, Response, send_from_directory
+from domain.request_account import id_or_open as _id_or_open   # arch A5
 import base64 as _b64
 import json
 import os
@@ -272,12 +273,12 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
     def genimage_instructions():
         """Get or save the custom image instructions the AI remembers for every image."""
         if request.method == "GET":
-            aid = request.args.get("id", "") or _state.get("active_account_id", "")
+            aid = _id_or_open(request.args.get("id", ""), _state)
             return jsonify({"ok": True, "instructions": _load_img_instructions(aid)})
         b = request.get_json(force=True) or {}
         text = (b.get("instructions", "") or "").strip()[:4000]
         scope = (b.get("scope", "account") or "account").lower()
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         ok = _save_img_instructions(text, aid=aid, scope=scope)
         return jsonify({"ok": ok, "instructions": text})
 
