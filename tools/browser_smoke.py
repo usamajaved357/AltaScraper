@@ -489,6 +489,74 @@ def main(argv):
             except Exception as _e:
                 log["floating"] = {"error": str(_e)[:200]}
 
+            # ORDERS: THE ORDER BESIDE THE TABLE (owner decision, 28 Sep 2026).
+            # /orders/list is a live Amazon call the sandbox cannot make, so the
+            # two order routes are answered here with shaped rows, on this page
+            # only, and removed afterwards. Checks: the panel opens beside the
+            # table at >=1100px (inline below that), another row swaps it, the
+            # keyboard reaches and keeps the row, and a switch closes it.
+            cur["where"] = "orders side panel"
+            try:
+                def _ofake(route):
+                    u = route.request.url
+                    acc = u.split("account=")[1].split("&")[0] if "account=" in u else ""
+                    tg = "A" if acc == a else "B"
+                    if "/orders/list" in u:
+                        route.fulfill(json={"ok": True, "summary": {"orders": 3}, "pii_note": "",
+                            "rows": [{"order_id": "ZZ-%s-%d" % (tg, i), "account_id": acc,
+                                      "account": tg, "status": "Unshipped", "currency": "GBP",
+                                      "purchased": "2026-09-2%dT10:00:00Z" % i, "total": 9.99,
+                                      "units": 1, "fulfilment": "MFN"} for i in (1, 2, 3)]})
+                    else:
+                        route.fulfill(json={"ok": True, "items": [], "orders": {}})
+                page.route("**/orders/list*", _ofake)
+                page.route("**/orders/detail*", _ofake)
+                page.route("**/orders/items*", _ofake)   # else fake ids reach the server
+                page.evaluate("id => enterAccount(id)", a)
+                page.wait_for_load_state("networkidle")
+                page.evaluate("() => { ORD.rows = []; ORD.rowsFor = '__reload__'; navTo('orders'); }")
+                page.wait_for_timeout(1500)
+                osd = {"rows": page.evaluate("() => document.querySelectorAll('tr.ordrow').length")}
+                if osd["rows"]:
+                    page.click("tr.ordrow >> nth=0")
+                    page.wait_for_timeout(700)
+                    wide = vw >= 1100
+                    # Side panel exactly when the screen says there is room.
+                    osd["panel_where_expected"] = page.evaluate(
+                        "() => _ordSideMode() ? (!!document.querySelector('.ord-side') && !document.querySelector('tr.orddetail'))"
+                        "       : (!document.querySelector('.ord-side') && !!document.querySelector('tr.orddetail'))")
+                    osd["side_mode"] = page.evaluate("() => _ordSideMode()")
+                    # And beside the panel the table never scrolls sideways.
+                    osd["table_fits"] = page.evaluate(
+                        "() => { const s = document.querySelector('.ord-main div[style*=overflow-x]');"
+                        " return !s || s.scrollWidth <= s.clientWidth + 1; }")
+                    osd["focus_kept"] = page.evaluate("() => !!(document.activeElement && document.activeElement.classList.contains('ordrow'))")
+                    page.click("tr.ordrow >> nth=1")
+                    page.wait_for_timeout(500)
+                    osd["swaps"] = page.evaluate("() => ORD.open === document.querySelectorAll('tr.ordrow')[1].dataset.oid")
+                    page.keyboard.press("Enter")
+                    page.wait_for_timeout(300)
+                    osd["enter_closes"] = page.evaluate("() => ORD.open === ''")
+                    page.keyboard.press("Enter")
+                    page.wait_for_timeout(300)
+                    page.evaluate("id => enterAccount(id)", b)
+                    page.wait_for_timeout(1200)
+                    osd["switch_closes"] = page.evaluate("() => ORD.open === ''")
+                    page.evaluate("id => enterAccount(id)", a)
+                    page.wait_for_load_state("networkidle")
+                log["orders_side"] = osd
+            except Exception as _e:
+                log["orders_side"] = {"error": str(_e)[:200]}
+            finally:
+                try:
+                    page.unroute("**/orders/list*")
+                    page.unroute("**/orders/detail*")
+                    page.unroute("**/orders/items*")
+                    # The fake rows must not be what later visits redraw.
+                    page.evaluate("() => { ORD.rows = []; ORD.details = {}; ORD.open = ''; ORD.rowsFor = '__reload__'; }")
+                except Exception:
+                    pass
+
             # TWO TABS. The server keeps ONE "open account" for everybody, and
             # the last tab to switch owns it. Tab 1 goes back to A; tab 2 then
             # opens B. Everything tab 1 asks for afterwards must still be A's:
@@ -557,6 +625,10 @@ def main(argv):
            or (log.get("modal_keyboard") and (log["modal_keyboard"].get("tab_left_modal")
                or log["modal_keyboard"].get("role") != "dialog"
                or not log["modal_keyboard"].get("focus_inside")))
+           or (log.get("orders_side") and (log["orders_side"].get("error")
+               or (log["orders_side"].get("rows") and not all(log["orders_side"].get(k)
+                   for k in ("panel_where_expected", "table_fits", "focus_kept", "swaps",
+                             "enter_closes", "switch_closes")))))
            or (log.get("floating") and (log["floating"].get("covered")
                or log["floating"].get("missing") or log["floating"].get("error")))
            or log.get("two_tab_unnamed_requests"))

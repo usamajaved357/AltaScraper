@@ -198,3 +198,40 @@
   .o-card{ flex:1 1 calc(50% - 3px); }
   .opanel{ padding:8px 9px 10px; }
 }
+
+/* ---- THE ORDER BESIDE THE TABLE (orders.js, _ordSideMode) --------------------
+   Laptop and wider only. A second grid column, not an overlay: the table keeps
+   its full height and every row stays clickable. The panel sticks under the top
+   bar and scrolls on its own, so a long order never pushes the table away. */
+.ord-split{
+  display: grid; grid-template-columns: minmax(0, 1fr) 380px;
+  gap: var(--as-space-4, 16px); align-items: start;
+}
+.ord-main{ min-width: 0; }
+.ord-side{
+  position: sticky; top: 48px;              /* just under the ~40px top bar */
+  max-height: calc(100vh - 64px); overflow: auto;
+  background: var(--as-surface-1); border: 1px solid var(--as-border);
+  border-radius: var(--as-radius-lg, 10px);
+  box-shadow: var(--as-shadow-dropdown);
+}
+.ord-side-h{
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--as-space-2, 8px); padding: var(--as-space-2, 8px) var(--as-space-3, 12px);
+  background: var(--as-surface-2); border-bottom: 1px solid var(--as-border);
+}
+.ord-side-h code{ font: var(--as-text-id); color: var(--as-text-link); }
+.ord-side-x{
+  width: 32px; height: 32px; display: inline-flex; align-items: center;
+  justify-content: center; border-radius: var(--as-radius-sm, 6px);
+  background: none; border: 1px solid transparent; color: var(--as-text-secondary);
+  cursor: pointer; font-size: 16px;
+}
+.ord-side-x:hover{ background: var(--as-surface-3); color: var(--as-text-primary); }
+.ord-side > div[id^="orddet_"]{ padding: var(--as-space-3, 12px); }
+/* The selected row, clearly marked while its order is on the right. */
+.ord-split table.ordtable tbody tr.ordrow.isopen{
+  box-shadow: inset 3px 0 0 var(--as-action);
+}
+/* 380px, always: ORD_SIDE_MIN in orders.js is worked out on this width. */

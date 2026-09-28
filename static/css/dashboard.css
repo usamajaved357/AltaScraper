@@ -4281,6 +4281,9 @@ table.ordtable td{
    listrow_detailed.css is not loaded for the Orders screen's sake. */
 table.ordtable th .th-sub{
   display:block; margin-top:1px;
+  /* May wrap: the heading row is nowrap, and on a narrow column the small
+     print ran into the next heading's ("fulfilmenand what is left"). */
+  white-space:normal;
   font-size:10px; font-weight:400; letter-spacing:0;
   text-transform:none; color:var(--ink4);
 }

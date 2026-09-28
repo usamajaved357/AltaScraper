@@ -708,6 +708,16 @@ function ordersRender(){
   //
   // .panelcard and .ordtable are the shared vocabulary; the numbers live in
   // dashboard.css beside every other table's, not in this string.
+  // THE ORDER BESIDE THE TABLE, on a laptop or wider (owner decision, 28 Sep
+  // 2026: "keep the Orders table as the main view; selecting an order may open
+  // the side detail panel; the panel must not replace the table workflow").
+  // A second column, not an overlay: every row stays visible and clickable, and
+  // clicking another row swaps the panel. Narrower than 1100px there is no room
+  // for two columns, so the order opens under its row as it always has.
+  const _side = _ordSideMode();
+  const _openRow = _side && ORD.open
+    ? ORD.rows.filter(function(r){ return r.order_id === ORD.open; })[0] : null;
+  if(_openRow) h += '<div class="ord-split"><div class="ord-main">';
   h += '<div class="panelcard" style="padding:0;overflow:hidden">'
     +  '<div style="overflow-x:auto"><table class="kv ordtable" '
     +  'style="width:100%;min-width:760px">'
@@ -723,7 +733,12 @@ function ordersRender(){
   ORD.rows.forEach(function(r){
     const st = _ORD_STATUS[r.status] || {c:"var(--ink2)"};
     const isOpen = (ORD.open === r.order_id);
-    h += '<tr class="ordrow' + (isOpen ? ' isopen' : '') + '" onclick="ordersToggle('
+    // Reachable from the keyboard: Tab to a row, Enter or Space opens it.
+    h += '<tr class="ordrow' + (isOpen ? ' isopen' : '') + '" tabindex="0"'
+      +  ' aria-expanded="' + (isOpen ? 'true' : 'false') + '"'
+      +  ' data-oid="' + _oEsc(r.order_id) + '"'
+      +  ' onkeydown="ordersRowKey(event,' + jsArg(r.order_id) + ',' + jsArg(r.account_id) + ')"'
+      +  ' onclick="ordersToggle('
       +  jsArg(r.order_id) + ',' + jsArg(r.account_id) + ')">'
       // WHAT WAS SOLD, which is the first thing anyone wants from a list of
       // orders and was not on it at all. The picture comes from the live
@@ -746,7 +761,10 @@ function ordersRender(){
       // keeps its nowrap, because a date broken across two lines is worse than
       // a wide column; the address wraps.
       +  '<td style="font-size:11.5px;max-width:210px">'
-      +  '<span style="white-space:nowrap">' + _oEsc(_oWhen(r.purchased)) + '</span>'
+      // The DATE and the TIME each stay whole, but the time may take the next
+      // line: kept as one unbreakable "Sep 21, 2026, 03:00 PM" it was wider
+      // than this fixed-layout column and printed over the Status beside it.
+      +  _ordWhenCell(r.purchased)
       // The two columns that used to sit on the right, as small print here.
       +  '<div class="cc" style="font-size:10px;white-space:normal;'
       +  'overflow-wrap:anywhere">'
@@ -800,7 +818,7 @@ function ordersRender(){
       +  _ordPct(r.roi_pct, 30, 12,
                 'Profit as a share of what the stock cost') + '</td>'
       +  '</tr>';
-    if(isOpen){
+    if(isOpen && !_openRow){
       h += '<tr class="orddetail"><td colspan="' + cols.length + '">'
         +  '<div id="orddet_' + _oEsc(r.order_id) + '">'
         +  (ORD.details[r.order_id] ? _ordDetailHtml(r) :
@@ -810,13 +828,28 @@ function ordersRender(){
     }
   });
   h += '</tbody></table></div></div>';
+  if(_openRow){
+    h += '</div><aside class="ord-side" aria-label="Order ' + _oEsc(_openRow.order_id) + '">'
+      +  '<div class="ord-side-h"><code>' + _oEsc(_openRow.order_id) + '</code>'
+      +  '<button class="ord-side-x" data-oid="' + _oEsc(_openRow.order_id) + '" onclick="ordersToggle(' + jsArg(_openRow.order_id)
+      +  ',' + jsArg(_openRow.account_id) + ')" aria-label="Close this order" title="Close">'
+      +  '<i class="ti ti-x"></i></button></div>'
+      +  '<div id="orddet_' + _oEsc(_openRow.order_id) + '">'
+      +  (ORD.details[_openRow.order_id] ? _ordDetailHtml(_openRow) :
+          '<div class="cc" style="padding:10px"><span class="genspin"></span> '
+          + 'Reading the order…</div>')
+      +  '</div></aside></div>';
+  }
 
   // WHAT AMAZON WITHHOLDS, said once at the bottom rather than as an empty
   // column with no explanation.
   h += '<div class="cc" style="font-size:11.5px;margin-top:12px;padding:9px 11px;'
     +  'border:1px solid var(--line2);border-radius:6px;line-height:1.6">'
     +  '<i class="ti ti-info-circle"></i> ' + _oEsc(m.pii_note || "") + '</div>';
+  // The redraw replaces the focused row with a new element; see _ordRefocus.
+  const _hadRow = _ordFocusedOid();
   body.innerHTML = h;
+  if(_hadRow) _ordRefocus(_hadRow);
 }
 
 /* WHERE TO BUY THIS ONE FROM.
@@ -1682,17 +1715,79 @@ function _ordWhyText(status, cancelRequested, cancelReason){
   return bits.join("<br>");
 }
 
+function _ordWhenCell(iso){
+  const w = String(_oWhen(iso) || "");
+  const k = w.lastIndexOf(", ");
+  if(k < 0) return '<span style="white-space:nowrap">' + _oEsc(w) + '</span>';
+  return '<span style="white-space:nowrap">' + _oEsc(w.slice(0, k)) + ',</span> '
+       + '<span style="white-space:nowrap">' + _oEsc(w.slice(k + 2)) + '</span>';
+}
+
+/* Two columns (table + order panel) only where there is ROOM for both: a
+ * laptop-or-wider window AND an Orders area wide enough that the table keeps
+ * its 760px beside a 380px panel. The window alone was not enough -- with the
+ * sidebar open on a 1366 laptop the table lost Profit, Margin and ROI behind a
+ * sideways scroll, which is the panel replacing the table after all. */
+const ORD_SIDE_MIN = 760 + 380 + 16;
+function _ordSideMode(){
+  try{
+    if(!(window.matchMedia && window.matchMedia("(min-width: 1100px)").matches)) return false;
+    const b = document.getElementById("ordbody");
+    return !!(b && b.clientWidth >= ORD_SIDE_MIN);
+  }catch(e){ return false; }
+}
+
 async function ordersToggle(orderId, accountId){
   if(ORD.open === orderId){ ORD.open = ""; ordersRender(); return; }
   ORD.open = orderId;
   ordersRender();
   if(ORD.details[orderId]){ return; }
+  // PINNED TO THE CACHE THIS REQUEST BELONGS TO. Switching account replaces
+  // ORD.details with a fresh object; a reply landing after that must go into
+  // the old one, not be filed under the new account.
+  const cache = ORD.details;
   try{
     const j = await (await fetch("/orders/detail?order_id="
       + encodeURIComponent(orderId) + "&account=" + encodeURIComponent(accountId))).json();
-    ORD.details[orderId] = j && j.ok ? j : {error: (j && j.error) || "could not read it"};
+    cache[orderId] = j && j.ok ? j : {error: (j && j.error) || "could not read it"};
   }catch(e){
-    ORD.details[orderId] = {error: String(e)};
+    cache[orderId] = {error: String(e)};
   }
-  if(ORD.open === orderId) ordersRender();
+  if(ORD.details === cache && ORD.open === orderId) ordersRender();
 }
+
+/* Enter or Space on a focused row opens it, as a click does. */
+function ordersRowKey(e, orderId, accountId){
+  if(e.target !== e.currentTarget) return;           // a control inside the row
+  if(e.key === "Enter" || e.key === " "){ e.preventDefault(); ordersToggle(orderId, accountId); }
+}
+
+/* The table is redrawn on every toggle AND when the order's details arrive, so
+ * the row that had focus becomes a new element. Only when focus was on a row
+ * (or the panel's close button) is it put back -- never stolen from a field. */
+function _ordFocusedOid(){
+  const a = document.activeElement;
+  if(!a || !a.closest) return "";
+  if(a.classList.contains("ordrow")) return a.getAttribute("data-oid") || "";
+  if(a.classList.contains("ord-side-x")) return a.getAttribute("data-oid") || "";
+  return "";
+}
+function _ordRefocus(orderId){
+  const row = document.querySelector('tr.ordrow[data-oid="' + String(orderId).replace(/["\\]/g, "") + '"]');
+  if(row) row.focus({preventScroll: true});
+}
+
+// When the room changes (window resized, sidebar opened or closed) an open
+// order moves between the side panel and its row. Only redrawn when the answer
+// actually flips, so resizing does not redraw the table on every pixel.
+try{
+  let _ordWasSide = null, _ordT = 0;
+  window.addEventListener("resize", function(){
+    clearTimeout(_ordT);
+    _ordT = setTimeout(function(){
+      const now = _ordSideMode();
+      if(ORD.open && now !== _ordWasSide && typeof ordersRender === "function") ordersRender();
+      _ordWasSide = now;
+    }, 150);
+  });
+}catch(e){ /* no window: inline only */ }
