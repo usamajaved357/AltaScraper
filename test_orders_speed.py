@@ -164,7 +164,11 @@ print("\n=== the Orders page reads what it already knows ===")
 truthy("the store is asked first", "_items_from_store" in O)
 truthy("  because an order's contents never change",
        "never change once it is placed" in O)
-truthy("  from the table that already holds them", "FROM order_lines" in O)
+# The query moved beside its writer, domain/hourly_week.stored_items (batch A6).
+_HW = open(_os_repo.path.join(_REPO, "domain", "hourly_week.py"), encoding="utf-8").read()
+truthy("  from the table that already holds them", "FROM order_lines" in O or (
+    "_hw.stored_items(" in O and "FROM order_lines" in
+    _HW[_HW.index("def stored_items"):_HW.index("def store_lines")]))
 truthy("what Amazon returns is kept", "_store_items(" in O)
 truthy("  through the writer that already exists, not a second one",
        "_hw.store_lines(" in O)

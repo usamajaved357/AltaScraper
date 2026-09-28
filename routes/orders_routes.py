@@ -523,12 +523,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         reason. This just uses it.
         """
         try:
-            from data import db as _db
-            rows = _db.get_db(CONFIG_PATH).execute(
-                "SELECT asin, sku, title, units FROM order_lines "
-                "WHERE workspace_id=? AND marketplace=? AND order_id=?",
-                (str(account_id or ""), str(marketplace or ""),
-                 str(order_id or ""))).fetchall()
+            from domain import hourly_week as _hw   # owns order_lines (batch A6)
+            rows = _hw.stored_items(CONFIG_PATH, account_id, marketplace, order_id)
         except Exception:
             return None
         if not rows:
