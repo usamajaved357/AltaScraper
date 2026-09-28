@@ -21,9 +21,24 @@ import time
 import domain.accounts as _acc
 
 # Data caches live beside config.json (the data dir), never with the code.
+#
+# THE ENGINE'S OWN FORMULA, without importing the engine (architecture batch
+# A1): amazon_listing_generator.CONFIG_PATH is
+#     Path(os.environ.get("CONFIG_PATH", str(<repo>/"config.json")))
+# worked out once, when the engine was first imported -- which here was the
+# first call. Loading the whole generator into the web process to read one
+# path was the cost; the value is the same, fixed on first use the same way.
+_DATA_DIR = None
+
+
 def _data_dir():
-    import amazon_listing_generator as G
-    return str(G.CONFIG_PATH.parent)
+    global _DATA_DIR
+    if _DATA_DIR is None:
+        import os
+        from pathlib import Path
+        _root = Path(__file__).parent.parent        # no resolve(): the engine's formula has none
+        _DATA_DIR = str(Path(os.environ.get("CONFIG_PATH", str(_root / "config.json"))).parent)
+    return _DATA_DIR
 
 _SNAP_FILE = "sync_snapshots.json"       # {account_id: {sku: {"copy":{...}, "pulled_at":ts}}}
 _CAP_FILE  = "sync_capability.json"      # {account_id: {"pull_confirmed":bool, "tested_at":ts}}

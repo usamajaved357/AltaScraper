@@ -167,7 +167,8 @@ print("\n== 3b. AND WHEN IT SENDS SOMETHING ELSE, IT SAYS SO ==")
 R = read("routes", "listing_routes.py")
 yes("the server works out what will be sent", "def _attach_brand_send(" in R)
 yes("  by asking the ONE resolver, not by repeating its rule",
-    "from amazon_listing_generator import resolve_account_brand" in R
+    ("from amazon_listing_generator import resolve_account_brand" in R
+        or "from listing.flat_row import resolve_account_brand" in R)
     and "resolve_account_brand(out[\"typed\"], probe)" in R)
 yes("  and attaches it to the rows the editor reads",
     "_attach_brand_send(c, _brands, _cfg())" in R)

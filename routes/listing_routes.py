@@ -230,7 +230,7 @@ def _attach_brand_send(c, brands, cfg):
     """
     out = {"send": "", "typed": str(c.get("brand") or ""), "swapped": False, "note": ""}
     try:
-        from amazon_listing_generator import resolve_account_brand
+        from listing.flat_row import resolve_account_brand  # its home since Milestone 4; the engine re-exports this same function
         # The same two keys build_api_attributes is handed, so this asks the
         # resolver the same question the submit will.
         probe = {"_account_brands": brands,

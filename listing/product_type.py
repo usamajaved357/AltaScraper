@@ -46,7 +46,7 @@ def from_title(title, comp_data=None):
     listing, so a type inferred here and a type inferred there cannot differ.
     """
     try:
-        from amazon_listing_generator import infer_product_type
+        from listing.product_type_rules import infer_product_type  # its home since Milestone 4; the engine re-exports this same function
     except Exception:
         return ""
     return infer_product_type(dict(comp_data or {}), item_name=str(title or ""),

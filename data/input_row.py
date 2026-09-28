@@ -306,7 +306,7 @@ def build_queued_sku(product, taken_skus):
     NOASIN. The ASIN itself comes from resolved_asin, so an Amazon link in the
     file is as good as an ASIN column.
     """
-    from amazon_listing_generator import build_sku      # lazy: it is a big module
+    from listing.flat_row import build_sku  # its home since Milestone 4; the engine re-exports this same function
     cost = _first_number(product, SKU_PRICE_FIELDS)
     days = str((product or {}).get("handling_time", "") or "").strip()
     import re as _re
