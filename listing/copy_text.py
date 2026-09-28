@@ -5,6 +5,7 @@ amazon_listing_generator.py still imports every name below, so dashboard.<name> 
 route that is handed one keep working exactly as before. Nothing here may
 import dashboard (it would load a second copy of the app).
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 
 import base64
 import urllib.parse
@@ -21,7 +22,7 @@ def _claude(config):
     of them -- 2.1 seconds, on runs like export that never call Claude at all.
     """
     import anthropic
-    return anthropic.Anthropic(api_key=config["anthropic_api_key"])
+    return _ai_client(config["anthropic_api_key"])
 
 
 INFORMATIONAL = ["what is", "how does", "why is", "history of",

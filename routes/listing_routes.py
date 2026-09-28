@@ -3,6 +3,7 @@
 Auto-extracted @app.route("paths:/suggest,/ask,/input_sheet,/row,/rows,/approve,/schema/<path:pt>,/edit,/delete,/clear_empty,/listing/push_image,/run/<mode>...") funcs; shared helpers injected. Verified with
 verify_free_vars.py.
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 from flask import request, jsonify, Response, send_from_directory
 import json
 import os
@@ -1047,7 +1048,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         except ImportError:
             return jsonify({"ok": False, "error": "anthropic not installed (pip install anthropic)"}), 500
         try:
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             system = (
                 "You are a practical assistant embedded in an Amazon UK listing tool. You help the seller "
                 "choose values for listing attributes (size, is_assembly_required, material, dimensions, "

@@ -9,6 +9,7 @@ dashboard.py for now).
 Routes: POST /optimize/fetch, POST /optimize/diagnose_fill, POST /optimize/push,
         POST /optimize/from_source
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import re
 
@@ -200,7 +201,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
                             "note": "No anthropic_api_key set — showing the flagged fields without AI suggestions."})
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             # give the AI the product context + the current attribute values for reference
             ctx_attrs = {k: attrs.get(k) for k in list(attrs.keys())[:60]}
             sys = (
@@ -479,7 +480,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             "Now produce the JSON copy following all rules and the seller's instruction."
         )
         try:
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             resp = client.messages.create(
                 model="claude-sonnet-4-5", max_tokens=1500,
                 system=system, messages=[{"role": "user", "content": user_msg}])

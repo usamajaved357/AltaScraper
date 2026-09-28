@@ -22,6 +22,7 @@ It reuses config.json (google_spreadsheet_id, google_service_account_json,
 brand_name) and runs in the SAME folder as amazon_listing_generator.py.
 """
 
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import re
 import sys
@@ -2106,7 +2107,7 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
         return _code_owned_hits + prelim
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=key)
+        client = _ai_client(key)
         # Build a UNIFIED allowed-values map covering BOTH flat fields and
         # sub-field dot-keys. The AI sees one map, doesn't need to know which is
         # which -- it just picks from the allowed list per key.

@@ -40,6 +40,7 @@ Amazon. The SDS PDF carries the GHS classification the compliance fields need;
 the bundle keeps SDS text separate (key: 'sds_text') so the prompt can lean on it.
 """
 
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import io
 import re
 import csv
@@ -558,7 +559,7 @@ def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-
     except Exception:
         return ""
     try:
-        client = anthropic.Anthropic(api_key=api_key)
+        client = _ai_client(api_key)
         prompt = ("This image is one page of a technical/spec data sheet for an industrial "
                   "lubricant. Transcribe ALL of it to plain text: every heading, every bullet, "
                   "and the FULL typical-properties table -- each property name and each value "

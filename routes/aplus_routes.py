@@ -6,6 +6,7 @@ ai_providers and anthropic are imported inline in the bodies.
 
 Routes: GET /aplus/modules, POST /aplus/generate
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import re
 
 from flask import request, jsonify
@@ -218,7 +219,7 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult,
             key = (_cfg().get("anthropic_api_key") or "").strip()
             if key:
                 import anthropic
-                client = anthropic.Anthropic(api_key=key)
+                client = _ai_client(key)
                 msg = client.messages.create(
                     model="claude-sonnet-4-5", max_tokens=400,
                     system=("Write concise Amazon A+ module copy: one short headline (<=8 words) and "

@@ -9,6 +9,7 @@ agent). ppc_deliverables (domain) is imported inline in the bodies.
 Routes: POST /ppc/build_campaigns, GET /ppc/download/<fname>, POST /ppc/harvest,
         POST /ppc/deliverable, POST /ppc/agent
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import os
 
@@ -505,7 +506,7 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                             f"Deliverable built: {list(downloads.keys())}\n")
                 try:
                     import anthropic
-                    client = anthropic.Anthropic(api_key=key)
+                    client = _ai_client(key)
                     r = client.messages.create(model=CHAT_MODEL, max_tokens=600,
                                                  system=system,
                                                  messages=[{"role": "user", "content": user_msg}])
@@ -601,7 +602,7 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
 
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             r = client.messages.create(
                 model=CHAT_MODEL, max_tokens=1200,
                 system=system,

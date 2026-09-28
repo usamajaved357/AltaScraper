@@ -10,6 +10,7 @@ Routes: POST /miles_template/ai_fill, GET /miles_template/list,
         GET /miles_template/preview/<rid>, POST /miles_template/save_zones,
         POST /miles_template/render
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import os
 import re
@@ -57,7 +58,7 @@ def register(app, *, _cfg, _state, _load_miles_templates, _save_miles_templates,
         )
         try:
             import anthropic as _ant
-            client = _ant.Anthropic(api_key=key)
+            client = _ai_client(key)
             msg = client.messages.create(
                 model="claude-sonnet-4-6", max_tokens=300,
                 messages=[{"role": "user", "content": prompt}])

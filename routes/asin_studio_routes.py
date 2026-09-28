@@ -39,6 +39,7 @@ THE SOURCE BRAND MUST NOT LEAK, which is the real IP hazard here and the reason
 the scrubber is not optional. The copy is generated from a competitor's title
 and bullets; without scrubbing, their brand words walk straight into ours.
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import datetime as _dt
 import json
 import re
@@ -264,7 +265,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
         copy, text = None, ""
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             kw = dict(model="claude-opus-5", max_tokens=4000,
                       thinking={"type": "adaptive"},
                       system=system,

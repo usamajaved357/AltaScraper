@@ -29,6 +29,7 @@ CLAUDE.md rule 8: it must never propose a bid or budget change. It may report
 what a campaign did. Choosing a new number is the owner's, and the system
 prompt below says so.
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import time
 
@@ -211,7 +212,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account=None, _state=None):
         if not messages or messages[0]["role"] != "user":
             return jsonify({"ok": False, "error": "Ask a question first."}), 400
 
-        client = anthropic.Anthropic(api_key=key)
+        client = _ai_client(key)
         tools = _at.definitions()
         trace, rounds, spent = [], 0, False
         t0 = time.time()
