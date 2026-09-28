@@ -101,12 +101,14 @@ has these until the owner merges):
   filed under the requesting tab's account and use its instructions and brand;
   auto-fix refuses up front on a mismatch. Also: 25 form fields got accessible
   labels (no visual change).
-  LEFT OPEN (low, from the reviews): the saved brand REFERENCE photo for an AI
-  main image is still chosen by the open account's view (genimage_routes
-  ~335); the image worker records the Drive map under the open account, so
-  deleting that image later can leave its Drive copy behind; the input-upload
-  log and /edit's "add a live SKU as a row" step take the open account's
-  marketplace; Miles runs (EventSource, not fetch) stay on the open account,
+  LEFT OPEN (low, from the reviews): the image worker records the Drive map
+  under the open account, so deleting that image later can leave its Drive
+  copy behind; /edit's "add a live SKU as a row" step takes the open account's
+  marketplace when the account came via ?account= (only hand-built requests
+  do that); a single write after a confirmation dialog reads the account when
+  it is sent (a switch can only happen meanwhile via back/forward) -- the
+  brand reference photo and the input-upload log's marketplace were fixed in
+  batch 7; Miles runs (EventSource, not fetch) stay on the open account,
   as before; /submit/precheck always returns nothing (it calls _records()
   without a sheet -- pre-existing, not account-related).
 - **Non-design batch 5 (28 Sep 2026): multi-step work stays in one account.**

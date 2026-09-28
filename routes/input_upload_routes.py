@@ -136,7 +136,9 @@ def register(app, *, CONFIG_PATH, _state):
     def _keep(filename, data, **kw):
         """Record this upload in the Upload history (domain/upload_log.py)."""
         from domain import upload_log as _ul
-        _ul.record(CONFIG_PATH, _wsid(), _state.get("active_marketplace") or "",
+        # The tab's marketplace (reqscope.js names it on /input/), else the open one.
+        _ul.record(CONFIG_PATH, _wsid(),
+                   (request.args.get("marketplace") or _state.get("active_marketplace") or ""),
                    "product_template", filename, data, **kw)
 
     # ---- the upload ---------------------------------------------------------

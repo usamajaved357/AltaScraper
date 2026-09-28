@@ -215,5 +215,13 @@ with app.test_request_context("/genimage/recipe?account=batch_account"):
           AIU.whose(), "batch_account")
 check("outside a request, the context as before", AIU.whose(), "last_browsed")
 
+GEN2 = src("routes/genimage_routes.py")
+ref = GEN2[GEN2.index('if ref_img == "__BRAND_REF__":'):][:900]
+check("the brand reference photo is never the open account's for another tab",
+      "_rqa.named_now()" in ref, True)
+IU = src("routes/input_upload_routes.py")
+check("the input-upload log records the tab's marketplace",
+      'request.args.get("marketplace")' in IU.split("def _keep(")[1][:600], True)
+
 print("\nFAILURES: %d" % len(fails))
 sys.exit(1 if fails else 0)

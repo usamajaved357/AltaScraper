@@ -332,7 +332,11 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
             ref_img = ""
             try:
                 import glob as _g, os as _o
-                _vk = _state.get("active_view") or ""
+                # The selected brand view belongs to the OPEN account; a tab
+                # showing another account must not get its reference photo.
+                _nm = _rqa.named_now()
+                _vk = ("" if (_nm and _nm != (_state.get("active_account_id") or ""))
+                       else (_state.get("active_view") or ""))
                 for _pf in _g.glob(_o.path.join(_o.path.dirname(CONFIG_PATH), "brands", "*", "profile.json")):
                     _p = json.load(open(_pf, encoding="utf-8"))
                     if (_p.get("brand_name") or "") == _vk:
