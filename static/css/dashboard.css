@@ -215,16 +215,19 @@
   input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
   button{font:inherit;border:1px solid var(--line);background:var(--panel2);
          color:var(--ink);padding:7px 13px;border-radius:var(--radius-sm);cursor:pointer;
-         transition:border-color .12s,background-color .12s,color .12s}
+         transition:border-color var(--as-dur-fast) var(--as-ease),
+                    background-color var(--as-dur-fast) var(--as-ease),color var(--as-dur-fast) var(--as-ease)}
   button:hover{border-color:var(--accent)}
   /* Dark ink on teal, not white. White on #2dd4a8 is ~1.8:1 and fails any
      legibility bar; the dark ink is ~9:1. This is the brief's own rule. */
-  button.primary{background:var(--accent);border-color:var(--accent);color:#0a1628;font-weight:600}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--as-action-fg);font-weight:600}
   button.primary:hover{background:var(--accent2);border-color:var(--accent2)}
+  button.primary:active{background:var(--as-action-pressed);border-color:var(--as-action-pressed)}
   button.ghost{background:transparent;color:var(--ink2)}
   button.ghost:hover{color:var(--ink);border-color:var(--accent)}
-  button.danger{background:#7a1f1f;border-color:#7a1f1f;color:#fff;font-weight:600}
-  button.danger:hover{background:#8f2626;border-color:#8f2626}
+  /* The design system's destructive fill (confirmations only). */
+  button.danger{background:var(--as-danger-solid);border-color:var(--as-danger-solid);color:#fff;font-weight:600}
+  button.danger:hover{filter:brightness(1.08);border-color:var(--as-danger-solid)}
   button:disabled{opacity:.45;cursor:not-allowed}
   button:disabled:hover{border-color:var(--line)}
 
@@ -353,8 +356,8 @@
   .db-pill.blocked{background:var(--redbg);color:var(--red)}
   .db-pill.review{background:var(--amberbg);color:var(--warn)}
   .db-kv{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);line-height:1.9}
-  .db-chip{font-size:12px;padding:7px 11px;border-radius:20px;border:1px solid var(--line);
-           background:var(--panel2);color:var(--ink);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .db-chip{font-size:12px;padding:7px 11px;border-radius:var(--as-radius-pill);border:1px solid var(--as-border);
+           background:var(--as-surface-3);color:var(--ink);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
   .db-chip:hover{border-color:var(--accent)}
   .db-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:0 0 auto}
   .db-note{font-size:11px;color:var(--muted);margin-top:8px;font-style:italic}
@@ -3127,9 +3130,9 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
        preset active     gold, with rgb(26,29,41) text
    ===================================================================== */
 .salespanel{
-  background:rgb(37,41,55);
-  border:1px solid rgb(55,65,81);
-  border-radius:12px;
+  background:var(--as-surface-1);
+  border:1px solid var(--as-border);
+  border-radius:var(--as-radius-lg);
   padding:12px;
 }
 .salespanel + .salespanel{ margin-top:12px; }
@@ -3142,16 +3145,13 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   margin-bottom:10px;
 }
 .paneltitle{
-  font-size:18px;
-  font-weight:600;
-  line-height:27px;
-  color:rgb(243,244,246);
+  font:var(--as-text-panel-title);
+  color:var(--as-text-primary);
   margin:0;
 }
 .panelsub{
-  font-size:12px;
-  line-height:18px;
-  color:rgb(156,163,175);
+  font:var(--as-text-small);
+  color:var(--as-text-muted);
   margin:0;
 }
 .panelhead .spacer{ flex:1; }
@@ -3167,27 +3167,30 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   display:inline-flex;
   align-items:center;
   gap:2px;
-  background:rgb(45,50,66);
-  /* Measured: the tray has a BORDER too, rgb(75,85,99) -- without it the group
-     floats on the panel instead of reading as one control. */
-  border:1px solid rgb(75,85,99);
-  border-radius:8px;
+  background:var(--as-surface-2);
+  /* The tray has a BORDER too -- without it the group floats on the panel
+     instead of reading as one control. Tokens since 28 Sep 2026. */
+  border:1px solid var(--as-border);
+  border-radius:var(--as-radius-md);
   padding:2px;
 }
 .seg > button{
   height:28px;
-  border-radius:6px;
+  border-radius:var(--as-radius-sm);
   padding:4px 12px;
   font-size:10px;
   font-weight:500;
   line-height:normal;
   border:1px solid transparent;
   background:transparent;
-  color:rgb(243,244,246);
+  color:var(--as-text-primary);
   cursor:pointer;
-  transition:background .15s ease, color .15s ease;
+  transition:background var(--as-dur-fast) var(--as-ease), color var(--as-dur-fast) var(--as-ease);
 }
-.seg > button:hover{ background:rgba(255,255,255,.05); }
+.seg > button:hover{ background:var(--as-surface-3); }
+/* THE GOLD "ON" IS OWNER-LOCKED (the Sales/Traffic presets, liked as they are).
+   The design package's selected segment is teal; where the two conflict the
+   owner's existing look wins (design migration map, 28 Sep 2026). */
 .seg > button.on{
   background:#fbbf24;
   color:rgb(26,29,41);
@@ -3481,10 +3484,8 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   padding:0 0 12px;
 }
 .sales-toprow .panelhead{ margin:0 0 8px; padding:0 0 4px; }
-.paneltitle{ font-size:18px; font-weight:600; line-height:27px;
-             color:rgb(243,244,246); margin:0; }
-.panelsub{ font-size:12px; font-weight:400; line-height:18px;
-           color:rgb(156,163,175); margin:2px 0 0; }
+.paneltitle{ font:var(--as-text-panel-title); color:var(--as-text-primary); margin:0; }
+.panelsub{ font:var(--as-text-small); color:var(--as-text-muted); margin:2px 0 0; }
 
 /* "3 days not in from Amazon yet — shaded, not zero". It explains the grey
    block on the right of the week chart, so it cannot simply be dropped for
@@ -4218,9 +4219,9 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    be renamed across five working screens to stop the sixth looking odd. */
 .panelcard,
 .salespanel{
-  background:rgb(37,41,55);
-  border:1px solid rgb(55,65,81);
-  border-radius:12px;
+  background:var(--as-surface-1);
+  border:1px solid var(--as-border);
+  border-radius:var(--as-radius-lg);
   padding:12px;
 }
 /* A card that is a section in its own right rather than a tile in a row. */

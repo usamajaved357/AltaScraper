@@ -194,19 +194,21 @@
   .ui-stats:not(:has(> :nth-child(2))),
   .dt-met:not(:has(> :nth-child(2))){grid-template-columns:1fr}
 }
-.rp-mc, .ui-stat, .dt-mc{background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--radius-sm);padding:10px 12px;position:relative;
+.rp-mc, .ui-stat, .dt-mc{background:var(--panel);border:1px solid var(--as-border);
+  border-radius:var(--as-radius-lg);padding:10px 12px;position:relative;
   overflow:hidden;display:block;width:100%;text-align:left;
   font-family:inherit;color:inherit;min-width:0;
-  transition:border-color .1s,background .1s}
+  transition:border-color var(--as-dur-fast) var(--as-ease),background var(--as-dur-fast) var(--as-ease)}
 /* A card that filters is a control, and has to look like one. */
 .rp-mc, .ui-stat[onclick], .dt-mc[onclick]{cursor:pointer}
 .rp-mc:hover, .ui-stat[onclick]:hover, .dt-mc[onclick]:hover{
   border-color:var(--line2);background:var(--panel2)}
+/* Selected = a border as well as the fill, so it never relies on colour alone
+   (design system: 1.5px action border + action-subtle fill). */
 .rp-mc.rp-on, .ui-stat.on, .dt-mc.dt-on{border-color:var(--accent);
-  background:var(--accent-bg);box-shadow:0 0 0 1px var(--accent) inset}
+  background:var(--accent-bg);box-shadow:0 0 0 .5px var(--accent) inset}
 .rp-mc:focus-visible, .ui-stat:focus-visible, .dt-mc:focus-visible{
-  outline:2px solid var(--accent);outline-offset:2px}
+  outline:var(--as-focus-w) solid var(--as-focus-ring);outline-offset:2px}
 
 /* THE NUMBER FIRST, THE LABEL UNDER IT. .ui-stat had them the other way round
  * -- label above value -- so a row of cards read as a row of words with
