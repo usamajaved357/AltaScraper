@@ -131,6 +131,13 @@ inventory sync), and `build_api_attributes` (separate plan:
    no `--account-id`, whose credential fallback is the global block. Found during
    A9; not fixed there (a behaviour change on a write-adjacent path; owner to
    confirm the refusal should match `/run`).
+8. An image batch started with NO account open is stamped `_acct_id=""`, and
+   the worker then falls back AT FINISH TIME to whatever account is open
+   (`domain/image_jobs.py` ~399, and the Drive copy ~433) -- so an image can be
+   filed under an account opened after it started. Found in A10; not changed
+   (owner to confirm: refuse at enqueue, or file under the shared root).
+9. The ASIN monitor defaults to `jack_uk` when no account is configured
+   (`monitor/checker.py` `_MONITOR_ACCOUNT_DEFAULT`). Recorded (P10).
 
 ## 5. Batch notes
 
@@ -152,3 +159,6 @@ inventory sync), and `build_api_attributes` (separate plan:
 - **A9** (generator args). One builder for the account and Preview/Submit
   arguments; equivalence proven against the pre-A9 code over every mode and
   account shape.
+- **A10** (jobs). Every job already stamps its account at start (image batch,
+  auto-fix, preview queue, /run); `test_jobs_name_their_account.py` pins it.
+  No code change; the two remaining fallbacks are bugs 8-9.
