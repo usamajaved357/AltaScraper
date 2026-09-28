@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -45,6 +45,9 @@
      guards with `typeof XLSX==="undefined"`). It was blocking the parser in
      <head> for a file nobody had chosen yet. -->
 <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- Design tokens FIRST (Direction A): dashboard.css's variables point at them. -->
+<link rel="stylesheet" href="/static/css/foundations.css?v={{ ASSET_V }}">
+<script src="/static/js/theme.js?v={{ ASSET_V }}"></script>
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ ASSET_V }}">
 <!-- The app's own alert / confirm / prompt, and the inline editor that
      replaces a prompt anchored to a button. Used by every screen, so it is not
@@ -146,6 +149,9 @@
   html.alta-routing #alta-booting{ display:flex !important; }
 </style>
 <body>
+<!-- First focusable element (design system, accessibility): jumps past the
+     top bar and the menu to the screen itself. -->
+<a class="skiplink" href="#wsmain">Skip to content</a>
 <!-- Shown only during that hand-off, so the screen is never blank OR wrong. -->
 <div id="alta-booting" style="display:none;position:fixed;inset:0;z-index:5;
      align-items:center;justify-content:center;background:var(--bg,#0d1117);
@@ -503,7 +509,7 @@
     </div>
   </div>
 
-  <div class="wsmain">
+  <div class="wsmain" id="wsmain" tabindex="-1">
     <!-- WHICH STORE THIS APP IS ACTUALLY ON. Shown only when it has fallen back
          to Google Sheets, with the reason — usually that the database file is
          not where the app looked, because a deploy replaced the disk it was on.

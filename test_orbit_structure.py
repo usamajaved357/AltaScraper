@@ -93,6 +93,16 @@ def app_rule(sel_re):
 ROOT = {}
 for _m in re.finditer(r"--([a-z0-9-]+)\s*:\s*([^;}]+)", CSS.get("dashboard.css", "")):
     ROOT.setdefault("var(--%s)" % _m.group(1), _m.group(2).strip())
+# ...and through the design tokens they now point at (static/css/foundations.css,
+# 28 Sep 2026): var(--radius-sm) -> var(--as-radius-sm) -> 6px.
+_TK = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "css",
+                        "foundations.css"), encoding="utf-8").read()
+for _m in re.finditer(r"--(as-[a-z0-9-]+)\s*:\s*([^;}]+)", _TK):
+    ROOT.setdefault("var(--%s)" % _m.group(1), _m.group(2).strip())
+for _ in range(4):
+    for _k, _v in list(ROOT.items()):
+        if _v in ROOT and _v != _k:
+            ROOT[_k] = ROOT[_v]
 
 
 def norm(v, subs):

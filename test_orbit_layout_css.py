@@ -82,8 +82,10 @@ yes("  and the reason the conflicting ones were kept is written down",
 
 print("\n== 4-8. the reusable pieces ==")
 yes("4. .stat-row / .stat-card", ".stat-row{display:grid" in LIVE and ".stat-card{" in LIVE)
+# The ring is now the design system's (foundations.css --as-focus-ring, teal):
+# a 2px solid outline, still on :focus-visible only (28 Sep 2026).
 yes("5. a teal focus ring, on :focus-visible only",
-    "*:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(45,212,168,.3)}" in LIVE)
+    "*:focus-visible{outline:var(--as-focus-w) solid var(--as-focus-ring)" in LIVE)
 yes("   not on :focus, so a mouse click leaves no glow",
     "*:focus{outline:none;box-shadow" not in LIVE)
 yes("6. .skeleton shimmer", ".skeleton{background:linear-gradient(90deg" in LIVE
@@ -99,7 +101,10 @@ yes("8. .chart-subtitle",
     ".chart-subtitle{font-size:12px;color:var(--ink3);margin-top:4px;margin-bottom:16px}" in LIVE)
 
 print("\n== what the brief said NOT to do ==")
-yes("the accent is unchanged", "--accent:#2dd4a8;" in LIVE)
+# The accent is the token now; the token's value is still the same teal.
+_TKS = open(os.path.join(HERE, "static", "css", "foundations.css"), encoding="utf-8").read()
+yes("the accent is unchanged",
+    "--accent:var(--as-action);" in LIVE and "--as-action: #2dd4a8;" in _TKS)
 # "Do NOT change the sidebar width (keep 210px)." The Orbit block adds nothing
 # that sizes it -- what matters is that no rule inside those eight items does.
 _orbit = LIVE[LIVE.index("main#grid{padding:18px"):LIVE.index(".chart-subtitle{")]

@@ -141,7 +141,8 @@ check("skeleton respects reduced motion",
 
 console.log("\n=== 5. focus ring ===");
 check("it is focus-VISIBLE, not focus",
-      /\*:focus-visible\{outline:none;box-shadow:0 0 0 3px rgba\(45,212,168,\.3\)\}/.test(css), true);
+      // the design system's ring since 28 Sep 2026 (foundations.css --as-focus-ring)
+      /\*:focus-visible\{outline:var\(--as-focus-w\) solid var\(--as-focus-ring\)/.test(css), true);
 check("  so a mouse click leaves no glow", /\*:focus\{/.test(css), false);
 check("the accent stays teal, not the audit's gold",
       /rgba\(45,212,168/.test(css), true);

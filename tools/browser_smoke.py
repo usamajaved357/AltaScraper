@@ -217,6 +217,9 @@ def _visit(page, sec, log, shots, tag):
 def main(argv):
     shots = argv[argv.index("--shots") + 1] if "--shots" in argv else ""
     only = argv[argv.index("--only") + 1].split(",") if "--only" in argv else None
+    # Viewport, for the design system's test widths (390/768/1024/1366/1920).
+    vw = int(argv[argv.index("--width") + 1]) if "--width" in argv else 1440
+    vh = int(argv[argv.index("--height") + 1]) if "--height" in argv else 900
     screens = [s for s in SCREENS if not only or s in only]
     if shots:
         os.makedirs(shots, exist_ok=True)
@@ -236,7 +239,7 @@ def main(argv):
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser = p.chromium.launch()
-            ctx = browser.new_context(viewport={"width": 1440, "height": 900})
+            ctx = browser.new_context(viewport={"width": vw, "height": vh})
             ctx.route("**/*", lambda r: r.continue_() if r.request.url.startswith(base)
                       else r.abort())
             page = ctx.new_page()
@@ -364,6 +367,8 @@ def main(argv):
                     except Exception:
                         log["slow"].append(cur["where"])
                     page.wait_for_timeout(800)
+                    if shots and mode == "settled":
+                        page.screenshot(path=os.path.join(shots, "B_pdp.png"), full_page=False)
                     if _marks_on(page, "B"):
                         log["marker_seen_in_own_account"].append(cur["where"])
                     for m in _marks_on(page, "A"):

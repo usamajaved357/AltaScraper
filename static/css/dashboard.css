@@ -43,21 +43,28 @@
        onto 600 and 700 -- both are half-steps between the four, and Inter
        renders them as the nearest one regardless. */
 
+    /* ---- THESE NAMES NOW POINT AT THE DESIGN TOKENS (28 Sep 2026) --------
+       static/css/foundations.css (Direction A) is the one source of colour. The
+       legacy names stay -- ~1,300 rules use them -- but each is an alias for
+       the token with the same MEANING, so the whole app moves together and a
+       light theme is a change of token values, not of every rule. The old
+       literal values are in git history (and docs/design-system.md). */
+
     /* Backgrounds */
-    --bg:#1a1d23;            /* main app background -- charcoal, not black */
-    --sidebar:#13151a;       /* sidebar, slightly darker than bg */
-    --panel:#1e2128;         /* cards, panels, modals */
-    --panel2:#252930;        /* elevated panels, hover states */
-    --panel3:#2c3038;        /* active/selected panel backgrounds */
+    --bg:var(--as-bg-canvas);           /* main app background */
+    --sidebar:var(--as-bg-rail);        /* sidebar / rail */
+    --panel:var(--as-surface-1);        /* cards, panels, modals */
+    --panel2:var(--as-surface-raised);  /* elevated panels, hover states */
+    --panel3:var(--as-surface-3);       /* active/selected panel backgrounds */
 
     /* Borders */
-    --line:#2a2e36;
-    --line2:#363b45;
+    --line:var(--as-border-subtle);
+    --line2:var(--as-border);
 
     /* Form fields. Lighter than --panel on purpose: in the detail view a field
        sits ON a panel, so it needs to separate from it. Elsewhere fields sit on
        --bg and use that instead. */
-    --input:#2a2f38;
+    --input:var(--as-surface-2);        /* inset field fill, per the package */
 
     /* Text */
     /* THE MUTED TIERS WERE BELOW WHAT A PERSON CAN READ.
@@ -89,11 +96,12 @@
        measured off Orbit and written out by hand in fourteen places, which is
        lighter than --panel3 and is where the first pass still fell short at
        4.35. A surface that is not a token is still a surface. */
-    --ink:#e8eaed;  --ink2:#9aa3b2;  --ink3:#949aa5;  --ink4:#8f9baa;
+    --ink:var(--as-text-primary);  --ink2:var(--as-text-secondary);
+    --ink3:var(--as-text-muted);   --ink4:var(--as-text-muted);   /* 3 tiers, as above */
 
     /* Accent -- teal */
-    --accent:#2dd4a8;  --accent2:#5ee8c2;
-    --accent-bg:#0d2e25;  --accent-line:#1a4a3d;
+    --accent:var(--as-action);  --accent2:var(--as-action-hover);
+    --accent-bg:var(--as-action-subtle);  --accent-line:var(--as-action-subtle-border);
 
     /* Financial -- gold. Price, profit, margin, ROI, ACOS. */
     --gold:#f0b429;  --gold-bg:#2a2310;  --gold-line:#4a3d1a;
@@ -110,16 +118,16 @@
     --ai-tint:rgba(120,90,200,.10);
 
     /* Status */
-    --ok:#4ade80;    --ok-bg:#0f1f14;    --ok-line:#1a4a28;
-    --warn:#f59e0b;  --warn-bg:#241a05;  --warn-line:#4a3510;
+    --ok:var(--as-success);    --ok-bg:var(--as-success-bg);    --ok-line:var(--as-success-border);
+    --warn:var(--as-warning);  --warn-bg:var(--as-warning-bg);  --warn-line:var(--as-warning-border);
     /* RED WAS THE ONE STATUS COLOUR BELOW AA. #ef4444 measured 3.52:1 at its
        worst surface, and it carries the figures that matter most -- "down 30%",
        "disabled", "2 HIGH RISK". Lightened until it clears 4.5 everywhere;
        --warn 6.16, --ok 7.59, --accent 6.99 and --gold 7.10 all already did. */
-    --red:#f27272;   --red-bg:#2a0f0f;   --red-line:#4a1a1a;
+    --red:var(--as-danger);    --red-bg:var(--as-danger-bg);    --red-line:var(--as-danger-border);
 
     /* Radius */
-    --radius-sm:6px;  --radius:10px;  --radius-lg:14px;
+    --radius-sm:var(--as-radius-sm);  --radius:var(--as-radius-lg);  --radius-lg:var(--as-radius-xl);
 
     /* LITERAL WHITE, NAMED. Charts, a QR code, an image canvas and a print
        view all need real white rather than --ink, which is #e8eaed. It was
@@ -140,10 +148,10 @@
        cut is coral, what you paid is blue, what you keep is green -- and that
        green is deliberately a shade quieter than --ok, because a bar segment is
        a quantity, not a verdict. */
-    --bar-cost:#5b8fb9;      /* what the stock cost you */
-    --bar-fee:#d4735a;       /* what Amazon took (referral) */
-    --bar-fee2:#c9694f;      /* a second fee beside it (closing) */
-    --bar-profit:#4ebb82;    /* what is left */
+    --bar-cost:var(--as-viz-supplier);   /* what the stock cost you */
+    --bar-fee:var(--as-viz-referral);    /* what Amazon took (referral) */
+    --bar-fee2:#c9694f;                  /* a second fee beside it (closing) -- no token */
+    --bar-profit:var(--as-viz-profit);   /* what is left */
 
     /* ---- compatibility aliases (see the note above) ---- */
     --muted:var(--ink2);
@@ -168,8 +176,12 @@
   /* Inter first, then the system stack. No webfont is loaded on purpose -- the
      brief says not to add a Google Fonts import, so Inter is used only where the
      machine already has it and Segoe UI carries everyone else. */
+  /* Body text is the design system's 13px on the system UI stack (foundations.css
+     --as-text-body); Inter stays first where the machine has it. Most rules
+     set their own size, so this moves only text that never chose one. */
   body{margin:0;background:var(--bg);color:var(--ink);
-       font:14px/1.5 Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+       font:400 13px/1.5 Inter,var(--as-font-sans);
+       font-variant-numeric:tabular-nums}
 
   /* ---- scrollbars ----------------------------------------------------
      The app had NO scrollbar styling, so every scrollable panel drew the
@@ -2259,7 +2271,15 @@
      :focus-visible, not :focus -- a mouse click must not leave a glow behind.
      Keyboard users get a consistent ring on every control; mouse users see no
      change at all. Teal, not the audit's gold: our palette is unchanged. */
-  *:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(45,212,168,.3)}
+  /* The design system's ring (foundations.css): 2px solid, 2px offset, on every
+     interactive element; it follows the element's radius. */
+  *:focus-visible{outline:var(--as-focus-w) solid var(--as-focus-ring);outline-offset:2px;box-shadow:none}
+  /* Skip link: off-screen until focused, then the first thing on the page. */
+  .skiplink{position:absolute;left:8px;top:-60px;z-index:var(--as-z-tooltip);
+    background:var(--as-action);color:var(--as-action-fg);font-weight:600;
+    padding:8px 12px;border-radius:var(--as-radius-sm);text-decoration:none}
+  .skiplink:focus{top:8px}
+  #wsmain:focus{outline:none}
 
   /* -- 6. SKELETON LOADING (new, unused; existing spinners stay) --------- */
   .skeleton{background:linear-gradient(90deg,var(--panel) 25%,var(--panel2) 50%,var(--panel) 75%);

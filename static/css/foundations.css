@@ -1,0 +1,231 @@
+/* static/css/foundations.css -- THE design tokens (Direction A, Operations Cockpit).
+   Copied verbatim from the approved design package (its tokens file, design_handoff_altascraper_design_system/tokens.css -- renamed here because
+   CLAUDE.md Rule 2 keeps 'token' out of committed file names;
+   28 Sep 2026); docs/design-system.md is the rulebook. Loaded FIRST, before dashboard.css,
+   whose legacy variables (--bg, --panel, --ink, --accent ...) now point at these, so every
+   screen draws from one source. Edit values HERE, never as raw hex in a feature. */
+
+/* AltaScraper design tokens — Direction A (Operations Cockpit)
+   Source of truth for colour, type, spacing, radius, shadow, motion and layering.
+   Apply the theme with <html data-theme="dark|light">. Default: dark.
+   Components must reference semantic tokens (--as-*) only, never raw hex. */
+
+:root {
+  /* ---------- Typography ---------- */
+  --as-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --as-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --as-text-overline: 600 11px/1.3 var(--as-font-sans);   /* uppercase, letter-spacing .06em */
+  --as-text-caption:  400 11.5px/1.4 var(--as-font-sans);
+  --as-text-small:    400 12px/1.45 var(--as-font-sans);
+  --as-text-body:     400 13px/1.5 var(--as-font-sans);    /* default UI text */
+  --as-text-body-strong: 600 13px/1.5 var(--as-font-sans);
+  --as-text-body-lg:  400 14px/1.5 var(--as-font-sans);
+  --as-text-card-title: 700 15px/1.35 var(--as-font-sans);
+  --as-text-panel-title: 700 17px/1.3 var(--as-font-sans);
+  --as-text-section:  700 20px/1.25 var(--as-font-sans);
+  --as-text-page:     700 22px/1.2 var(--as-font-sans);
+  --as-text-display:  700 28px/1.15 var(--as-font-sans);
+  --as-text-kpi:      700 22px/1.1 var(--as-font-sans);    /* stat tile value; tabular-nums */
+  --as-text-kpi-lg:   700 26px/1.1 var(--as-font-sans);
+  --as-text-id:       400 11px/1.4 var(--as-font-mono);    /* SKU, ASIN, order ID, EAN */
+  --as-tracking-overline: .06em;
+
+  /* ---------- Spacing (4px base) ---------- */
+  --as-space-0: 0;
+  --as-space-0-5: 2px;
+  --as-space-1: 4px;
+  --as-space-1-5: 6px;
+  --as-space-2: 8px;
+  --as-space-3: 12px;
+  --as-space-4: 16px;
+  --as-space-5: 20px;
+  --as-space-6: 24px;
+  --as-space-8: 32px;
+  --as-space-10: 40px;
+  --as-space-12: 48px;
+
+  /* ---------- Sizing ---------- */
+  --as-control-sm: 28px;
+  --as-control-md: 32px;      /* default button / input / select height */
+  --as-control-lg: 40px;
+  --as-touch-min: 44px;       /* minimum hit target on touch (<1024px) */
+  --as-icon-sm: 14px;
+  --as-icon-md: 16px;
+  --as-icon-lg: 20px;
+  --as-thumb-sm: 40px;        /* compact table */
+  --as-thumb-md: 64px;        /* detailed rows */
+  --as-row-compact: 56px;
+  --as-rail-w: 68px;
+  --as-topbar-h: 52px;
+  --as-mobile-nav-h: 60px;
+  --as-content-max: 1440px;
+  --as-reading-max: 1040px;
+  --as-modal-md: 720px;       /* PDP overlay */
+  --as-modal-sm: 480px;       /* confirmations */
+  --as-drawer-w: 420px;
+
+  /* ---------- Borders & radii ---------- */
+  --as-border-w: 1px;
+  --as-border-w-strong: 1.5px; /* checkbox, focus-adjacent */
+  --as-focus-w: 2px;
+  --as-radius-xs: 4px;   /* checkbox, tiny tags */
+  --as-radius-sm: 6px;   /* buttons, inputs, row action buttons */
+  --as-radius-md: 8px;   /* segmented controls, inset panels, alerts */
+  --as-radius-lg: 10px;  /* cards, stat tiles, tables */
+  --as-radius-xl: 12px;  /* modals, drawers, large panels */
+  --as-radius-pill: 999px;
+
+  /* ---------- Motion ---------- */
+  --as-ease: cubic-bezier(.2, .8, .2, 1);
+  --as-dur-fast: 120ms;   /* hover, press, colour */
+  --as-dur-base: 180ms;   /* dropdown, tooltip, tab indicator */
+  --as-dur-slow: 240ms;   /* modal, drawer, toast */
+
+  /* ---------- Layering ---------- */
+  --as-z-base: 0;
+  --as-z-sticky: 10;      /* sticky table headers, sticky toolbars */
+  --as-z-shell: 20;       /* top bar, rail */
+  --as-z-dropdown: 30;    /* menus, selects, popovers */
+  --as-z-assistant: 40;   /* floating "Ask about this account" */
+  --as-z-mobile-nav: 45;
+  --as-z-drawer: 50;
+  --as-z-modal: 60;       /* PDP overlay, confirmations */
+  --as-z-toast: 70;
+  --as-z-tooltip: 80;
+}
+
+/* ================= DARK (default) ================= */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  /* surfaces */
+  --as-bg-canvas: #1b1e2a;        /* page background inside the shell */
+  --as-bg-shell: #13151c;         /* top bar */
+  --as-bg-rail: #151821;          /* icon rail */
+  --as-surface-1: #232838;        /* cards, tables, tiles */
+  --as-surface-2: #1d2130;        /* table header, inset rows, segmented track */
+  --as-surface-3: #2d3243;        /* summary strip inside a card, hover row */
+  --as-surface-raised: #2a2f3f;   /* dropdowns, tooltips */
+  --as-scrim: rgba(8, 10, 15, .72);
+  /* borders */
+  --as-border-subtle: #262c3a;
+  --as-border: #323a4d;
+  --as-border-strong: #4a5268;
+  /* text */
+  --as-text-primary: #e7e9ef;
+  --as-text-secondary: #b8bfcf;
+  /* DEVIATION FROM THE PACKAGE (#8e97ab), for its own AA rule: that value is
+     4.35:1 on --as-surface-3, where this app puts muted text (summary strips,
+     selected rows). #919aad is the smallest lightening, same hue, that clears
+     4.5:1 on every dark surface (test_contrast.py). */
+  --as-text-muted: #919aad;
+  --as-text-disabled: #6b7489;
+  --as-text-link: #2dd4a8;
+  /* action */
+  --as-action: #2dd4a8;
+  --as-action-hover: #4fe0b9;
+  --as-action-pressed: #22b892;
+  --as-action-fg: #0f1a17;
+  --as-action-subtle: #15302a;
+  --as-action-subtle-border: #24493f;
+  --as-focus-ring: #6ee7c8;
+  /* status */
+  --as-success: #3ecf8e;  --as-success-bg: #1a2e28;  --as-success-border: #24493f;
+  --as-warning: #f5a524;  --as-warning-bg: #3a2c12;  --as-warning-border: #6b5418;
+  /* DEVIATION: #f07070 -> #f07575, same reason (4.40:1 on surface-3). */
+  --as-danger:  #f07575;  --as-danger-bg:  #3a1a1e;  --as-danger-border:  #7a2e36;
+  --as-danger-solid: #f05252;
+  --as-info:    #5aa9ff;  --as-info-bg:    #12304a;  --as-info-border:    #1f4a70;
+  --as-neutral: #b8bfcf;  --as-neutral-bg: #2a3142;  --as-neutral-border: #3a4358;
+  --as-aftercare: #c19bf2; --as-aftercare-bg: #2d1f3d;
+  /* elevation */
+  --as-shadow-card: none;
+  --as-shadow-dropdown: 0 8px 24px rgba(0, 0, 0, .45);
+  --as-shadow-modal: 0 30px 80px rgba(0, 0, 0, .6);
+  --as-shadow-drawer: -20px 0 60px rgba(0, 0, 0, .45);
+}
+
+/* ================= LIGHT ================= */
+[data-theme="light"] {
+  color-scheme: light;
+  --as-bg-canvas: #eceff3;
+  --as-bg-shell: #ffffff;
+  --as-bg-rail: #fbfcfd;
+  --as-surface-1: #ffffff;
+  --as-surface-2: #eef1f5;
+  --as-surface-3: #f3f5f8;
+  --as-surface-raised: #ffffff;
+  --as-scrim: rgba(16, 24, 40, .45);
+  --as-border-subtle: #d3d9e2;
+  --as-border: #bfc7d4;
+  --as-border-strong: #98a2b3;
+  --as-text-primary: #1b2130;
+  --as-text-secondary: #363f51;
+  --as-text-muted: #4f596c;
+  --as-text-disabled: #6a7488;
+  --as-text-link: #0a7d62;
+  --as-action: #0a7d62;
+  --as-action-hover: #086b54;
+  --as-action-pressed: #075a47;
+  --as-action-fg: #ffffff;
+  --as-action-subtle: #e3f6ef;
+  --as-action-subtle-border: #a8dfcc;
+  --as-focus-ring: #0a7d62;
+  --as-success: #0f7d51;  --as-success-bg: #e3f6ef;  --as-success-border: #a8dfcc;
+  --as-warning: #9a5a00;  --as-warning-bg: #fdf0d9;  --as-warning-border: #ecc970;
+  --as-danger:  #c42b2b;  --as-danger-bg:  #fde8e8;  --as-danger-border:  #f3b4b4;
+  --as-danger-solid: #c42b2b;
+  --as-info:    #1f6fd1;  --as-info-bg:    #e3f0fd;  --as-info-border:    #a9ccf3;
+  --as-neutral: #363f51;  --as-neutral-bg: #e3e7ee;  --as-neutral-border: #bfc7d4;
+  --as-aftercare: #7b4bc4; --as-aftercare-bg: #f1e9fb;
+  --as-shadow-card: 0 1px 2px rgba(16, 24, 40, .06);
+  --as-shadow-dropdown: 0 8px 24px rgba(16, 24, 40, .12);
+  --as-shadow-modal: 0 24px 64px rgba(16, 24, 40, .24);
+  --as-shadow-drawer: -12px 0 40px rgba(16, 24, 40, .16);
+}
+
+/* ================= DATA VISUALISATION (LOCKED hues) =================
+   Same hue in both themes; light theme darkens lines slightly for contrast
+   on white. Never reuse a series colour for a status meaning in the same view. */
+:root, [data-theme="dark"] {
+  --as-viz-organic: #22c7a0;       /* Organic line/area (Sales) */
+  --as-viz-organic-bar: #10b981;   /* Organic segment of split bar */
+  --as-viz-ppc: #f5a524;           /* PPC line/area, Live Sales "Today" */
+  --as-viz-ppc-bar: #f59e0b;
+  --as-viz-current: #5aa9ff;       /* Week to Date "This week" */
+  --as-viz-compare: #8e97ab;       /* dashed comparison (yesterday / last week) */
+  --as-viz-pending: #262c3b;       /* shaded "not in from Amazon yet" band */
+  --as-viz-grid: #2e3546;          /* dashed gridlines */
+  --as-viz-axis: #8e97ab;
+  --as-viz-revenue-bar: #6b5a2e;   /* PPC Analytics revenue bars */
+  --as-viz-spend-line: #ef4444;    /* PPC Analytics ad spend line */
+  --as-viz-profit-line: #38bdf8;   /* PPC Analytics profitability line */
+  --as-viz-exact: #ef4444;
+  --as-viz-phrase: #60a5fa;
+  --as-viz-broad: #2dd4bf;
+  --as-viz-product: #22c55e;
+  --as-viz-auto: #f472b6;          /* EVOLVE: was red, duplicated Exact */
+  --as-viz-other: #9ca3af;
+  --as-viz-supplier: #5b8fc7;      /* Repricer cost split */
+  --as-viz-referral: #d9735a;
+  --as-viz-profit: #4cb87f;
+  --as-viz-stock: #5b8fc7;         /* P&L cost list */
+  --as-viz-ads: #f59e0b;
+  --as-viz-fees: #d9735a;
+  --as-viz-postage: #7c6fd0;
+  --as-viz-refunds: #a8567a;
+}
+[data-theme="light"] {
+  --as-viz-organic: #0fa883;
+  --as-viz-ppc: #d98a00;
+  --as-viz-current: #1f6fd1;
+  --as-viz-compare: #6a7488;
+  --as-viz-pending: #e8ebf0;
+  --as-viz-grid: #dfe3ea;
+  --as-viz-axis: #4f596c;
+  --as-viz-revenue-bar: #d8c48d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --as-dur-fast: 0ms; --as-dur-base: 0ms; --as-dur-slow: 0ms; }
+}
