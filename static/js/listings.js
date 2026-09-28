@@ -3019,56 +3019,25 @@ function rowActions(r, cls, opts){
   //  r.sku through jsArg, and an escaped copy passed to jsArg is escaped
   //  twice -- UI review, Milestone 6.)
   const live = opts.live === undefined ? isAmazonLive(r) : !!opts.live;
-  return `
-    ${live ? "" : `<button class="${cls}" title="Approve — mark this draft ready to send to Amazon"
-            onclick="event.stopPropagation();setStatus(${jsArg(r.sku)},'APPROVED',this)"><i class="ti ti-check"></i></button>`}
-    ${/* APPROVE IS FOR DRAFTS. It set the row's status to APPROVED, meaning
-        * "ready to send". On a listing Amazon has already published there is
-        * nothing to approve -- and on a catalogue-only card there is not even a
-        * row to set it on, so the button either did nothing or wrote a status
-        * onto a draft that does not exist. Live cards get Sync and Add variant
-        * in its place, below, which is what you actually do to a live listing.
-        */""}
-    <button class="${cls} gen" title="Image Studio (creative ideas, prompt &amp; image AI)"
-            onclick="event.stopPropagation();openStudioSingle(${jsArg(r.sku)})"><i class="ti ti-photo"></i></button>
-    <button class="${cls}" title="This listing's images — upload your own, pick one from the library, or set the main image"
-            onclick="event.stopPropagation();openImageLibrary(${jsArg(r.sku)}, ${live ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
-    ${/* OUR asin, not the competitor reference in the SKU (see rowAsin). The
-        * fetch keys off the SKU so this argument was not doing damage, but
-        * passing a competitor ASIN into a function about OUR live listing is
-        * how the next person to use that argument inherits the bug. */""}
-    ${live ? `<button class="${cls}" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)"
-            onclick="event.stopPropagation();optimizeLive(${jsArg(rowAsin(r).own||'')},${jsArg(r.sku)})"><i class="ti ti-sparkles"></i></button>` : ""}
-    ${/* THESE TWO EXISTED ONLY IN THE LIVE TABLE ROW. The live TILE and the
-        * live TABLE ROW are the same listing seen two ways, and they offered
-        * different things to do to it -- exactly the drift that put two card
-        * designs in one grid ("i see two types of cards style dont make them
-        * different"). Both come from here now, so the grid and the list cannot
-        * disagree again. Live-only because there is nothing to compare a draft
-        * against and no live listing to hang a variant off. */""}
-    ${live ? `<button class="${cls}" title="Compare this listing with Amazon's live copy, field by field"
-            onclick="event.stopPropagation();syncForSku(${jsArg(r.sku)})"><i class="ti ti-arrows-exchange"></i></button>` : ""}
-    ${live ? `<button class="${cls}" title="Add another colour or size of this product, from an eBay link"
-            onclick="event.stopPropagation();addVariant(${jsArg(r.sku)})"><i class="ti ti-binary-tree"></i></button>` : ""}
-    ${/* FOUR BUTTONS REMOVED FROM THE CARD (they all still exist, elsewhere):
-        *
-        *   Edit      -- "we can directly edit the listing by clicking on the
-        *                 product card". The card and the table row both call
-        *                 openDrawer already, and the table row also keeps its
-        *                 Review button.
-        *   Auto-fix  -- "the user can click on the box to select the item and
-        *                 then click on auto fix button from the top. we dont
-        *                 need the autofix button on the product card in both
-        *                 grid and listing view". autoFixLoop is unchanged.
-        *   Price     -- "remove that change the listings selling price button
-        *                 which is already there on the product card". The price
-        *                 is edited by clicking the price itself now (priceEdit
-        *                 is still the one function that does it -- rule 12).
-        *   Open on Amazon -- "we should be able to open the listing by clicking
-        *                 on the green asin". The ASIN is the link now.
-        */""}
-    <button class="${cls} more" title="More"
-            onclick="event.stopPropagation();tileMenu(event,${jsArg(r.sku)},${r.row||0})"><i class="ti ti-dots"></i></button>`;
+  // REVIEW + "···", AND NOTHING ELSE (design package, owner-approved: "the same
+  // actions: Review (primary, opens the product page) + ···. Before, there were
+  // 5 icon buttons"). Every action those icons carried -- Approve, Image Studio,
+  // Images, and on a live listing Optimize, Compare and Add variant -- is in the
+  // "···" menu now (tileMenu), so nothing is lost; it is one click further and
+  // it has a name instead of an icon to guess.
+  //
+  // Review is drawn here for a DRAFT CARD only. The table row writes its own
+  // Review beside this, and a catalogue-only live listing has no draft to
+  // review -- the owner's reason, kept on liveTableRow: "Review opens the draft
+  // this app holds, and this listing has no draft". Clicking such a row or card
+  // still opens it.
+  const review = (cls === "ib" && !opts.live)
+    ? `<button class="${cls} review" title="Open this listing's product page"
+            onclick="event.stopPropagation();openListing(${jsArg(r.sku)})">Review</button>`
+    : "";
+  return review + `
+    <button class="${cls} more" title="More actions" aria-label="More actions for ${esc(String(r.sku || ""))}"
+            onclick="event.stopPropagation();tileMenu(event,${jsArg(r.sku)},${r.row||0},${live ? "true" : "false"},${jsArg(rowAsin(r).own||"")})"><i class="ti ti-dots" aria-hidden="true"></i></button>`;
 }
 /* PULL LIVE IMAGES: REMOVED.
  *
@@ -4070,20 +4039,46 @@ function closeDrawer(){
   document.getElementById("drawer").classList.remove("open");
   document.getElementById("drawerscrim").classList.remove("open");
 }
-function tileMenu(ev, sku, row){
+function tileMenu(ev, sku, row, live, ownAsin){
   ev.stopPropagation();
-  // simple context menu
   closeTileMenu();
+  // THE ROW'S ACTIONS, NAMED. What used to be a row of icon buttons (see
+  // rowActions) is the top of this menu; the conditions are the ones those
+  // buttons had. APPROVE IS FOR DRAFTS -- on a live listing there is nothing to
+  // approve. OPTIMIZE / COMPARE / ADD VARIANT are for live listings -- nothing
+  // to compare a draft against, no live listing to hang a variant off. The
+  // live flag comes from the caller, which knows (a catalogue tile has no app
+  // row for isAmazonLive() to read).
+  if(live === undefined){
+    const _r = (typeof ROWS !== "undefined" && ROWS || []).filter(function(x){ return String(x.sku) === String(sku); })[0];
+    // Not in ROWS: a catalogue listing, which is live -- never offer Approve on it.
+    live = _r ? isAmazonLive(_r) : true;
+  }
+  const _acts = (live ? "" :
+      `<button onclick="closeTileMenu();toast('Approving…');setStatus(${jsArg(sku)},'APPROVED',this)" title="Mark this draft ready to send to Amazon"><i class="ti ti-check"></i> Approve</button>`)
+    + `<button onclick="closeTileMenu();openStudioSingle(${jsArg(sku)})" title="Creative ideas, prompt and image AI"><i class="ti ti-photo"></i> Image Studio</button>`
+    + `<button onclick="closeTileMenu();openImageLibrary(${jsArg(sku)}, ${live ? "true" : "false"})" title="Upload your own, pick one from the library, or set the main image"><i class="ti ti-library-photo"></i> Images</button>`
+    + (live
+        ? `<button onclick="closeTileMenu();optimizeLive(${jsArg(ownAsin||'')},${jsArg(sku)})" title="Pull the live copy from Amazon so you can rewrite and push it"><i class="ti ti-sparkles"></i> Optimize copy</button>`
+        + `<button onclick="closeTileMenu();syncForSku(${jsArg(sku)})" title="Compare with Amazon's live copy, field by field"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</button>`
+        + `<button onclick="closeTileMenu();addVariant(${jsArg(sku)})" title="Add another colour or size of this product, from an eBay link"><i class="ti ti-binary-tree"></i> Add variant</button>`
+        : "")
+    + `<div class="tmsep"></div>`;
   const m=document.createElement("div"); m.className="tilemenu"; m.id="tilemenu";
-  m.innerHTML=`
+  m.innerHTML=_acts + `
     <button onclick="setStatus(${jsArg(sku)},'NEEDS_REVIEW',this);closeTileMenu()"><i class="ti ti-player-pause"></i> Hold</button>
     <button onclick="askAbout(${jsArg(sku)});closeTileMenu()"><i class="ti ti-message-circle"></i> Ask Claude</button>
     <button onclick="openListing(${jsArg(sku)});closeTileMenu()"><i class="ti ti-edit"></i> Edit details</button>
     <button class="danger" onclick="delRow(${jsArg(sku)},${row},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete</button>`;
   document.body.appendChild(m);
-  const rect=ev.target.closest("button").getBoundingClientRect();
+  const _op=ev.target.closest("button");
+  const rect=_op.getBoundingClientRect();
   m.style.top=(rect.bottom+4)+"px";
-  m.style.left=Math.min(rect.left, window.innerWidth-180)+"px";
+  m.style.left=Math.max(8, Math.min(rect.left, window.innerWidth-m.offsetWidth-8))+"px";
+  // Opens UPWARDS when there is no room below (the last rows of the table).
+  if(rect.bottom + 4 + m.offsetHeight > window.innerHeight - 8)
+    m.style.top=Math.max(8, rect.top - 4 - m.offsetHeight)+"px";
+  if(typeof uiMenuKeys==="function") uiMenuKeys(m, _op, closeTileMenu);
   setTimeout(()=>document.addEventListener("click",closeTileMenu,{once:true}),0);
 }
 function closeTileMenu(){ const m=document.getElementById("tilemenu"); if(m) m.remove(); }
@@ -4200,6 +4195,7 @@ function drawerMore(ev, sku, row, isLive){
   // menu laid out leftwards from here would open off the screen.
   m.style.left = Math.max(8, Math.min(rect.right - 232,
                                       window.innerWidth - 240)) + "px";
+  if(typeof uiMenuKeys === "function") uiMenuKeys(m, ev.currentTarget, closeTileMenu);
   setTimeout(() => document.addEventListener("click", closeTileMenu, {once: true}), 0);
 }
 function openGenPanelInDrawer(sku){

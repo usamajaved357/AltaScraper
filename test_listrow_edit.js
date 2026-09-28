@@ -65,7 +65,10 @@ const iRect = DM.indexOf("getBoundingClientRect");
 const iAppend = DM.indexOf("appendChild");
 truthy("the rectangle is taken before the menu is created", iRect > 0 && iRect < iAppend);
 truthy("  and no anchor means no menu at all", /if\(!anchor \|\| !anchor\.getBoundingClientRect\) return;/.test(DM));
-truthy("the row still calls it from an <i>", /ti-dots act-dots/.test(LR));
+// Since the design migration the dots are a <button class="act-dots"> (an <i>
+// could not be reached with Tab). The anchoring above still matters: it is what
+// made the <i> work, and it keeps working for whatever element opens the menu.
+truthy("the row calls it from its dots button", /class="act-dots"[^>]*aria-label="More actions"/.test(LR));
 truthy("  and the reason it used to fail is written down",
       /closest\(\) returned null/.test(DM));
 

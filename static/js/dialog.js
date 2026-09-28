@@ -87,6 +87,57 @@ function uiFocusInLayer(except) {
   return !!layer && layer !== except && !(except && except.contains(layer));
 }
 
+/* A DROPDOWN MENU THAT WORKS FROM THE KEYBOARD. Every "···" menu in the app
+ * (.tilemenu: the row menu, the product page's overflow, the toolbar menus) was
+ * mouse-only -- no role, no Escape, no arrow keys, and focus stayed on the page
+ * behind it. Call this once the menu is in the document:
+ *
+ *   role=menu / menuitem, focus on the first item, Up/Down/Home/End move,
+ *   Escape closes it and puts focus back on the button that opened it, Tab
+ *   closes it and lets focus move on. Keys stop here, so an Escape meant for
+ *   the menu does not also close the product page underneath it.
+ *
+ * `close` is the menu's own closer (closeTileMenu, closeRunMenu). */
+function uiMenuKeys(menu, opener, close) {
+  if (!menu) return;
+  const items = function () {
+    return Array.prototype.filter.call(menu.querySelectorAll("button,a[href]"),
+      function (b) { return !b.disabled && b.getClientRects().length; });
+  };
+  menu.setAttribute("role", "menu");
+  items().forEach(function (b) { b.setAttribute("role", "menuitem"); b.tabIndex = -1; });
+  if (opener && opener.setAttribute) opener.setAttribute("aria-haspopup", "menu");
+  const first = items()[0];
+  if (first) first.focus({ preventScroll: true });
+  const shut = function (back) {
+    try { close(); } catch (e) { if (menu.parentNode) menu.parentNode.removeChild(menu); }
+    if (back && opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
+  };
+  menu.addEventListener("keydown", function (e) {
+    const list = items();
+    const i = list.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = list.length; if (!n) return;
+      list[(i + (e.key === "ArrowDown" ? 1 : -1) + n) % n].focus();
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      if (list.length) list[e.key === "Home" ? 0 : list.length - 1].focus();
+    } else if (e.key === "Escape") {
+      e.preventDefault(); shut(true);
+    } else if (e.key === "Tab") {
+      // Back to the opener FIRST, then let Tab move on from there. Closing
+      // without it dropped focus to the page body, and a focus trap underneath
+      // (the product page) then sent it to its first control.
+      shut(true);
+      return;
+    } else {
+      return;
+    }
+    e.stopPropagation();
+  });
+}
+
 function _dlgOpen(o) {
   return new Promise(function (resolve) {
     // Only one at a time. A second one while the first is open would stack two

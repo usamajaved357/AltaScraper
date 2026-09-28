@@ -1430,16 +1430,18 @@ function detailedRow(r, isChild){
         //      Image refs, Optimize listing, Variation, etc. Hide ALL of them
         //      under the three-dot menu."
         //
-        // rowActions() draws seven buttons in a strip and is shared with the
-        // table and the card views, so it is not changed -- those two are not
-        // being redesigned (Rule 7). This view simply does not call it. The
-        // dots open drawerMore(), the overflow menu that already exists and
-        // already holds these actions, so nothing is reimplemented (Rule 12).
+        // This view keeps its own dots and does not call rowActions(). Since the
+        // design migration (28 Sep 2026) the table and card views follow the
+        // same idea -- Review + "···", the icon strip folded into tileMenu. The
+        // dots here open drawerMore(), the overflow menu that already holds
+        // these actions, so nothing is reimplemented (Rule 12).
     + '<td class="col-actions" onclick="event.stopPropagation()">'
-    +   '<i class="ti ti-dots act-dots" title="Everything else"'
+    // A BUTTON, not a bare icon: an <i> cannot be reached with Tab, so this
+    // menu was mouse-only. The look is unchanged (listrow_detailed.css).
+    +   '<button type="button" class="act-dots" title="Everything else" aria-label="More actions"'
     +   ' onclick="drawerMore(event,' + jsArg(r.sku) + ',' + (r.row || 0) + ','
     +   ((typeof isAmazonLive === "function" && isAmazonLive(r)) ? "true" : "false")
-    +   ')"></i></td>'
+    +   ')"><i class="ti ti-dots" aria-hidden="true"></i></button></td>'
     + '</tr>';
 }
 

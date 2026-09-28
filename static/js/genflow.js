@@ -162,6 +162,7 @@ function openToolbarMenu(ev, html){
   // Kept on screen: a menu at the end of the toolbar would otherwise hang off
   // the right edge of the page.
   m.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - m.offsetWidth - 8)) + "px";
+  if(typeof uiMenuKeys === "function") uiMenuKeys(m, btn, closeRunMenu);
   setTimeout(function(){
     document.addEventListener("click", closeRunMenu, {once: true});
   }, 0);

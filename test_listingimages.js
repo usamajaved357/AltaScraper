@@ -74,8 +74,12 @@ check("push uses the existing push route", /\/listing\/push_image/.test(lib), tr
 // inside onclick="fn('...')" the browser decodes its &#39; back into a quote.
 // jsArg escapes for JavaScript first, then for the attribute. It is given the
 // RAW r.sku -- the escaped `sku` above it would be escaped twice.
+// Since the design migration (28 Sep 2026) the row's buttons are Review + "···",
+// and the library is a named item in the "···" menu (tileMenu), which every
+// row and card opens from rowActions. tileMenu takes the RAW sku.
 check("draft rows get a library button",
-      /openImageLibrary\(\$\{jsArg\(r\.sku\)\}/.test(fnBody(listings, "rowActions")), true);
+      /openImageLibrary\(\$\{jsArg\(sku\)\}/.test(fnBody(listings, "tileMenu"))
+      && /tileMenu\(event,\$\{jsArg\(r\.sku\)\}/.test(fnBody(listings, "rowActions")), true);
 check("  with the SKU made safe for a handler, not merely for HTML",
       !/openImageLibrary\(\$\{jsArg\(sku\)\}/.test(fnBody(listings, "rowActions"))
       && !/openImageLibrary\('\$\{sku\}'/.test(fnBody(listings, "rowActions")), true);
@@ -85,8 +89,8 @@ check("  with the SKU made safe for a handler, not merely for HTML",
 // `live` flag, so the button cannot exist on one and be forgotten on the other
 // -- which is exactly how it went missing from the live TILE before.
 check("live rows get one too, from the same builder",
-      /openImageLibrary\(\$\{jsArg\(r\.sku\)\}, \$\{live \? "true" : "false"\}\)/
-        .test(fnBody(listings, "rowActions")), true);
+      /openImageLibrary\(\$\{jsArg\(sku\)\}, \$\{live \? "true" : "false"\}\)/
+        .test(fnBody(listings, "tileMenu")), true);
 // TWO CALL SITES, AND BOTH ARE MEANT. The row's icon, and the drawer's More
 // menu -- the drawer's own Push-image and Upload-image buttons were demoted on
 // the grounds that the Library does both, so the Library had to become reachable
@@ -109,8 +113,8 @@ check("    the second one is the More menu",
 // written down; it is that BOTH views offer it. That is what is checked now.
 const rowActions = fnBody(listings, "rowActions");
 check("there is one shared builder for a row's buttons", rowActions.length > 0, true);
-check("  and the image library is one of them",
-      /openImageLibrary\(/.test(rowActions), true);
+check("  and the image library is one of them (in the menu it opens)",
+      /tileMenu\(/.test(rowActions) && /openImageLibrary\(/.test(fnBody(listings, "tileMenu")), true);
 check("the CARD builds its buttons from it",
       /tileacts[\s\S]{0,400}?rowActions\(/.test(fnBody(listings, "card")), true);
 check("the TABLE ROW builds its buttons from the same one",

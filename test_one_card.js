@@ -67,7 +67,14 @@ truthy("  and still works it out for itself otherwise",
 // silently made this "the rest of the file" and every count below meaningless.
 const _rs = LC.indexOf("function rowActions(");
 const _re = LC.indexOf("\n}", _rs);
-const row = LC.slice(_rs, _re < 0 ? LC.length : _re);
+// SINCE THE DESIGN MIGRATION (28 Sep 2026) the card's action bar is Review +
+// "···", and the actions the icons carried are the top of the "···" menu --
+// tileMenu, up to where its old Hold/Ask/Edit/Delete block begins. Both are
+// "the action bar" for every count below.
+const _ms = LC.indexOf("function tileMenu(");
+const _me = LC.indexOf("const m=document.createElement", _ms);
+const row = LC.slice(_rs, _re < 0 ? LC.length : _re)
+          + (_ms >= 0 && _me > _ms ? LC.slice(_ms, _me) : "");
 
 console.log("\n=== the button Sync already does is gone ===");
 falsy("no pull-live-images button on any card", /pullLiveRow\(/.test(row));
@@ -86,7 +93,7 @@ console.log("\n=== every surviving button does something nothing else does ===")
 // One button per job. If two of these ever call the same function, one of them
 // is the next thing to delete.
 const rowCalls = (row.match(/;(\w+)\(/g) || []).map(s => s.slice(1, -1))
-  .filter(c => c !== "stopPropagation");
+  .filter(c => c !== "stopPropagation" && c !== "closeTileMenu" && c !== "toast");
 const dupes = rowCalls.filter((c, i) => rowCalls.indexOf(c) !== i);
 check("no two buttons call the same thing", dupes.join(",") || "none", "none");
 
@@ -121,7 +128,7 @@ for (const fn of ["openDrawer", "autoFixLoop", "priceEdit"]) {
 console.log("\n=== the live-only buttons stay live-only ===");
 // Optimize acts on a listing that exists on Amazon. Drawing it on a draft offers
 // something that cannot work.
-truthy("Optimize is behind the live check", /\$\{live \? `<button[\s\S]{0,200}optimizeLive/.test(row));
+truthy("Optimize is behind the live check", /live\s*\?\s*`<button[\s\S]{0,200}optimizeLive/.test(row));
 // Price moved OUT of the action bar and onto the price cell itself, which is
 // where you would go to change a price. It is guarded there instead.
 truthy("Price is guarded where it now lives, on the price cell",

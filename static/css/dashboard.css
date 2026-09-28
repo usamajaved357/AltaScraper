@@ -1998,6 +1998,11 @@
   .tileacts{display:flex;gap:3px;padding:7px 9px 9px;margin-top:auto;
             border-top:1px solid var(--line)}
   .tileacts .ib{flex:1}
+  /* Review + "···" (rowActions): Review takes the width, the menu button is square. */
+  .tileacts .ib.more{flex:0 0 34px}
+  .tileacts .ib.review{font-size:12px;font-weight:600;background:var(--as-action);
+    color:var(--as-action-fg);border-color:var(--as-action)}
+  .tileacts .ib.review:hover{background:var(--as-action-hover);color:var(--as-action-fg)}
 
   /* The margin/ROI/profit chip is .profchip, shared with the live tile -- see
      _econLine in listings.js for why a second look would have made the

@@ -143,8 +143,10 @@ truthy("and falls back to the drawer when pdp.js has not loaded",
 // want this symbol at all, i already have 3 symbols for restricted compliance
 // and claims risk"). The point of the count is unchanged -- a NEW caller still
 // has to be a deliberate act -- and it moves down as well as up.
+// 9 -> 10: the draft card's "Review" button (design package: every row and card
+// offers Review + "···"), which goes through openListing like the rest.
 check("every way into a listing goes through it",
-      (LISTINGS.match(/openListing(At)?\(('|\$\{jsArg\()/g) || []).length, 9);
+      (LISTINGS.match(/openListing(At)?\(('|\$\{jsArg\()/g) || []).length, 10);
 // AND ONLY THREE THINGS CALL pdpOpen ITSELF: openListing, openLiveListing, and
 // the drawer's own expand button -- which is deliberate, because the drawer is
 // already showing this listing and is asking for the same one full screen

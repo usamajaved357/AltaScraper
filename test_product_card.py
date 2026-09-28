@@ -260,13 +260,16 @@ print("\n== one action row, so grid and list cannot drift apart again ==")
 # The live TABLE row had Sync and Add-variant; the live TILE did not. Same
 # listing, two views, different things you could do to it.
 # Handler arguments go through jsArg, given the RAW r.sku (Milestone 2).
-truthy("Sync comes from rowActions now",       "syncForSku(${jsArg(r.sku)})" in LJ)
-truthy("Add variant too",                      "addVariant(${jsArg(r.sku)})" in LJ)
+# Since the design migration (Review + "···") they are named items in the row's
+# "···" menu, tileMenu, which every view's rowActions opens -- still one place.
+truthy("Sync comes from rowActions now",       "syncForSku(${jsArg(sku)})" in LJ)
+truthy("Add variant too",                      "addVariant(${jsArg(sku)})" in LJ)
 truthy("the live table row calls rowActions",  "rowActions(_r, \"dotb\", {live: true})" in LJ)
 # Approve set a draft's status to "ready to send". On a listing Amazon has
 # already published there is nothing to approve -- and on a catalogue-only card
 # there is not even a row to set it on.
-truthy("Approve is offered on drafts only", "Approve — mark this draft ready to send" in LJ)
+truthy("Approve is offered on drafts only", "Mark this draft ready to send to Amazon" in LJ
+       and "(live ? \"\" :" in LJ)
 truthy("  and live cards get Sync in its place", "APPROVE IS FOR DRAFTS" in LJ)
 
 print("\n== the search bar takes the room it was leaving empty ==")
