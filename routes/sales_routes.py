@@ -435,32 +435,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         a zero -- there is no ACOS for zero sales, and saying 0% would read as
         perfect efficiency for money that bought nothing.
         """
-        from data import db as _db
+        from domain import sales_queries as _sq   # its SQL (architecture batch A6)
         _acc, wsid, mkt = _scope()
         if not mkt:
             return jsonify({"ok": False, "error": "no marketplace selected"}), 400
         start, end, _preset = _range()
-        conn = _db.get_db(CONFIG_PATH)
 
         rows = []
-        for r in conn.execute(
-                "SELECT campaign_id, "
-                "       MAX(campaign_name) AS campaign_name, "
-                "       MAX(status)        AS status, "
-                "       MAX(budget)        AS budget, "
-                "       MAX(ad_product)    AS ad_product, "
-                "       SUM(impressions)   AS impressions, "
-                "       SUM(clicks)        AS clicks, "
-                "       SUM(spend)         AS spend, "
-                "       SUM(ad_orders)     AS ad_orders, "
-                "       SUM(ad_sales)      AS ad_sales, "
-                "       COUNT(DISTINCT date) AS days, "
-                "       MAX(fetched_at)    AS fetched_at "
-                "FROM ads_campaign_daily "
-                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
-                "GROUP BY campaign_id ORDER BY spend DESC",
-                (wsid, mkt, start, end)):
-            d = dict(r)
+        for d in _sq.campaign_rows(CONFIG_PATH, wsid, mkt, start, end):
             spend = d.get("spend")
             sales = d.get("ad_sales")
             clicks = d.get("clicks")
@@ -498,12 +480,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         the range starts before the account's first sale.
         """
         try:
-            from data import db as _db
             from domain import sales_data as _sd
-            rows = [dict(r) for r in _db.get_db(CONFIG_PATH).execute(
-                "SELECT currency FROM sales_daily WHERE workspace_id=? AND "
-                "marketplace=? AND COALESCE(currency,'')<>'' LIMIT 1",
-                (wsid, mkt))]
+            from domain import sales_queries as _sq   # its SQL (batch A6)
+            rows = _sq.currency_rows(CONFIG_PATH, wsid, mkt)
             return _sd.currency_of(rows)
         except Exception:
             return ""
