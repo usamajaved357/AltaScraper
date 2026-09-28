@@ -24,10 +24,21 @@ for (const k of Object.keys(FEATURES)) {
   if (FEATURES[k].length > 1) INDEX[norm(path.join(ROOT, ...k.split("/")))] = FEATURES[k];
 }
 
+// Only a TEST's own read is answered with the feature (see sitecustomize.py):
+// the caller must be a test_*.js file or the shared test_helpers.js.
+function calledFromATest() {
+  const lines = String(new Error().stack || "").split("\n").slice(1);
+  for (const l of lines) {
+    if (l.indexOf("feature_read.js") >= 0 || l.indexOf("node:") >= 0) continue;
+    return /[\\\/]test_[^\\\/]*\.js/.test(l);
+  }
+  return false;
+}
+
 const realRead = fs.readFileSync;
 fs.readFileSync = function (file, options) {
   const enc = typeof options === "string" ? options : (options && options.encoding);
-  if (enc && (typeof file === "string" || file instanceof URL)) {
+  if (enc && (typeof file === "string" || file instanceof URL) && calledFromATest()) {
     const parts = INDEX[norm(file instanceof URL ? file.pathname : file)];
     if (parts) {
       return parts.map(function (rel) {

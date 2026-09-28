@@ -73,29 +73,45 @@ env["ALTA_FEATURES_JSON"] = practice
 env["PYTHONPATH"] = SUP
 env["NODE_OPTIONS"] = "--require " + os.path.join(SUP, "feature_read.js")
 
-py = subprocess.run([sys.executable, "-c", (
-    "import io\n"
-    "t = open('static/js/sales.js', encoding='utf-8').read()\n"
-    "b = open('static/js/sales.js', 'rb').read().decode('utf-8')\n"
-    "o = io.open('static/js/pnl.js', encoding='utf-8').read()\n"
-    "print(int('function salesCombo(' in t), int('function salesCombo(' in b), int('function pnlRender(' in o))\n")],
-    cwd=HERE, env=env, capture_output=True, text=True)
+# Probes written as files: the hook answers only reads made FROM a test file
+# (test_*.py / test_*.js), never the app's or a library's own reads.
+probe_py = os.path.join(d, "test_probe_feature.py")
+other_py = os.path.join(d, "not_a_test.py")
+with open(probe_py, "w", encoding="utf-8") as fh:
+    fh.write("import io, sys\nsys.path.insert(0, %r)\n" % d
+             + "t = open('static/js/sales.js', encoding='utf-8').read()\n"
+             + "b = open('static/js/sales.js', 'rb').read().decode('utf-8')\n"
+             + "o = io.open('static/js/pnl.js', encoding='utf-8').read()\n"
+             + "import not_a_test\n"
+             + "print(int('function salesCombo(' in t), int('function salesCombo(' in b),"
+             + " int('function pnlRender(' in o), int('function salesCombo(' in not_a_test.TEXT))\n")
+with open(other_py, "w", encoding="utf-8") as fh:
+    fh.write("TEXT = open('static/js/sales.js', encoding='utf-8').read()\n")
+py = subprocess.run([sys.executable, probe_py], cwd=HERE, env=env, capture_output=True, text=True)
 got = (py.stdout or "").split()
-truthy("Python: a text read of the original gets the whole feature", got[:1] == ["1"])
+truthy("Python: a test's text read of the original gets the whole feature", got[:1] == ["1"])
 truthy("Python: a binary read gets the file alone", got[1:2] == ["0"])
 truthy("Python: another file is untouched", got[2:3] == ["1"])
+truthy("Python: a read by app/library code gets the file alone (Jinja, routes)", got[3:4] == ["0"])
 
-js = subprocess.run(["node", "-e", (
-    "const fs=require('fs');"
-    "const t=fs.readFileSync('static/js/sales.js','utf8');"
-    "const b=fs.readFileSync('static/js/sales.js').toString('utf8');"
-    "const o=fs.readFileSync('static/js/pnl.js','utf8');"
-    "console.log(+t.includes('function salesCombo('), +b.includes('function salesCombo('), +o.includes('function pnlRender('));")],
-    cwd=HERE, env=env, capture_output=True, text=True)
+probe_js = os.path.join(d, "test_probe_feature.js")
+other_js = os.path.join(d, "not_a_test.js")
+with open(other_js, "w", encoding="utf-8") as fh:
+    fh.write("module.exports = require('fs').readFileSync('static/js/sales.js', 'utf8');\n")
+with open(probe_js, "w", encoding="utf-8") as fh:
+    fh.write("const fs=require('fs');"
+             "const t=fs.readFileSync('static/js/sales.js','utf8');"
+             "const b=fs.readFileSync('static/js/sales.js').toString('utf8');"
+             "const o=fs.readFileSync('static/js/pnl.js','utf8');"
+             "const x=require(%s);" % json.dumps(other_js) +
+             "console.log(+t.includes('function salesCombo('), +b.includes('function salesCombo('),"
+             " +o.includes('function pnlRender('), +x.includes('function salesCombo('));\n")
+js = subprocess.run(["node", probe_js], cwd=HERE, env=env, capture_output=True, text=True)
 got = (js.stdout or "").split()
-truthy("Node: a text read of the original gets the whole feature", got[:1] == ["1"])
+truthy("Node: a test's text read of the original gets the whole feature", got[:1] == ["1"])
 truthy("Node: a buffer read gets the file alone", got[1:2] == ["0"])
 truthy("Node: another file is untouched", got[2:3] == ["1"])
+truthy("Node: a read by non-test code gets the file alone", got[3:4] == ["0"])
 
 print("\n== the runner turns it on ==")
 RT = raw("run_tests.py")
