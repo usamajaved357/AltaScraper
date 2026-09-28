@@ -2205,21 +2205,16 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     _wsid2 = _ws_id_of(ws) or str(b.get("account") or "") \
                              or _state.get("active_account_id", "")
                     if _wsid2:
-                        from listing import warnings as _warn2
-                        from data import db as _db2
-                        _c2 = _db2.get_db(CONFIG_PATH)
-                        _before = {r["sku"]: (r["warnings"] or "") for r in _c2.execute(
-                            "SELECT sku, warnings FROM listings WHERE workspace_id=?",
-                            (_wsid2,))}
+                        from listing import warnings as _warn2   # its SQL (batch A6)
+                        _before = {r["sku"]: (r["warnings"] or "") for r in
+                                   _warn2.warnings_by_sku(CONFIG_PATH, _wsid2)}
                         _warn2.recompute_workspace(CONFIG_PATH, _wsid2)
                         # ONLY WHAT MOVED. Handing back every row's warnings on
                         # a keystroke would be a large reply for a small fact,
                         # and the screen only needs the rows whose verdict is
                         # now different -- including the ones that went EMPTY,
                         # which are exactly the ones being cleared.
-                        for r in _c2.execute(
-                                "SELECT sku, warnings FROM listings WHERE workspace_id=?",
-                                (_wsid2,)):
+                        for r in _warn2.warnings_by_sku(CONFIG_PATH, _wsid2):
                             if (r["warnings"] or "") != _before.get(r["sku"], ""):
                                 try:
                                     _wchanged[r["sku"]] = json.loads(r["warnings"] or "[]")

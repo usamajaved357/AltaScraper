@@ -490,6 +490,19 @@ def backfill_ebay_ids(config_path, workspace_id):
     return n
 
 
+def warnings_by_sku(config_path, workspace_id):
+    """Every row's stored warnings in a workspace: (sku, warnings) rows, lazily.
+
+    Moved word for word from the /listing edit route (architecture batch A6),
+    which reads it before and after recompute_workspace to send back only the
+    rows whose verdict moved. Same per-thread connection as before.
+    """
+    from data import db as _db
+    return _db.get_db(config_path).execute(
+        "SELECT sku, warnings FROM listings WHERE workspace_id=?",
+        (workspace_id,))
+
+
 def recompute_workspace(config_path, workspace_id, marketplace=""):
     """Work the warnings out for a workspace and write them onto the rows.
 
