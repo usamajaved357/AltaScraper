@@ -121,3 +121,13 @@ inventory sync), and `build_api_attributes` (separate plan:
 5. Writes via `config/settings.write_raw` do not clear `dashboard._state["cfg"]`
    unless the route calls `_reload_cfg` — possible stale config after a save.
 6. `sales_summary` (a GET) writes `order_lines` through `order_cogs.freeze_range`.
+
+## 5. Batch notes
+
+- **A4** (`/schema` marketplace). The `/schema` JSON is unchanged for every input
+  (proven: the new test run against the pre-A4 code fails only on the race check).
+  One hidden side effect is gone with the borrow: `_state` is a `WorkspaceState`,
+  so for a signed-in user with a `uid` the old code wrote the per-user session's
+  `active_marketplace` and then "restored" it from the process-wide value, which
+  could leave that user pinned to a stale marketplace and added a Set-Cookie to
+  the response. Nothing is written now.

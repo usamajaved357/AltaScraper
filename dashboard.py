@@ -627,9 +627,15 @@ from listing.subfields import (_SUBFIELD_PLUMBING, _sf_enum_of, _sf_kind, _extra
 
 
 
-def _load_schema(pt: str) -> dict:
+def _load_schema(pt: str, marketplace: str = "") -> dict:
     """Fetch+cache {'enums', 'required', 'attrs', 'subfields'} for a product type
-    from Amazon getDefinitions, for the active marketplace. Empties on failure."""
+    from Amazon getDefinitions, for `marketplace` -- or, when none is named, the
+    active marketplace, exactly as before. Empties on failure.
+
+    THE MARKETPLACE IS AN ARGUMENT (architecture batch A4). /schema used to set
+    the server-wide active marketplace for the length of its request so this
+    function would read it -- and every other request running at that moment
+    read the borrowed value too (master audit S11; only its restore was fixed)."""
     if not pt:
         return {"enums": {}, "required": [], "attrs": [], "subfields": {}, "titles": {},
             # help: Amazon's own description per field, for the (?) bubble.
@@ -637,7 +643,7 @@ def _load_schema(pt: str) -> dict:
             # readonly: fields Amazon says cannot be set.
             "help": {}, "maxitems": {}, "readonly": []}
     # marketplace-aware: US brands must get US sub-field schemas, not UK
-    _mkt = str(_state.get("active_marketplace", "") or "UK").upper()
+    _mkt = str(marketplace or _state.get("active_marketplace", "") or "UK").upper()
     _ck = f"{pt}::{_mkt}"
     if _ck in _state["schemas"]:
         return _state["schemas"][_ck]
@@ -859,20 +865,20 @@ def _load_schema(pt: str) -> dict:
     return info
 
 
-def _schema_subfields(pt: str) -> dict:
-    return _load_schema(pt).get("subfields", {})
+def _schema_subfields(pt: str, marketplace: str = "") -> dict:
+    return _load_schema(pt, marketplace).get("subfields", {})
 
 
-def _schema_enums(pt: str) -> dict:
-    return _load_schema(pt)["enums"]
+def _schema_enums(pt: str, marketplace: str = "") -> dict:
+    return _load_schema(pt, marketplace)["enums"]
 
 
-def _schema_required(pt: str) -> list:
-    return _load_schema(pt)["required"]
+def _schema_required(pt: str, marketplace: str = "") -> list:
+    return _load_schema(pt, marketplace)["required"]
 
 
-def _schema_attrs(pt: str) -> list:
-    return _load_schema(pt)["attrs"]
+def _schema_attrs(pt: str, marketplace: str = "") -> list:
+    return _load_schema(pt, marketplace)["attrs"]
 
 
 def _variation_schema(product_type: str, marketplace: str = "",
@@ -1019,13 +1025,13 @@ def _valid_values() -> dict:
 _FALLBACK_VV_PT = "HOME"   # generic options for product types not in valid_values.json
 
 
-def _options_for(pt: str) -> dict:
+def _options_for(pt: str, marketplace: str = "") -> dict:
     """Dropdown options per attribute: human-readable valid_values (flat-file) first,
     falling back to HOME for unknown types, with schema enums filling any gaps."""
     vv   = _valid_values()
     base = pt if pt in vv else _FALLBACK_VV_PT
     opts = {k: list(v) for k, v in vv.get(base, {}).items() if isinstance(v, list) and v}
-    for k, v in _schema_enums(pt).items():
+    for k, v in _schema_enums(pt, marketplace).items():
         opts.setdefault(k, v)
     return opts
 

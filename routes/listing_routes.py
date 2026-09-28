@@ -1995,48 +1995,41 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             # right schema+creds are used regardless of the global active_marketplace.
             # This fixes US-account listings loading an empty UK schema (wrong creds).
             _mkt_param = (request.args.get("mkt") or "").strip().upper()
-            _prev_mkt = _state.get("active_marketplace", "")
-            if _mkt_param:
-                _state["active_marketplace"] = _mkt_param
-            try:
-                # ?refresh=1 clears the cached schema for this product type so the new
-                # (unenforced-merged) enums are re-fetched without a server restart.
-                if request.args.get("refresh"):
-                    _mkt = str(_state.get("active_marketplace", "") or "UK").upper()
-                    _state["schemas"].pop(f"{pt}::{_mkt}", None)
-                    # THE STORED COPY TOO. Schemas are now kept on disk between
-                    # restarts, so clearing only the in-memory one would leave
-                    # "Reload Amazon values now" returning the very copy the
-                    # person pressed it because they did not believe -- a button
-                    # that looks like it worked and changed nothing.
-                    try:
-                        from domain import schema_cache as _sc
-                        _sc.forget(CONFIG_PATH, pt, _mkt)
-                    except Exception:
-                        pass
-                _sch = _load_schema(pt)
-                payload = {"ok": True, "enums": _options_for(pt), "required": _schema_required(pt),
-                           "attrs": _schema_attrs(pt), "subfields": _schema_subfields(pt),
-                           "titles": _sch.get("titles", {}),
-                           # Amazon's own words for what a field means, how many
-                           # values it takes, and whether it can be set at all.
-                           # The product page needs all three and had none of
-                           # them -- see the note in dashboard._load_schema.
-                           "help": _sch.get("help", {}),
-                           "maxitems": _sch.get("maxitems", {}),
-                           "readonly": _sch.get("readonly", []),
-                           "marketplace": str(_state.get("active_marketplace", "") or "UK").upper(),
-                           "enum_count": len(_options_for(pt)),
-                           "schema_error": _load_schema(pt).get("_error", "")}
-                return jsonify(payload)
-            finally:
-                # restore global state so a one-off schema fetch doesn't change the
-                # user's active workspace marketplace -- BUT ONLY IF IT IS STILL
-                # OURS. A real switch made while this was loading (the account
-                # switcher, another tab) was overwritten with the value from
-                # before it, undoing the switch (master audit S11, Milestone 3).
-                if _mkt_param and _state.get("active_marketplace", "") == _mkt_param:
-                    _state["active_marketplace"] = _prev_mkt
+            # HANDED TO THE LOADER, NOT BORROWED (architecture batch A4). This
+            # used to set _state["active_marketplace"] for the request and put it
+            # back after, and every request running meanwhile read the borrowed
+            # marketplace. The same marketplace as before -- the one asked for,
+            # else the active one, else UK -- without touching shared state.
+            _mkt = str(_mkt_param or _state.get("active_marketplace", "") or "UK").upper()
+            # ?refresh=1 clears the cached schema for this product type so the new
+            # (unenforced-merged) enums are re-fetched without a server restart.
+            if request.args.get("refresh"):
+                _state["schemas"].pop(f"{pt}::{_mkt}", None)
+                # THE STORED COPY TOO. Schemas are now kept on disk between
+                # restarts, so clearing only the in-memory one would leave
+                # "Reload Amazon values now" returning the very copy the
+                # person pressed it because they did not believe -- a button
+                # that looks like it worked and changed nothing.
+                try:
+                    from domain import schema_cache as _sc
+                    _sc.forget(CONFIG_PATH, pt, _mkt)
+                except Exception:
+                    pass
+            _sch = _load_schema(pt, _mkt)
+            payload = {"ok": True, "enums": _options_for(pt, _mkt), "required": _schema_required(pt, _mkt),
+                       "attrs": _schema_attrs(pt, _mkt), "subfields": _schema_subfields(pt, _mkt),
+                       "titles": _sch.get("titles", {}),
+                       # Amazon's own words for what a field means, how many
+                       # values it takes, and whether it can be set at all.
+                       # The product page needs all three and had none of
+                       # them -- see the note in dashboard._load_schema.
+                       "help": _sch.get("help", {}),
+                       "maxitems": _sch.get("maxitems", {}),
+                       "readonly": _sch.get("readonly", []),
+                       "marketplace": _mkt,
+                       "enum_count": len(_options_for(pt, _mkt)),
+                       "schema_error": _load_schema(pt, _mkt).get("_error", "")}
+            return jsonify(payload)
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
