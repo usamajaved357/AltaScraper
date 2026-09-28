@@ -111,6 +111,26 @@ has these until the owner merges):
   batch 7; Miles runs (EventSource, not fetch) stay on the open account,
   as before; /submit/precheck always returns nothing (it calls _records()
   without a sheet -- pre-existing, not account-related).
+- **Non-design batches 8-9 (28 Sep 2026).** The pre-submit warning about main
+  images Amazon cannot use NEVER fired (/submit/precheck read rows without a
+  sheet and for keys a row does not have). It now works, for the tab's account
+  and only the listings being submitted, and says what the submit will actually
+  do -- the rule is domain/image_urls (fetchable / is_ours / main_image_problem),
+  which the generator's own helpers now call (verified to answer exactly as
+  before for every input). Load failures on Finance, the ASIN monitor and Sync
+  use the shared error box. Thirteen actions that write after a confirmation
+  dialog (incl. the Repricer's push-now and minimum-price upload, stock bulk,
+  pushing attribute changes to Amazon, deletes) note the account before the
+  dialog and refuse if it changed; test_loops_pin_account.py guards both this
+  and write loops.
+  LEFT OPEN (low): an EMPTY main image gets no warning though the listing goes
+  up without one (a new warning would be a behaviour change); the generator's
+  "Skipping main image" console message is unreachable (it reads the value
+  after popping it) -- pre-existing, in the protected generator, not changed.
+- **Batch 10 (28 Sep 2026): audit A16 done.** The Brand panel's markup is
+  templates/brand_panel.html and its script static/js/brand_panel.js (moved
+  byte-for-byte, then its native alert/confirm, hard-coded colours and one
+  unsafe inline handler fixed under the standing JS rules).
 - **Non-design batch 5 (28 Sep 2026): multi-step work stays in one account.**
   The listing-row editor's Save-all (which pushes STOCK to Amazon), the bullet
   save and the product-type fix loop re-read the open account on every write:

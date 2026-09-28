@@ -1292,10 +1292,17 @@ function _rebuildDrawerData(sku){
 // Delete/clear a field. Attributes -> the key is REMOVED; columns/content -> the cell
 // is blanked. `refresh` rebuilds the block so a deleted attribute row disappears.
 async function clearField(sku, target, key, refresh){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   if(!await uiConfirm("Delete '"+key+"' from this listing?")) return;
   // Through editField, which already knows that an EMPTY ATTRIBUTE IS REMOVED
   // and an empty column is saved as empty -- the exact distinction this
   // function was carrying its own copy of.
+  if(typeof acctId === "function" && acctId() !== _pinAcct){
+      if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+      return;
+    }
   const j = await editField(sku, target, key, "");
   if(!j.ok){ toast("Delete failed: "+(j.error||"unknown")); return; }
   toast("Deleted ✓");

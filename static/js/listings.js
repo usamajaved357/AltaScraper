@@ -1095,6 +1095,9 @@ function toggleDupOnly(){ DUP_ONLY=!DUP_ONLY; render(); }
 // this one, and refuses if it is the last copy (see _delete_one_copy in
 // routes/listing_routes.py).
 async function delDuplicate(sku, row, tab, btn){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   const _others=dupCopies({sku:sku}).map(c=>String(c.sku)).filter(s=>s!==String(sku));
   if(!await uiConfirm("Delete this DUPLICATE copy of "+sku+" from this app?\n\n"
              +"Only this copy is removed"
@@ -1104,6 +1107,10 @@ async function delDuplicate(sku, row, tab, btn){
   if(btn) btn.disabled=true;
   try{
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+        if(typeof toast === "function") toast("The account changed while this was open, so nothing was done."); if(btn) btn.disabled=false;
+        return;
+      }
     const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
                 body:JSON.stringify(acctBody({sku:sku, row:row, app_only:true}))});
     const j=await res.json();

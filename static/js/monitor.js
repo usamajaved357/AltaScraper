@@ -99,11 +99,11 @@ async function loadMonitorOverview(){
   if(host) host.innerHTML = '<div class="cc" style="padding:14px;opacity:.7"><span class="genspin"></span> Loading…</div>';
   try{
     const j = await (await fetch("/monitor/overview")).json();
-    if(!j || !j.ok){ if(host) host.innerHTML='<div class="cc" style="color:var(--red);padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
+    if(!j || !j.ok){ if(host) host.innerHTML=uiError("The monitor overview could not be loaded", (j&&j.error)||"no reason given", "loadMonitorOverview", "monitor"); return; }
     MON_EU = j.eu_marketplaces || MON_EU;
     renderMonitorMarketPicker();
     renderMonitorOverview(j.rows||[], j.summary||{}, j.unknowns||[]);
-  }catch(e){ if(host) host.innerHTML='<div class="cc" style="color:var(--red);padding:14px">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ if(host) host.innerHTML=uiError("The monitor overview could not be loaded", String(e), "loadMonitorOverview", "monitor"); }
 }
 
 function monUnknownsSection(unknowns, s){
@@ -651,12 +651,12 @@ async function loadMonitorList(){
   if(host) host.innerHTML = '<div class="cc" style="padding:14px;opacity:.7"><span class="genspin"></span> Loading tracked ASINs…</div>';
   try{
     const j = await (await fetch("/monitor/list")).json();
-    if(!j || !j.ok){ if(host) host.innerHTML = '<div class="cc" style="color:var(--red);padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
+    if(!j || !j.ok){ if(host) host.innerHTML = uiError("The monitored ASINs could not be loaded", (j&&j.error)||"no reason given", "loadMonitorList", "monitor"); return; }
     MON_EU = j.eu_marketplaces || MON_EU;
     MON_LIST = j.asins || [];
     renderMonitorMarketPicker();
     renderMonitorList();
-  }catch(e){ if(host) host.innerHTML = '<div class="cc" style="color:var(--red);padding:14px">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ if(host) host.innerHTML = uiError("The monitored ASINs could not be loaded", String(e), "loadMonitorList", "monitor"); }
 }
 
 /* ---- naming sellers from a file, instead of one at a time ----------------

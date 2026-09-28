@@ -5587,16 +5587,14 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         because a link built on a guess is worse than a missing image. Amazon
         accepts it, fetches nothing, and the listing publishes with no picture.
         """
+        # The rule itself lives in domain/image_urls.fetchable (moved there so
+        # the pre-submit warning uses the same one -- Rule 12). Same answer.
         u = str(u or "").strip()
-        if _is_public_url(u):
-            return u
-        if u.startswith("/media/"):
-            try:
-                from domain import image_urls as _iu
-                return _iu.public_url(CONFIG_PATH, u) or ""
-            except Exception:
-                return ""
-        return ""
+        try:
+            from domain import image_urls as _iu
+            return _iu.fetchable(CONFIG_PATH, u)
+        except Exception:
+            return u if _is_public_url(u) else ""
 
     # SOMEBODY ELSE'S PHOTOGRAPH IS NOT THIS LISTING'S MAIN IMAGE.
     #
@@ -5621,17 +5619,19 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # /media/), or a URL on a host the owner configured. A borrowed link is
     # neither, and is refused with the exact thing to do about it.
     def _is_ours(u):
-        u = str(u or "").strip()
-        if not u:
-            return False
-        if u.startswith("/media/") or u.startswith("data:"):
-            return True
+        # Moved to domain/image_urls.is_ours (shared with the pre-submit
+        # warning, Rule 12); same answer, same config fallback.
         try:
             from domain import image_urls as _iu
-            _base = str(_iu.base_url(CONFIG_PATH) or "").strip()
+            return _iu.is_ours(CONFIG_PATH, u, config)
         except Exception:
+            u = str(u or "").strip()
+            if not u:
+                return False
+            if u.startswith("/media/") or u.startswith("data:"):
+                return True
             _base = str((config or {}).get("public_base_url") or "").strip()
-        return bool(_base) and u.startswith(_base.rstrip("/"))
+            return bool(_base) and u.startswith(_base.rstrip("/"))
 
     _main_raw = str(pa.get("main_product_image_locator") or "").strip()
     if _main_raw and not _is_ours(_main_raw):

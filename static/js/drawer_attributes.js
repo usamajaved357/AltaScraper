@@ -433,6 +433,9 @@ function lvDiffFields(sku){
 }
 
 async function lvPushChanges(sku){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   sku = String(sku);
   const L = lvGet(sku);
   const r = (typeof ROWS !== "undefined" && ROWS.find)
@@ -455,6 +458,10 @@ async function lvPushChanges(sku){
   const changes = {};
   todo.forEach(k => { changes[k] = a[k]; });
   try{
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+        if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+        return;
+      }
     const body = (typeof acctBody === "function")
       ? acctBody({sku: sku, changes: changes, confirmed: true,
                   product_type: L.product_type || r.product_type || "",

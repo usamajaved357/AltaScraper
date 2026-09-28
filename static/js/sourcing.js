@@ -2525,6 +2525,9 @@ async function sourcingDefaultTarget(){
  * parser on the server that would eventually disagree with it (Rule 12).
  * ====================================================================== */
 async function sourcingMinPriceUpload(input){
+  // The account AND marketplace this was opened for, noted before the dialog;
+  // the write names them and is refused if the screen moved (confirm-then-write).
+  const _sc0 = _srcScopeNow();
   const f = input && input.files && input.files[0];
   if(!f) return;
   input.value = "";                       // so the same file can be re-picked
@@ -2556,9 +2559,13 @@ async function sourcingMinPriceUpload(input){
   try{
     // The file itself goes too, so the Upload history keeps the original.
     const _file = (typeof uphFileForUpload === "function") ? await uphFileForUpload(f) : null;
+    if(!_srcStillIn(_sc0)){
+      if(typeof toast === "function") toast("The account or marketplace changed while this was open, so nothing was done.");
+      return;
+    }
     j = await (await fetch("/sourcing/minprice_upload", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: _srcBody({rows: filled, arm: !!arm, file: _file})})).json();
+      body: _srcBody({rows: filled, arm: !!arm, file: _file}, _sc0)})).json();
   }catch(e){
     await uiAlert(String((e && e.message) || e), {title: "Upload failed"});
     return;
@@ -2717,6 +2724,9 @@ function _srcCsvLine(line, sep){
  * figure the stat cards show, so the question and the screen cannot disagree.
  */
 async function sourcingPushNow(btn){
+  // The account AND marketplace this was opened for, noted before the dialog;
+  // the write names them and is refused if the screen moved (confirm-then-write).
+  const _sc0 = _srcScopeNow();
   if(!SRC_MASTER){
     await uiAlert(
       "Nothing is sent to Amazon while auto-pricing is off. Turn it on with "
@@ -2746,9 +2756,13 @@ async function sourcingPushNow(btn){
   if(!ok) return;
   if(btn){ btn.disabled = true; }
   try{
+    if(!_srcStillIn(_sc0)){
+      if(typeof toast === "function") toast("The account or marketplace changed while this was open, so nothing was done.");
+      return;
+    }
     const j = await (await fetch("/sourcing/apply", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: _srcBody({})})).json();
+      body: _srcBody({}, _sc0)})).json();
     if(!j.ok){ toast(j.error || "Could not push"); return; }
     // SAY WHAT HAPPENED TO ALL OF THEM, not just the ones that worked. A push
     // that sends two and is refused on three has to read as that, or the three
@@ -4312,15 +4326,22 @@ async function sourcingUnenrol(sku){
 }
 
 async function sourcingAddSourcePrompt(sku){
+  // The account AND marketplace this was opened for, noted before the dialog;
+  // the write names them and is refused if the screen moved (confirm-then-write).
+  const _sc0 = _srcScopeNow();
   const url = await uiPrompt("Paste the supplier's link for "+sku+".\n\neBay links are read "
                    + "through eBay's own API. Other sites are read only if they "
                    + "publish structured product data — the app will tell you if "
                    + "it cannot read one rather than guess a price.");
   if(!url) return;
   try{
+    if(!_srcStillIn(_sc0)){
+      if(typeof toast === "function") toast("The account or marketplace changed while this was open, so nothing was done.");
+      return;
+    }
     const j = await (await fetch("/sourcing/source/add",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:_srcBody({sku:sku, url:url.trim()})})).json();
+      body:_srcBody({sku:sku, url:url.trim()}, _sc0)})).json();
     if(!j.ok){ toast(j.error||"Could not add"); return; }
     toast("Supplier added — press “Re-read suppliers now” to check it");
     sourcingLoad(true);

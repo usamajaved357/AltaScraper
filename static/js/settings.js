@@ -174,6 +174,9 @@ async function loadMediaLibrary(){
   }catch(e){ host.innerHTML='<div class="cc">Error: '+esc(String(e))+'</div>'; }
 }
 async function editListingImage(sku, url, idx){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   const instruction = await uiPrompt("What should the AI change about this image?\n\nIt edits ONLY what you ask and keeps everything else the same.\n\nExamples: \"pure white background\", \"add a soft shadow\", \"brighten the product\".");
   if(instruction===null) return;
   if(!instruction.trim()){ toast("Tell me what to change."); return; }
@@ -185,11 +188,21 @@ async function editListingImage(sku, url, idx){
     var res=await refineImage({sku:sku, item:r, image:url, kind:"main",
                                instruction:instruction, title:(r&&r.title)||""});
     if(!res.ok){ toast("Edit failed: "+(res.error||"unknown")); return; }
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+      if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+      return;
+    }
     var sv=await (await fetch("/media/upload",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({sku:sku, data:res.data_url, kind:"generated"})})).json();
     if(!sv.ok){ toast("Edited, but could not save: "+(sv.error||"")); return; }
     // if this was the MAIN image, offer to set the edited version as the new main
     if(idx===0 && await uiConfirm("Edited image saved. Set it as the MAIN image for this listing?\n(This updates the app copy; use \"Push image to live\" to send it to Amazon.)")){
+      // A SECOND dialog, so a second check: the same SKU in another account is
+      // another listing (review).
+      if(typeof acctId === "function" && acctId() !== _pinAcct){
+        if(typeof toast === "function") toast("The account changed while this was open, so the main image was not changed.");
+        return;
+      }
       var useUrl=sv.url||res.data_url;
       // ONE implementation of "make this the main image" (listingimages.js).
       await setMainImage(sku, useUrl,
@@ -200,6 +213,9 @@ async function editListingImage(sku, url, idx){
   }catch(e){ toast("Edit error: "+e); }
 }
 async function editMediaImage(url, sku){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   const instruction = await uiPrompt("What should the AI change about this image?\n\nIt edits ONLY what you ask and keeps everything else the same (same product, same layout, same colours).\n\nExamples: \"make the background pure white\", \"add a soft shadow under the product\", \"remove the text in the corner\".");
   if(instruction===null) return;
   if(!instruction.trim()){ toast("Tell me what to change."); return; }
@@ -211,6 +227,10 @@ async function editMediaImage(url, sku){
                                instruction:instruction, title:(it&&it.title)||""});
     if(!res.ok){ toast("Edit failed: "+(res.error||"unknown")); return; }
     // save the edited image back into the same SKU's media library
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+      if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+      return;
+    }
     var sv=await (await fetch("/media/upload",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({sku:sku, data:res.data_url, kind:"generated"})})).json();
     if(sv.ok){

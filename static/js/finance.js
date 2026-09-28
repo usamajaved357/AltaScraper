@@ -192,10 +192,10 @@ async function financeLoad(){
   const _sc = (typeof screenScope === "function") ? screenScope() : null;
   const _stale = () => _seq !== FIN._seq || (_sc && !screenStillIn(_sc));
   try{ j = await (await fetch("/finance/contribution"+(qs.length?"?"+qs.join("&"):""))).json(); }
-  catch(err){ if(_stale()) return; body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load: '+_fesc(String(err))+'</div>'; return; }
+  catch(err){ if(_stale()) return; body.innerHTML = uiError("Finance could not be loaded", String(err), "financeLoad", "finance"); return; }
   if(_stale()) return;
   if(!j || !j.ok){
-    body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_fesc((j&&j.error)||"Could not load")+'</div>';
+    body.innerHTML = uiError("Finance could not be loaded", (j&&j.error)||"no reason given", "financeLoad", "finance");
     return;
   }
   FIN.rows = j.rows || [];

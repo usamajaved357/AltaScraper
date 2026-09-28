@@ -11,7 +11,7 @@ Routes:
 from flask import jsonify, request
 
 
-def register(app, *, _records, _active_account, _state, _cfg):
+def register(app, *, _records, _active_account, _state, _cfg, _ws=None, CONFIG_PATH=""):
     """Attach the /submit/* routes to the existing Flask app."""
 
     @app.route("/submit/precheck")
@@ -19,26 +19,40 @@ def register(app, *, _records, _active_account, _state, _cfg):
         """Scan APPROVED/API_READY rows for main images that are LOCAL paths
         (e.g. /media/... or 127.0.0.1) which Amazon cannot fetch. Returns the list
         of affected SKUs so the UI can warn BEFORE submitting."""
+        # THIS NEVER FOUND ANYTHING. `_records()` was called without the sheet
+        # it reads (a TypeError, swallowed into "no rows"), and each row was read
+        # for `attributes`/`main_image`, keys a row never has -- they are TEXT in
+        # "Attributes JSON". So the warning before a submit, "this main image is
+        # a file on your PC and Amazon cannot fetch it", never appeared once
+        # (found 28 Sep 2026). The rows are the requesting tab's account
+        # (_ws follows it); the image is read by the one shared reader.
+        #
+        # WHAT IS A PROBLEM is the submit's own rule (image_urls.main_image_problem,
+        # shared with the generator): an app image with a public address set is
+        # fine; a borrowed photo or an unreachable one goes up with no picture;
+        # a link to this machine fails. `?skus=a,b` limits it to what is being
+        # submitted, so the warning never names listings you did not pick.
+        from domain import row_image as _ri
+        from domain import image_urls as _iu
+        from listing.preview_scope import SUBMIT_ELIGIBLE as _SUBMITTABLE
+        only = {s.strip() for s in (request.args.get("skus") or "").split(",") if s.strip()}
         try:
-            records = _records()
+            records = _records(_ws()) if _ws else []
         except Exception:
             records = []
         bad = []
         for r in records or []:
-            status = (r.get("Status") or r.get("status") or "").upper()
-            if status not in ("APPROVED", "API_READY"):
+            # The statuses a submit sends: the one list (listing/preview_scope).
+            status = str(r.get("Status") or r.get("status") or "").strip().upper()
+            if status not in _SUBMITTABLE:
                 continue
-            attrs = r.get("attributes") or {}
-            img = (r.get("main_image") or attrs.get("main_product_image_locator")
-                   or attrs.get("media_location") or "")
-            if isinstance(img, list) and img:
-                img = (img[0] or {}).get("media_location", "") if isinstance(img[0], dict) else str(img[0])
-            img = str(img or "")
-            is_local = (img.startswith("/media/") or "127.0.0.1" in img
-                        or "localhost" in img or img.startswith("/mnt/")
-                        or (img and not img.lower().startswith("http")))
-            if img and is_local:
-                bad.append({"sku": r.get("SKU") or r.get("sku") or "?", "image": img[:120]})
+            sku = str(r.get("SKU") or r.get("sku") or "")
+            if only and sku not in only:
+                continue
+            img = str(_ri.main_image(r.get("Attributes JSON"), strict=True) or "")
+            why = _iu.main_image_problem(CONFIG_PATH, img)
+            if why:
+                bad.append({"sku": sku or "?", "image": img[:120], "why": why})
         return jsonify({"ok": True, "local_image_rows": bad, "count": len(bad)})
 
     @app.route("/submit/target")

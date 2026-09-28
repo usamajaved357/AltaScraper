@@ -397,17 +397,19 @@ function askAbout(sku){
   setTimeout(function(){var i=document.getElementById("chatinput"); if(i) i.focus();},60);
 }
 async function submitLive(){
-  // PRECHECK: catch local /media images Amazon can't fetch, before submitting.
+  // PRECHECK: main images the submit cannot use, and WHY -- the server applies
+  // the submit's own rule (domain/image_urls), and only to what is being sent.
   try{
-    const pc=await (await fetch('/submit/precheck')).json();
+    const _pcSel = (typeof selectedSkus === "function") ? selectedSkus() : [];
+    const _pcUrl = "/submit/precheck" + (_pcSel.length ? "?skus=" + encodeURIComponent(_pcSel.join(",")) : "");
+    const pc=await (await fetch(_pcUrl)).json();
     if(pc && pc.ok && pc.count>0){
-      const skus=pc.local_image_rows.map(x=>x.sku).join(", ");
-      await uiAlert("⚠ "+pc.count+" listing(s) have a LOCAL image that Amazon cannot fetch:\n\n  "+skus+"\n\n"
-        +"AI images saved to your media library live on your PC (127.0.0.1), so Amazon's servers can't reach them. "
-        +"These rows will FAIL with 'Unable to Retrieve Media Content'.\n\n"
-        +"Fix: use a publicly-hosted image URL for the main image (e.g. upload to a host, or use the source image URL), "
-        +"then submit again. The other rows can still go through.");
-      if(!await uiConfirm("Submit anyway? (the local-image rows above will error)")) return;
+      const lines=pc.local_image_rows.slice(0, 12).map(x=>"  "+x.sku+" \u2014 "+(x.why||"main image problem")).join("\n");
+      await uiAlert("\u26a0 "+pc.count+" listing(s) have a main image problem:\n\n"+lines
+        +(pc.count>12 ? "\n  \u2026and "+(pc.count-12)+" more" : "")+"\n\n"
+        +"Fix: set one of your own images, reachable by Amazon, as the main image, then submit again. "
+        +"The other rows can still go through.");
+      if(!await uiConfirm("Submit anyway? (the listings above will go up without their main image, or fail)")) return;
     }
   }catch(e){}
   // SAFETY: confirm WHICH Amazon account this will publish to, by name.
@@ -862,6 +864,9 @@ function _delWarning(sku){
 }
 
 async function delRow(sku, row, btn){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   let _warn = "";
   try{ _warn = _delWarning(sku); }catch(e){ _warn = ""; }
   if(!await uiConfirm("Delete " + sku + "?" + _warn
@@ -873,6 +878,10 @@ async function delRow(sku, row, btn){
     // multi-tab: /delete removes BY ROW on the active tab — sync to this card's tab first
     // so we never delete the same row number on the wrong tab.
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+        if(typeof toast === "function") toast("The account changed while this was open, so nothing was done."); if(btn) btn.disabled=false;
+        return;
+      }
     const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(acctBody({sku:sku,row:row}))});
     const j=await res.json();
     if(j.ok){

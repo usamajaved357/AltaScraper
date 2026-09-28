@@ -137,6 +137,89 @@ def public_url(config_path, media_path):
     return "%s/img/%s/%s" % (base, token(config_path, rel), _q(rel))
 
 
+def _is_public(u):
+    u = str(u or "").strip().lower()
+    return u.startswith("http://") or u.startswith("https://")
+
+
+def fetchable(config_path, u):
+    """A URL Amazon can actually reach, or "".
+
+    THE SUBMIT'S OWN RULE, moved here from amazon_listing_generator's nested
+    _fetchable (which now calls this) so the warning before a submit and the
+    submit itself cannot disagree (CLAUDE.md Rule 12). A public http(s) URL is
+    used as it is; an image this app hosts ("/media/...") becomes its signed
+    public address, or "" when no public base URL is configured -- a link built
+    on a guess is worse than no image.
+    """
+    u = str(u or "").strip()
+    if _is_public(u):
+        return u
+    if u.startswith("/media/"):
+        try:
+            return public_url(config_path, u) or ""
+        except Exception:
+            return ""
+    return ""
+
+
+def is_ours(config_path, u, fallback_config=None):
+    """Is this image the OWNER's (served by this app, or on a host he
+    configured) rather than a borrowed competitor photo? Moved from the
+    generator's nested _is_ours, which now calls this (Rule 1: a borrowed photo
+    is never sent as the main image)."""
+    u = str(u or "").strip()
+    if not u:
+        return False
+    if u.startswith("/media/") or u.startswith("data:"):
+        return True
+    try:
+        _base = str(base_url(config_path) or "").strip()
+    except Exception:
+        _base = str((fallback_config or {}).get("public_base_url") or "").strip()
+    return bool(_base) and u.startswith(_base.rstrip("/"))
+
+
+def main_image_problem(config_path, u):
+    """What will go WRONG with this main image on submit, in words, or "".
+
+    Mirrors what the generator does with main_product_image_locator: a borrowed
+    photo is dropped; an image Amazon cannot reach is dropped; a link to this
+    machine is sent and Amazon fails it. Each of those is a listing going up
+    without its picture, or not at all.
+    """
+    u = str(u or "").strip()
+    if not u:
+        return ""
+    low_u = u.lower()
+    if "127.0.0.1" in low_u or "localhost" in low_u:
+        # A link to this machine: dropped if it is not on the configured host,
+        # sent (and failed by Amazon) if it is.
+        if is_ours(config_path, u) and fetchable(config_path, u):
+            return ("the link points at this computer -- Amazon will fail it with "
+                    "'Unable to Retrieve Media Content'")
+        return ("the link points at this computer, so it is not sent -- the listing "
+                "goes up with no main image")
+    if u.lower().startswith("data:"):
+        return ("an embedded picture (data:) is never sent -- the listing goes up "
+                "with no main image")
+    if not is_ours(config_path, u):
+        if not _is_public(u):
+            return ("not a web address Amazon can fetch, so it is not sent -- the "
+                    "listing goes up with no main image")
+        return ("another seller's photo -- it is not sent, so the listing goes up "
+                "with no main image")
+    got = fetchable(config_path, u)
+    if not got:
+        return ("Amazon cannot reach this image (no public address is set for the "
+                "app), so the listing goes up with no main image")
+    low = got.lower()
+    if "127.0.0.1" in low or "localhost" in low:
+        return ("the link points at this computer -- Amazon will fail it with "
+                "'Unable to Retrieve Media Content'")
+    return ""
+
+
 def diag(config_path):
     """For /diag: is the key persistent, and since when."""
     p = _path(config_path)

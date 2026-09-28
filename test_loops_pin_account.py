@@ -65,5 +65,34 @@ for fp in sorted(glob.glob(os.path.join(HERE, "static", "js", "*.js"))):
 ok = not bad
 print("  %-66s %s" % ("every awaited write loop pins its account",
                       "OK" if ok else "FAIL got=%r" % bad))
-print("\nFAILURES: %d" % (0 if ok else 1))
-sys.exit(0 if ok else 1)
+
+# A WRITE AFTER A DIALOG. The account is read when the request is SENT, which is
+# after the person answered -- so it is noted before the dialog and the write is
+# refused if it changed (lvPushChanges pushes to Amazon; two are deletes).
+DIALOG = re.compile(r'await\s+(uiConfirm|uiAlert|uiPrompt|confirm)\(')
+DIALOG_OK = {("product_type.js", "ptFixDrafts"): "its summary alert follows the pinned loop"}
+bad2 = []
+for fp in sorted(glob.glob(os.path.join(HERE, "static", "js", "*.js"))):
+    name = os.path.basename(fp)
+    src = open(fp, encoding="utf-8").read()
+    for m in DIALOG.finditer(src):
+        tail = src[m.end():m.end() + 1500]
+        cut = re.search(r'\n(async )?function ', tail)
+        if cut:
+            tail = tail[:cut.start()]
+        if not WRITE.search(tail):
+            continue
+        fns = re.findall(r'(?:async\s+)?function\s+(\w+)', src[:m.start()])
+        fn = fns[-1] if fns else "?"
+        body = src[src.rfind("function " + fn, 0, m.start()):m.end() + len(tail)]
+        if any(p in body for p in PINNED + ("_pinAcct",)):
+            continue
+        if (name, fn) in DIALOG_OK:
+            continue
+        bad2.append("%s %s()" % (name, fn))
+ok2 = not bad2
+print("  %-66s %s" % ("every write after a dialog checks the account first",
+                      "OK" if ok2 else "FAIL got=%r" % bad2))
+fails = (0 if ok else 1) + (0 if ok2 else 1)
+print("\nFAILURES: %d" % fails)
+sys.exit(1 if fails else 0)

@@ -441,6 +441,9 @@ function pdpImgDropUpload(ev){
 }
 
 async function pdpImgLibDelete(url){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   // uiConfirm, not the browser's confirm(). A native dialog freezes the whole
   // tab, cannot be styled, and says the page's hostname above the question --
   // on a screen the rest of which is this app's own. test_no_native_dialogs.py
@@ -449,6 +452,10 @@ async function pdpImgLibDelete(url){
             + "removed from Amazon, and any slot using it keeps the address.",
             {danger: true, ok: "Delete"})) return;
   try{
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+      if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+      return;
+    }
     const j = await (await fetch("/media/delete", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({url: url})})).json();

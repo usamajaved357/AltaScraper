@@ -78,7 +78,11 @@ os.environ.pop("PUBLIC_BASE_URL", None)
 print("\n=== and the submit path uses it ===")
 gen = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
 truthy("build_api_attributes resolves a media path", "_fetchable(" in gen)
-truthy("  through the shared builder", "_iu.public_url(CONFIG_PATH, u)" in gen)
+# (via domain/image_urls.fetchable since 28 Sep 2026 -- the rule moved there so
+# the pre-submit warning shares it; fetchable calls the same public_url)
+_iusrc = open(_os_repo.path.join(_REPO, r"domain\image_urls.py"), encoding="utf-8").read()
+truthy("  through the shared builder",
+       "_iu.fetchable(CONFIG_PATH, u)" in gen and "public_url(config_path, u)" in _iusrc)
 truthy("  for the main image", '_main_img = _fetchable(' in gen)
 truthy("  and every gallery slot", '_iv = _fetchable(' in gen)
 truthy("  and says what to set when it cannot",

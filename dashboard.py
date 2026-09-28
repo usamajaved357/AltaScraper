@@ -4234,7 +4234,7 @@ def build_app(backend=None):
                            _drive_upload_image=_drive_upload_image)
     import routes.submit_routes as _submit_routes
     _submit_routes.register(app, _records=_records, _active_account=_active_account,
-                            _state=_state, _cfg=_cfg)
+                            _state=_state, _cfg=_cfg, _ws=_ws, CONFIG_PATH=CONFIG_PATH)
     import routes.cogs_routes as _cogs_routes
     _cogs_routes.register(app, _state=_state, _COGS_OVERRIDE=_COGS_OVERRIDE,
                           _save_cogs_overrides=_save_cogs_overrides,

@@ -349,13 +349,14 @@ async function submitOne(sku){
   if(!sku) return;
   // same safety as the global submit: precheck local images, then confirm the account
   try{
-    const pc=await (await fetch("/submit/precheck")).json();
+    const pc=await (await fetch("/submit/precheck?skus="+encodeURIComponent(sku))).json();
     if(pc&&pc.ok&&pc.count>0){
-      const hit=(pc.local_image_rows||[]).some(x=>String(x.sku)===String(sku));
+      const hit=(pc.local_image_rows||[]).find(x=>String(x.sku)===String(sku));
       if(hit){
-        if(!await uiConfirm("⚠ This listing's main image is a LOCAL file Amazon can't fetch (it lives on your PC). "
-          +"It will FAIL with 'Unable to Retrieve Media Content'.\n\nUse a publicly-hosted image URL first, "
-          +"or submit anyway to see the error?")) return;
+        // The reason is the submit's own (domain/image_urls.main_image_problem).
+        if(!await uiConfirm("\u26a0 This listing's main image: "+(hit.why||"cannot be used")+".\n\n"
+          +"Set one of your own images, reachable by Amazon, as the main image first -- "
+          +"or submit anyway?")) return;
       }
     }
   }catch(e){}

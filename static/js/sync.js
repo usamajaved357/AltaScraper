@@ -38,7 +38,7 @@ async function syncRenderMatrix(){
   el.innerHTML='<span class="genspin"></span> Loading capabilities…';
   try{
     var j=await (await fetch('/sync/capabilities')).json();
-    if(!j.ok){ el.innerHTML='<div class="cc" style="color:var(--red)">could not load</div>'; return; }
+    if(!j.ok){ el.innerHTML=uiError("Sync status could not be loaded", j.error||"", "syncRenderMatrix", "sync"); return; }
     var h='<table class="ishtable" style="width:100%"><thead><tr><th>Account</th><th>Status</th><th>Pull</th><th>Push</th></tr></thead><tbody>';
     (j.accounts||[]).forEach(function(a){
       h+='<tr><td><b>'+esc(a.label)+'</b></td>'
@@ -52,7 +52,7 @@ async function syncRenderMatrix(){
       +'<button class="btn" onclick="syncRecheck()">Re-check active account (read-test)</button>'
       +'<button class="btn" onclick="syncMarkCause()">Mark cause…</button></div>';
     el.innerHTML=h;
-  }catch(e){ el.innerHTML='<div class="cc" style="color:var(--red)">error loading capabilities</div>'; }
+  }catch(e){ el.innerHTML=uiError("Sync status could not be loaded", String(e), "syncRenderMatrix", "sync"); }
 }
 
 function _syncSku(){ var e=document.getElementById('sync_sku'); return e?(e.value||'').trim():''; }
