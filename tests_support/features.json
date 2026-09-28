@@ -8,7 +8,17 @@
   ],
   "static/js/listings.js": [
     "static/js/core_util.js",
-    "static/js/listings.js"
+    "static/js/listings.js",
+    "static/js/listings_selection.js",
+    "static/js/listings_search.js",
+    "static/js/listings_dups.js",
+    "static/js/listings_summary.js",
+    "static/js/listings_ppc.js",
+    "static/js/listings_grid.js",
+    "static/js/listings_drawer_build.js",
+    "static/js/listings_rows.js",
+    "static/js/listings_panels.js",
+    "static/js/listings_open.js"
   ],
   "static/js/sourcing.js": [
     "static/js/sourcing.js"
