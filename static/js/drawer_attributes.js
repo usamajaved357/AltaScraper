@@ -357,6 +357,10 @@ async function lvUse(sku, key){
  * even when Amazon disagrees with it -- overwriting those is the destructive
  * direction and is left as a per-field decision. */
 async function lvFillEmpty(sku){
+  // The account these values are copied INTO, taken before the confirmation:
+  // every write names it, so a switch part-way cannot send the rest to the new
+  // account's same-SKU listing (loop audit, 28 Sep 2026).
+  const pinAcct = (typeof acctId === "function") ? acctId() : "";
   const L = lvGet(sku);
   const r = ROWS.find(x => String(x.sku) === String(sku));
   if(!L || L.state !== "ok" || !r) return;
@@ -376,12 +380,15 @@ async function lvFillEmpty(sku){
     try{
       const j = await (await fetch("/edit", {method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify(acctBody({sku, target:"attr", key:k, value:L.values[k]}))})).json();
+        body: JSON.stringify(pinAcct && typeof acctBodyFor === "function"
+          ? acctBodyFor({sku, target:"attr", key:k, value:L.values[k]}, pinAcct)
+          : acctBody({sku, target:"attr", key:k, value:L.values[k]}))})).json();
       if(j.ok){ r.attributes = r.attributes || {}; r.attributes[k] = L.values[k]; done++; }
       else failed++;
     }catch(e){ failed++; }
   }
   toast("Filled " + done + " field(s)" + (failed ? (", " + failed + " failed") : ""));
+  if(pinAcct && typeof acctId === "function" && acctId() !== pinAcct) return;   // saved there
   if(typeof _rebuildDrawerData === "function") _rebuildDrawerData(sku);
 }
 

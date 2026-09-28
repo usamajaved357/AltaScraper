@@ -1047,11 +1047,17 @@ async function clearMainImage(sku){
         if(!/^https?:\/\//i.test(v)) toClear.push(k);   // only drop local ones
       }
     });
+    // Every clear names the account it started in (see drawer_attributes.js
+    // lvFillEmpty): a switch part-way must not clear the new account's images.
+    const pinAcct = (typeof acctId === "function") ? acctId() : "";
     for(const k of toClear){
       await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(acctBody({sku:sku, target:"attr", key:k, value:""}))});
+        body:JSON.stringify(pinAcct && typeof acctBodyFor === "function"
+          ? acctBodyFor({sku:sku, target:"attr", key:k, value:""}, pinAcct)
+          : acctBody({sku:sku, target:"attr", key:k, value:""}))});
     }
     toast("Main image removed — listing can be created without it");
+    if(pinAcct && typeof acctId === "function" && acctId() !== pinAcct) return;
     // refresh this row so the panel updates
     try{
       const j=await (await fetch(acctUrl("/row?sku="+encodeURIComponent(sku)))).json();

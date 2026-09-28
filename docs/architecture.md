@@ -406,6 +406,24 @@ Since Milestone 1 (28 Sep 2026):
   under the run's scratch folder. A test that sets these itself still wins.
 - A test that cannot start without a config.json is reported as "could not
   run", by name, not as a failure. Exit code 125 means "could not run".
+- **No test needs the owner's data** (28 Sep 2026): the seven that did now
+  build their own temporary config and database.
+
+Browser check -- `py -3.11 tools/browser_smoke.py [--only a,b] [--shots DIR]`
+(28 Sep 2026). Serves the real app in-process on a TEMPORARY copy of the
+credential-free `sandbox` data set (refuses to start if the database would be
+anywhere else), blocks every non-local request, and drives headless Chromium
+(Playwright) through every screen in both fake accounts. It seeds each
+account's copy with marker orders/sales/ads rows and a marker title on the SKU
+both accounts share, then fails on: a script error, a console error, any 5xx,
+one account's marker visible under the other (normal switch, switch while
+loading, two tabs, the product page), a request from a tab that names no
+account and is not on its reviewed app-wide list, or an unlabelled field. It
+also reports the slowest server calls. ~10 minutes for all screens; not part
+of `run_tests.py` because it starts a browser.
+
+Page weight -- `py -3.11 tools/asset_report.py` (read-only): every script and
+stylesheet the dashboard loads, raw and gzipped.
 - Undefined-name guards: `test_no_undefined_names.py` (Python, pyflakes) and
   `test_no_undefined_js_calls.js` (browser calls to functions defined nowhere).
 
