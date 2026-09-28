@@ -113,6 +113,21 @@ truthy("Node: a buffer read gets the file alone", got[1:2] == ["0"])
 truthy("Node: another file is untouched", got[2:3] == ["1"])
 truthy("Node: a read by non-test code gets the file alone", got[3:4] == ["0"])
 
+print("\n== both hooks build the same text, for every feature ==")
+sys.path.insert(0, SUP)
+import features as _F
+same_probe = os.path.join(d, "test_probe_same.js")
+with open(same_probe, "w", encoding="utf-8") as fh:
+    fh.write("process.stdout.write(require('fs').readFileSync(process.argv[2],'utf8'))")
+env2 = dict(os.environ)
+env2["NODE_OPTIONS"] = "--require " + os.path.join(SUP, "feature_read.js")
+env2.pop("ALTA_FEATURES_JSON", None)
+for k in _F.FEATURES:
+    pyt = _F.feature_text(k).replace("\r\n", "\n")
+    jst = subprocess.run(["node", same_probe, k], cwd=HERE, env=env2, capture_output=True,
+                         text=True, encoding="utf-8").stdout.replace("\r\n", "\n")
+    truthy("Python and Node agree on %s" % k, pyt == jst)
+
 print("\n== the runner turns it on ==")
 RT = raw("run_tests.py")
 truthy("run_tests.py puts tests_support on PYTHONPATH", 'env["PYTHONPATH"] = sup' in RT)

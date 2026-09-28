@@ -14,7 +14,13 @@
     "static/js/sourcing.js"
   ],
   "static/js/sales.js": [
-    "static/js/sales.js"
+    "static/js/sales.js",
+    "static/js/sales_breakdown.js",
+    "static/js/sales_week.js",
+    "static/js/sales_campaigns.js",
+    "static/js/sales_live.js",
+    "static/js/sales_cards.js",
+    "static/js/sales_grid.js"
   ],
   "static/css/dashboard.css": [
     "static/css/dashboard.css",

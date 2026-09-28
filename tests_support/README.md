@@ -33,3 +33,13 @@ sizes, one file per feature) must read raw bytes -- `open(p, "rb")` /
 `fs.readFileSync(p)` -- so it sees each file on its own, not a feature.
 `test_global_name_clashes.py` does. The hook also turns `\r\n` into `\n` for a
 Python text read, exactly as `open()` in text mode would.
+
+**The feature comes back in the ORIGINAL order.** Where code moved out, the
+original keeps a pointer line (`// A ... B: moved to static/js/x.js (Milestone
+4) ...`) or an `{% include "screens/x.html" %}`. The hook puts each such part
+back at that spot, so a test that slices "from X to Y" finds the same text it
+always did. Parts with no single pointer (the CSS pieces, cut in order anyway;
+core_util.js, which five pointers share) follow in manifest order. Python and
+Node build the text the same way -- `test_feature_sources.py` checks they agree
+for every feature. In Node, a script directly in the repo folder counts as a
+test (some Python tests write a temporary .js there and run it).
