@@ -391,26 +391,25 @@ States and rendering:
   defined twice in sales.js, `_aiEsc` in two files), about 17 Python `_num()`
   and 5 `_money` copies.
 
-## Carried over from REMAINING_FIXES_HANDOFF.md (status NOT re-checked)
+## Carried over from REMAINING_FIXES_HANDOFF.md (re-checked 28 Sep 2026)
 
 That handoff (root file, undated, written before the 26 Sep PDP/listings
-redesign) listed seven items. Whether each is still open was not verified on
-27 Sep 2026; check before working on any of them.
-1. Orders expanded panel vs `altascraper-order-detail-v2.html`: one cost/fee/
-   profit bar palette everywhere (sourcing colours), full supplier table with
-   shipping pills, spaced delivery line, badge row, clean "no cost" state
-   (handling still shown), compact header on every page.
-2. Remove the "N warnings" text under the warning icons (detailed row, PDP hero,
-   card view); keep the icons.
-3. Amazon API errors vanish after Sync because they live in the status: store the
-   `issues` array separately, survive Sync, clear on a clean resubmit, show on
-   the PDP and the row. (No `api_errors` field exists in the code today.)
-4. Compliance warnings: duplicates in the warnings array (listing/warnings.py),
-   and cosmetics/blades rules firing on cleaning tools — decide categories from
-   Amazon's product type, not keywords.
-5. Trace (don't change) the orders cost calculation: sources, priority, why an
-   order shows "—" when sourcing has a supplier price, the profit/ROI/margin
-   formulas.
+redesign) listed seven items; the five kept here were re-checked in the code:
+1. OPEN, DESIGN (parked): Orders expanded panel vs
+   `altascraper-order-detail-v2.html` -- a visual brief, waits for the design
+   phase.
+2. DONE: the "N warnings" text under the warning icons -- the row's count chip
+   was removed and the card badge reworked (listrow_detailed.js, listings.js,
+   the owner's "i dont want this" note). The PDP's "accepted with N warnings"
+   line is Amazon's own summary, a different thing.
+3. DONE: Amazon's issues are stored in their own field ("API Issues JSON",
+   listing/api_issues.py pack/parse), which Sync does not touch, and are shown
+   on the row and the PDP.
+4. DONE: warnings are de-duplicated (listing/warnings.py `_dedupe`) and the
+   compliance category comes from the product type (listing/compliance.py
+   `lane_for_product_type`), not keywords.
+5. OPEN, A TRACE (not a defect): document the orders cost calculation --
+   sources, priority, why an order shows "—" with a supplier price, formulas.
 
 ## Carried over from PPC-BUILD-STATUS.md (7 Sep 2026)
 

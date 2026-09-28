@@ -2099,10 +2099,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     "no listing with this SKU in this workspace":
                 try:
                     from listing import adopt as _adopt
-                    _aid = str(b.get("account")
-                               or _state.get("active_account_id") or "")
-                    _mkt = str(b.get("marketplace")
-                               or _state.get("active_marketplace") or "").upper()
+                    # The account the request names however it names it, and
+                    # ITS marketplace -- not the open account's selection
+                    # (low item from the two-tab review).
+                    from routes import scope as _scope_mod
+                    _aid = str(b.get("account") or _rqa.current(_state) or "")
+                    _mkt = str(b.get("marketplace") or request.args.get("marketplace")
+                               or _scope_mod.marketplace(state=_state,
+                                                         account=_active_account() or {})
+                               or "").upper()
                     _ok, _why = _adopt.adopt(CONFIG_PATH, ws, _aid, _mkt, sku)
                     if _ok:
                         _adopted = True
@@ -2124,8 +2129,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # rather than a fact about the listing.
                 #
                 # no_row lets the caller say that plainly instead of guessing.
-                _wsid = str(b.get("account") or
-                            _state.get("active_account_id") or "") or "this workspace"
+                _wsid = str(b.get("account") or _rqa.current(_state) or "") or "this workspace"
                 return jsonify({"ok": False, "error": found.error,
                                 "no_row": True, "sku": sku,
                                 "workspace": _wsid}), 404

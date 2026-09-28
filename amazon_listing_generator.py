@@ -5648,12 +5648,16 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
             "again. (Borrowed images are still used as a reference for "
             "generating.)[/yellow]")
 
-    _main_img = _fetchable(pa.pop("main_product_image_locator", ""))
+    # The value is kept before it is popped: this read it back AFTER the pop,
+    # so the "Skipping main image" line below could never print (review of
+    # batch 8). The payload is unchanged.
+    _main_given = pa.pop("main_product_image_locator", "")
+    _main_img = _fetchable(_main_given)
     if _main_img and has("main_product_image_locator"):
         A["main_product_image_locator"] = [{"media_location": _main_img,
                                             "marketplace_id": mid}]
     elif _main_img == "":
-        _raw = str(pa.get("main_product_image_locator") or "")
+        _raw = str(_main_given or "")
         if _raw:
             console.print(f"  [yellow]Skipping main image -- Amazon cannot fetch "
                           f"{_raw[:52]}. If it is one of this app's own images, set "
