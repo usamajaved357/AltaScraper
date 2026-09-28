@@ -118,9 +118,19 @@ inventory sync), and `build_api_attributes` (separate plan:
    `orders_live.order_items` falls back to US — two answers for an account with no
    default marketplace. Recorded; consolidating it changes a fallback, owner to confirm.
 4. `/run` and `listing/run_command.py` build different generator arguments (dropship branch).
+   A9 (29 Sep) made both use the same `account_args` / `api_scope_args`; argv is
+   identical for every account shape. The one remaining difference is
+   `build_api_run_args`'s no-account "dropshipping" branch, which reads
+   `dropshipping_*` config keys the code says were never set. Left as it was;
+   removing it is the owner's call (Rule 1 retired that workspace).
 5. Writes via `config/settings.write_raw` do not clear `dashboard._state["cfg"]`
    unless the route calls `_reload_cfg` — possible stale config after a save.
 6. `sales_summary` (a GET) writes `order_lines` through `order_cogs.freeze_range`.
+7. `/preview/enqueue` does not refuse when no account is open, where `/run`
+   does ("No account is open"). A queued preview then reaches the generator with
+   no `--account-id`, whose credential fallback is the global block. Found during
+   A9; not fixed there (a behaviour change on a write-adjacent path; owner to
+   confirm the refusal should match `/run`).
 
 ## 5. Batch notes
 
@@ -131,3 +141,14 @@ inventory sync), and `build_api_attributes` (separate plan:
   `active_marketplace` and then "restored" it from the process-wide value, which
   could leave that user pinned to a stale marketplace and added a Set-Cookie to
   the response. Nothing is written now.
+- **A5** (account fallback). `id_or_open` is exactly the hand-written expression;
+  only the 15 identical copies moved. The other reads of the open account differ
+  (str(), strip(), None, ?account=) and stay with their routes; a guard caps them.
+- **A6** (SQL out of routes). Finance, Sales, Orders and the listing edit's reads
+  moved statement for statement; 19 calls in 11 smaller route files remain,
+  capped per file by `test_routes_sql_ceiling.py`.
+- **A7** (clients). One Anthropic constructor. No SP-API factory: see the commit;
+  the credential builders are the real duplication and stay out of scope.
+- **A9** (generator args). One builder for the account and Preview/Submit
+  arguments; equivalence proven against the pre-A9 code over every mode and
+  account shape.

@@ -121,7 +121,12 @@ truthy("  through the account picker's own route, so the sheet follows",
 truthy("  retried exactly once per press", "runMode._retried" in INV)
 
 print("\n=== the account really is on the command line ===")
-truthy("the run passes --account-id", '"--account-id", _acc_id' in RUN)
+# Built by listing/run_command.account_args since architecture batch A9 (the
+# preview queue uses the same one); /run must still call it for every mode.
+_RC = open(_os_repo.path.join(_REPO, "listing", "run_command.py"), encoding="utf-8").read()
+truthy("the run passes --account-id", '"--account-id", _acc_id' in RUN or (
+    "_rc.account_args(extra, _acc)" in RUN
+    and '"--account-id", _acc_id' in _RC[_RC.index("def account_args"):_RC.index("def api_scope_args")]))
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)

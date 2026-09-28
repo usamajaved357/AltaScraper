@@ -2810,40 +2810,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # _active_account() from in here read the SHARED account, not
                 # this user's -- which is exactly how a Jack Reacherd run
                 # executed as Nestwell Goods.
+                # One builder for both runners (architecture batch A9): the
+                # preview queue (routes/preview_job_routes.py) uses the same one.
+                from listing import run_command as _rc
                 _acc = _scope_acc
                 if _acc:
-                    _acc_id = _acc.get("id") or ""
-                    if _acc_id and "--account-id" not in extra:
-                        extra += ["--account-id", _acc_id]
-                    _acc_sheet = _acc.get("output_spreadsheet_id") or ""
-                    _acc_tab = _acc.get("output_tab") or _acc.get("output_worksheet") or ""
-                    _acc_out_gid = str(_acc.get("output_tab_gid") or "")
-                    _acc_in_sheet = _acc.get("input_spreadsheet_id") or ""
-                    _acc_in_gid = str(_acc.get("input_tab_gid") or "")
-                    if _acc_sheet and "--sheet" not in extra:
-                        extra += ["--sheet", _acc_sheet]
-                    if _acc_tab and "--tab" not in extra:
-                        extra += ["--tab", _acc_tab]
-                    if _acc_out_gid and "--tab-gid" not in extra:
-                        extra += ["--tab-gid", _acc_out_gid]
-                    if _acc_in_sheet and "--input-sheet" not in extra:
-                        extra += ["--input-sheet", _acc_in_sheet]
-                    if _acc_in_gid and "--input-tab-gid" not in extra:
-                        extra += ["--input-tab-gid", _acc_in_gid]
-                    # marketplace (US/UK) for this account -- so pricing, fees, SP-API
-                    # and the flat-file route match the account, not the UK default.
-                    _acc_mkt = (_acc.get("default_marketplace") or "").strip().upper()
-                    if _acc_mkt not in ("US", "UK", "GB") and _acc.get("marketplaces"):
-                        # pick the first US/UK/GB entry, not blindly [0] (which can be
-                        # MX/CA/BR -> generator would fall through to the UK default
-                        # and deny a US token on catalog/pricing/fees).
-                        for _mm in _acc["marketplaces"]:
-                            _mmu = str(_mm).strip().upper()
-                            if _mmu in ("US", "UK", "GB"):
-                                _acc_mkt = _mmu
-                                break
-                    if _acc_mkt and "--marketplace" not in extra:
-                        extra += ["--marketplace", _acc_mkt]
+                    extra = _rc.account_args(extra, _acc)
                 # NO ACTIVE ACCOUNT. This branch used to add the Dropshipping
                 # workspace's own sheet overrides. That workspace has been
                 # removed -- it described itself as "eBay -> Amazon arbitrage",
@@ -2857,37 +2829,16 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # at once (which would waste credits), and validates against the
                 # correct catalogue (US for US brands).
                 if mode in ("api", "api_submit", "api_verify"):
-                    # per-listing Preview/Submit/Verify: a ?skus= filter limits to those SKUs
-                    _api_skus = _req_skus
-                    if _api_skus and "--skus" not in extra:
-                        extra += ["--skus", _api_skus]
-                    if _req_minimal and "--minimal" not in extra:
-                        extra += ["--minimal"]
-                    # All captured in the request context above. Read here they
+                    # per-listing Preview/Submit/Verify: ?skus=, ?minimal=1, the
+                    # open sheet/tab and the brand view's marketplace. All
+                    # captured in the request context above. Read here they
                     # would come from the SHARED bag -- another user's sheet and
                     # another user's brand view, on a path that submits to
                     # Amazon.
-                    _sid = _scope_sheet
-                    _tab = _scope_tab
-                    _mkt = ""
-                    # resolve marketplace from the active brand profile, if any
-                    _vk = _scope_view
-                    if _vk:
-                        try:
-                            import glob as _glob, os as _os
-                            for _pf in _glob.glob(_os.path.join(_os.path.dirname(CONFIG_PATH), "brands", "*", "profile.json")):
-                                _p = json.load(open(_pf, encoding="utf-8"))
-                                if (_p.get("brand_name") or "") == _vk:
-                                    _mkt = _p.get("marketplace", "") or ""
-                                    break
-                        except Exception:
-                            pass
-                    if _sid:
-                        extra += ["--sheet", _sid]
-                    if _tab:
-                        extra += ["--tab", _tab]
-                    if _mkt:
-                        extra += ["--marketplace", _mkt]
+                    extra = _rc.api_scope_args(
+                        extra, skus=_req_skus, minimal=_req_minimal,
+                        sheet=_scope_sheet, tab=_scope_tab, view=_scope_view,
+                        config_path=CONFIG_PATH)
                 # ROW SELECTION (generate only): limit the run to chosen input rows.
                 # Empty -> generator processes all rows (unchanged).
                 if mode == "generate" and _req_select:
