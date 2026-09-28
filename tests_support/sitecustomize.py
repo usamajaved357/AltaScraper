@@ -51,7 +51,14 @@ def _feature_open(file, mode="r", *args, **kwargs):
             split = False
         if split:
             enc = kwargs.get("encoding") or (args[1] if len(args) > 1 else None) or "utf-8"
-            return io.StringIO(_features.feature_text(file, enc))
+            text = _features.feature_text(file, enc)
+            # AS A TEXT READ WOULD GIVE IT: open() in text mode turns \r\n and
+            # \r into \n unless newline= says otherwise. Without this a test
+            # looking for "{\n  if(" stopped matching a Windows checkout.
+            newline = kwargs.get("newline", args[2] if len(args) > 2 else None)
+            if newline is None:
+                text = text.replace("\r\n", "\n").replace("\r", "\n")
+            return io.StringIO(text, newline="")
     return _real_open(file, mode, *args, **kwargs)
 
 

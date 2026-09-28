@@ -27,3 +27,9 @@ the original).
 
 **Running one test by hand** without run_tests.py skips the hook; use
 `py -3.11 run_tests.py <name>`.
+
+**A test that is about individual files** (which file defines a name, file
+sizes, one file per feature) must read raw bytes -- `open(p, "rb")` /
+`fs.readFileSync(p)` -- so it sees each file on its own, not a feature.
+`test_global_name_clashes.py` does. The hook also turns `\r\n` into `\n` for a
+Python text read, exactly as `open()` in text mode would.

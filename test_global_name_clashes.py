@@ -56,7 +56,11 @@ def owners():
     for f in sorted(os.listdir(JSDIR)):
         if not f.endswith(".js"):
             continue
-        src = io.open(os.path.join(JSDIR, f), encoding="utf-8").read()
+        # EACH FILE ON ITS OWN, read raw: this test is about which FILE owns a
+        # name, so it must not get a split file's whole feature back from the
+        # test runner's feature hook (tests_support/README.md) -- that would
+        # count a function once in its new file and again inside the old one.
+        src = open(os.path.join(JSDIR, f), "rb").read().decode("utf-8")
         # Comments quote other files' function names constantly; strip them or
         # every explanation counts as a definition.
         src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
