@@ -202,6 +202,49 @@ def build_patches(attributes, decision, marketplace_id):
     return patches, ""
 
 
+def seller_creds(cfg, workspace_id, marketplace):
+    """(creds, marketplace_id, seller_id) for one account -- what run_live and
+    every price send need. Raises RuntimeError for an account this app does not
+    have. ONE copy (price-write map F7, 29 Sep 2026): the repricer's timer job
+    (data/scheduler.py) and the Repricer screen (routes/sourcing_routes.py) each
+    wrote it out, line for line; this is that code, unchanged. The credentials
+    and marketplace id come from domain/accounts; the account is found by id
+    here, as both copies did (domain/amazon_fees._creds_for finds it with
+    accounts.get_account -- a third copy, recorded in known-issues)."""
+    from domain import accounts as _acc
+    c = cfg() if callable(cfg) else (cfg or {})
+    for a in (c.get("accounts") or []):
+        if str(a.get("id")) == str(workspace_id):
+            return (_acc.account_creds(a), _acc.marketplace_id(marketplace),
+                    str(a.get("seller_id") or ""))
+    raise RuntimeError("no account called %s" % workspace_id)
+
+
+def push_patches(creds, mkt, seller_id, sku, marketplace_id, product_type, patches,
+                 rejected="Amazon rejected the change", issue_width=120):
+    """Send price patches built by build_patches. -> (ok, why, submission_id).
+
+    THE ONE SEND for every price writer (architecture 4F, 29 Sep 2026): the
+    repricer (apply_one), the repricer's price box, the price editor and the
+    percentage change each wrote this call and its refusal wording out by hand.
+    What differs between them -- which gates run, the floor, how a failure is
+    returned -- stays with each; only the send is shared. `rejected` and
+    `issue_width` keep each caller's own words exactly as they were.
+
+    ACCEPTED ONLY: anything but Amazon's OK is a refusal, worded from Amazon's
+    own issue messages (Rule 4), never a guess.
+    """
+    res = _al.patch(creds, mkt, seller_id, sku, marketplace_id, product_type, patches,
+                    issue_locale=("en_US" if str(mkt).upper() == "US" else "en_GB"))
+    if res.get("status") != _al.OK:
+        why = res.get("error") or rejected
+        if res.get("issues"):
+            why += " -- " + "; ".join(
+                str(i.get("message") or "")[:issue_width] for i in res["issues"][:3])
+        return False, why, ""
+    return True, "", res.get("submission_id")
+
+
 def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
               ws, mkt, sku, now=None, decision=None, current=None):
     """Decide, check every gate, and push if all of them pass. Never raises.
@@ -237,21 +280,16 @@ def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
                             at=now.strftime("%Y-%m-%d %H:%M:%S"))
         return {"sku": sku, "applied": 0, "blocked_by": err, "decision": out}
 
-    res = _al.patch(creds, mkt, seller_id, sku, marketplace_id,
-                    got["product_type"], patches,
-                    issue_locale=("en_US" if str(mkt).upper() == "US" else "en_GB"))
-    if res["status"] != _al.OK:
-        why = res["error"] or "Amazon rejected the change"
-        if res["issues"]:
-            why += " -- " + "; ".join(
-                str(i.get("message") or "")[:120] for i in res["issues"][:3])
+    sent, why, submission_id = push_patches(creds, mkt, seller_id, sku, marketplace_id,
+                                            got["product_type"], patches)
+    if not sent:
         out = dict(decision, blocked_by=why)
         _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=-1,
                         at=now.strftime("%Y-%m-%d %H:%M:%S"))
         return {"sku": sku, "applied": -1, "blocked_by": why, "decision": out}
 
     out = dict(decision, reason=(decision.get("reason", "") +
-                                 " [pushed, Amazon submission %s]" % res["submission_id"]))
+                                 " [pushed, Amazon submission %s]" % submission_id))
     _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=1,
                         at=now.strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -275,7 +313,7 @@ def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
     except Exception:
         pass
     return {"sku": sku, "applied": 1, "blocked_by": "", "decision": out,
-            "submission_id": res["submission_id"]}
+            "submission_id": submission_id}
 
 
 def record_manual_price(config_path, ws, mkt, sku, price, was=None, current=None,

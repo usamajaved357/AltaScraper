@@ -490,16 +490,13 @@ def sourcing_apply(workspace_id=None):
     them by coming in through the timer.
     """
     from domain import source_apply as _sapply
-    from domain import accounts as _acc
     app, config_path, cfg = _need("app", "config_path", "cfg")
     c = cfg() if callable(cfg) else cfg
 
     def creds_for(ws, mkt):
-        for a in (c.get("accounts") or []):
-            if str(a.get("id")) == str(ws):
-                return (_acc.account_creds(a), _acc.marketplace_id(mkt),
-                        str(a.get("seller_id") or ""))
-        raise RuntimeError("no account called %s" % ws)
+        # The one lookup (domain/source_apply.seller_creds), on the settings
+        # read once at the start of this run, as before.
+        return _sapply.seller_creds(c, ws, mkt)
 
     return _sapply.run_live(config_path, cfg, creds_for, workspace_id=workspace_id)
 

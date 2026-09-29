@@ -330,16 +330,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                       "there deliberately."
                                       % (new_price, floor))}), 400
 
-        from api import amazon_listings as _al
-        res = _al.patch(_acc_mod.account_creds(acc or {}), mkt,
-                        str((acc or {}).get("seller_id") or ""), sku, mkt_id,
-                        live.get("productType") or "", patches,
-                        issue_locale=("en_US" if mkt == "US" else "en_GB"))
-        if res["status"] != _al.OK:
-            why = res.get("error") or "Amazon rejected it"
-            if res.get("issues"):
-                why += " -- " + "; ".join(str(i.get("message") or "")[:140]
-                                          for i in res["issues"][:3])
+        # The one price send (domain/source_apply.push_patches, 4F).
+        sent, why, _sub = _apply.push_patches(
+            _acc_mod.account_creds(acc or {}), mkt, str((acc or {}).get("seller_id") or ""),
+            sku, mkt_id, live.get("productType") or "", patches,
+            rejected="Amazon rejected it", issue_width=140)
+        if not sent:
             return jsonify({"ok": False, "error": why}), 502
 
         # Recorded in the same place the repricer records its own changes, so one
@@ -358,7 +354,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             print("[price] %s: the change was sent but not recorded: %s" % (sku, _e), flush=True)
 
         return jsonify({"ok": True, "sku": sku, "was": was, "now": new_price,
-                        "submission_id": res.get("submission_id"),
+                        "submission_id": _sub,
                         "note": ("Amazon usually shows a new price within a few "
                                  "minutes.")})
 
@@ -481,10 +477,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 "failures": refused_rows}), 400
 
         allow_below = bool(b.get("below_floor_ok"))
-        from api import amazon_listings as _al
         from domain import source_apply as _apply
         mkt_id = _acc_mod.marketplace_id(mkt)
-        locale = "en_US" if mkt == "US" else "en_GB"
         done, failed = [], list(refused_rows)
         for sku, new_price in wanted:
             # RE-READ EACH LISTING. The offer is deep-copied from what Amazon
@@ -507,15 +501,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             if err:
                 failed.append({"sku": sku, "error": err})
                 continue
-            res = _al.patch(_acc_mod.account_creds(acc or {}), mkt,
-                            str((acc or {}).get("seller_id") or ""), sku, mkt_id,
-                            live.get("productType") or "", patches,
-                            issue_locale=locale)
-            if res["status"] != _al.OK:
-                why = res.get("error") or "Amazon rejected it"
-                if res.get("issues"):
-                    why += " -- " + "; ".join(str(i.get("message") or "")[:140]
-                                              for i in res["issues"][:3])
+            sent, why, _sub = _apply.push_patches(
+                _acc_mod.account_creds(acc or {}), mkt, str((acc or {}).get("seller_id") or ""),
+                sku, mkt_id, live.get("productType") or "", patches,
+                rejected="Amazon rejected it", issue_width=140)
+            if not sent:
                 failed.append({"sku": sku, "error": why})
                 continue
             try:

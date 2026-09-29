@@ -88,19 +88,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
 
         Read through domain/accounts.py, which every other Amazon call already
         uses -- a second way of assembling credentials here would eventually
-        disagree with the one the rest of the app publishes through.
+        disagree with the one the rest of the app publishes through. The one
+        copy is domain/source_apply.seller_creds, shared with the timer job.
         """
-        from domain import accounts as _acc
-        cfg = _cfg() if callable(_cfg) else (_cfg or {})
-        acc = None
-        for a in (cfg.get("accounts") or []):
-            if str(a.get("id")) == str(workspace_id):
-                acc = a
-                break
-        if not acc:
-            raise RuntimeError("no account called %s" % workspace_id)
-        return (_acc.account_creds(acc), _acc.marketplace_id(marketplace),
-                str(acc.get("seller_id") or ""))
+        from domain import source_apply as _sapply
+        return _sapply.seller_creds(_cfg, workspace_id, marketplace)
 
     def _where():
         """(account_id, marketplace) for the request.
@@ -942,16 +934,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             got["attributes"], {"price": round(price, 2)}, mkt_id)
         if err:
             return jsonify({"ok": False, "error": err}), 400
-        res = _al.patch(creds, mkt, seller, sku, mkt_id, got["product_type"],
-                        patches,
-                        issue_locale=("en_US" if str(mkt).upper() == "US"
-                                      else "en_GB"))
-        if res.get("status") != _al.OK:
-            why = res.get("error") or "Amazon rejected the change"
-            if res.get("issues"):
-                why += " -- " + "; ".join(
-                    str(i.get("message") or "")[:120]
-                    for i in res["issues"][:3])
+        # The one price send (domain/source_apply.push_patches, 4F).
+        sent, why, submission_id = _apply.push_patches(
+            creds, mkt, seller, sku, mkt_id, got["product_type"], patches)
+        if not sent:
             return jsonify({"ok": False, "error": why}), 400
 
         # RECORDED AS A MANUAL OVERRIDE, in the same log the automatic changes
@@ -964,7 +950,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         _sapply.record_manual_price(CONFIG_PATH, wsid, mkt, sku, price,
                                     was=was, current=cur)
         return jsonify({"ok": True, "price": round(price, 2), "was": was,
-                        "submission_id": res.get("submission_id"),
+                        "submission_id": submission_id,
                         "note": ("Amazon has it as %.2f. It can take a few "
                                  "minutes to show on the listing." % price)})
 
