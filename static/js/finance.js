@@ -75,14 +75,23 @@ function financeToggleOverhead(){
   financeRender();
 }
 
-function _finIso(d){ return d.toISOString().slice(0, 10); }
+// THE LOCAL DAY, not UTC: toISOString moved "This month" to the last day of
+// the previous month around UK midnight in summer time (Finance review, 30 Sep).
+function _finIso(d){
+  const m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
+}
 
 function financePreset(k){
   FIN.preset = k || "";
   if(k){
     const p = FIN_PRESETS.filter(x => x.k === k)[0];
     if(p){
+      // ENDING YESTERDAY, as the Sales page does ("Amazon never has today"),
+      // so "30 days" here is the same thirty days as there.
       const end = new Date(), start = new Date();
+      end.setDate(end.getDate() - 1);
+      start.setDate(start.getDate() - 1);
       if(p.month){ start.setDate(1); }
       else if(p.lastMonth){
         // The whole of the previous calendar month, first to last. Day 0 of
@@ -200,6 +209,17 @@ async function financeLoad(){
   }
   FIN.rows = j.rows || [];
   FIN.totals = j.totals || {};
+  // THE ACCOUNT'S PROFIT FOR THE SAME DAYS, every line (domain/pnl.build via
+  // /sales/pnl -- the Sales card's own statement; pnl.js draws it).
+  if(typeof pnlLoad === "function"){
+    const pq = [];
+    if(j.workspace) pq.push("account=" + encodeURIComponent(j.workspace));
+    else if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+      pq.push("account=" + encodeURIComponent(CUR_ACCOUNT.id));
+    if(j.marketplace) pq.push("marketplace=" + encodeURIComponent(j.marketplace));
+    if(j.start && j.end) pq.push("start=" + encodeURIComponent(j.start), "end=" + encodeURIComponent(j.end));
+    pnlLoad("fin_pnl", pq.join("&"));
+  }
   FIN.overhead = j.overhead || null;
   FIN.previous = j.previous || null;
   // The server decides the basis (it validates it); the screen follows, so the
@@ -497,7 +517,8 @@ function financeRender(){
             + (FIN.meta.marketplace ? ' · '+_fesc(FIN.meta.marketplace) : '')
             + ' — '
           : '')
-      +  'money that moved between <b>'+_fesc(FIN.meta.start)+'</b> and <b>'
+      +  (FIN.basis === "settlement" ? 'money that moved between <b>' : 'orders placed between <b>')
+      +  _fesc(FIN.meta.start)+'</b> and <b>'
       +  _fesc(FIN.meta.end)+'</b>'
       +  (FIN.filter !== "all"
           ? ' — showing <b>'+_fesc((FIN_FILTERS.filter(x=>x.k===FIN.filter)[0]||{}).t)
@@ -580,14 +601,16 @@ function financeRender(){
   if(typeof uiSource === "function" && FIN.meta){
     h += uiSource([
       {k: "Source", v: "Amazon Finances (listFinancialEvents)"},
-      {k: "Basis", v: "money moved — units shipped"},
+      {k: "Basis", v: (FIN.basis === "settlement") ? "money moved — units shipped"
+                                                    : "orders placed — the Sales page's calendar"},
       {k: "Account", v: FIN.meta.account_label},
       {k: "Marketplace", v: FIN.meta.marketplace},
       {k: "Dates", v: (FIN.meta.start && FIN.meta.end)
                       ? (FIN.meta.start + " → " + FIN.meta.end) : ""},
       {k: "Currency", v: cur},
-    ], "The Sales screen counts units ORDERED, dated when the order was placed. "
-     + "The two will not match, and neither is wrong.");
+    ], (FIN.basis === "settlement")
+       ? "Settlement counts money as it moved, so it lags the Sales page's order calendar. Neither is wrong."
+       : "The same calendar as the Sales page, so the account profit above matches its Profit card.");
 
     // A PERIOD THAT HAS NOT FINISHED IS NOT A PERIOD.
     //
@@ -623,9 +646,11 @@ function financeRender(){
     {label: "Revenue", value: _fmoney(t.revenue, ""),
      note: t.units + " unit" + (t.units === 1 ? "" : "s") + " across "
            + t.products + " product" + (t.products === 1 ? "" : "s")},
-    {label: "What it cost", value: _fmoney(t.fees + t.cogs, ""),
+    {label: "Fees + stock", value: _fmoney(t.fees + t.cogs, ""),
      note: "Amazon " + _fmoney(t.fees, "") + " · stock " + _fmoney(t.cogs, "")},
-    {label: "Contribution", value: _fmoney(t.contribution, ""),
+    // THE PRODUCTS' figure -- the account's is the statement above, which also
+    // carries ads no product matched and the account's own charges.
+    {label: "Products' contribution", value: _fmoney(t.contribution, ""),
      // Withheld, not zero, when a product's FEE is unknown. Uncosted stock is
      // shown and flagged instead -- the owner's rule -- so the card says the
      // figure is too high rather than hiding it.
@@ -641,14 +666,18 @@ function financeRender(){
      tone: (t.margin_pct === null || t.margin_pct === undefined) ? ""
            : (t.margin_pct < 0 ? "bad" : (t.margin_pct < 10 ? "warn" : "good")),
      note: (t.ad_spend === null)
-           ? "before advertising - ad spend is not connected"
+           ? ((FIN.basis === "settlement") ? "before advertising"
+              : "ads are in Account profit above")
            : "after " + _fmoney(t.ad_spend, "") + " of ad spend"},
   ]);
 
   // The account-level overhead, between the cards and the table -- which is
   // where it belongs: it is the step from what the cards say the products
   // contributed to what the account actually kept.
-  h += financeOverhead(cur);
+  // THE OVERHEAD FOLD IS GONE FROM HERE: its three lines (account charges,
+  // other Amazon postings, your own costs) and the net profit are the last
+  // lines of the Account profit statement above, which also carries the ads
+  // (30 Sep 2026). Two net profits on one screen was the review's first bug.
 
   h += '<div class="salespanel"><div class="panelhead"><div>'
     +  '<div class="paneltitle">Every product, and what it left behind</div>'
@@ -696,7 +725,7 @@ function financeRender(){
       } else {
         cell = _fmoney(v, "");
         if(c.k === "ad_spend" && (v===null||v===undefined)){
-          cell = '<span class="cc" title="No ad data in the app yet">not connected</span>';
+          cell = '<span class="cc" title="No ad spend matched to this product. The account\'s whole ad cost is in Account profit above.">—</span>';
         }
       }
       const strong = (c.k === "contribution") ? "font-weight:600;" : "";

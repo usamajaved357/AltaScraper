@@ -1,7 +1,11 @@
     <div id="sec_finance" class="wspanel">
       <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-report-money"></i> Product contribution margin</h2>
-        <div class="sub">What each product left behind after Amazon's fees, refunds and what the stock cost. Everything here is on the money basis — units shipped, dated when the money moved — so the fees and the units beside them describe the same sales.</div></div>
+        <!-- THE ACCOUNT'S PROFIT FIRST (owner, 30 Sep 2026: "account level
+             profits by the date range i can select myself ... in the finance
+             tab ... the breakdown of profits how are they calculated"). The
+             statement is domain/pnl.build -- the Sales card's profit, line by
+             line -- then the per-product table. -->
+        <div><h2 title="The account's profit for the dates you pick, every line of it, then what each product left behind."><i class="ti ti-report-money"></i> Finance</h2></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <input type="date" id="fin_start" aria-label="Start date" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
           <span class="cc" style="font-size:11px">to</span>
@@ -16,5 +20,10 @@
           <input type="checkbox" id="fin_by_parent" onchange="financeRender()"> Group by parent
         </label>
       </div>
+      <div class="paneltitle" style="margin:6px 0 8px"><i class="ti ti-scale"></i> Account profit
+        <span class="cc" style="font-size:11px;font-weight:400"
+              title="Every fee Amazon charged, ads (with their VAT where it cannot be reclaimed), refunds and returns, the subscription and other account charges, and the costs you enter -- each counted once.">every line, counted once</span></div>
+      <div id="fin_pnl" style="margin:0 0 16px"></div>
+      <div class="paneltitle" style="margin:6px 0 8px"><i class="ti ti-package"></i> Per product</div>
       <div id="finbody" style="padding:4px 0"></div>
     </div>

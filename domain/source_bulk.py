@@ -245,7 +245,7 @@ def skus_for_key(config_path, workspace_id, marketplace, sku="", asin=""):
             if s and s.upper() not in seen:
                 seen.add(s.upper())
                 found.append(s)
-    except Exception:
+    except Exception:   # arch-ok: swallowed-write-failure -- the 'write' is set.add on a local; a failed read finds nothing
         pass
 
     # 2. The live catalogue, where the ASIN is OURS on Amazon.
@@ -259,7 +259,7 @@ def skus_for_key(config_path, workspace_id, marketplace, sku="", asin=""):
             if s and s.upper() not in seen:
                 seen.add(s.upper())
                 found.append(s)
-    except Exception:
+    except Exception:   # arch-ok: swallowed-write-failure -- the 'write' is set.add on a local; a failed read finds nothing
         pass
     return found
 

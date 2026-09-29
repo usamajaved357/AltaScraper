@@ -101,8 +101,10 @@ os_ = ov.summarise(rows)
 check("the Orders screen still totals what buyers paid",
       os_["revenue_by_currency"].get("GBP"), 136.28)
 check("but now says so", os_["revenue_basis"], "order_total")
+# Re-pinned 30 Sep 2026 (Orders: "less words"): the card note is now "incl.
+# shipping", the Sales comparison moved to its hover text.
 check_true("and the screen prints that beside the figure",
-           "charged, incl. shipping" in open(
+           "incl. shipping" in open(
                _os_repo.path.join(_REPO, r"static\js\orders.js"), encoding="utf-8").read())
 
 print("\n== there is ONE reader of what an order contained ==")
