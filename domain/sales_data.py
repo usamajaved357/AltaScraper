@@ -1283,6 +1283,19 @@ def currency_of(rows):
     return next((r.get("currency") for r in (rows or []) if r.get("currency")), "")
 
 
+def currency_for(config_path, workspace_id, marketplace):
+    """The currency this account sells in on this marketplace -> "GBP" / "EUR"
+    ... or "". Asked of sales_daily, because Amazon's advertising reports state
+    amounts in the profile's currency without naming it. One helper for the
+    Sales campaigns table and every PPC screen, which all printed £ for the EU
+    marketplaces (review of the PPC pages, 30 Sep 2026)."""
+    try:
+        from domain import sales_queries as _sq   # its SQL (batch A6)
+        return currency_of(_sq.currency_rows(config_path, workspace_id, marketplace))
+    except Exception:
+        return ""
+
+
 def totals(config_path, workspace_id, marketplace, start, end, asin=None,
            vat_rate=None, basis="money", meta=None):
     """Every metric over a range, each by its own aggregation rule.

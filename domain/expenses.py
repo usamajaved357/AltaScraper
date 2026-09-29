@@ -386,7 +386,8 @@ def account_money_totals(config_path, workspace_id, marketplace, start, end):
     ov = overhead_for(config_path, workspace_id, marketplace, start, end)
     return {"account_charges": ov.get("amazon_account_charges") or 0.0,
             "other_amazon": ov.get("amazon_other_transactions") or 0.0,
-            "own_costs": ov.get("own_costs") or 0.0}
+            "own_costs": ov.get("own_costs") or 0.0,
+            "errors": ov.get("errors") or []}
 
 
 def amazon_charge_given_back(ov):
@@ -523,11 +524,16 @@ def overhead_for(config_path, workspace_id, marketplace, start, end,
     the remainder. So an entry starting 1 Sep stops nothing in August, and an
     entry for less than Amazon charged still leaves the difference to come off.
     """
+    # WHAT COULD NOT BE READ IS SAID (`errors`), never swallowed: a missing
+    # part leaves net profit higher than it is (review, 30 Sep 2026). The
+    # P&L, the Finance screen and the Sales card print it.
+    errors = []
     try:
         charge = account_level_charge(config_path, workspace_id, marketplace,
                                       start, end, attributed_by=attributed_by)
-    except Exception:
+    except Exception as e:
         charge = 0.0
+        errors.append("Amazon's account charges could not be read (%s)" % e)
     man = for_window(config_path, workspace_id, marketplace, start, end)
     covered = round(sum(float(i.get("in_window") or 0.0)
                         for i in (man.get("items") or [])
@@ -537,9 +543,11 @@ def overhead_for(config_path, workspace_id, marketplace, start, end,
     own = round(float(man.get("total") or 0.0), 2)
     try:
         other = account_adjustments(config_path, workspace_id, marketplace, start, end)
-    except Exception:
+    except Exception as e:
         other = 0.0
+        errors.append("Amazon's other postings could not be read (%s)" % e)
     return {
+        "errors": errors,
         "amazon_account_charges": amazon,
         # Signed: + money Amazon paid in, - a cost. Comes off (or goes on) net
         # profit beside the account charges.

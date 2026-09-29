@@ -144,6 +144,12 @@ def by_day(config_path, workspace_id, marketplace, start, end, vat_registered):
                          "invoice (the Ads API has no figures for %s)."
                          % ("before %s" % first if first else "on this account",
                             "those days" if first else "this account"))
+    if first and start < first <= end and "invoices" in used:
+        # THE SEAM, SAID. An invoice posted after the API's first day can bill
+        # clicks from before it; that part is in neither measurement here
+        # (review, 30 Sep 2026). Small and once per account, but not hidden.
+        notes.append("The first ad invoice after %s may also bill clicks from "
+                     "before it; that part is not counted." % first)
     if vat_registered is None and used:
         notes.append("This account's VAT rate is not set, so VAT on ads is not "
                      "included -- set it in the account's settings.")

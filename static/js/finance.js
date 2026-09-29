@@ -433,6 +433,12 @@ function financeOverhead(cur){
     +   'products contributed and what the account kept</div></div>'
     + '<div style="font-size:18px;font-weight:700">'
     +   _fmoney(o.total, cur) + '</div></div>';
+  // A PART THAT COULD NOT BE READ, said on the panel whether it is open or
+  // not: the net profit below is then too high (30 Sep 2026).
+  (o.errors || []).forEach(function(e){
+    h += '<div style="padding:0 14px 10px;color:var(--warn);font-size:12px">'
+      + 'Net profit may be too high: ' + _fesc(e) + '.</div>';
+  });
 
   if(FIN.openOverhead){
     h += '<div style="padding:0 14px 12px">';

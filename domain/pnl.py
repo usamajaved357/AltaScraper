@@ -235,7 +235,9 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     # reclaim it (owner, 30 Sep 2026).
     from domain import ad_cost as _adc
     _ad = _adc.for_window(config_path, workspace_id, marketplace, start, end,
-                          vat_registered=bool(vat_rate and float(vat_rate) > 0))
+                          # Registered / not / NOT SET (unknown: no VAT added,
+                          # said) -- the one test, as the Sales screen uses it.
+                          vat_registered=_adc.vat_registered(vat_rate))
     ads_connected = _ad["cost"] is not None
     ad_spend = _f(_ad["cost"]) if ads_connected else 0.0
     out["ads_source"] = _ad["source"]
@@ -280,10 +282,15 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     # and the Finance screen asks it the same question (Rule 12).
     try:
         ov = _exp.overhead_for(config_path, workspace_id, marketplace, start, end)
-    except Exception:
+    except Exception as e:
         ov = {"amazon_account_charges": 0.0, "own_costs": 0.0,
               "own_costs_detail": {"total": 0.0, "count": 0, "recorded": 0,
-                                   "items": []}}
+                                   "items": []},
+              "errors": ["the account's own charges and costs could not be read (%s)" % e]}
+    # SAID, NEVER SILENT: a part that could not be read leaves profit higher
+    # than it is (review, 30 Sep 2026).
+    for _e in (ov.get("errors") or []):
+        out["notes"].append("Net profit may be too high: %s." % _e)
     man = ov["own_costs_detail"]
     manual = round(float(man.get("total") or 0), 2)
     account_charges = float(ov.get("amazon_account_charges") or 0.0)

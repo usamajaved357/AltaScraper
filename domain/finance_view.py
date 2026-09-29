@@ -73,9 +73,13 @@ def overhead(config_path, wsid, mkt, start, end, totals):
         ov = _exp.overhead_for(config_path, wsid, mkt, start, end,
                                attributed_by=("products" if (totals or {}).get("basis")
                                               == "settlement" else "orders"))
-    except Exception:
+    except Exception as e:
         ov = {"amazon_account_charges": 0.0, "own_costs": 0.0,
-              "own_costs_detail": {"total": 0.0, "items": [], "recorded": 0}}
+              "own_costs_detail": {"total": 0.0, "items": [], "recorded": 0},
+              "errors": ["the account's own charges and costs could not be read (%s)" % e]}
+    # Said, not swallowed: a part that could not be read leaves the net profit
+    # below too high (review, 30 Sep 2026).
+    out["errors"] = list(ov.get("errors") or [])
     unatt = float(ov.get("amazon_account_charges") or 0.0)
     if unatt:
         out["items"].append({

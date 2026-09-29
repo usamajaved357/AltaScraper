@@ -84,6 +84,12 @@ days, info = AC.by_day(CFG, "ws1", "UK", "2026-09-01", "2026-09-11", None)
 check("unset VAT rate: nothing added", sum(days.values()), 60.0)
 check("  and said", "not set" in info["note"], True)
 
+from domain import pnl as PNL             # noqa: E402
+p_unset = PNL.build(CFG, "ws1", "UK", "2026-09-01", "2026-09-09", vat_rate=None)
+p_zero = PNL.build(CFG, "ws1", "UK", "2026-09-01", "2026-09-09", vat_rate=0)
+check("the P&L: unset VAT adds none (as the Sales card), 0 adds the invoice's",
+      (p_unset.get("ads_vat_added"), p_zero.get("ads_vat_added")), (0.0, 10.0))
+
 print("\n== 2. the settlement tab's account charge ==")
 check("orders calendar: no order carries either fee",
       EX.account_level_charge(CFG, "ws1", "ES", "2026-09-01", "2026-09-30"), 32.0)

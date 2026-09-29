@@ -367,6 +367,11 @@ function _sProfitCard(sum, byKey){
   const warns = [];
   if(est.coverage_note) warns.push(est.coverage_note);
   if(est.warning) warns.push(est.warning);
+  // A PART OF NET PROFIT THAT COULD NOT BE READ (ads, the account's own
+  // charges): the figure is then too high, and says why (30 Sep 2026).
+  (est.profit_gaps || []).forEach(function(g){
+    warns.push("Profit may be too high: " + g + ".");
+  });
   return {
     key: "profit", kind: "money", label: "Profit",
     value: est.profit,
