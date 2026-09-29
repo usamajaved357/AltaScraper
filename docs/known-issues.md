@@ -221,10 +221,19 @@ change needs it, via register injection.
   bar was 467px wide at 360-430px**, pushing the page sideways (account chip
   would not shrink, "Users" kept its word; static/css/dashboard/09-mobile-860.css).
   On a phone the account name is now cut with "..." (e.g. "DEV Test ...").
-- **getOrderItems is read in four places** (domain/orders_live.order_items, two
-  in routes/orders_routes, api/amazon_orders_ship.order_items). The last is the
-  only one that follows NextToken pages and keeps OrderItemId; folding the
-  others onto one reader is the fix.
+- FIXED 29 Sep 2026: getOrderItems was read in four places, only one following
+  NextToken; now api/amazon_orders.order_items_raw is the one read
+  (test_order_items_one_read.py).
+- **The "send a patch, word Amazon's refusal" code is shared for PRICE writes
+  only** (domain/source_apply.push_patches). The image pushes in
+  routes/listing_routes.py (~805) and routes/variations_routes.py (~463, ~722,
+  ~737) still write it out, with "Amazon rejected it"/140 and `mkt == "US"`.
+  Folding them in is a follow-up (change review, 29 Sep 2026).
+- **"Account id -> credentials" has a third copy** in domain/amazon_fees._creds_for
+  (finds the account with accounts.get_account and returns an error tuple)
+  beside domain/source_apply.seller_creds (a loop, raises). Read
+  accounts.get_account before merging them; dashboard.py ~606 and
+  monitor/checker.py ~423 have similar lookups with other return shapes.
 - **Times from tracking are stored without a time zone** (domain/tracking.add),
   so the browser may show them an hour out in British Summer Time on a UTC
   server. Purchase records store UTC with its offset.

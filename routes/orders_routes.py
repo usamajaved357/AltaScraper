@@ -590,11 +590,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # the callers say it in its own words instead of "rate limiting".
         enum = _ol.orders_marketplace(mkt, acc.get("label") or account_id)
         try:
-            from sp_api.api import Orders
-            oc = Orders(credentials=_acc_mod.account_creds(acc), marketplace=enum)
-            r = oc.get_order_items(order_id)
-            pay = r.payload if hasattr(r, "payload") else r
-            got = [_ov.to_item(x) for x in ((pay or {}).get("OrderItems") or [])]
+            # The one read (api/amazon_orders), every page.
+            from api import amazon_orders as _ao
+            got = [_ov.to_item(x) for x in
+                   _ao.order_items_raw(_acc_mod.account_creds(acc), enum, order_id)]
         except Exception:
             return None
         # Kept, so the next visit to this screen does not pay for it again.
@@ -721,11 +720,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         except _ol.NoMarketplace as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         try:
-            from sp_api.api import Orders
-            oc = Orders(credentials=_acc_mod.account_creds(acc), marketplace=enum)
-            r = oc.get_order_items(oid)
-            pay = r.payload if hasattr(r, "payload") else r
-            items = [_ov.to_item(x) for x in ((pay or {}).get("OrderItems") or [])]
+            # The one read (api/amazon_orders), every page, on this route's client.
+            from api import amazon_orders as _ao
+            oc = _ao.client(_acc_mod.account_creds(acc), enum)
+            items = [_ov.to_item(x) for x in
+                     _ao.order_items_raw(None, enum, oid, oc=oc)]
             r2 = oc.get_order(oid)
             head = r2.payload if hasattr(r2, "payload") else r2
         except Exception as e:

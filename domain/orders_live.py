@@ -151,9 +151,9 @@ def order_items(marketplace, creds, order_ids, max_orders=MAX_ITEM_LOOKUPS):
     out = {}
     for oid in ids[:int(max_orders)]:
         try:
-            r = oc.get_order_items(oid)
-            pay = r.payload if hasattr(r, "payload") else r
-            items = (pay or {}).get("OrderItems") or []
+            # The one read (api/amazon_orders), every page, on this loop's client.
+            from api import amazon_orders as _ao
+            items = _ao.order_items_raw(creds, mkt, oid, oc=oc)
         except Exception:
             # Not recorded as an empty order: an order we could not read is not
             # an order worth nothing, and treating it as zero would quietly

@@ -110,7 +110,12 @@ src = open(_os_repo.path.join(_REPO, r"domain\hourly_week.py"), encoding="utf-8"
 check_true("the hourly page uses the shared reader", "_ol.order_items(" in src)
 check("and no longer calls Amazon itself", "get_order_items" in src, False)
 ol_src = open(_os_repo.path.join(_REPO, r"domain\orders_live.py"), encoding="utf-8").read()
-check("orders_live is the single caller", ol_src.count("get_order_items("), 1)
+# Re-pinned 29 Sep 2026: the Amazon call itself moved to api/amazon_orders
+# (the one order-items reader); orders_live asks it once, and calls Amazon nowhere.
+check("orders_live asks the one reader once", ol_src.count("_ao.order_items_raw("), 1)
+check("  and never calls Amazon's getOrderItems itself", ol_src.count("get_order_items("), 0)
+ao_src = open(_os_repo.path.join(_REPO, r"api\amazon_orders.py"), encoding="utf-8").read()
+check("the one reader follows every page", "NextToken=token" in ao_src, True)
 
 print("\n== the shape the hourly page needs is the shape it gets ==")
 # order_items returns lines keyed the same way for both callers; asserted on the

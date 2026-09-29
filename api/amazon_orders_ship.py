@@ -25,17 +25,10 @@ def _client(creds, marketplace_enum):
 
 
 def order_items(creds, marketplace_enum, order_id):
-    """Amazon's raw OrderItems list for one order (every page)."""
-    oc = _client(creds, marketplace_enum)
-    out, token = [], None
-    for _ in range(20):
-        r = oc.get_order_items(order_id, NextToken=token) if token else oc.get_order_items(order_id)
-        pay = r.payload if hasattr(r, "payload") else r
-        out.extend((pay or {}).get("OrderItems") or [])
-        token = (pay or {}).get("NextToken")
-        if not token:
-            break
-    return out
+    """Amazon's raw OrderItems list for one order (every page) -- the one read,
+    api/amazon_orders.order_items_raw."""
+    from api import amazon_orders as _ao
+    return _ao.order_items_raw(creds, marketplace_enum, order_id, oc=_client(creds, marketplace_enum))
 
 
 def confirm_shipment(creds, marketplace_enum, order_id, request_body):

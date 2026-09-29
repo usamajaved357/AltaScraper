@@ -320,9 +320,9 @@ def fetch_sales_velocity(creds, marketplace: str, marketplace_id: str,
             if not aid:
                 continue
             try:
-                items_resp = oc.get_order_items(aid)
-                items_pay = items_resp.payload if hasattr(items_resp, "payload") else items_resp
-                items = (items_pay or {}).get("OrderItems", [])
+                # The one read (api/amazon_orders), every page, on this loop's client.
+                from api import amazon_orders as _ao
+                items = _ao.order_items_raw(None, None, aid, oc=oc)
                 for it in items:
                     sku = it.get("SellerSKU")
                     qty = int(it.get("QuantityOrdered") or 0)

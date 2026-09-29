@@ -140,7 +140,9 @@ truthy("the detail route checks too", "_bad = _refuse_other_account(aid)" in OR)
 # It returns the buyer's town and postcode, so it must refuse BEFORE calling
 # Amazon, not after.
 truthy("  before Amazon is called at all",
-       OR.index("_bad = _refuse_other_account(aid)") < OR.index("oc.get_order_items(oid)"))
+       OR.index("_bad = _refuse_other_account(aid)") < OR.index("_ao.order_items_raw(None, enum, oid, oc=oc)"))
+# ^ re-pinned 29 Sep 2026: the read goes through api/amazon_orders (the one
+#   order-items reader) now; the refusal must still come first.
 # THE WORDING MOVED, THE REFUSAL DID NOT. The comparison and the message now
 # live in domain/account_scope.py -- this rule was written out here AND in
 # listing_routes.py, from the same defect found twice, and a rule about who may
