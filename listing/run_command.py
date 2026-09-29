@@ -2,7 +2,7 @@
 
 Extracted so the background preview-job worker builds the SAME command the live SSE
 endpoint builds. This is a faithful port of routes/listing_routes.py stream()'s
-api / api_submit arg-building: account scoping, dropshipping-sheet defaults, the
+api / api_submit arg-building: account scoping, the
 per-listing --skus / --minimal filter, and the brand-view marketplace. Pure function --
 no Flask, no request context, no side effects.
 """
@@ -86,8 +86,10 @@ def build_api_run_args(mode, *, script, python_exe, skus="", minimal=False,
                        active_account=None, active_sheet_id="", active_tab="",
                        active_view="", cfg=None, config_path=""):
     """mode: 'api' (Preview) or 'api_submit' (Submit). Returns the full argv list
-    (identical shape to what the SSE /run/<mode> endpoint runs for these modes)."""
-    cfg = cfg or {}
+    (identical shape to what the SSE /run/<mode> endpoint runs for these modes).
+
+    `cfg` is no longer read (it held only the dropshipping_* sheets); kept in
+    the signature so no caller has to change."""
     extra = (["api"] if mode == "api"
              else ["api", "submit"] if mode == "api_submit"
              else [mode])
@@ -95,23 +97,12 @@ def build_api_run_args(mode, *, script, python_exe, skus="", minimal=False,
     _acc = active_account
     if _acc:
         extra = account_args(extra, _acc)
-    else:
-        # DROPSHIPPING (no active account): honour the user-assigned default sheets, if set.
-        _ds_out = str(cfg.get("dropshipping_output_spreadsheet_id") or "").strip()
-        _ds_otab = str(cfg.get("dropshipping_output_tab") or "").strip()
-        _ds_ogid = str(cfg.get("dropshipping_output_tab_gid") or "").strip()
-        _ds_in = str(cfg.get("dropshipping_input_spreadsheet_id") or "").strip()
-        _ds_igid = str(cfg.get("dropshipping_input_tab_gid") or "").strip()
-        if _ds_out and "--sheet" not in extra:
-            extra += ["--sheet", _ds_out]
-        if _ds_otab and "--tab" not in extra:
-            extra += ["--tab", _ds_otab]
-        if _ds_ogid and "--tab-gid" not in extra:
-            extra += ["--tab-gid", _ds_ogid]
-        if _ds_in and "--input-sheet" not in extra:
-            extra += ["--input-sheet", _ds_in]
-        if _ds_igid and "--input-tab-gid" not in extra:
-            extra += ["--input-tab-gid", _ds_igid]
+    # NO ACCOUNT: nothing is added. The branch that added the retired
+    # Dropshipping workspace's dropshipping_* sheets is gone (owner decision,
+    # read.txt 29 Sep 2026, after a read-only search found no dropshipping_*
+    # key in any config, account or data file and no remaining writer). /run
+    # already passed nothing here; the preview queue now refuses with no
+    # account before it gets this far (routes/preview_job_routes.py).
 
     # per-listing Preview/Submit: scope to these SKUs + the active sheet/tab/marketplace
     extra = api_scope_args(extra, skus=skus, minimal=minimal, sheet=active_sheet_id,
