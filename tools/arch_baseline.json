@@ -78,10 +78,7 @@
   "api/amazon_ads.py: _TOKENS": "legacy (29 Sep 2026)",
   "api/google_drive.py: _DRIVE_FOLDER_CACHE": "legacy (29 Sep 2026)"
  },
- "duplicate-function": {
-  "routes/ads_routes.py:register._scope == routes/sales_routes.py:register._scope": "legacy (29 Sep 2026)",
-  "routes/live_tracker_routes.py:register._scope == routes/ppc_analytics_routes.py:register._scope": "legacy (29 Sep 2026)"
- },
+ "duplicate-function": {},
  "large-function": {
   "routes/asin_studio_routes.py: register.asin_studio_generate": "legacy (29 Sep 2026) lines=238",
   "routes/listing_routes.py: register.rows_all": "legacy (29 Sep 2026) lines=427",

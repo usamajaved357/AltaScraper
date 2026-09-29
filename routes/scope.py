@@ -227,3 +227,59 @@ NO_MARKETPLACE = ("No marketplace could be worked out for this account. Pick one
 
 NO_ACCOUNT = ("No account is open. Choose one at the top of the screen — this "
               "screen is per account, because the figures are.")
+
+def page_account(request, *, state, active_account, get_account, req_acct):
+    """(account, workspace id, marketplace) for a screen that reads its data.
+
+    ONE COPY of the resolver the Sales and Ads routes each carried as `_scope`,
+    line for line (architecture guard, duplicate-function, 29 Sep 2026): the
+    account the PAGE named first, else the open one; the marketplace by
+    marketplace() above. `get_account` finds a named id; `req_acct` is
+    domain.request_account (passed in so this module stays Flask-free to test).
+    """
+    aid, acc = req_acct.for_read(request, state, get_account=get_account)
+    if acc is None:
+        # No account named by the page (an older screen, or a background job
+        # with no page behind it) -- fall back to the global, as before.
+        try:
+            acc = active_account()
+        except Exception:
+            acc = None
+    wsid = str(aid or (acc or {}).get("id")
+               or state.get("active_account_id", "") or "") or "_no_account"
+    mkt = marketplace(
+        state=state, account=(acc or {}),
+        asked=(request.args.get("marketplace")
+               or (request.get_json(silent=True) or {}).get("marketplace")))
+    return acc, wsid, mkt
+
+
+def ads_account(request, *, state, active_account, cfg, req_acct):
+    """(account id, marketplace) for an advertising screen.
+
+    ONE COPY of the resolver the PPC Analytics and Live Tracker routes each
+    carried as `_scope`, line for line (architecture guard, 29 Sep 2026).
+    Advertising belongs to ONE marketplace -- an advertising profile is one
+    advertiser in one marketplace -- so "all marketplaces" cannot be answered
+    and the account's own default is used.
+    """
+    aid = req_acct.named(request)
+    if not aid:
+        aid = str((state or {}).get("active_account_id", "") or "")
+    if not aid:
+        try:
+            aid = str((active_account() or {}).get("id") or "")
+        except Exception:
+            aid = ""
+    mkt = (request.args.get("marketplace")
+           or state.get("active_marketplace") or "").upper()
+    if aid and (not mkt or mkt == "__ALL__"):
+        for a in ((cfg() or {}).get("accounts") or []):
+            if str(a.get("id") or "") == aid:
+                mkt = str(a.get("default_marketplace") or "").upper()
+                if not mkt:
+                    ms = [str(m).upper() for m in (a.get("marketplaces") or [])
+                          if str(m).upper() != "__ALL__"]
+                    mkt = ms[0] if ms else ""
+                break
+    return aid, mkt

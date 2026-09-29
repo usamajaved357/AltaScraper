@@ -41,7 +41,7 @@ BASELINE_SIZE = {
     "routes-import-dashboard": 1,
     "lower-imports-upper": 1,
     "module-mutable-global": 38,
-    "duplicate-function": 2,
+    "duplicate-function": 0,
     "large-function": 27,
     "background-open-account": 8,
 }

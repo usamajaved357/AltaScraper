@@ -76,21 +76,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         One resolver now (rule 12): routes/scope.py, which is the file that
         exists for this and already holds the order.
         """
-        aid, acc = _req_acct.for_read(request, _state, get_account=_account_by_id)
-        if acc is None:
-            # No account named by the page (an older screen, or a background job
-            # with no page behind it) -- fall back to the global, as before.
-            try:
-                acc = _active_account()
-            except Exception:
-                acc = None
-        wsid = str(aid or (acc or {}).get("id")
-                   or _state.get("active_account_id", "") or "") or "_no_account"
-        mkt = _scope_mod.marketplace(
-            state=_state, account=(acc or {}),
-            asked=(request.args.get("marketplace")
-                   or (request.get_json(silent=True) or {}).get("marketplace")))
-        return acc, wsid, mkt
+        # The one copy: routes/scope.page_account (shared with ads_routes).
+        return _scope_mod.page_account(request, state=_state, active_account=_active_account,
+                                       get_account=_account_by_id, req_acct=_req_acct)
 
     def _cogs_overrides():
         """The manual COGS overrides, from the store that owns them.

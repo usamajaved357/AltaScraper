@@ -75,8 +75,9 @@ for f in sorted(glob.glob("routes/*.py")):
 # strip(), None instead of "", reading ?account= too) -- each is a behaviour of
 # its own route, left for its route's batch. Lower this as they move; never raise it.
 # 51 on 29 Sep 2026 (evening): the tracking routes stopped falling back to the
-# open account (test_tracking_named_account.py).
-CEILING = 51
+# open account (test_tracking_named_account.py). 47 the same evening: the two
+# pairs of copied _scope helpers became routes/scope.page_account / ads_account.
+CEILING = 47
 print("  hand-written reads of the open account in routes/: %d (ceiling %d)" % (total, CEILING))
 if total > CEILING:
     fails.append("new hand-written read of active_account_id in routes/ (%d > %d): "

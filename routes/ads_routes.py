@@ -50,19 +50,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # `account` is the app's one name for this; `account_id` is still read
         # by request_account.named() so a page that has not been updated cannot
         # silently answer for a different seller. See ACCOUNT_KEYS there.
-        aid, acc = _req_acct.for_read(request, _state, get_account=_account_by_id)
-        if acc is None:
-            try:
-                acc = _active_account()
-            except Exception:
-                acc = None
-        wsid = str(aid or (acc or {}).get("id")
-                   or _state.get("active_account_id", "") or "") or "_no_account"
-        mkt = _scope_mod.marketplace(
-            state=_state, account=(acc or {}),
-            asked=(request.args.get("marketplace")
-                   or (request.get_json(silent=True) or {}).get("marketplace")))
-        return acc, wsid, mkt
+        # The one copy: routes/scope.page_account (shared with sales_routes).
+        return _scope_mod.page_account(request, state=_state, active_account=_active_account,
+                                       get_account=_account_by_id, req_acct=_req_acct)
 
     def _window(default_days=30):
         """The period to sum over. Defaults to 30 days ending yesterday.
