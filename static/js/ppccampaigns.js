@@ -210,6 +210,7 @@ function ppccRender(){
 
   h += ppcProductNote(av);
   h += ppcRatesNote(j.rates);
+  h += ppccHeadline(j, cur);
   h += ppccBreakdown(j, cur);
   h += ppccMap(j, cur);
   h += ppccCohorts(j, cur);
@@ -367,13 +368,13 @@ function ppccBreakdown(j, cur){
     ["ACOS", "Spend ÷ attributed ad sales. Blank when the ads made no "
              + "attributed sales — that is not an ACOS of nought, it is spend "
              + "that bought none."],
-    ["PROFIT", "ESTIMATED. Amazon attributes sales to a campaign but not the "
-               + "referral fee or the stock cost, so this is attributed sales "
-               + "minus spend, minus this account's own MEASURED fee rate and "
-               + "cost rate applied to those sales. Blank when either rate "
-               + "could not be measured — a profit built on a guessed margin is "
-               + "how a working campaign gets switched off."],
-    ["% PROFIT", "This group's share of the window's total estimated profit."],
+    ["PROFIT", "ESTIMATED. Attributed sales, minus spend (with the VAT on it "
+               + "where the account cannot reclaim it), minus this account's own "
+               + "MEASURED fee rate, stock cost rate and VAT on sales. Blank when "
+               + "a rate could not be measured."],
+    ["SHARE OF PROFIT", "This group's share of the profit the profitable groups "
+                      + "made. A group that lost money has no share; its loss is "
+                      + "in PROFIT."],
   ];
 
   const row = function(r, colour, label){
@@ -383,7 +384,10 @@ function ppccBreakdown(j, cur){
       ppcMoney0(r.spend, cur), ppcPct(r.spend_share_pct),
       ppcMoney0(r.sales, cur), ppcPct(r.acos_pct,
         "No attributed sales, so ACOS is undefined — not 0%."),
-      ppcProfit(r.profit, cur, "greenred"), ppcPct(r.profit_share_pct),
+      ppcProfit(r.profit, cur, "greenred"),
+      ppcPct(r.profit_share_pct, (r.profit !== null && r.profit !== undefined && Number(r.profit) <= 0)
+             ? "This group lost money, so it has no share of the profit made."
+             : "No profit to share."),
     ];
     return '<tr><td style="border-left:3px solid ' + colour + '">'
       + '<span class="ppc-dot" style="background:' + colour + '"></span>'
@@ -803,7 +807,16 @@ function ppccCohorts(j, cur){
       +   _pEsc((b.label || k).toUpperCase()) + '</div>'
       + '<div class="n">' + b.n + '</div>'
       + '<div class="s">' + ppcMoney0(b.spend, cur) + ' spend · '
-      +   ppcMoney0(b.sales, cur) + ' sales</div></div>';
+      +   ppcMoney0(b.sales, cur) + ' sales</div>'
+      // What this group made or lost, from its campaigns' own estimates.
+      +   (function(){
+            let p = 0, n = 0;
+            (j.campaigns || []).forEach(function(r){
+              if(r.cohort === k && r.profit !== null && r.profit !== undefined){ p += Number(r.profit); n++; }
+            });
+            return n ? '<div class="s">' + ppcProfit(p, cur, "greenred") + ' est.</div>' : '';
+          })()
+      + '</div>';
   });
   cards += '</div>';
 
@@ -811,14 +824,56 @@ function ppccCohorts(j, cur){
     + '<div style="font-size:15px;font-weight:700;margin-bottom:2px">'
     +   'Performance Cohorts</div>'
     + '<div style="font-size:12px;color:var(--ppc-muted);margin-bottom:14px">'
-    +   'Against this account\'s own break-even ACOS. <b>No sales</b> spent '
-    +   'money and got nothing back; <b>no activity</b> did not run in this '
-    +   'window — they are kept apart because only one of them is money lost.'
+    +   'By estimated profit on the days whose sales have landed: a loss is '
+    +   '<b>unprofitable</b>, under 10% of spend is <b>marginal</b>. <b>No sales</b> '
+    +   'spent money and got nothing back; <b>no activity</b> did not run.'
     + '</div>'
     + bar + cards + '</div>';
 }
 
-/* ---- 4. Top Campaigns ---------------------------------------------------- */
+/* ---- 0. what the advertising made or lost, all campaigns --------------------
+ *
+ *     "i have no idea how much profit or loss i am making in all campaigns and
+ *      per campaign"                                  -- owner, 30 Sep 2026
+ *
+ * The page never drew a total: only a one-row "campaign types" table whose %
+ * column read 100%. This sums the campaigns' own estimated profit (ad_profit is
+ * linear, so the sum IS the account's ad profit), and splits it into what the
+ * winners made and the losers lost -- the three numbers someone acts on. */
+function ppccHeadline(j, cur){
+  const rows = j.campaigns || [];
+  let spend = 0, sales = 0, prof = 0, known = 0, unknown = 0;
+  let won = 0, wonN = 0, lost = 0, lostN = 0;
+  rows.forEach(function(r){
+    spend += Number(r.spend || 0); sales += Number(r.sales || 0);
+    if(r.profit === null || r.profit === undefined){ if(Number(r.spend || 0) > 0) unknown++; return; }
+    const p = Number(r.profit); prof += p; known++;
+    if(p > 0){ won += p; wonN++; } else if(p < 0){ lost += p; lostN++; }
+  });
+  const acos = sales ? (100 * spend / sales) : null;
+  const cell = function(label, value, sub, tone, help){
+    return '<div class="ppc-sumcell">'
+      + '<div class="k">' + label + (help ? '<span class="ppc-q" title="' + _pEsc(help) + '">?</span>' : '') + '</div>'
+      + '<span class="v"' + (tone ? ' style="color:' + tone + '"' : '') + '>' + value + '</span>'
+      + (sub ? '<span class="c" style="color:var(--ppc-muted)">' + sub + '</span>' : '')
+      + '</div>';
+  };
+  const pTone = known ? (prof < 0 ? "var(--ppc-red)" : "var(--ppc-green)") : "";
+  return '<div class="ppc-panel"><div class="ppc-sumgrid" style="margin:0">'
+    + cell(known ? (prof < 0 ? "ADS LOST (EST.)" : "ADS MADE (EST.)") : "AD PROFIT",
+           known ? ppcMoney(Math.abs(prof), cur) : ppcDash("Profit cannot be worked out: see the note above."),
+           known ? ("across " + known + " campaign" + (known === 1 ? "" : "s")
+                    + (unknown ? " · " + unknown + " not costed" : "")) : "",
+           pTone,
+           "Every campaign's estimated profit added up: attributed sales, less spend (with the VAT on it where it cannot be reclaimed), less the account's measured fee rate, stock cost and VAT on sales.")
+    + cell("WINNERS", known ? ppcMoney(won, cur) : "—", wonN + " campaign" + (wonN === 1 ? "" : "s") + " in profit", "var(--ppc-green)")
+    + cell("LOSERS", known ? ppcMoney(Math.abs(lost), cur) : "—", lostN + " campaign" + (lostN === 1 ? "" : "s") + " losing money", "var(--ppc-red)")
+    + cell("SPEND", ppcMoney(spend, cur), "attributed sales " + ppcMoney(sales, cur))
+    + cell("ACOS", acos === null ? ppcDash("No attributed sales.") : acos.toFixed(1) + "%", "spend ÷ attributed sales")
+    + '</div></div>';
+}
+
+/* ---- 4. Campaigns --------------------------------------------------------- */
 function ppccTable(j, cur){
   const rows = ppccRows();
   const pill = function(f, v){
@@ -830,7 +885,14 @@ function ppccTable(j, cur){
   let h = '<div class="ppc-panel" style="margin-bottom:0">'
     + '<div style="display:flex;justify-content:space-between;'
     +   'align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">'
-    + '<span style="font-size:15px;font-weight:700">Top Campaigns</span>'
+    + '<span style="font-size:15px;font-weight:700">Campaigns'
+    // Amazon's CURRENT state and budget, read on demand (the scheduled sync
+    // reads it too); the report alone cannot see a quiet paused campaign.
+    + (typeof ppcxRefreshLive === "function"
+        ? ' <button class="ppc-btn" style="font-size:11px;padding:3px 9px;margin-left:8px" '
+          + 'onclick="ppcxRefreshLive(this)" title="Read every campaign\'s on/off and budget '
+          + 'from Amazon now">Read live status</button>' : '')
+    + '</span>'
     // value= AND an id. The value so the box still holds what was typed after
     // ppccRender() replaces it; the id so the focus and the caret can be put
     // back afterwards -- see ppccKeepFocus. Without both, this box accepted
@@ -846,7 +908,7 @@ function ppccTable(j, cur){
     + ["All", "SP", "SB", "SD"].map(function(v){ return pill("type", v); }).join("")
     + '<span class="ppc-filterlabel" style="font-size:11px;letter-spacing:.5px;'
     +   'margin-left:14px">STATUS</span>'
-    + ["All", "Enabled", "Paused"].map(function(v){ return pill("status", v); }).join("")
+    + ["All", "Enabled", "Paused", "Archived"].map(function(v){ return pill("status", v); }).join("")
     + '<span class="ppc-filterlabel" style="font-size:11px;letter-spacing:.5px;'
     +   'margin-left:14px">MIN SPEND</span>'
     + '<input class="ppc-input" style="width:60px;padding:3px 8px;font-size:12px" '
@@ -880,9 +942,11 @@ function ppccTable(j, cur){
     + ppcTh("Campaign", "name", PPCC, "ppccSort", "left")
     + ppcTh("Type", "ad_product", PPCC, "ppccSort", "left")
     + ppcTh("Status", "status", PPCC, "ppccSort", "left")
+    + ppcTh("Budget", "budget", PPCC, "ppccSort", "right", "Daily budget, as Amazon holds it")
     + '<th class="ppc-tint-profit ppc-sortable" style="text-align:right" '
-    +   'onclick="ppccSort(' + jsArg("profit") + ')" title="Estimated from this '
-    +   'account\'s measured fee and stock cost.">Profit'
+    +   'onclick="ppccSort(' + jsArg("profit") + ')" title="Estimated: attributed sales less '
+    +   'spend (with its VAT where it cannot be reclaimed), less this account\'s measured fee '
+    +   'rate, stock cost and VAT on sales.">Profit'
     +   '<span class="ppc-q">?</span><span class="ppc-sortarrow'
     +   (PPCC.sort === "profit" ? " on" : "") + '">'
     +   (PPCC.sort === "profit" ? (PPCC.desc ? "↓" : "↑") : "↕") + '</span></th>'
@@ -922,7 +986,24 @@ function ppccTable(j, cur){
       +   (String(r.status || "").toUpperCase() === "ENABLED"
             ? '<span class="ppc-badge enabled">ENABLED</span>'
             : '<span class="ppc-badge plain">' + _pEsc(r.status || "")
-              + '</span>') + '</td>'
+              + '</span>')
+      +   (r.status_source === "report"
+            ? '<span class="ppc-q" title="From the last day this campaign had ad activity, not Amazon\'s current setting. Press Read live status.">?</span>'
+            : '')
+      // ON / OFF, from here (owner, 30 Sep 2026). Archived is final on Amazon.
+      +   ((typeof ppcxSetState === "function"
+            && ["ENABLED", "PAUSED"].indexOf(String(r.status || "").toUpperCase()) >= 0)
+            ? ' <button class="ppc-btn" style="font-size:10.5px;padding:1px 7px" '
+              + 'onclick="event.stopPropagation();ppcxSetState(' + jsArg(id) + ',' + jsArg(r.name || id)
+              + ',' + jsArg(r.status) + ')">'
+              + (String(r.status).toUpperCase() === "ENABLED" ? "Pause" : "Turn on") + '</button>'
+            : '') + '</td>'
+      + '<td style="white-space:nowrap">' + ppcMoney(r.budget, cur, "Not known yet -- press Read live status.")
+      +   (typeof ppcxSetBudget === "function"
+            ? ' <button class="ppc-btn" style="font-size:10.5px;padding:1px 6px" title="Change the daily budget" '
+              + 'onclick="event.stopPropagation();ppcxSetBudget(' + jsArg(id) + ',' + jsArg(r.name || id) + ','
+              + (r.budget == null ? "null" : Number(r.budget)) + ')">✎</button>' : '')
+      + '</td>'
       + '<td class="ppc-tint-profit">' + ppcProfit(r.profit, cur, "greenred")
       +   '</td>'
       + '<td>' + ppcNum(r.clicks) + '</td>'
@@ -938,7 +1019,25 @@ function ppccTable(j, cur){
       + '</tr>';
     if(open) h += ppccDetail(j, r, cur);
   });
-  return h + '</tbody></table></div></div>';
+  // THE ROWS SHOWN, ADDED UP -- follows the filters, so "all paused" or "ACOS
+  // over 50%" can be read as one number (owner, 30 Sep 2026).
+  const T = {spend: 0, sales: 0, clicks: 0, orders: 0, profit: 0, pk: 0};
+  rows.forEach(function(r){
+    T.spend += Number(r.spend || 0); T.sales += Number(r.sales || 0);
+    T.clicks += Number(r.clicks || 0); T.orders += Number(r.orders || 0);
+    if(r.profit !== null && r.profit !== undefined){ T.profit += Number(r.profit); T.pk++; }
+  });
+  h += '</tbody><tfoot><tr style="font-weight:700;border-top:2px solid var(--ppc-line)">'
+    + '<td></td><td></td><td>' + rows.length + ' campaign' + (rows.length === 1 ? '' : 's') + ' shown</td>'
+    + '<td></td><td></td><td></td>'
+    + '<td class="ppc-tint-profit">' + (T.pk ? ppcProfit(T.profit, cur, "greenred") : ppcDash("None of these could be costed.")) + '</td>'
+    + '<td>' + ppcNum(T.clicks) + '</td><td></td>'
+    + '<td>' + (T.clicks ? ppcMoney(T.spend / T.clicks, cur) : ppcDash()) + '</td>'
+    + '<td>' + (T.orders ? ppcMoney(T.spend / T.orders, cur) : ppcDash()) + '</td>'
+    + '<td>' + ppcMoney0(T.spend, cur) + '</td><td>' + ppcMoney0(T.sales, cur) + '</td>'
+    + '<td>' + (T.sales ? (100 * T.spend / T.sales).toFixed(1) + '%' : ppcDash()) + '</td>'
+    + '<td>' + (T.spend ? ppcX(T.sales / T.spend) : ppcDash()) + '</td></tr></tfoot>';
+  return h + '</table></div></div>';
 }
 
 /* What one campaign bought: six stat boxes, then its own search terms.
@@ -954,7 +1053,7 @@ function ppccDetail(j, r, cur){
       + '<div class="k">' + label + '</div>'
       + '<div class="v">' + val + '</div></div>';
   };
-  let h = '<tr><td colspan="14" style="padding:0"><div class="ppc-campexp">'
+  let h = '<tr><td colspan="15" style="padding:0"><div class="ppc-campexp">'
     + '<div class="boxes">'
     +   box("Spend", ppcMoney0(r.spend, cur))
     +   box("Sales", ppcMoney0(r.sales, cur))
@@ -965,10 +1064,8 @@ function ppccDetail(j, r, cur){
     + '</div>';
 
   if(!terms.length){
-    h += '<div style="font-size:13px;color:var(--ppc-muted)">The stored search '
-      + 'term report has no rows for this campaign. That usually means the '
-      + 'report covers a different window rather than that the campaign got no '
-      + 'searches.</div>';
+    h += '<div style="font-size:13px;color:var(--ppc-muted)">No search terms '
+      + 'stored for this campaign in these dates.</div>';
   }else{
     h += '<div style="font-size:13px;color:var(--ppc-muted);margin-bottom:10px">'
       + terms.length + ' search term' + (terms.length === 1 ? "" : "s")
@@ -999,5 +1096,7 @@ function ppccDetail(j, r, cur){
     });
     h += '</tbody></table></div>';
   }
+  // CHANGE IT ON AMAZON: ad groups, keywords, targets, negatives (ppccontrol.js).
+  if(typeof ppcxManageHtml === "function") h += ppcxManageHtml(r);
   return h + '</div></td></tr>';
 }

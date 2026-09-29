@@ -3249,6 +3249,11 @@ def build_app(backend=None):
                                   _active_account=_active_account,
                                   _state=_state)
 
+    # Campaign controls (owner, 30 Sep 2026): on/off, budgets, bids, negatives.
+    import routes.ppc_control_routes as _ppc_control_routes
+    _ppc_control_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                 _active_account=_active_account, _state=_state)
+
     import routes.drppc_console_routes as _drppc_console_routes
     _drppc_console_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                    _active_account=_active_account,

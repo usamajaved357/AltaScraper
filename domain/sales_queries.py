@@ -31,7 +31,26 @@ def campaign_latest(config_path, wsid, mkt, end=None):
             + " GROUP BY campaign_id) m ON l.campaign_id=m.campaign_id AND l.date=m.d "
             "WHERE l.workspace_id=? AND l.marketplace=?", args + [wsid, mkt]):
         out[str(r["campaign_id"])] = {"campaign_name": r["campaign_name"],
-                                      "status": r["status"], "budget": r["budget"]}
+                                      "status": r["status"], "budget": r["budget"],
+                                      "status_source": "report"}
+    # AMAZON'S CURRENT SETTING WINS when it has been read (ads_campaigns, from
+    # the campaign list): the report has no row for a paused campaign's quiet
+    # days, so its newest row said ENABLED (owner, 30 Sep 2026). Only for "now"
+    # -- a window that ended in the past keeps what the report said then.
+    import datetime as _dtm
+    if not end or str(end)[:10] >= (_dtm.date.today() - _dtm.timedelta(days=3)).isoformat():
+        try:
+            for r in conn.execute(
+                    "SELECT campaign_id, name, state, budget FROM ads_campaigns "
+                    "WHERE workspace_id=? AND marketplace=?", (wsid, mkt)):
+                cur = out.setdefault(str(r["campaign_id"]), {})
+                if r["name"]:
+                    cur["campaign_name"] = r["name"]
+                cur["status"] = r["state"]
+                cur["budget"] = r["budget"]
+                cur["status_source"] = "amazon"
+        except Exception:
+            pass
     return out
 
 
@@ -47,6 +66,7 @@ def with_latest(rows, latest, name_key="campaign_name", status_key="status",
             d[name_key] = got["campaign_name"]
         d[status_key] = got.get("status")
         d[budget_key] = got.get("budget")
+        d["status_source"] = got.get("status_source") or "report"
     return rows
 
 

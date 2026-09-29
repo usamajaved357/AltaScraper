@@ -187,6 +187,13 @@ RULES = [
     ("/stock/bulk_update",              "publish"),     # writes stock live
 
     # -- advertising
+    # CHANGING LIVE ADVERTISING spends money on the account: switching a
+    # campaign on, raising a budget or a bid. The same permission as every other
+    # live write (owner, 30 Sep 2026: campaign controls in the app). Reading the
+    # campaign list stays "ppc" -- listed first so the broad line cannot catch it.
+    ("/ppc/control/campaigns",          "ppc"),
+    ("/ppc/control/structure",          "ppc"),
+    ("/ppc/control",                    "publish"),
     ("/ppc",                            "ppc"),
 
     # -- destructive / final

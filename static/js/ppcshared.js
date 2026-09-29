@@ -76,9 +76,16 @@ function ppcDash(why){
 }
 
 /* Money, in the mockup's shape: no decimals once past a thousand, two below. */
+/* THE APP'S ONE SYMBOL MAP (money.js curSymbol): this kept its own, so SEK,
+ * PLN, CAD... all read £ (Campaign Analytics review, 30 Sep 2026). */
+function _ppcSym(cur){
+  if(typeof curSymbol === "function") return curSymbol(cur || "GBP");
+  return (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+}
+
 function ppcMoney(v, cur, why){
   if(v === null || v === undefined) return ppcDash(why);
-  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+  const sym = _ppcSym(cur);
   const n = Number(v);
   const a = Math.abs(n);
   const s = a >= 1000
@@ -90,7 +97,7 @@ function ppcMoney(v, cur, why){
 /* $11,853 style -- whole pounds, for the big headline numbers. */
 function ppcMoney0(v, cur, why){
   if(v === null || v === undefined) return ppcDash(why);
-  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+  const sym = _ppcSym(cur);
   const n = Number(v);
   return (n < 0 ? "-" : "") + sym
     + Math.abs(Math.round(n)).toLocaleString();
@@ -342,6 +349,13 @@ function ppcRatesNote(r){
   if(r.cogs_rate !== null && r.cogs_rate !== undefined){
     bits.push("stock at " + (Number(r.cogs_rate) * 100).toFixed(1)
       + "% (" + _pEsc(r.cogs_basis || "") + ")");
+  }
+  // THE TWO VAT TERMS the profit takes off since 30 Sep 2026, named here too.
+  if(Number(r.vat_share || 0) > 0){
+    bits.push("VAT on sales " + (Number(r.vat_share) * 100).toFixed(1) + "% of each sale");
+  }
+  if(Number(r.ad_vat_ratio || 0) > 0){
+    bits.push("VAT on ad spend +" + (Number(r.ad_vat_ratio) * 100).toFixed(1) + "%");
   }
   if(!bits.length){
     return '<div class="ppc-note warn"><b>Profit cannot be worked out for this '

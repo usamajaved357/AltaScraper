@@ -968,8 +968,19 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
     # Name, status and budget from the newest day, not MAX() over the window
     # (sales_queries.campaign_latest -- the one answer; 30 Sep 2026 review).
     from domain import sales_queries as _sq
-    _sq.with_latest(raw, _sq.campaign_latest(config_path, workspace_id, marketplace, end),
-                    name_key="name")
+    _latest = _sq.campaign_latest(config_path, workspace_id, marketplace, end)
+    _sq.with_latest(raw, _latest, name_key="name")
+    # THE CAMPAIGNS THAT DID NOTHING IN THESE DAYS -- paused ones, mostly --
+    # listed from Amazon's own campaign list, so they can be seen and switched
+    # back on (owner, 30 Sep 2026). Nothing ran, so their figures are nought.
+    _seen = {str(d.get("campaign_id")) for d in raw}
+    for _cid, _g in _latest.items():
+        if _cid in _seen or _g.get("status_source") != "amazon":
+            continue
+        raw.append({"campaign_id": _cid, "name": _g.get("campaign_name") or _cid,
+                    "status": _g.get("status"), "budget": _g.get("budget"),
+                    "ad_product": "SPONSORED_PRODUCTS", "impressions": 0, "clicks": 0,
+                    "spend": 0.0, "orders": 0, "sales": 0.0, "status_source": "amazon"})
 
     # The scoring set, and the biggest spend in it. Taken from whichever window
     # the scores will be made on, so the denominator and the numerators are the

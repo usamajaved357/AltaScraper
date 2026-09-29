@@ -340,7 +340,14 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         mat = _pa.maturity(CONFIG_PATH, aid, mkt, start, end)
         camps = _pa.campaigns(CONFIG_PATH, aid, mkt, start, end, rates,
                               judge_end=mat.get("mature_end"))
-        terms = _pa.terms(CONFIG_PATH, aid, mkt, rates)
+        # THE PICKED DAYS, where the stored terms carry days (the daily pull):
+        # the expanded row showed the whole newest report whatever the dates
+        # (Campaign Analytics review, 30 Sep 2026).
+        from domain import ppc_view as _pvc
+        _dwc = _pvc.dated_window(CONFIG_PATH, aid, mkt)
+        _fc = bool((_dwc or {}).get("can_follow_picker"))
+        terms = _pa.terms(CONFIG_PATH, aid, mkt, rates,
+                          start=(start if _fc else None), end=(end if _fc else None))
 
         # The search terms of each campaign, for the expanded row. Grouped here
         # rather than fetched per row: the whole report is already in hand, and
