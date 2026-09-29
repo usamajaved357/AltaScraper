@@ -172,6 +172,38 @@ change needs it, via register injection.
 - Owner decisions: generator profit/floor leave VAT in (owner-review #19);
   fee VAT on non-VAT accounts not invoice-verified (#20).
 
+## Profit, PPC and All Listings — left open after the 30 Sep 2026 rounds
+- **Finance history needs a re-sync.** The parser changes (refund coupon
+  give-back now in `refunds`, clawbacks signed, the new other-posting fields)
+  apply to newly read events. Rows stored before keep the old shape until their
+  window is read again (finance sync, days_back 95). READ.
+- **Old finance rows have NULL in the three new columns** (ads_charged,
+  ads_charged_tax, adjustments): ads before the Ads API's first day and other
+  postings are then missing from those windows until re-synced. READ.
+- **Search terms carry no advertised product**, so Dr PPC cannot tell a term's
+  clicks on an out-of-stock product; while anything was out of stock it now
+  asks for a stock check instead of recommending a negative. Real fix: map
+  campaign -> advertised ASIN. READ.
+- **The seam at the Ads API's first day**: an ad invoice posted after it can
+  bill earlier clicks; that part is counted nowhere (said in the P&L note). READ.
+- **The PPC builder boxes are pre-filled** (0.30 bid, 8.00 budget, 0.35
+  break-even). A cleared box is refused now; removing the pre-fill is a UI
+  change for the owner. READ.
+- **/optimize/push (the Miles optimize screen) still posts "attr:" values in a
+  generic shape and falls back to productType "PRODUCT"** (Rule 4). The All
+  Listings drawer no longer uses it. READ.
+- **Stock push writes the quantity into every fulfilment entry** (listing/
+  handling.py), FBA included -- Amazon's behaviour not checked. READ, low.
+- Settlement tab ad spend uses per-product Ads API spend only (no invoice
+  fallback). READ.
+- **Repricer: supplier links already stored without ?var=** stay FAILED; they
+  need removing and adding again (the add now resolves or offers a pick). READ.
+- **Repricer: eBay "calculated" postage is never used**, so such suppliers stay
+  "postage unknown" (source_fetch._ebay_option). Needs the raw eBay reply with a
+  postcode first (Rule 4). READ.
+- **Repricer: VAT is per account, not per marketplace** -- a VAT-registered UK
+  account selling in the US gets US floors ~20% high. READ.
+
 ## Price writes — left open (29 Sep 2026 map: active/map-4F-price-writes.md)
 - `/optimize/push` (listing/patches._build_patches) writes a price with an
   INVENTED offer shape (no marketplace/currency/audience), no read-before-write,

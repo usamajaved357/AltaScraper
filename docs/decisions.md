@@ -17,6 +17,16 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   WHEN USER SELECTS MULTIPLE DRAFTS AND CLICK ON APPLY FOR GTIN EXEMPTION OR DO
   IT INSIDE THE PDP ONE BY ONE." Rules out any condition-based exemption.
   Source: CLAUDE.md Rule 1 (which also records the 26 Aug decision).
+- **30 Sep 2026 — A field that says it goes to Amazon must go, and one that
+  does not must say so.** "make sure every field that indicates that this is
+  going to be edited and will be sent to amazon after confirmation should
+  really do what it indicates so it should not be misleading ... do not stop to
+  ask me anything i trust you". Applied on All Listings: the drawer's send
+  button goes through Submit (the schema-built path) and is named for it; the
+  detailed view's price box says it is the app's own price, with "Change on
+  Amazon" beside it on live listings; saves that stay in the app say so on live
+  listings; bulk results say how many Amazon took, of how many. Source: chat,
+  30 Sep 2026.
 - **10 Aug 2026 — Competitor product images are accepted for now.** Knowingly
   departs from `amazon_violation_avoidance_plan.md` §1C. Do not raise it as a
   defect unprompted. That plan is written as an arbitrage playbook, which
@@ -47,6 +57,20 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   you to chose the logics you think is accurate ... report me all at the end").
   Those choices are listed in known-issues "Fixed on the development branch" as
   awaiting his review; they are not recorded here as his decisions.
+- **30 Sep 2026 — One net profit on every screen, from every transaction.**
+  "make sure we have accurate calculations on profits in every screen accross
+  the app. atleast for the orders we have received and the transactions that
+  are performed in the account"; earlier the same day: "we also know that we
+  are paying the subscription fee to amazon ... also see the refunds ... also we
+  are paying in ads and every api is available to us". Rules Claude chose under
+  that instruction (to report, not his words): the Sales card, Sales grid, P&L,
+  Finance and PPC net profit all subtract the same account charges (every fee no
+  order carries: subscription, storage, coupon fees), every other Amazon posting
+  (signed), costs entered by hand, and what ads COST -- Ads API spend from the
+  day it reports, Amazon's ad invoices before, plus the VAT on ads for an
+  account set as not registered (an unset rate adds none and says so;
+  domain/ad_cost.py). A refund's coupon give-back makes the refund smaller on
+  the refund date. Source: chat, 30 Sep 2026; active/plan-profit-accuracy-2026-09-30.md.
 
 - **18 Aug 2026 — Profit is measured, never padded.** "do not add 3 pounds
   postage and 2 pounds ad cost and 1 pound profit space on your own, if i added
