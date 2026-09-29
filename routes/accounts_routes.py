@@ -511,9 +511,11 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                 except (TypeError, ValueError):
                     return jsonify({"ok": False, "error":
                                     "VAT must be a number, like 20"}), 400
-                if _vp < 0 or _vp > 100:
+                # Below 100, as the decimal form below refuses 1.0 and up: a
+                # 100% rate would call every penny of a sale VAT (VAT audit, G1).
+                if _vp < 0 or _vp >= 100:
                     return jsonify({"ok": False, "error":
-                                    "VAT must be between 0 and 100"}), 400
+                                    "VAT must be at least 0 and less than 100"}), 400
                 acct["vat_rate"] = round(_vp / 100.0, 6)
         elif "vat_rate" in b:
             # The decimal form, for anything calling this as an API.

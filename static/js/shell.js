@@ -373,6 +373,11 @@ let CUR_ACCOUNT = null;
 function _toggleVat(on){
   const w = document.getElementById("ac_vat_wrap");
   if(w) w.style.display = on ? "" : "none";
+  // Touching the box IS an answer -- ticked or unticked (see accountSave).
+  const cb = document.getElementById("ac_vat_on");
+  if(cb && cb.dataset) cb.dataset.answered = "1";
+  const note = document.getElementById("ac_vat_unanswered");
+  if(note) note.style.display = "none";          // it is answered now
   if(on){
     const f = document.getElementById("ac_vat_pct");
     // Default to the standard UK rate rather than 0 -- ticking the box and
@@ -792,7 +797,7 @@ function openAccountEditor(id){
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-receipt-tax"></i> VAT</div><div class="cc" style="font-size:11.5px">Amazon reports this account's order values with VAT <b>already inside them</b>. If this company is VAT registered, that portion belongs to HMRC and is not your revenue — so profit and margin are worked out after it is taken out. Leave unticked if this company is not registered. Each company is separate, so set it per account.</div></td></tr>
       <tr><td class="k">VAT registered</td><td class="v">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
-          <input type="checkbox" id="ac_vat_on" ${(a.vat_percent||0) > 0 ? 'checked' : ''} onchange="_toggleVat(this.checked)">
+          <input type="checkbox" id="ac_vat_on" ${(a.vat_percent||0) > 0 ? 'checked' : ''} data-answered="${(a.vat_percent === null || a.vat_percent === undefined) ? '0' : '1'}" onchange="_toggleVat(this.checked)">
           <span>This company charges VAT</span>
         </label>
         <div id="ac_vat_wrap" style="margin-top:6px;${(a.vat_percent||0) > 0 ? '' : 'display:none'}">
@@ -802,7 +807,7 @@ function openAccountEditor(id){
           <div class="cc" style="font-size:11px;margin-top:3px">20% is the standard UK rate. Change it if this company pays a different one.</div>
         </div>
         ${(a.vat_percent === null || a.vat_percent === undefined)
-          ? '<div class="cc" style="font-size:11px;margin-top:4px;color:var(--warn)"><i class="ti ti-alert-triangle"></i> Not answered yet — profit is withheld for this account until you say.</div>'
+          ? '<div class="cc" id="ac_vat_unanswered" style="font-size:11px;margin-top:4px;color:var(--warn)"><i class="ti ti-alert-triangle"></i> Not answered yet — until you say, only the VAT Amazon itemised is taken out and profit is marked “VAT unknown”. Saving without touching this box leaves it unanswered.</div>'
           : ''}
       </td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-lock"></i> No Amazon account of its own?</div><div class="cc" style="font-size:11.5px">If this workspace has no SP-API credentials above, it can borrow another account's Amazon app to look up <b>catalogue data only</b> — product types, item type keywords, valid values, fees. It can <b>never</b> read that account's listings or inventory, and it can <b>never</b> publish. Leave as "none" for a normal, connected account.</div></td></tr>
@@ -943,19 +948,27 @@ async function saveAccount(){
     ebay_app_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
     ebay_cert_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
     default_marketplace:(document.getElementById("ac_marketplace")||{}).value||"UK",
-    // A PERCENTAGE, because "20" and "0.2" are the same rate written two ways
-    // and only the sender knows which was meant. Unticked sends 0 -- "not
-    // registered", which is a real answer -- rather than blank, which means
-    // nobody has said and makes the app withhold the figure instead.
-    vat_percent: ((document.getElementById("ac_vat_on")||{}).checked)
-      ? (parseFloat((document.getElementById("ac_vat_pct")||{}).value) || 0)
-      : 0,
     brands:((document.getElementById("ac_brands")||{}).value||"").split(",").map(s=>s.trim()).filter(Boolean),
     features:[
       ...(((document.getElementById("ac_feat_harvest")||{}).checked)?["harvest"]:[]),
       ...(((document.getElementById("ac_feat_imgtpl")||{}).checked)?["image_template"]:[])
     ]
   };
+  // VAT, as a PERCENTAGE, because "20" and "0.2" are the same rate written two
+  // ways and only the sender knows which was meant. Unticked sends 0 -- "not
+  // registered", a real answer -- BUT ONLY WHEN THE QUESTION WAS ANSWERED:
+  // already answered, or the box touched in this editor. An account nobody has
+  // answered for, saved without touching the box, sends nothing, so the server
+  // keeps "nobody has said" (accounts_routes: None must survive the round trip).
+  // It used to send 0 and quietly declare the account not VAT registered.
+  {
+    const _vb = document.getElementById("ac_vat_on");
+    if(_vb && (!_vb.dataset || _vb.dataset.answered !== "0")){
+      body.vat_percent = _vb.checked
+        ? (parseFloat((document.getElementById("ac_vat_pct")||{}).value) || 0)
+        : 0;
+    }
+  }
   if(!body.label){ toast("Account name required"); return; }
   if(outUrl.trim() && !outP.id){ toast("Output sheet link looks wrong — couldn't read a sheet ID"); return; }
   try{
