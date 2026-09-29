@@ -240,7 +240,7 @@ function ordersOnOpen(){
   if(scope){
     const nm = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && ACTIVE_WS.label)
              ? ACTIVE_WS.label : "";
-    scope.textContent = nm ? (nm + " only") : "this account only";
+    scope.innerHTML = '<i class="ti ti-lock"></i> ' + _oEsc(nm || "this account");
   }
   // WHOSE ORDERS ARE ON SCREEN RIGHT NOW?
   //
@@ -480,8 +480,10 @@ function _ordItemCell(r){
       ? 'turn “work out profit” back on to see the item'
       : (ORD.filling ? 'still reading this one from Amazon…'
                      : 'past the profit limit for this load');
+    // A mark, not a sentence (owner, 30 Sep 2026: "less words"); the
+    // reason is the hover text.
     return '<span class="cc" style="font-size:11px;opacity:.55" title="'
-         + _oEsc(why) + '">' + _oEsc(why) + '</span>';
+         + _oEsc(why) + '">' + (ORD.filling ? '<span class="genspin"></span>' : '\u2014') + '</span>';
   }
   const img = _ordItemImage(it);
   return '<div style="display:flex;gap:8px;align-items:center">'
@@ -586,7 +588,7 @@ function ordersRender(){
             // ordered product sales, which excludes it. On three orders of one
             // item they read 102.21 and 89.97, and an unexplained gap between
             // two of your own screens is worse than either.
-            note: "charged, incl. shipping — the Sales screen excludes it",
+            note: "incl. shipping",
             title: "Summed from each order's total, so it includes shipping. "
                  + "The Sales screen shows ordered product sales, which excludes "
                  + "shipping - that is the figure Amazon calls Total Sales."};
@@ -634,9 +636,9 @@ function ordersRender(){
     {label: "Profit", value: (_pf === null ? "" : _oMoney(_pf, _pfCur)),
      tone: (_pf === null) ? "" : (_pf < 0 ? "bad" : "good"),
      note: (_pf === null)
-           ? (ORD.profit ? "still working out what sold" : "turn on Work out profit")
+           ? (ORD.profit ? "working out\u2026" : "Profit is off")
            : (_pfBlank ? _pfKnown + " of " + (_pfKnown + _pfBlank)
-                         + " orders costed" : "across every order here")},
+                         + " costed" : "all orders")},
   ]));
 
   if(!ORD.rows.length){
@@ -665,11 +667,16 @@ function ordersRender(){
   // The second pass reports itself here — how far it got, and whether it is
   // still going. An Item column that is filling in looks identical to one that
   // gave up, unless it says which.
+  // ONLY WHAT NEEDS ACTING ON (owner, 30 Sep 2026: "less words"). "Profit
+  // worked out for all 7" is the normal case and says nothing; a cap or an
+  // unread order is kept, as a small warning line.
+  const _pn = String(m.profit_note || "");
+  const _pnPlain = /^Profit worked out for all \d+\.?$/.test(_pn.trim());
   h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px" id="ord_fillnote">'
-    +  (m.profit_note
-        ? '<i class="ti ti-info-circle"></i> ' + _oEsc(m.profit_note)
+    +  ((_pn && !_pnPlain)
+        ? '<i class="ti ti-alert-triangle" style="color:var(--warn)"></i> ' + _oEsc(_pn)
         : (ORD.filling
-            ? '<span class="genspin"></span> working out what sold…' : ''))
+            ? '<span class="genspin"></span> working out profit…' : ''))
     +  '</div>';
 
   // FEWER COLUMNS, MORE IN EACH.
@@ -749,8 +756,11 @@ function ordersRender(){
            return '<th class="ord-selcell"><input type="checkbox" data-fk="selall" aria-label="Select every order shown"'
                 + (_allTicked ? ' checked' : '') + ' onchange="ordersSelAllShown(this.checked)"></th>';
          }
-         return '<th' + (t === 'Item' ? ' style="width:26%"' : '') + '>' + t
-              + (_COLSUB[t] ? '<span class="th-sub">' + _oEsc(_COLSUB[t]) + '</span>' : '')
+         // One word per heading; what it holds is the hover text (owner,
+         // 30 Sep 2026: "too much text scattered").
+         return '<th' + (t === 'Item' ? ' style="width:28%"' : '')
+              + (_COLSUB[t] ? ' title="' + _oEsc(_COLSUB[t]) + '"' : '') + '>'
+              + (t === 'Due / next' ? 'Due' : t === 'Next step' ? '' : t)
               + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
 
@@ -783,13 +793,14 @@ function ordersRender(){
       +  ' data-fk="sel:' + _oEsc(r.order_id) + '"'
       +  ' aria-label="Select order ' + _oEsc(r.order_id) + '"' + (ticked ? ' checked' : '')
       +  ' onchange="ordersSelToggle(' + jsArg(r.order_id) + ', this.checked)"></td>'
-      +  '<td data-label="Order" style="white-space:nowrap">'
+      +  '<td data-label="Order" style="white-space:nowrap;min-width:158px">'
       +  '<code style="font-size:11px;color:var(--accent2)">' + _oEsc(r.order_id)
       +  '</code>' + (isOpen ? ' <i class="ti ti-chevron-down ord-chev"></i>'
                              : ' <i class="ti ti-chevron-right ord-chev" style="opacity:.4"></i>')
-      +  '<div class="cc" style="font-size:10.5px;white-space:normal">' + _ordWhenCell(r.purchased) + '</div>'
-      +  '<div class="cc" style="font-size:10.5px">' + _oEsc(_oMoney(r.total, r.currency))
-      +  ' · ' + (r.units||0) + ' unit' + ((r.units||0) === 1 ? '' : 's') + '</div>'
+      +  '<div class="cc" style="font-size:10.5px" title="' + _oEsc(_oWhen(r.purchased)) + '">'
+      +  _oEsc(_ordShortDay(r.purchased)) + ' · <b style="color:var(--ink)">'
+      +  _oEsc(_oMoney(r.total, r.currency)) + '</b>'
+      +  (Number(r.units || 0) > 1 ? ' · ×' + Number(r.units) : '') + '</div>'
       +  '</td>'
       +  '<td data-label="Item" style="min-width:200px">' + _ordItemCell(r) + '</td>'
       +  (_multi ? ('<td data-label="Account" style="font-size:11.5px">' + _oEsc(r.account) + '</td>') : '')
@@ -802,7 +813,7 @@ function ordersRender(){
       // one status two ways (Rule 12).
       +  '<td data-label="State" style="font-size:11.5px">'
       +  _ordStateChip(r.status, r.item && r.item.cancel_requested)
-      +  (r.unshipped ? '<div class="cc" style="font-size:10px;white-space:nowrap">'
+      +  (Number(r.unshipped || 0) > 1 ? '<div class="cc" style="font-size:10px;white-space:nowrap">'
                         + r.unshipped + ' to ship</div>' : '')
       +  '</td>'
       +  '<td data-label="Due / next" style="font-size:11.5px">' + _ordDueCell(r) + '</td>'
@@ -857,9 +868,10 @@ function ordersRender(){
 
   // WHAT AMAZON WITHHOLDS, said once at the bottom rather than as an empty
   // column with no explanation.
-  h += '<div class="cc" style="font-size:11.5px;margin-top:12px;padding:9px 11px;'
-    +  'border:1px solid var(--line2);border-radius:6px;line-height:1.6">'
-    +  '<i class="ti ti-info-circle"></i> ' + _oEsc(m.pii_note || "") + '</div>';
+  if(m.pii_note){
+    h += '<div class="cc" style="font-size:11px;margin-top:10px;opacity:.75">'
+      +  '<i class="ti ti-info-circle"></i> ' + _oEsc(m.pii_note) + '</div>';
+  }
   // The redraw replaces the focused row with a new element; see _ordRefocus.
   const _hadRow = _ordFocusedOid();
   body.innerHTML = h;
@@ -1424,9 +1436,11 @@ function ordParcelPanel(r){
   if(orderId){
     const parcels = (r && r.tracking) || [];
     h += '<div class="odp-note">'
-      +  '<div style="margin-bottom:4px"><b>Parcel tracking.</b> Amazon does not '
-      +  'give back the tracking numbers you upload to it, so they are recorded '
-      +  'here.</div>';
+      +  '<div style="margin-bottom:4px"><b><i class="ti ti-truck"></i> Tracking</b> '
+      +  '<i class="ti ti-info-circle cc" title="Amazon does not give back the tracking '
+      +  'numbers you upload to it, so they are recorded here. A parcel is checked with the '
+      +  'carrier only when you press Check parcels, and only once a tracking service is set '
+      +  'up in Settings; until then it reads Not checked."></i></div>';
     parcels.forEach(function(p){
       const d = _ORD_PARCEL[p.status] || _ORD_PARCEL.unknown;
       h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'
@@ -1464,10 +1478,6 @@ function ordParcelPanel(r){
       +  jsArg(orderId) + ',' + jsArg(accountId || '') + ','
       +  jsArg(marketplace || '') + ')">Add</button>'
       +  '</div>'
-      +  '<div class="cc">A parcel is only checked with the carrier when you '
-      +  'press <b>Check parcels</b>, and only once a tracking service is set '
-      +  'up in Settings. Until then it reads “Not checked” rather than showing '
-      +  'a status nobody asked anyone about.</div>'
       +  _ordShipBox(r)
       +  '</div>';
   }
@@ -1660,10 +1670,10 @@ function ordPurchasePanel(r, best, fresh){
   // the cancel) but offers no new record.
   const closed = (typeof _ordState === "function") && _ordState(r) === "closed";
   let h = '<div class="odp-note">'
-    + '<div style="margin-bottom:4px"><b>Bought from the supplier?</b> '
-    + 'Record it here once you have bought it on the supplier\'s site. '
-    + 'Nothing is ordered or paid for by this app; what it cost goes in the '
-    + 'Cost box.</div>';
+    + '<div style="margin-bottom:4px"><b><i class="ti ti-shopping-cart"></i> Bought from supplier</b> '
+    + '<i class="ti ti-info-circle cc" title="Record it here once you have bought it on the '
+    + 'supplier\'s site. Nothing is ordered or paid for by this app; what it cost goes in '
+    + 'the Cost box."></i></div>';
   if(recs === null || recs === undefined){
     h += '<div class="cc">Could not read whether this order was already '
       + 'recorded as bought.</div>';
@@ -1934,6 +1944,15 @@ function _ordWhyText(status, cancelRequested, cancelReason){
     bits.push(_oEsc(s.m) + ' ' + _oEsc(s.d));
   }
   return bits.join("<br>");
+}
+
+/* "29 Sep" -- the day an order was placed, short; the full date and time is
+ * the cell's hover text (owner, 30 Sep 2026: "less words"). */
+function _ordShortDay(iso){
+  const t = Date.parse(iso || "");
+  if(isNaN(t)) return String(iso || "");
+  try{ return new Date(t).toLocaleDateString("en-GB", {day: "numeric", month: "short"}); }
+  catch(e){ return String(iso).slice(0, 10); }
 }
 
 function _ordWhenCell(iso){

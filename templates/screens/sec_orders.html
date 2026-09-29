@@ -1,55 +1,28 @@
     <div id="sec_orders" class="wspanel">
       <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-receipt"></i> Orders</h2>
-        <div class="sub">Every account's orders in one list, newest first, so you do not have to open each Amazon account in turn. Click an order number to see what was in it.</div></div>
+        <!-- FEWER WORDS (owner, 30 Sep 2026: "too much text scattered, less
+             words but concise and good visuals"). The explanation is the
+             title's hover text; the six sheet actions sit behind Sheets ▾ (the
+             app's one toolbar dropdown, genflow.js toolbarMenu). -->
+        <div><h2 title="This account's orders, newest first. Click a row to open it."><i class="ti ti-receipt"></i> Orders</h2></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <input id="ord_q" placeholder="Order number, town, status…" oninput="ordersFilter(this.value)"
+          <input id="ord_q" placeholder="Search orders…" oninput="ordersFilter(this.value)"
+                 aria-label="Search orders by number, town or status"
                  style="font-size:12px;padding:5px 9px;min-width:190px">
-          <!-- COSTS FOR MANY ORDERS AT ONCE.
-               The app can already correct ONE order's cost, which is the right
-               shape for a mistake and the wrong shape for a hundred of them.
-               A cost written this way is marked 'manual-order' -- the top of
-               the trust order in domain/order_cogs.py -- so nothing later
-               overwrites it: not a re-sync, not a supplier price change, not
-               switching costing mode.
-
-               Download first, because the template arrives with the order,
-               the product and the cost the app CURRENTLY believes already in
-               it. That turns filling it in into correcting what is wrong
-               rather than retyping what is already right, and it means an
-               unedited upload changes nothing. -->
-          <button class="db-chip" onclick="orderCostsTemplate(false)"
-                  title="Download every order in this window as a sheet, with the cost the app currently believes beside each one. Fill in the 'cost' column and upload it back.">
-            <i class="ti ti-download"></i> Cost sheet</button>
-          <button class="db-chip" onclick="orderCostsTemplate(true)"
-                  title="The same sheet, but only the orders that have no cost at all yet — usually the ones actually worth filling in.">
-            <i class="ti ti-download"></i> Uncosted only</button>
-          <button class="db-chip" onclick="orderCostsUploadOpen()"
-                  title="Upload the filled-in sheet. Rows with the cost left blank are skipped, so an unedited file changes nothing.">
-            <i class="ti ti-file-upload"></i> Upload costs</button>
+          <button class="db-chip" onclick="toolbarMenu(event,'tpl_ord_sheets')"
+                  title="Download or upload the cost and tracking sheets">
+            <i class="ti ti-file-spreadsheet"></i> Sheets <i class="ti ti-chevron-down"></i></button>
+          <template id="tpl_ord_sheets">
+            <button onclick="closeRunMenu();orderCostsTemplate(false)" title="Every order in this window, with the cost the app holds. Fill in 'cost' and upload it back."><i class="ti ti-download"></i> Cost sheet</button>
+            <button onclick="closeRunMenu();orderCostsTemplate(true)" title="Only orders with no cost yet."><i class="ti ti-download"></i> Cost sheet · uncosted only</button>
+            <button onclick="closeRunMenu();orderCostsUploadOpen()" title="Rows left blank are skipped, so an unedited file changes nothing."><i class="ti ti-file-upload"></i> Upload costs</button>
+            <div class="tmsep"></div>
+            <button onclick="closeRunMenu();trackingTemplate(false)" title="Every order in this window, with any tracking already recorded."><i class="ti ti-download"></i> Tracking sheet</button>
+            <button onclick="closeRunMenu();trackingTemplate(true)" title="Only orders with no tracking yet."><i class="ti ti-download"></i> Tracking sheet · untracked only</button>
+            <button onclick="closeRunMenu();trackingUploadOpen()" title="Rows left blank are skipped, so an unedited file changes nothing."><i class="ti ti-file-upload"></i> Upload tracking</button>
+          </template>
           <input type="file" id="ordcost_file" accept=".csv,.tsv,.txt,.xlsx,.xls"
                  style="display:none" onchange="orderCostsUpload(this)">
-          <!-- WHERE THE PARCELS ARE.
-               Amazon does not hand back the tracking a seller uploads --
-               measured against every endpoint that could carry it, see
-               domain/tracking.py -- so the numbers come in on a sheet, in
-               exactly the shape the costs above already use. Same download-
-               first reason: the sheet arrives with the orders and whatever
-               tracking is already recorded, so a blank row means "leave this
-               alone" and an unedited upload changes nothing.
-
-               Check now is SEPARATE and deliberate: it is the only button here
-               that contacts anyone outside this app, and it does nothing at
-               all until a tracking service is set up in Settings. -->
-          <button class="db-chip" onclick="trackingTemplate(false)"
-                  title="Download every order in this window as a sheet, with any tracking already recorded beside it. Fill in the 'tracking' and 'carrier' columns and upload it back.">
-            <i class="ti ti-download"></i> Tracking sheet</button>
-          <button class="db-chip" onclick="trackingTemplate(true)"
-                  title="The same sheet, but only the orders with no tracking recorded yet.">
-            <i class="ti ti-download"></i> Untracked only</button>
-          <button class="db-chip" onclick="trackingUploadOpen()"
-                  title="Upload the filled-in tracking sheet. Rows with the tracking left blank are skipped, so an unedited file changes nothing.">
-            <i class="ti ti-file-upload"></i> Upload tracking</button>
           <input type="file" id="ordtrack_file" accept=".csv,.tsv,.txt,.xlsx,.xls"
                  style="display:none" onchange="trackingUpload(this)">
           <button class="db-chip" id="ord_trackcheck" onclick="trackingCheck()"
@@ -76,14 +49,14 @@
              ask for it — the endpoint refuses it too, because a rule that only
              exists in the browser is not a rule. -->
         <span class="cc" id="ord_scope" style="font-size:11.5px"
-              title="Orders belong to the account you have open. Each account is a separate business with its own customers.">this account only</span>
+              title="Orders belong to the account you have open. Each account is a separate business with its own customers."><i class="ti ti-lock"></i> this account</span>
         <!-- ON by default, and starts that way: this is what fills the Item
              column with the product, its picture, the margin and the ROI. It
              costs one Amazon call per order, so it runs as a second pass after
              the list is already drawn. Pressing this turns it OFF. -->
         <button class="db-chip on" id="ord_profit" onclick="ordersToggleProfit()"
                 title="Read what was in each order and what it earned — the product and its picture, profit, margin and ROI. One Amazon call per order, so it fills in just after the list appears. Press to turn it off.">
-          <i class="ti ti-coins"></i> Work out profit
+          <i class="ti ti-coins"></i> Profit
         </button>
       </div>
       <div id="ordbody" style="padding:4px 0"></div>

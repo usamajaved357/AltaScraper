@@ -197,7 +197,9 @@ truthy("the headings carry a sub-line", "_COLSUB" in O)
 for col, sub in (("Item", "product, SKU"), ("Order", "ID, units"),
                  ("Placed", "date, fulfilment")):
     truthy("  %s / %s" % (col, sub), '"' + sub + '"' in O)
-truthy("  drawn with the listings table's own class", 'class="th-sub"' in O)
+# Re-pinned 30 Sep 2026 (owner: "too much text scattered, less words"): the
+# second line is now the heading's hover text, not a visible sub-caption.
+truthy("  given as the heading's hover text", "' title=\"' + _oEsc(_COLSUB[t])" in O)
 truthy("  which is styled for this table too", "table.ordtable th .th-sub{" in DASH)
 # SENTENCE CASE. The app-wide `table th{text-transform:uppercase}` was shouting
 # headings that were already written in sentence case.
