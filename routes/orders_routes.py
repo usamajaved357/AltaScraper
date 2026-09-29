@@ -386,6 +386,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             # A tracking table that cannot be read must not empty the orders
             # screen: the rows are exactly what they were before this existed.
             pass
+        # WHETHER SOMEONE RECORDED BUYING IT -- what the "To buy" tab reads.
+        # Same free, per-account read as tracking; purchases stays None on a
+        # row whose record could not be read, and the board then claims nothing.
+        try:
+            from domain import order_purchases as _opur
+            _opur.attach(CONFIG_PATH, rows)
+        except Exception:
+            pass
 
         return jsonify({"ok": True, "rows": rows, "days": days,
                         "accounts_asked": asked, "errors": errors,
@@ -755,6 +763,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         try:
             from domain import tracking as _trk
             _trk.attach(CONFIG_PATH, [row])
+        except Exception:
+            pass
+        try:
+            from domain import order_purchases as _opur
+            _opur.attach(CONFIG_PATH, [row])
         except Exception:
             pass
         return jsonify({"ok": True, "order_id": oid, "order": row,

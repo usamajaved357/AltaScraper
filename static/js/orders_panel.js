@@ -492,6 +492,11 @@ function ordPanelHtml(r, d){
     h += _opFlow(t, cur, _opCostBox(bd, r));
   }
 
+  // WHETHER IT WAS BOUGHT, before the delivery and the parcel: bought, then
+  // posted, then tracked -- the order the work happens in. Same function as the
+  // long fallback panel (Rule 12).
+  h += (typeof ordPurchasePanel === "function")
+         ? ordPurchasePanel(r, _opBestSource(d, items), o.purchases) : "";
   h += _opDelivery(o);
   // WHERE THE PARCEL IS, right under where it is going.
   //

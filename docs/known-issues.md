@@ -195,6 +195,22 @@ change needs it, via register injection.
   the insert happens before the reply is sent (busy_timeout 30s under a long
   write lock). READ, low.
 
+## Orders "To buy" -- left open (30 Sep 2026 reviews)
+- **"Mark as bought" is still offered when the records could not be read.**
+  Deliberate: an unreadable table should not stop someone recording a purchase.
+  The cost is a possible second record on an order already recorded; Remove
+  undoes it.
+- **"Which marketplace is this account's" has a third copy** in
+  routes/order_purchase_routes._marketplace (beside orders_routes._marketplace,
+  tracking_routes._account_marketplace and routes/scope.marketplace). Its
+  fallback is the same as orders_routes'; it adds "the asked marketplace must
+  be one of the account's own". One shared helper is the fix; not done here.
+- **Times from tracking are stored without a time zone** (domain/tracking.add),
+  so the browser may show them an hour out in British Summer Time on a UTC
+  server. Purchase records store UTC with its offset.
+- test_order_sources_ui.js, like test_order_panel.js, fails when run on its
+  own (`_srcDeliveryLine is not a function`) and passes under run_tests.py.
+
 ## Fixed on the development branch, NOT yet in production
 
 On `claude-environment-setup` (local, not merged or deployed — production still
@@ -677,6 +693,12 @@ Checks added in Milestones 1-3:
   old code where that could be run (bulk: acct_A,acct_B,acct_B; esc: 46 sites
   in the old listings.js).
 - test_helpers.js now exports the page's own `jsArg` for sandboxed tests.
+
+**test_order_panel.js fails when run on its own (`node test_order_panel.js`,
+12 CSS checks) but passes under `run_tests.py`** (seen 30 Sep 2026). It reads
+`static/css/dashboard.css`, while the `.odp*` rules now live in
+`static/css/dashboard/19-order-panel.css`. Not investigated further; run it
+through the runner.
 
 Fixed in Milestone 1 (were failing): the two CRLF tests
 (test_weekly_says_what_it_shows, test_profit_follows_price) now normalise line

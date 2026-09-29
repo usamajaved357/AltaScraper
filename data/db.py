@@ -623,6 +623,24 @@ CREATE INDEX IF NOT EXISTS idx_tracking_order
 CREATE INDEX IF NOT EXISTS idx_tracking_status
     ON order_tracking(workspace_id, status);
 
+-- "I bought this one from the supplier": a record a PERSON makes, never a
+-- purchase the app makes. Holds no money -- what the order cost is the order
+-- line's cost (order_lines.cogs, domain/order_cogs), one place (Rule 12).
+CREATE TABLE IF NOT EXISTS order_purchases (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id    TEXT NOT NULL,
+    marketplace     TEXT NOT NULL,
+    order_id        TEXT NOT NULL,
+    supplier        TEXT,                -- as the person wrote it
+    supplier_url    TEXT,
+    supplier_ref    TEXT,                -- the supplier's own order number
+    note            TEXT,
+    bought_at       TEXT,
+    bought_by       TEXT                 -- job_owner.label; "" = shared-password owner
+);
+CREATE INDEX IF NOT EXISTS idx_purchases_order
+    ON order_purchases(workspace_id, marketplace, order_id);
+
 CREATE TABLE IF NOT EXISTS buyer_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,

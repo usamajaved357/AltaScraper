@@ -264,6 +264,11 @@ RULES = [
     #    sales, which is where someone who may not see money must not see it.
     ("/orders/list",                    None),
     ("/orders/detail",                  None),
+    # "I bought this from the supplier" -- a note in this app's own table. It
+    # buys nothing, sends nothing to Amazon or a supplier, and removing one
+    # forgets only that note, so both are ordinary editing (30 Sep 2026).
+    ("/orders/purchase/remove",         "edit"),
+    ("/orders/purchase",                "edit"),
 
     # -- returns. Reading is read-only; uploading a file only parses it and
     #    stores nothing, so it needs no more than seeing the figures does.

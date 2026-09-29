@@ -121,6 +121,9 @@ CATALOG = [
     (W, "/tracking/set",            "=", "orders", "order.tracking_set", "Set tracking on an order", "order"),
     (W, "/tracking/refresh",        "=", "orders", "order.tracking_refresh", "Refreshed tracking", "order"),
     (W, "/returns/message",         "=", "orders", "order.return_message", "Messaged about a return", "order"),
+    # A record that a PERSON bought it from the supplier; the app buys nothing.
+    (W, "/orders/purchase/remove",  "=", "orders", "order.purchase_remove", "Removed a supplier-purchase record", "order"),
+    (W, "/orders/purchase",         "=", "orders", "order.purchase", "Recorded buying an order from the supplier", "order"),
 
     # ---- costs ----
     (W, "/cogs/set",                "=", "costs", "cost.set", "Set a product cost", "sku"),

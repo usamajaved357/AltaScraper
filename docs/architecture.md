@@ -222,6 +222,12 @@ On an app row, `r.asin` is the **competitor reference** parsed from the SKU
   (`domain/orders_view.profit_for()` must not subtract them); the Finances feed
   is gross, so `domain/order_profit.py` subtracts promotions. test_orders_promo.py
   pins both. (memory: coupon-two-feeds)
+- **The app's own per-order records** (tracking typed in, "bought from the
+  supplier") are joined onto the Orders rows by `domain/order_attach.attach()`,
+  one read per account and marketplace. `domain/tracking.attach` sets
+  `r.tracking` ([] when unknown); `domain/order_purchases.attach` sets
+  `r.purchases` (None when unreadable, so "To buy" claims nothing). A purchase
+  record holds no money: an order's cost is only `order_lines.cogs`.
 - **Amazon's fee.** Only from `domain/amazon_fees.py`: settled figure per order,
   else the account's measured rate, 15% only with no history.
   `getMyFeesEstimate` returns the pre-VAT fee; accounts without a VAT number pay

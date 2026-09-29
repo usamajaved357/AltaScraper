@@ -55,12 +55,48 @@ const rows = [row({ ship_by: iso(5 * H) }), row({ ship_by: iso(-H) }), row({ sta
 const c = sb._ordTabCounts(rows);
 check("Needs action = dispatch + tracking + problem", c.action, c.dispatch + c.tracking + c.problem);
 check("All counts every order", c.all, rows.length);
-check("the plan's tabs, in order, minus the two with no data", vm.runInContext("ORD_TABS", sb).map(t => t[0]),
-      ["action", "dispatch", "tracking", "problem", "transit", "fba", "all"]);
+// Re-pinned 30 Sep 2026: "To buy" is drawn now that purchases are recorded
+// (domain/order_purchases.py); "Returns & messages" still has no data.
+check("the plan's tabs, in order, minus the one with no data", vm.runInContext("ORD_TABS", sb).map(t => t[0]),
+      ["action", "tobuy", "dispatch", "tracking", "problem", "transit", "fba", "all"]);
+
+console.log("\n=== To buy: still to post, nobody recorded buying it ===");
+const nb = sb._ordNeedsBuying;
+check("to dispatch, no purchase recorded -> to buy", nb(row({ ship_by: iso(5 * H), purchases: [] })), true);
+check("to dispatch, bought -> not to buy", nb(row({ ship_by: iso(5 * H), purchases: [{ id: 1 }] })), false);
+check("late and not bought -> still to buy", nb(row({ ship_by: iso(-H), purchases: [] })), true);
+check("buyer asked to cancel -> not to buy", nb(row({ ship_by: iso(5 * H), purchases: [], item: { cancel_requested: true } })), false);
+check("purchases could not be read -> claims nothing", nb(row({ ship_by: iso(5 * H), purchases: null })), false);
+check("  nor when the field is missing", nb(row({ ship_by: iso(5 * H) })), false);
+check("FBA -> never to buy", nb(row({ fulfilment: "AFN", status: "Unshipped", purchases: [] })), false);
+check("already shipped -> not to buy", nb(row({ status: "Shipped", unshipped: 0, updated: iso(-H), purchases: [] })), false);
+check("Amazon cannot fulfil -> not to buy", nb(row({ status: "Unfulfillable", unshipped: 1, purchases: [] })), false);
+check("payment not cleared -> not to buy yet", nb(row({ status: "Pending", purchases: [] })), false);
+const buyRows = [row({ ship_by: iso(5 * H), purchases: [] }), row({ ship_by: iso(5 * H), purchases: [{ id: 2 }] })];
+const bc = sb._ordTabCounts(buyRows);
+check("the To buy count is the unbought ones only", [bc.tobuy, bc.dispatch], [1, 2]);
+sb.ORD.tab = "tobuy"; sb.ORD.channel = ""; sb.ORD.open = "";
+check("the To buy tab shows only the unbought one", sb._ordVisible(buyRows).map(r => r.order_id), [buyRows[0].order_id]);
+check("late, and Amazon left the unshipped count out -> still to buy (review)",
+      nb(row({ status: "Unshipped", unshipped: 0, ship_by: iso(-H), purchases: [] })), true);
+sb.ORD.tab = "all";
+const tabsKnown = sb._ordTabsHtml(buyRows);
+check("tab count shown when purchases were read", /To buy <span class="ord-tab-n">1</.test(tabsKnown), true);
+const tabsUnknown = sb._ordTabsHtml([row({ ship_by: iso(5 * H), purchases: null }), row({ fulfilment: "AFN", status: "Shipped", unshipped: 0 })]);
+check("unreadable purchases -> a dash, never a 0 that means 'nothing to buy'", /To buy <span class="ord-tab-n cc"[^>]*>—</.test(tabsUnknown), true);
+check("  FBA rows with no purchases field do not cause the dash",
+      /To buy <span class="ord-tab-n">0</.test(sb._ordTabsHtml([row({ fulfilment: "AFN", status: "Shipped", unshipped: 0 })])), true);
+sb.ORD.tab = undefined;
 sb.ORD.rows = rows; sb.ORD.tab = undefined;
 check("first view: Needs action when anything needs it", sb._ordTab(), "action");
 sb.ORD.rows = [row({ fulfilment: "AFN", status: "Shipped", unshipped: 0 })];
 check("  and All when nothing does, never an empty tab by default", sb._ordTab(), "all");
+// The table body lives in orders.js's renderer: with the tab on To buy and the
+// records unreadable it must not fall through to "Nothing in this tab".
+const _BODY = _OJS.slice(_OJS.indexOf("const _buyUnknown"), _OJS.indexOf("_shown.forEach(function(r){"));
+check("To buy, records unreadable -> the body says it cannot tell, not 'Nothing'",
+      /_buyUnknown[\s\S]*Could not read which orders were marked as bought[\s\S]*else if\(!_shown\.length\)[\s\S]*Nothing in this tab/.test(_BODY), true);
+check("  and it asks the board's one rule", /_ordBuyKnown\(ORD\.rows\)/.test(_BODY), true);
 
 console.log("\n=== what is shown ===");
 sb.ORD.rows = rows; sb.ORD.tab = "fba"; sb.ORD.channel = ""; sb.ORD.open = rows[0].order_id;

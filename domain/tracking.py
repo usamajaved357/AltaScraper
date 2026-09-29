@@ -347,40 +347,26 @@ def attach(config_path, rows, order_key="order_id", account_key="account_id",
 
     THE ORDERS LIST SPANS ACCOUNTS, so this groups by (account, marketplace)
     and asks once per group rather than once per row. A row whose account or
-    marketplace is missing is left untouched: tracking belongs to one order of
-    one account, and guessing which would attach another account's parcel.
+    marketplace is missing is never matched (it gets no tracking): tracking
+    belongs to one order of one account, and guessing which would attach
+    another account's parcel.
 
     The ONE place order rows learn about tracking, so the list and the detail
-    can never disagree about where a parcel is (CLAUDE.md Rule 12).
+    can never disagree about where a parcel is (CLAUDE.md Rule 12). The
+    grouping is domain/order_attach's, shared with the purchase records.
     """
-    groups = {}
-    for r in rows or []:
-        a = str((r or {}).get(account_key) or "").strip()
-        m = str((r or {}).get(marketplace_key) or "").strip().upper()
-        o = str((r or {}).get(order_key) or "").strip()
-        if a and m and o:
-            groups.setdefault((a, m), []).append(o)
+    from domain import order_attach as _oa
 
-    found = {}
-    for (a, m), ids in groups.items():
-        try:
-            got = for_orders(config_path, a, m, ids)
-        except Exception:
-            # A tracking table that cannot be read must not empty the orders
-            # screen. The rows come back with no tracking, which is what they
-            # had before this feature existed.
-            continue
-        for oid, lst in got.items():
-            found[(a, m, str(oid))] = lst
-
-    for r in rows or []:
-        a = str((r or {}).get(account_key) or "").strip()
-        m = str((r or {}).get(marketplace_key) or "").strip().upper()
-        o = str((r or {}).get(order_key) or "").strip()
-        got = found.get((a, m, o)) or []
+    def _put(r, got):
+        # A tracking table that cannot be read must not empty the orders
+        # screen. The rows come back with no tracking, which is what they had
+        # before this feature existed.
+        got = got or []
         r["tracking"] = got
         r["tracking_status"] = summarise_rows(got)
-    return rows
+
+    return _oa.attach(rows, lambda a, m, ids: for_orders(config_path, a, m, ids),
+                      _put, order_key, account_key, marketplace_key)
 
 
 def summarise_rows(rows):

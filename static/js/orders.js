@@ -746,7 +746,16 @@ function ordersRender(){
               + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
 
-  if(!_shown.length){
+  // "To buy" with the purchase records unreadable is UNKNOWN, not empty: saying
+  // "Nothing in this tab" would read as "nothing left to buy" (change review).
+  const _buyUnknown = (typeof _ordTab === "function" && _ordTab() === "tobuy"
+                       && typeof _ordBuyKnown === "function" && !_ordBuyKnown(ORD.rows));
+  if(!_shown.length && _buyUnknown){
+    h += '<tr><td colspan="' + cols.length + '" class="cc" style="padding:16px">'
+      +  'Could not read which orders were marked as bought, so this tab cannot '
+      +  'say what is still to buy. Reload the page to try again.'
+      +  '</td></tr>';
+  }else if(!_shown.length){
     h += '<tr><td colspan="' + cols.length + '" class="cc" style="padding:16px">'
       +  'Nothing in this tab' + (ORD.channel ? ' for this channel' : '') + '. '
       +  (ORD.rows.length ? 'The other tabs hold the rest of the ' + ORD.rows.length + ' orders.' : '')
@@ -1485,8 +1494,21 @@ async function ordRemoveTracking(orderId, number, accountId, marketplace){
 }
 
 async function _ordTrackWrite(body, orderId, accountId, okMsg){
+  // WHETHER IT WILL EVER BE CHECKED, said at the moment the number is stored
+  // (the server's `note`) rather than left to be discovered as a column of
+  // "Not checked".
+  await _ordWriteThenReload("/tracking/set", body, orderId, accountId, okMsg);
+}
+
+/* POST one order's own record, then redraw that order from the server.
+ *
+ * Shared by the tracking box and the "bought it" record (Rule 12). Not
+ * optimistic: the row and panel are rebuilt from what the server now holds, so
+ * a refused save cannot look like a successful one. The reply's `note`, if
+ * any, is added to the message. */
+async function _ordWriteThenReload(url, body, orderId, accountId, okMsg){
   try{
-    const j = await (await fetch("/tracking/set", {
+    const j = await (await fetch(url, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)})).json();
     if(!j || !j.ok){
@@ -1494,18 +1516,116 @@ async function _ordTrackWrite(body, orderId, accountId, okMsg){
         toast("Could not save that: " + ((j && j.error) || "unknown"));
       return;
     }
-    // WHETHER IT WILL EVER BE CHECKED, said at the moment the number is stored
-    // rather than left to be discovered as a column of "Not checked".
     if(typeof toast === "function")
       toast(okMsg + (j.note ? " " + j.note : ""));
     delete ORD.details[orderId];
     ORD.open = "";
     ordersRender();
     if(typeof ordersLoad === "function") await ordersLoad();
-    ordersToggle(orderId, accountId || "");
+    // Reopen only if this tab is still on the order's account: switched while
+    // the save was in flight, the old account's order is not reopened here.
+    const nowWs = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && ACTIVE_WS.key)
+      ? String(ACTIVE_WS.key) : "";
+    if(!accountId || !nowWs || nowWs === String(accountId))
+      ordersToggle(orderId, accountId || "");
+    return true;
   }catch(e){
     if(typeof toast === "function") toast("Could not save that: " + e);
   }
+}
+
+/* "I BOUGHT THIS FROM THE SUPPLIER" -- recorded, never done.
+ *
+ * The app buys nothing: "Buy from supplier" only opens the supplier's page.
+ * Once the person has bought it there, this records that they did, so the
+ * board's "To buy" tab can tell a bought order from one still to buy. What it
+ * COST goes in the Cost box on the same panel -- the one place an order's cost
+ * lives -- so no amount is asked for here (Rule 12).
+ *
+ * Only for orders the seller posts (FBM). `best` is the cheapest supplier the
+ * sources block already marked, used to fill the supplier box in.
+ *
+ * ONE FUNCTION, called by both panel layouts (Rule 12). */
+function ordPurchasePanel(r, best, fresh){
+  const orderId = (r && r.order_id) || "";
+  if(!orderId) return "";
+  if(String((r && r.fulfilment) || "").toUpperCase() === "AFN") return "";
+  const accountId = (r && r.account_id) || "";
+  const marketplace = (r && r.marketplace) || "";
+  // `fresh` is the opened order's own list (/orders/detail), read after the
+  // list: preferred, so a list reload that failed after a save cannot show
+  // the order as not yet bought and invite a second record (change review).
+  const recs = Array.isArray(fresh) ? fresh : (r ? r.purchases : null);
+  // A CANCELLED order lists what was recorded (it may have been bought before
+  // the cancel) but offers no new record.
+  const closed = (typeof _ordState === "function") && _ordState(r) === "closed";
+  let h = '<div class="odp-note">'
+    + '<div style="margin-bottom:4px"><b>Bought from the supplier?</b> '
+    + 'Record it here once you have bought it on the supplier\'s site. '
+    + 'Nothing is ordered or paid for by this app; what it cost goes in the '
+    + 'Cost box.</div>';
+  if(recs === null || recs === undefined){
+    h += '<div class="cc">Could not read whether this order was already '
+      + 'recorded as bought.</div>';
+  }
+  (recs || []).forEach(function(p){
+    const who = p.bought_by ? " by " + p.bought_by : "";
+    const sup = p.supplier_url
+      ? '<a class="link" target="_blank" rel="noopener" href="' + _oEsc(p.supplier_url)
+        + '">' + _oEsc(p.supplier || "supplier") + '</a>'
+      : _oEsc(p.supplier || "supplier not named");
+    h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0">'
+      + '<span style="color:var(--green)"><i class="ti ti-circle-check"></i> Bought</span>'
+      + '<span>' + sup + '</span>'
+      + (p.supplier_ref ? '<code style="font-size:10.5px" title="The supplier\'s order number">'
+                          + _oEsc(p.supplier_ref) + '</code>' : '')
+      + '<span class="cc" style="font-size:10.5px">' + _oEsc(_oWhen(p.bought_at) + who) + '</span>'
+      + (p.note ? '<span class="cc" style="font-size:10.5px">“' + _oEsc(p.note) + '”</span>' : '')
+      + '<button class="ghost" onclick="ordRemovePurchase(' + jsArg(orderId) + ','
+      + jsArg(p.id) + ',' + jsArg(accountId) + ',' + jsArg(marketplace)
+      + ')" title="Forget this record. Nothing at the supplier changes.">Remove</button>'
+      + '</div>';
+  });
+  if(closed) return h + '<div class="cc">This order was cancelled.</div></div>';
+  const sup = (best && best.label) ? String(best.label) : "";
+  const url = (best && best.url) ? String(best.url) : "";
+  h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0">'
+    + '<input id="ordbuy_sup" class="ed" style="width:130px" placeholder="supplier"'
+    + ' value="' + _oEsc(sup) + '">'
+    + '<input id="ordbuy_ref" class="ed" style="width:140px" placeholder="supplier order no.">'
+    + '<input id="ordbuy_note" class="ed" style="width:150px" placeholder="note (optional)">'
+    + '<button class="ghost" onclick="ordRecordPurchase(' + jsArg(orderId) + ','
+    + jsArg(accountId) + ',' + jsArg(marketplace) + ',' + jsArg(url) + ',this)">'
+    + 'Mark as bought</button>'
+    + '</div></div>';
+  return h;
+}
+
+async function ordRecordPurchase(orderId, accountId, marketplace, url, btn){
+  // ONE PRESS, ONE RECORD. An order may carry several records (two suppliers),
+  // so a double click would really record it twice; the button waits instead.
+  if(btn){ if(btn.disabled) return; btn.disabled = true; }
+  const v = function(id){ return ((document.getElementById(id) || {}).value || "").trim(); };
+  const supplier = v("ordbuy_sup");
+  // The supplier's link is kept only when the box still names the supplier it
+  // came with -- a changed name with the old link would point at the wrong shop.
+  const keepUrl = url && supplier && document.getElementById("ordbuy_sup")
+    && supplier === String(document.getElementById("ordbuy_sup").defaultValue || "");
+  const ok = await _ordWriteThenReload("/orders/purchase",
+    {account: accountId || "", marketplace: marketplace || "", order_id: orderId,
+     supplier: supplier, supplier_url: keepUrl ? url : "",
+     supplier_ref: v("ordbuy_ref"), note: v("ordbuy_note")},
+    orderId, accountId, "Recorded as bought.");
+  // Refused: the panel was not redrawn, so the same button is pressable again.
+  if(!ok && btn) btn.disabled = false;
+}
+
+async function ordRemovePurchase(orderId, id, accountId, marketplace){
+  await _ordWriteThenReload("/orders/purchase/remove",
+    // purchase_id, not id: the guard reads a body `id` as an ACCOUNT name, so a
+    // person limited to some accounts was refused (account-scope review).
+    {account: accountId || "", marketplace: marketplace || "", order_id: orderId, purchase_id: id},
+    orderId, accountId, "That record has been removed.");
 }
 
 /* Write one order line's cost, then redraw from the server's answer.
@@ -1663,6 +1783,10 @@ function _ordDetailHtml(r){
                          r.account_id, r.marketplace);
 
   // ---- where the parcel is ---------------------------------------------
+  // Bought, then posted, then tracked -- the order the work happens in.
+  h += ordPurchasePanel(r, (typeof _opBestSource === "function")
+                             ? _opBestSource(d, d.items || []) : null,
+                        (d.order || {}).purchases);
   h += ordParcelPanel(r);
 
   // ---- delivery --------------------------------------------------------

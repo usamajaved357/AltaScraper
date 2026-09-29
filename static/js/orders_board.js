@@ -9,16 +9,21 @@
  * OK. The buttons that would do those things are shown switched off and say so.
  *
  * Every state is worked out from what the order row already carries -- status,
- * fulfilment channel, items left to ship, ship-by date, the tracking recorded
- * in this app. Two of the plan's tabs are NOT drawn, because the app holds
- * nothing to decide them with: "To buy" (the app does not record whether an
- * order was bought from the supplier) and "Returns & messages" (Amazon's
- * messages are not available). Drawn empty they would claim "nothing to do".
+ * fulfilment channel, items left to ship, ship-by date, the tracking and the
+ * "bought from the supplier" records kept in this app. One of the plan's tabs
+ * is NOT drawn, because the app holds nothing to decide it with: "Returns &
+ * messages" (Amazon's messages are not available). Drawn empty it would claim
+ * "nothing to do".
+ *
+ * "To buy" (30 Sep 2026): an FBM order still to post with no purchase recorded
+ * against it (domain/order_purchases.py -- a record a person makes; the app
+ * buys nothing). It is a subset of "To dispatch", not a state of its own.
  */
 
 // Tab id -> label, in the plan's order.
 const ORD_TABS = [
   ["action",   "Needs action"],
+  ["tobuy",    "To buy"],
   ["dispatch", "To dispatch"],
   ["tracking", "Needs tracking"],
   ["problem",  "Problems"],
@@ -33,6 +38,14 @@ const ORD_TABS = [
  * problem only while there is still something to not send -- the same line
  * domain/daily_check.py draws. */
 const ORD_TRACKING_WINDOW_DAYS = 3;
+
+/* Something still to send. Amazon sometimes leaves the count out, so the status
+ * counts too. The ONE rule, for the state and for "To buy" (Rule 12). */
+function _ordUnshipped(r){
+  const st = String((r && r.status) || "");
+  return Number((r && r.unshipped) || 0) > 0 || st === "Unshipped" || st === "PartiallyShipped";
+}
+
 function _ordState(r){
   const st = String(r.status || "");
   const fba = String(r.fulfilment || "").toUpperCase() === "AFN";
@@ -40,8 +53,7 @@ function _ordState(r){
   if(st === "Unfulfillable") return "problem";
   if(fba) return "fba";
   if(st === "Pending" || st === "PendingAvailability") return "waiting";
-  const unshipped = Number(r.unshipped || 0) > 0 || st === "Unshipped" || st === "PartiallyShipped";
-  if(unshipped){
+  if(_ordUnshipped(r)){
     if(r.item && r.item.cancel_requested) return "problem";
     const ms = _ordShipMs(r.ship_by);
     if(ms !== null && ms < 0) return "problem";          // late by Amazon's own date
@@ -68,11 +80,33 @@ function _ordState(r){
  * needs action, else All -- so the first view is never empty for no reason. */
 function _ordTab(){
   if(ORD.tab) return ORD.tab;
-  return (ORD.rows || []).some(function(r){ return _ordInTab(_ordState(r), "action"); }) ? "action" : "all";
+  return (ORD.rows || []).some(function(r){ return _ordInTab(_ordState(r), "action", r); }) ? "action" : "all";
 }
 
-function _ordInTab(state, tab){
+/* STILL TO BUY: an FBM order still to post -- on time or late -- that nobody
+ * has recorded buying. A buyer's cancel request is NOT to buy. Purchases that
+ * could not be read (r.purchases not a list) claim nothing either way. */
+function _ordNeedsBuying(r){
+  if(!r || !Array.isArray(r.purchases) || r.purchases.length) return false;
+  if(r.item && r.item.cancel_requested) return false;
+  const s = _ordState(r);
+  if(s === "dispatch") return true;
+  return s === "problem" && String(r.status || "") !== "Unfulfillable"
+      && _ordUnshipped(r);
+}
+
+/* Could the purchase records be read for every order they matter to? When not,
+ * "To buy" shows a dash rather than a count -- a 0 would say "nothing to buy"
+ * when the app simply does not know. */
+function _ordBuyKnown(rows){
+  return !(rows || []).some(function(r){
+    return String(r.fulfilment || "").toUpperCase() !== "AFN" && !Array.isArray(r.purchases);
+  });
+}
+
+function _ordInTab(state, tab, r){
   if(tab === "all") return true;
+  if(tab === "tobuy") return _ordNeedsBuying(r);
   if(tab === "action") return state === "dispatch" || state === "tracking" || state === "problem";
   return state === tab;
 }
@@ -82,7 +116,7 @@ function _ordTabCounts(rows){
   ORD_TABS.forEach(function(t){ c[t[0]] = 0; });
   (rows || []).forEach(function(r){
     const s = _ordState(r);
-    ORD_TABS.forEach(function(t){ if(_ordInTab(s, t[0])) c[t[0]]++; });
+    ORD_TABS.forEach(function(t){ if(_ordInTab(s, t[0], r)) c[t[0]]++; });
   });
   return c;
 }
@@ -93,7 +127,7 @@ function _ordVisible(rows){
   return (rows || []).filter(function(r){
     if(ORD.open && r.order_id === ORD.open) return true;   // the open order stays in view
     if(ch && String(r.fulfilment || "").toUpperCase() !== ch) return false;
-    return _ordInTab(_ordState(r), tab);
+    return _ordInTab(_ordState(r), tab, r);
   });
 }
 
@@ -103,9 +137,12 @@ function ordersSetChannel(c){ ORD.channel = c; if(ORD.sel) ORD.sel.clear(); orde
 
 function _ordTabsHtml(rows){
   const c = _ordTabCounts(rows);
+  const buyKnown = _ordBuyKnown(rows);
   const tab = _ordTab();
   const TIP = {tracking: "Shipped in the last " + ORD_TRACKING_WINDOW_DAYS + " days with no tracking recorded "
-                 + "in this app. Amazon does not send back tracking entered in Seller Central."};
+                 + "in this app. Amazon does not send back tracking entered in Seller Central.",
+               tobuy: "Orders you post yourself, still to send, that nobody has marked as bought "
+                 + "from the supplier. Open one and press Mark as bought once you have bought it."};
   return '<div class="ord-tabs" role="group" aria-label="Show orders by what they need">'
     + ORD_TABS.map(function(t){
         const on = t[0] === tab;
@@ -113,7 +150,9 @@ function _ordTabsHtml(rows){
         return '<button type="button" aria-pressed="' + (on ? "true" : "false") + '"'
           + ' data-fk="tab:' + t[0] + '"' + (TIP[t[0]] ? ' title="' + _oEsc(TIP[t[0]]) + '"' : '')
           + ' class="ord-tab' + (on ? ' on' : '') + '" onclick="ordersSetTab(' + jsArg(t[0]) + ')">'
-          + _oEsc(t[1]) + ' <span class="ord-tab-n' + (bad ? ' bad' : '') + '">' + c[t[0]] + '</span></button>';
+          + _oEsc(t[1]) + ' ' + ((t[0] === "tobuy" && !buyKnown)
+              ? '<span class="ord-tab-n cc" title="Could not read which orders were marked as bought">—</span>'
+              : '<span class="ord-tab-n' + (bad ? ' bad' : '') + '">' + c[t[0]] + '</span>') + '</button>';
       }).join("")
     + '</div>';
 }
