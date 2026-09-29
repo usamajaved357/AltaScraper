@@ -44,6 +44,9 @@ BASELINE_SIZE = {
     "duplicate-function": 0,
     "large-function": 27,
     "background-open-account": 8,
+    # Added from lessons (docs/lessons.md), 29 Sep 2026, via --baseline-new-rule:
+    "swallowed-write-failure": 66,
+    "config-path-literal": 9,
 }
 
 print("== part 1: the repository has no NEW architectural debt ==")
@@ -185,6 +188,35 @@ try:
     got = [k for k, _f, _l in A.rule_background_open_account([rep2])]
     check("  a second read in the same function is its own (#2) entry",
           got, ["domain/rep_job.py: job reads active_account_id", "domain/rep_job.py: job reads active_account_id #2"])
+    # swallowed-write-failure (lesson L-silent-failure)
+    bad = put("domain/swallow.py", "def f(r):\n    try:\n        record_action(r)\n    except Exception:\n        pass\n")
+    said = put("domain/said.py", "def f(r):\n    try:\n        record_action(r)\n    except Exception as e:\n        print(e)\n")
+    read = put("domain/readonly.py", "def f(r):\n    try:\n        return load(r)\n    except Exception:\n        pass\n")
+    ok_ex = put("domain/why.py", "def f(r):\n    try:\n        record(r)\n"
+                                 "    except Exception:  # arch-ok: swallowed-write-failure -- the log must never break a request\n"
+                                 "        pass\n")
+    got = [k for k, _f, _l in A.rule_swallowed_write_failure([bad, said, read, ok_ex])]
+    check("swallowed-write-failure: a write failure passed over in silence is caught",
+          got, ["domain/swallow.py: f swallows record_action"])
+    check("  a failure that is said, a read, and a reasoned exception are not", len(got), 1)
+
+    # config-path-literal (lesson L-code-vs-data-folder)
+    bad = put("domain/cfg_bad.py", "import os\ndef data():\n    return os.path.join(os.path.dirname(__file__), 'config.json')\n")
+    owner = put("config/settings.py", "DEFAULT = 'config.json'\n")
+    good = put("domain/cfg_good.py", "def data(CONFIG_PATH):\n    return CONFIG_PATH\n")
+    got = [k for k, _f, _l in A.rule_config_path_literal([bad, owner, good])]
+    check("config-path-literal: a bare config.json path is caught", got, ["domain/cfg_bad.py: data"])
+    check("  the settings module that owns the default is not", len(got), 1)
+
+    # introducing a rule: its legacy is recorded ONCE, never for an existing rule
+    saved_base = A.BASELINE
+    A.BASELINE = put("tools/arch_baseline.json", '{"config-path-literal": {"x": "legacy"}}')
+    try:
+        check("--baseline-new-rule refuses a rule that already has a baseline",
+              A.main(["--baseline-new-rule", "config-path-literal"]), 2)
+        check("  and a rule that does not exist", A.main(["--baseline-new-rule", "no-such-rule"]), 2)
+    finally:
+        A.BASELINE = saved_base
 finally:
     A.ROOT = REAL_ROOT
     shutil.rmtree(tmp, ignore_errors=True)

@@ -10,10 +10,14 @@ code already follows, pinned here so it cannot be lost:
     preview queue     account_id= on enqueue                    keyed per account
     /run/<mode>       the account captured in the request       refuses when none is open
 
-Two remaining fallbacks are RECORDED, not changed (docs/architecture-audit-
-2026-09-29.md, bugs 8-9): an image batch started with NO account falls back at
-finish time to whatever is open then, and the ASIN monitor defaults to jack_uk.
-The checks below read raw file bytes: they are about these exact files.
+The two fallbacks the audit recorded (docs/architecture-audit-2026-09-29.md,
+bugs 8-9) are GONE since the owner's decisions of 29 Sep 2026: an image batch
+with no account refuses at start (deb7329, test_image_batch_needs_account.py)
+and the ASIN monitor has no jack_uk default (b0a9c6d,
+test_monitor_needs_account.py). The whole class is now also guarded by the
+background-open-account rule (tools/arch_rules.py; docs/lessons.md
+L-open-account-fallback). The checks below read raw file bytes: they are about
+these exact files.
 """
 import os
 import re

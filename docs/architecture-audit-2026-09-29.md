@@ -130,14 +130,18 @@ inventory sync), and `build_api_attributes` (separate plan:
    does ("No account is open"). A queued preview then reaches the generator with
    no `--account-id`, whose credential fallback is the global block. Found during
    A9; not fixed there (a behaviour change on a write-adjacent path; owner to
-   confirm the refusal should match `/run`).
+   confirm the refusal should match `/run`). NOW FIXED (owner decision 1,
+   943fb60; test_preview_needs_account.py).
 8. An image batch started with NO account open is stamped `_acct_id=""`, and
    the worker then falls back AT FINISH TIME to whatever account is open
    (`domain/image_jobs.py` ~399, and the Drive copy ~433) -- so an image can be
    filed under an account opened after it started. Found in A10; not changed
-   (owner to confirm: refuse at enqueue, or file under the shared root).
+   (owner to confirm: refuse at enqueue, or file under the shared root). NOW
+   FIXED (owner decision 2: refuses at start, deb7329;
+   test_image_batch_needs_account.py).
 9. The ASIN monitor defaults to `jack_uk` when no account is configured
-   (`monitor/checker.py` `_MONITOR_ACCOUNT_DEFAULT`). Recorded (P10).
+   (`monitor/checker.py` `_MONITOR_ACCOUNT_DEFAULT`). Recorded (P10). NOW FIXED
+   (owner decision 3, b0a9c6d; test_monitor_needs_account.py).
 
 ## 5. Batch notes
 

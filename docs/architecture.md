@@ -496,6 +496,20 @@ prints the report.
 | duplicate-function | two functions (nested and methods included) with an identical 5+ statement body (Rule 12) |
 | large-function | a function over 200 lines (a routes/ `register()` container excepted) |
 | background-open-account | code below routes/ taking the open account: a read of active_account_id / active_marketplace, or a call to request_account.current / id_or_open however imported (the owners domain/request_account.py and domain/account_scope.py excepted) |
+| swallowed-write-failure | an `except: pass` / `continue` around a try that calls a write (lesson L-silent-failure) |
+| config-path-literal | a bare "config.json" outside config/settings.py (lesson L-code-vs-data-folder) |
+
+A rule added later (a lesson becoming a check) records its own legacy ONCE:
+`py -3.11 tools/arch_rules.py --baseline-new-rule <rule>` refuses a rule that
+already has a baseline; its count is pinned in the test in the same change.
+
+**Lessons** (docs/lessons.md, 29 Sep 2026): the bug CLASSES the app has shown,
+each with its evidence, its prevention and when a new feature must apply it.
+`test_lessons_register.py` keeps it true (prevention files exist, guard rules
+are real, cited commits exist) and requires a FIXED bug from 29 Sep 2026 on to
+name its regression test. `test_guard_rules_effective.py` (lesson
+L-dead-permission-rule): every route x method whose declared permission a
+view-only user slips past must be listed with a reason.
 
 The older, single-purpose guards (each with its own legacy mechanism):
 `test_routes_sql_ceiling.py` (raw SQL in routes, per-file caps that only go

@@ -77,6 +77,18 @@ RULES = {
         "(active_account_id / active_marketplace read from state, or a call to "
         "request_account.current / id_or_open, which fall back to it) -- a "
         "background job must be handed its account (Rule 14).",
+    # --- added from lessons (docs/lessons.md), 29 Sep 2026 -----------------
+    "swallowed-write-failure":
+        "An except clause whose body is only `pass` / `continue`, around a try "
+        "that calls a write (record/save/write/store/push/patch/put/insert/"
+        "update/add/set/upsert/commit/apply/send ...) -- a failed write hidden "
+        "from everyone. Lesson L-silent-failure: the price editor's recording "
+        "failed this way for weeks. Say it (log, reply) or give an arch-ok reason.",
+    "config-path-literal":
+        "A bare \"config.json\" string in the app packages outside the settings "
+        "module that owns the default (config/settings.py) -- a path that ends up "
+        "beside the CODE, not the data. Lesson L-code-vs-data-folder. Use "
+        "CONFIG_PATH.",
 }
 
 LARGE_LINES = 200
@@ -508,6 +520,74 @@ def rule_background_open_account(files=None):
     return out
 
 
+_WRITE_NAME = re.compile(r"(^|_)(record|save|write|store|push|patch|put|insert|update|add|set|"
+                         r"upsert|commit|apply|send)(_|$)", re.I)
+
+
+def rule_swallowed_write_failure(files=None):
+    """`except ...: pass|continue` (nothing else) around a try block that calls a
+    write-named function. Key: file + enclosing function + the write called
+    (+ #n)."""
+    out = []
+    for p in (_py_files(extra=("dashboard.py",)) if files is None else files):
+        rel = _rel(p)
+        _s, _lines, tree, comments = _parsed(p)
+        if tree is None:
+            continue
+
+        def visit(node, where):
+            for ch in ast.iter_child_nodes(node):
+                w = where
+                if isinstance(ch, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    w = (where + "." if where else "") + ch.name
+                if isinstance(ch, ast.Try):
+                    silent = [h for h in ch.handlers
+                              if h.body and all(isinstance(b, (ast.Pass, ast.Continue)) for b in h.body)]
+                    if silent:
+                        writes = []
+                        for st in ch.body:
+                            for c in ast.walk(st):
+                                if isinstance(c, ast.Call):
+                                    f = c.func
+                                    n = f.attr if isinstance(f, ast.Attribute) else (f.id if isinstance(f, ast.Name) else "")
+                                    if n and _WRITE_NAME.search(n):
+                                        writes.append(n)
+                        for h in silent:
+                            if writes and not excepted(comments, ch.lineno, h.end_lineno or h.lineno,
+                                                       "swallowed-write-failure"):
+                                _numbered(out, "%s: %s swallows %s" % (rel, w or "<module>", writes[0]),
+                                          rel, h.lineno)
+                visit(ch, w)
+        visit(tree, "")
+    return out
+
+
+CONFIG_OWNER = {"config/settings.py"}
+
+
+def rule_config_path_literal(files=None):
+    """A "config.json" string constant in the app packages or dashboard.py,
+    outside CONFIG_OWNER. Key: file + enclosing function (+ #n)."""
+    out = []
+    for p in (_py_files(extra=("dashboard.py",)) if files is None else files):
+        rel = _rel(p)
+        if rel in CONFIG_OWNER:
+            continue
+        _s, _lines, tree, comments = _parsed(p)
+        if tree is None:
+            continue
+        for q, fn in [("<module>", tree)] + list(_nodes_of(p, "functions")):
+            body = fn.body if hasattr(fn, "body") else []
+            for st in body:
+                if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    continue            # counted under its own name
+                for c in ast.walk(st):
+                    if isinstance(c, ast.Constant) and c.value == "config.json" and \
+                            not excepted(comments, c.lineno, c.lineno, "config-path-literal"):
+                        _numbered(out, "%s: %s" % (rel, q), rel, c.lineno)
+    return out
+
+
 CHECKS = {
     "spapi-client-outside-api": rule_spapi_client_outside_api,
     "routes-import-dashboard": rule_routes_import_dashboard,
@@ -516,6 +596,8 @@ CHECKS = {
     "duplicate-function": rule_duplicate_function,
     "large-function": rule_large_function,
     "background-open-account": rule_background_open_account,
+    "swallowed-write-failure": rule_swallowed_write_failure,
+    "config-path-literal": rule_config_path_literal,
 }
 
 _SIZE = re.compile(r"lines=(\d+)")
@@ -583,6 +665,23 @@ def main(argv):
                 (base.get(rule) or {}).pop(k, None)
         _write_baseline(base)
         print("baseline: fixed entries removed -- lower BASELINE_SIZE in test_architecture_guard.py to match")
+    if "--baseline-new-rule" in argv:
+        # THE DAY A RULE IS INTRODUCED (a lesson becoming a check): record that
+        # rule's legacy -- only when the rule has NO baseline yet. Existing
+        # rules are never touched, and the test's BASELINE_SIZE pin must be
+        # given the new rule's count by hand, in the same reviewed change.
+        rule = argv[argv.index("--baseline-new-rule") + 1]
+        base = load_baseline()
+        if rule not in CHECKS:
+            print("STOP: no rule called %s" % rule)
+            return 2
+        if base.get(rule):
+            print("STOP: %s already has a baseline; it only shrinks" % rule)
+            return 2
+        base[rule] = {item[0]: _entry(rule, item) for item in rep[rule]["found"]}
+        _write_baseline(base)
+        print("baseline for new rule %s: %d legacy entries" % (rule, len(base[rule])))
+        return 0
     if "--baseline-init" in argv:
         # ONE-OFF, the day the guard was introduced: record today's code as
         # legacy. Refuses when a baseline exists; and the test pins the size per

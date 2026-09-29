@@ -153,7 +153,8 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 - **18 Aug 2026 — The ASIN monitor does not run on a fixed timer.** "i dont want
   the asin monitor to be working always". Only "Check now" and a user-chosen
   interval (1-168 h), OFF by default, decided in `monitor/schedule.py`.
-  Source: memory asin-monitor. (See known-issues: a scheduler job may bypass this.)
+  Source: memory asin-monitor. (A scheduler job used to bypass this; fixed in
+  Milestone 3, 28 Sep 2026 -- known-issues Suspected #3, test_scheduler_jobs.py.)
 - **31 Jul 2026 — Any seller-name scraping lives in its own module** behind a
   narrow interface, never inside checker logic. Source: memory asin-monitor.
 - **15 Sep 2026 — Repricer enrolment is automatic on go-live, in dry run.**
