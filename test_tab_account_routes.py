@@ -197,7 +197,9 @@ check("each image is made on an internal request naming the BATCH's account",
 PI = body_of(LIST, "/listing/push_image")
 check("push_image refuses when its rows and its push would be two accounts",
       'if str(aid) != str(_rqa.current(_state)):' in PI
-      and PI.index("_rqa.current(_state)):") < PI.index("_records(_ws())"), True)
+      # Re-pinned 30 Sep 2026: the rows are now read inside _push_main_image
+      # (split for the large-function rule); the refusal still comes first.
+      and PI.index("_rqa.current(_state)):") < PI.index("_push_main_image(b, sku)"), True)
 check("push_image takes the tab's marketplace, not another tab's selection",
       '_state.get("active_marketplace")' not in PI, True)
 

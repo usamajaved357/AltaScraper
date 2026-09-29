@@ -343,11 +343,13 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
                     # two belong to different VAT returns.
                     acc.add(d, sku, "refund_tax", abs(_amt(ch.get("ChargeAmount"))),
                             _cur(ch.get("ChargeAmount")))
-            # THE DISCOUNT YOU FUNDED, REVERSED. A refunded order no longer
-            # costs you its promotion: Amazon posts it back (+3.25 on nestwell,
-            # 90 days), so it comes OFF the promotions cost.
+            # THE DISCOUNT YOU FUNDED, REVERSED. Amazon posts it back with the
+            # refund (+3.25 on nestwell, 90 days): the buyer got the price LESS
+            # the discount back, so the refund is that much smaller. Kept in
+            # `refunds` so it stays on the refund's date on both calendars --
+            # in `promos` it moved the order's month (review, 30 Sep 2026).
             for pr in (item.get("PromotionAdjustmentList") or []):
-                acc.add(d, sku, "promos", -_amt(pr.get("PromotionAmount")),
+                acc.add(d, sku, "refunds", -_amt(pr.get("PromotionAmount")),
                         _cur(pr.get("PromotionAmount")))
             for fee in (item.get("ItemFeeAdjustmentList") or []):
                 # SIGNED. Most fee adjustments on a refund are positive -- Amazon
@@ -377,13 +379,16 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
         atype = str(adj.get("AdjustmentType") or "").lower()
         if not any(k in atype for k in _REIMBURSEMENT):
             continue
+        # SIGNED, as Amazon sends it: a reimbursement is +, a CLAWBACK of one
+        # ("compensated_clawback", "ReimbursementClawback") is - money taken
+        # back. abs() counted the clawback as money received (review, 30 Sep).
         items = adj.get("AdjustmentItemList") or []
         if items:
             for it in items:
                 acc.add(d, it.get("SellerSKU"), "reimbursements",
-                        abs(_amt(it.get("TotalAmount"))), _cur(it.get("TotalAmount")))
+                        _amt(it.get("TotalAmount")), _cur(it.get("TotalAmount")))
         else:
-            acc.add(d, None, "reimbursements", abs(_amt(adj.get("AdjustmentAmount"))),
+            acc.add(d, None, "reimbursements", _amt(adj.get("AdjustmentAmount")),
                     _cur(adj.get("AdjustmentAmount")))
 
     _parse_other_money(ev, acc)
@@ -418,6 +423,39 @@ def _money_of(node, *keys):
     return 0.0, ""
 
 
+# The total-like field of each other event list, as Amazon's Finances API
+# reference names them (the list the review of 30 Sep 2026 found missing:
+# SAFE-T reimbursements, tax withheld, value-added services, capacity
+# reservation, affordability expenses). Checked in this order; the first one
+# present is the event's amount, never a total AND its parts.
+_OTHER_AMOUNT_KEYS = ("TotalAmount", "totalAmount", "TransactionValue", "transactionValue",
+                      "TransactionAmount", "ReimbursedAmount", "TotalExpense",
+                      "AdjustmentAmount", "ChargeAmount", "FeeAmount", "Amount", "amount")
+# Always a cost, whatever sign Amazon puts on it.
+_COST_KEYS = ("WithheldAmount",)
+
+
+def _other_event_money(e):
+    """One uncatalogued event -> (signed amount, currency): + money to you,
+    - a cost. Liquidation pays proceeds less its fee; an event that lists its
+    fees (FeeList: imaging services) is their sum."""
+    if isinstance(e.get("LiquidationProceedsAmount"), dict):
+        p, cur = _money_of(e, "LiquidationProceedsAmount")
+        f, _c = _money_of(e, "LiquidationFeeAmount")
+        return abs(p) - abs(f), cur
+    for k in _COST_KEYS:
+        if isinstance(e.get(k), dict):
+            v, cur = _money_of(e, k)
+            return -abs(v), cur
+    v, cur = _money_of(e, *_OTHER_AMOUNT_KEYS)
+    if not v and isinstance(e.get("FeeList"), list):
+        for f in e["FeeList"]:
+            fv, fc = _money_of(f or {}, "FeeAmount")
+            v += fv
+            cur = cur or fc
+    return v, cur
+
+
 def _parse_other_money(ev, acc):
     acc.other_lists = set()
     # Amazon Ads invoices: Charge is negative, a refund of one positive.
@@ -435,9 +473,12 @@ def _parse_other_money(ev, acc):
             d = _day(e.get("PostedDate") or e.get("postedDate"))
             v, cur = _money_of(e, "TotalAmount", "totalAmount")
             if not v:
-                fee, cur = _money_of(e, "FeeAmount", "feeAmount")
-                tx, _c = _money_of(e, "TaxAmount", "taxAmount")
-                v = fee + tx
+                # No total: the parts, where Amazon's reference puts them --
+                # the fee inside FeeComponent, the charge inside ChargeComponent
+                # (a top-level FeeAmount, read before, is never sent).
+                fee, cur = _money_of(e.get("FeeComponent") or {}, "FeeAmount")
+                ch, _c = _money_of(e.get("ChargeComponent") or {}, "ChargeAmount")
+                v = fee + ch
             acc.add(d, None, "promo_fees", -v, cur)
     # Removals / disposals: the fee is an FBA cost; any liquidation revenue is income.
     for e in (ev.get("RemovalShipmentEventList") or []):
@@ -460,6 +501,11 @@ def _parse_other_money(ev, acc):
         atype = str(adj.get("AdjustmentType") or "").lower()
         if any(k in atype for k in _REIMBURSEMENT):
             continue                                   # read above as reimbursements
+        if "reserve" in atype:
+            # A RESERVE is money Amazon holds back from a payout and releases
+            # later -- cash timing, not income or cost. Counting it made a
+            # held balance read as a loss (review, 30 Sep 2026).
+            continue
         d = _day(adj.get("PostedDate"))
         v, cur = _money_of(adj, "AdjustmentAmount")
         acc.add(d, None, "adjustments", v, cur)
@@ -472,9 +518,7 @@ def _parse_other_money(ev, acc):
         for e in items:
             if not isinstance(e, dict):
                 continue
-            v, cur = _money_of(e, "TotalAmount", "totalAmount", "TransactionValue",
-                               "transactionValue", "AdjustmentAmount", "ChargeAmount",
-                               "FeeAmount", "Amount", "amount")
+            v, cur = _other_event_money(e)
             if v:
                 acc.other_lists.add(lst)
                 acc.add(_day(e.get("PostedDate") or e.get("postedDate")), None,

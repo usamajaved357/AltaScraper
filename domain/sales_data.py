@@ -482,6 +482,53 @@ def _drop_padding(sales, cutoff):
     return out
 
 
+def _profit_money_by_day(config_path, workspace_id, marketplace, start, end,
+                         key, ads, vat_rate, basis, meta):
+    """The money a day's profit carries beyond its trade -> (ad_cost_by_day,
+    ad_info, account_money_by_day). 30 Sep 2026, owner: accurate profit on
+    every screen.
+
+    WHAT ADVERTISING COST (domain/ad_cost -- the one rule): the Ads API from
+    the day it reports, Amazon's ad invoices before, plus the VAT on ads for an
+    account that cannot reclaim it. A row's `spend` stays the Ads API's own
+    figure, for ACOS / ROAS / TACOS; profit uses `ad_cost`.
+
+    THE ACCOUNT'S OWN MONEY, account-wide series only: what Amazon charged the
+    account and no order carries (subscription, storage, coupon fees), every
+    other posting (signed), the costs entered by hand -- so a month here is the
+    P&L's net profit. On the MONEY calendar the day's fees already hold the
+    account charges (expenses.account_money_by_day, fees_in_rows).
+
+    A failure here is SAID (meta["profit_gaps"]), never silent: a profit
+    missing its ads looks better than it is."""
+    from domain import ad_cost as _adc
+    gaps = []
+    try:
+        if key == "*":
+            adays, ainfo = _adc.by_day(config_path, workspace_id, marketplace, start, end,
+                                       _adc.vat_registered(vat_rate))
+        else:
+            ratio = _adc.product_ratio(config_path, workspace_id, marketplace, end, vat_rate)
+            adays = {d: v.get("spend") for d, v in _adc.uplift(ads, ratio).items()}
+            ainfo = {"source": "ads_api" if ads else None}
+    except Exception as e:
+        adays, ainfo = {}, {"source": None}
+        gaps.append("advertising could not be read (%s)" % e)
+    acct = {}
+    if key == "*":
+        try:
+            from domain import expenses as _exp
+            acct = _exp.account_money_by_day(config_path, workspace_id, marketplace, start, end,
+                                             fees_in_rows=(basis != "order"))
+        except Exception as e:
+            gaps.append("the account's own charges and costs could not be read (%s)" % e)
+    if isinstance(meta, dict):
+        meta["ads_cost"] = ainfo
+        if gaps:
+            meta["profit_gaps"] = gaps
+    return adays, ainfo, acct
+
+
 def series(config_path, workspace_id, marketplace, start, end, asin=None,
            vat_rate=None, basis="money", meta=None):
     """Daily rows for a range, sales joined with ads and finance.
@@ -706,8 +753,15 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
                 return False
         return True
 
+    # WHAT ADVERTISING COST, per day (domain/ad_cost -- the one rule): the Ads
+    # API where it covers the window, else Amazon's ad invoices, plus the VAT on
+    # ads for an account that cannot reclaim it. `spend` stays the Ads API's own
+    # figure, for ACOS / ROAS / TACOS; profit uses `ad_cost` (30 Sep 2026).
+    _adays, _ainfo, _acct_days = _profit_money_by_day(
+        config_path, workspace_id, marketplace, start, end, key, ads, vat_rate, basis, meta)
+
     out = []
-    for d in sorted(span | set(sales) | set(ads) | set(fin)):
+    for d in sorted(span | set(sales) | set(ads) | set(fin) | set(_adays)):
         row = dict(sales.get(d) or {"date": d, "asin": key, "currency": ""})
         row["date"] = d
         a = ads.get(d) or {}
@@ -741,6 +795,11 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
         # calls too. It used to be written out here, and a second, quietly
         # different copy lived in domain/contribution.py -- see that function.
         row.update(net_proceeds_for(row, vat_rate))
+        row["ad_cost"] = (_adays.get(d, 0.0) if _ainfo.get("source") else None)
+        _am = _acct_days.get(d) or {}
+        row["account_charges"] = _am.get("account_charges")
+        row["other_amazon"] = _am.get("other_amazon")
+        row["own_costs"] = _am.get("own_costs")
 
         # PROFIT -- only when the cost of every unit shipped that day is known.
         #
@@ -782,7 +841,10 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
             # they are known (order_finance.complete_by_order_date).
             row["profit"] = round(row["net_proceeds"] - float(row.get("cogs") or 0.0)
                                   - float(row.get("charges") or 0.0)
-                                  - float(row.get("spend") or 0.0), 2)
+                                  - float(row.get("ad_cost") or 0.0)
+                                  - float(row.get("account_charges") or 0.0)
+                                  + float(row.get("other_amazon") or 0.0)
+                                  - float(row.get("own_costs") or 0.0), 2)
             p = float(row.get("principal") or 0.0)
             row["margin_pct"] = round(row["profit"] / p * 100, 2) if p else None
         else:
@@ -1172,12 +1234,17 @@ def profit_for(rows, allow_uncosted=False):
     net = _sum(rows, "net_proceeds")
     if net is None:
         return None
-    # Measured ad spend comes off, as it does on every other profit screen.
-    # Rows that carry no `spend` (the Finance screen's, which subtract their
-    # own) contribute nothing here.
+    # What advertising COST comes off (ad_cost: VAT and invoices included --
+    # domain/ad_cost), and so do the account's own charges, its other Amazon
+    # postings (signed) and the costs entered by hand, so a week or a month here
+    # is the P&L's net profit. Rows that carry none of these (the Finance
+    # screen's, which subtract their own) contribute nothing.
     return round(net - float(_sum(rows, "cogs") or 0.0)
                  - float(_sum(rows, "charges") or 0.0)
-                 - float(_sum(rows, "spend") or 0.0), 2)
+                 - float(_sum(rows, "ad_cost") or 0.0)
+                 - float(_sum(rows, "account_charges") or 0.0)
+                 + float(_sum(rows, "other_amazon") or 0.0)
+                 - float(_sum(rows, "own_costs") or 0.0), 2)
 
 
 def bucket(rows, gran):
@@ -1246,6 +1313,10 @@ def totals(config_path, workspace_id, marketplace, start, end, asin=None,
     for key in METRIC_KEYS:
         out[key] = aggregate(rows, key)
     out["order_items"] = aggregate(rows, "order_items")
+    # The money profit is made of beyond the trade (30 Sep 2026): what ads cost,
+    # the account's own charges, its other postings (signed), own costs.
+    for k in ("ad_cost", "account_charges", "other_amazon", "own_costs"):
+        out[k] = _sum(rows, k)
     return out
 
 

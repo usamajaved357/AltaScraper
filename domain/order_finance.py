@@ -123,13 +123,17 @@ def parse_by_order(payload):
                 amt = -_fd._amt(ch.get("ChargeAmount"))
                 if t in _fd._TAX_TYPES:
                     r["refund_tax"] += amt
-                elif t in _fd._REVENUE_TYPES or t in ("returnshipping", "restockingfee"):
+                elif t in _fd._REVENUE_TYPES or t.replace(" ", "") in ("returnshipping",
+                                                                        "restockingfee"):
                     # Return postage / restocking go with the refund they belong to.
                     r["refunds"] += amt
-            # The discount you funded, posted back on a refund: it comes off
-            # this order's promotions cost (finance_data reads it the same way).
+            # The discount you funded, posted back on a refund: the buyer got
+            # the price LESS it back, so it makes the refund smaller -- on the
+            # refund's own date. Booked against `promos` it moved the ORDER's
+            # month and made a refund-only row look like a settled sale
+            # (review, 30 Sep 2026). finance_data reads it the same way.
             for p in (it.get("PromotionAdjustmentList") or []):
-                r["promos"] += -_fd._amt(p.get("PromotionAmount"))
+                r["refunds"] -= _fd._amt(p.get("PromotionAmount"))
             for f in (it.get("ItemFeeAdjustmentList") or []):
                 # The part of the fee Amazon hands back with a refund.
                 r["refund_fees_returned"] += _fd._amt(f.get("FeeAmount"))
@@ -173,6 +177,28 @@ def store(config_path, workspace_id, marketplace, rows):
         n += 1
     conn.commit()
     return n
+
+
+def refund_for_order(config_path, workspace_id, marketplace, order_id):
+    """One order's refunds, from its own postings -> {refunds, refund_tax,
+    refund_fees_returned, refund_units} or None. refund_fees_returned is SIGNED:
+    fees Amazon handed back less the RefundCommission it kept (30 Sep 2026)."""
+    if not order_id:
+        return None
+    try:
+        r = _db.get_db(config_path).execute(
+            "SELECT SUM(COALESCE(refunds,0)) refunds, SUM(COALESCE(refund_tax,0)) refund_tax, "
+            "SUM(COALESCE(refund_fees_returned,0)) refund_fees_returned, "
+            "SUM(COALESCE(refund_units,0)) refund_units FROM order_fees "
+            "WHERE workspace_id=? AND marketplace=? AND order_id=?",
+            (workspace_id, marketplace, str(order_id))).fetchone()
+    except Exception:
+        return None
+    if not r or not (r["refunds"] or r["refund_fees_returned"]):
+        return None
+    return {k: round(float(r[k] or 0), 2) for k in ("refunds", "refund_tax",
+                                                   "refund_fees_returned")} | {
+        "refund_units": int(r["refund_units"] or 0)}
 
 
 def by_order_date(config_path, workspace_id, marketplace, start, end):

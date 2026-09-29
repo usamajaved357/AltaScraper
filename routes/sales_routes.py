@@ -332,8 +332,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             est = _op.for_period(CONFIG_PATH, wsid, mkt, start, end,
                                  _cogs_overrides(),
                                  vat_rate=_vat,
-                                 ads_connected=bool(avail["ads"]["connected"]),
-                                 ad_spend=cur.get("spend") or 0.0,
+                                 # What ads COST (domain/ad_cost: VAT and the
+                                 # invoices included), not the Ads API spend alone.
+                                 ads_connected=(cur.get("ad_cost") is not None),
+                                 ad_spend=cur.get("ad_cost") or 0.0,
                                  revenue=cur.get("ordered_sales"),
                                  units=cur.get("units"),
                                  # THE PRODUCT FILTER, when one is on: `cur`
@@ -341,6 +343,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                  # included, so the profit must be its too.
                                  asin=(asin or None))
             est["cogs_mode"] = _mode
+            # NET, like the P&L: the account's own charges, its other postings
+            # and the costs entered by hand come off the account-wide figure.
+            # From overhead_for itself, the P&L's own step: this estimate is on
+            # the ORDER calendar whichever calendar the grid is drawn on, so it
+            # must not borrow the grid's per-day split (on the money calendar
+            # that split is only the give-back of charges already in the fees).
+            if not asin:
+                from domain import expenses as _exp
+                est = _exp.apply_account_money(
+                    est, _exp.account_money_totals(CONFIG_PATH, wsid, mkt, start, end))
+            if _meta.get("profit_gaps"):
+                est["profit_gaps"] = _meta["profit_gaps"]
             # Profit is now built from the SAME revenue and unit count as the
             # cards, so there is no longer a period-coverage question to answer:
             # the two describe the same trade by construction. What can still be

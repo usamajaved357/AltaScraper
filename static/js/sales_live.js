@@ -410,8 +410,18 @@ function _sProfitTip(c){
                   return p.label + " " + _sNum(p.amount, "money"); }).join(", ")
               : ""));
   L.push(d.ads_connected
-         ? "less ad spend " + _sNum(d.ad_spend, "money")
-         : "ad spend NOT subtracted — Advertising is not connected");
+         ? "less advertising " + _sNum(d.ad_spend, "money")
+           + " (what ads cost: VAT included where it cannot be reclaimed)"
+         : "advertising NOT subtracted — no Ads data and no ad invoice for this window");
+  // The account's own money, as the P&L takes it off (30 Sep 2026).
+  if(d.profit_before_account !== undefined && d.profit_before_account !== null){
+    L.push("= trading profit " + _sNum(d.profit_before_account, "money"));
+    if(d.account_charges) L.push("less Amazon account charges " + _sNum(d.account_charges, "money")
+                                 + " (subscription, storage, coupon fees)");
+    if(d.other_amazon) L.push((d.other_amazon < 0 ? "less" : "plus") + " other Amazon transactions "
+                              + _sNum(Math.abs(d.other_amazon), "money"));
+    if(d.own_costs) L.push("less your own costs " + _sNum(d.own_costs, "money"));
+  }
   L.push("= " + _sNum(d.profit, "money")
          + (d.margin_pct !== null && d.margin_pct !== undefined
             ? "  (" + d.margin_pct + "% margin)" : ""));

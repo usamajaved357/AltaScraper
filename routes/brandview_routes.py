@@ -136,6 +136,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             except Exception as e:
                 rows.append({"marketplace": mkt, "error": str(e)[:120]})
                 continue
+            # BEFORE THE COSTS YOU ENTERED BY HAND. Since 30 Sep 2026 a Sales
+            # profit is net of them, and one entered without a marketplace is
+            # in EVERY marketplace's figure -- so a currency subtotal took the
+            # accountant off four times on the EU marketplaces (review). This
+            # screen compares marketplaces' trading; the P&L owns the net.
+            for _t in (now, was):
+                if _t.get("profit") is not None and _t.get("own_costs"):
+                    _t["profit"] = round(float(_t["profit"]) + float(_t["own_costs"]), 2)
+                    if _t.get("principal"):
+                        _t["margin_pct"] = round(_t["profit"] / float(_t["principal"]) * 100, 2)
             # A marketplace with NOTHING is still listed, quietly. It is the
             # answer to "are we selling there yet", and dropping it would make
             # a marketplace that stopped selling look like one that was never

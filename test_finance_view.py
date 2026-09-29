@@ -58,10 +58,15 @@ check("an unreadable date: no previous window", b.get("previous"), None)
 
 print("=== the overhead ===")
 o = j.get("overhead") or {}
-check("the charge that belongs to no order", [(i["label"], i["amount"]) for i in o.get("items", [])],
-      [("Amazon charges that belong to no order", 0.3), ("Your own costs", None)])
-check("  total", o.get("total"), 0.3)
-check("  contribution and net profit", (o.get("contribution"), o.get("net_profit")), (13.03, 12.73))
+# Re-pinned 30 Sep 2026 (review of the profit work): on the SETTLEMENT tab the
+# charge "no row carries" is measured against the product rows, which carry
+# B01's 2.30 of FBA + other fees -- the same 2.30 the account row holds. So
+# nothing is left over, and taking it off again was the double count the review
+# found (a SKU's removal fee sat in its product row AND in the overhead).
+check("the charge that belongs to no row", [(i["label"], i["amount"]) for i in o.get("items", [])],
+      [("Your own costs", None)])
+check("  total", o.get("total"), 0.0)
+check("  contribution and net profit", (o.get("contribution"), o.get("net_profit")), (13.03, 13.03))
 
 print("=== on the order calendar, from the account's figure ===")
 oj = cl.get("/finance/contribution?account=ws1&marketplace=UK"
@@ -69,7 +74,10 @@ oj = cl.get("/finance/contribution?account=ws1&marketplace=UK"
 oo = oj.get("overhead") or {}
 check("contribution is the account's figure", oo.get("contribution"),
       (oj.get("totals") or {}).get("account_contribution"))
-check("  the overhead is the same on both calendars", oo.get("total"), o.get("total"))
+# No order carries the account row's 2.30 (there are no per-order postings and
+# nothing settled on it), so on the order calendar it is all account charge:
+# ALL fee kinds since 30 Sep 2026 (2.00 FBA + 0.30 other), not "other" alone.
+check("  the order calendar's overhead: what no ORDER carries", oo.get("total"), 2.3)
 
 if fails:
     raise SystemExit("FAILED: %d" % len(fails))

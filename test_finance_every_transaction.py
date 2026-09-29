@@ -73,8 +73,8 @@ print("== the account's money, bucket by bucket ==")
 check("refund commission is a cost, not money returned (3.00 - 0.60)", T.get("refund_fees_returned"), 2.40)
 check("the Ads invoice, ex-VAT", T.get("ads_charged"), 100.00)
 check("  and its VAT, apart", T.get("ads_charged_tax"), 20.00)
-check("the funded promotion comes back with the refund", T.get("promos"), 0.00)
-check("return postage goes with the refund", T.get("refunds"), 20.01)
+check("the funded promotion stays a promotion cost ...", T.get("promos"), 2.00)
+check("... and comes back as a smaller refund, with return postage", T.get("refunds"), 18.01)
 check("coupon redemption fees are promotion fees", T.get("promo_fees"), 0.50)
 check("postage labels and Vine enrolment are counted (signed)", T.get("adjustments"), -153.20)
 check("the undated subscription is kept", T.get("other_fees"), 30.06)
@@ -99,8 +99,8 @@ for r in orows:
         for k, v in r.items():
             if isinstance(v, (int, float)):
                 o[k] = round(o.get(k, 0) + v, 2)
-check("the order's refund includes return postage", o.get("refunds"), 20.01)
-check("the order's promotion is reversed on refund", o.get("promos"), 0.00)
+check("the order's refund: price + return postage - coupon back", o.get("refunds"), 18.01)
+check("the order's promotion is untouched by the refund (its month stays)", o.get("promos"), 2.00)
 check("the order's returned fee is net of the refund commission", o.get("refund_fees_returned"), 2.40)
 
 print("\nFAILURES: %d" % len(FAILS) if FAILS else "\nFAILURES: 0")
