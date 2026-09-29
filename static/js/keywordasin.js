@@ -42,8 +42,10 @@ async function kwAsinSearch() {
   try {
     const start = (document.getElementById("kwa_start") || {}).value || "";
     const end = (document.getElementById("kwa_end") || {}).value || "";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/keywords/asin-insights" + _kwaQs({
       asin: asin, start: start, end: end }))).json();
+    if (_sc && !screenStillIn(_sc)) return;   // switched account meanwhile
     if (j && j.ok) {
       KWASIN.rows = j.rows || []; KWASIN.meta = j;
       if (!KWASIN.rows.length) {
@@ -105,8 +107,8 @@ function kwAsinRender() {
          + "<td>" + (r.cart_adds || 0).toLocaleString() + "</td>"
          + "<td><b>" + (r.purchases || 0).toLocaleString() + "</b></td>"
          + "<td>" + _kwaPct(r.cvr) + "</td>"
-         + '<td><button class="ghost" onclick="kwAsinWatch(' + "'"
-         + _kwaEsc(String(r.query).replace(/'/g, "\\'")) + "'" + ')" '
+         + '<td><button class="ghost" onclick="kwAsinWatch('
+         + jsArg(String(r.query)) + ')" '
          + 'title="Track this query for this ASIN">Track</button></td></tr>';
     });
     h += "</tbody></table>";
@@ -124,6 +126,12 @@ function kwAsinRender() {
 // our own ASINs, which is the only pair the tracker can actually measure.
 async function kwAsinWatch(query) {
   try {
+    // No ASIN held (an account switch empties it): nothing of this account's
+    // to track, and never the previous account's ASIN (review, 30 Sep 2026).
+    if (!KWASIN.asin) {
+      if (typeof toast === "function") toast("Search one of your ASINs first.");
+      return;
+    }
     const j = await (await fetch("/keywords/rank-tracker/add", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(Object.assign(

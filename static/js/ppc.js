@@ -56,12 +56,23 @@ function ppcCloseBuilder(){
   if(m){ m.classList.remove("open"); }
   const r=document.getElementById("pb_result"); if(r) r.innerHTML="";
 }
+/* A number box as typed -> a number above zero, or null. */
+function _ppcTyped(id){
+  const el=document.getElementById(id);
+  const v=parseFloat(((el&&el.value)||"").trim());
+  return (isFinite(v) && v>0) ? v : null;
+}
+function _ppcNeed(resBox, what){
+  resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">'+what+'</div>';
+}
 async function ppcRunBuilder(){
   const asin=(document.getElementById("pb_asin").value||"").trim();
   const sku=(document.getElementById("pb_sku").value||"").trim();
   const name=(document.getElementById("pb_name").value||"").trim();
-  const budget=parseFloat(document.getElementById("pb_budget").value||"8.0");
-  const bid=parseFloat(document.getElementById("pb_bid").value||"0.30");
+  // AS TYPED, never a default (Rule 8): a cleared box became 0.30 / 8.00 in the
+  // bulk file (review, 30 Sep 2026). _ppcTyped refuses blank, zero and negative.
+  const budget=_ppcTyped("pb_budget");
+  const bid=_ppcTyped("pb_bid");
   const conquest=(document.getElementById("pb_conquest").value||"").split(",").map(s=>s.trim()).filter(Boolean);
   const compbrands=(document.getElementById("pb_compbrands").value||"").split(",").map(s=>s.trim()).filter(Boolean);
   const headterms=(document.getElementById("pb_headterms").value||"").split(",").map(s=>s.trim()).filter(Boolean);
@@ -69,6 +80,7 @@ async function ppcRunBuilder(){
   const resBox=document.getElementById("pb_result");
   if(!asin||!sku||!name){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">ASIN, SKU, and product short name are all required.</div>'; return; }
   if(asin===sku){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">SKU cannot equal ASIN. Use the seller SKU from Seller Central.</div>'; return; }
+  if(budget===null||bid===null){ _ppcNeed(resBox, "Type the daily budget and the default bid, both above zero. A cleared box is never replaced with a default."); return; }
   if(!fileEl.files||!fileEl.files[0]){ resBox.innerHTML='<div style="color:var(--warn);font-size:12px;padding:8px;border:1px solid var(--warn-line);border-radius:6px;background:var(--warn-bg)">Attach a keyword file (CSV from DataDive, Helium 10, or SQP).</div>'; return; }
   resBox.innerHTML='<div class="cc"><span class="genspin"></span> Bucketing keywords + building bulk file…</div>';
   const fd=new FormData();
@@ -119,14 +131,16 @@ async function ppcRunHarvest(){
   const asin=(document.getElementById("ph_asin").value||"").trim();
   const sku=(document.getElementById("ph_sku").value||"").trim();
   const name=(document.getElementById("ph_name").value||"").trim();
-  const be=parseFloat(document.getElementById("ph_be").value||"0.35");
-  const bid=parseFloat(document.getElementById("ph_bid").value||"0.30");
-  const budget=parseFloat(document.getElementById("ph_budget").value||"8.0");
+  const be=_ppcTyped("ph_be");
+  const bid=_ppcTyped("ph_bid");
+  const budget=_ppcTyped("ph_budget");
   const fileEl=document.getElementById("ph_file");
   const tgtEl=document.getElementById("ph_targeted");
   const resBox=document.getElementById("ph_result");
   if(!asin||!sku||!name){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">ASIN, SKU, and product short name are all required.</div>'; return; }
   if(asin===sku){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">SKU cannot equal ASIN.</div>'; return; }
+  if(budget===null||bid===null){ _ppcNeed(resBox, "Type the daily budget and the default bid, both above zero. A cleared box is never replaced with a default."); return; }
+  if(be===null||be>1){ _ppcNeed(resBox, "Break-even ACOS is a fraction between 0 and 1, like 0.35 for 35%."); return; }
   if(!fileEl.files||!fileEl.files[0]){ resBox.innerHTML='<div style="color:var(--warn);font-size:12px;padding:8px;border:1px solid var(--warn-line);border-radius:6px;background:var(--warn-bg)">Upload the SP Search Term Report CSV.</div>'; return; }
   resBox.innerHTML='<div class="cc"><span class="genspin"></span> Classifying every term, applying $10 rule + break-even ACOS…</div>';
   const fd=new FormData();
@@ -138,6 +152,9 @@ async function ppcRunHarvest(){
   fd.append("default_bid", String(bid));
   fd.append("daily_budget", String(budget));
   fd.append("marketplace", WS_MARKET||"UK");
+  // The account on screen (Rule 14): without it the server used whichever it
+  // had open, for the currency the files are written in.
+  if(typeof acctId === "function" && acctId()) fd.append("id", acctId());
   if(tgtEl&&tgtEl.files&&tgtEl.files[0]) fd.append("targeted_file", tgtEl.files[0]);
   try{
     const j=await (await fetch("/ppc/harvest",{method:"POST", body:fd})).json();

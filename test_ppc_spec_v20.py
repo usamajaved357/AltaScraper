@@ -208,10 +208,13 @@ check("  and a ratio still moves in POINTS", _c3["acos_pct"], 4.1)
 print("\n=== wasted spend has two definitions and shows both ===")
 check("the qualified gate is ten clicks", pa.QUALIFIED_CLICKS, 10)
 _ws = PA.split("def wasted_spend(")[1].split("\ndef ")[0]
+# Re-pinned 30 Sep 2026: both are now tested PER TERM, its days summed in a
+# subquery (the table holds a row per term per day since the daily pull), so
+# the conditions read on the summed columns.
 truthy("the full universe is spend with a click and no order",
-       "COALESCE(clicks,0) > 0 AND COALESCE(orders,0) = 0" in _ws)
+       "WHERE clicks > 0 AND orders = 0" in _ws and "GROUP BY" in _ws)
 truthy("  and the qualified subset is clicks >= the gate",
-       "COALESCE(clicks,0) >= ?" in _ws)
+       "WHERE orders = 0 AND clicks >= ?" in _ws)
 falsy("  the old 'three clicks OR a pound' rule is gone",
       "OR COALESCE(spend,0) >= ?" in _ws)
 truthy("  and both are returned, never one instead of the other",

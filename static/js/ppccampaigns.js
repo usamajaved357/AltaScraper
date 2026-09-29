@@ -27,7 +27,12 @@ const PPCC = {data: null, loading: false, sort: "spend", desc: true, q: "",
 
 async function ppccLoad(){
   const host = document.getElementById("ppcc_body");
-  if(!host || PPCC.loading) return;
+  if(!host) return;
+  // THE NEWEST ASK WINS. This returned while a load was running, so a second
+  // date clicked meanwhile was thrown away and the first window's figures were
+  // drawn under the second one's button (review, 30 Sep 2026). Every ask now
+  // loads; only the latest reply is drawn.
+  const _seq = PPCC.seq = (PPCC.seq || 0) + 1;
   PPCC.loading = true;
   // The screen stays on and dims rather than going blank -- see ppcBusy.
   ppcBusy("ppcc_body", true);
@@ -36,12 +41,13 @@ async function ppccLoad(){
       + 'color:var(--ppc-muted)"><span class="genspin"></span> '
       + 'Reading the campaigns…</div></div>';
   }
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
-    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/analytics/campaigns?" + qs)).json();
     if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    if(_seq !== PPCC.seq) return;           // a newer ask is on its way
     PPCC.loading = false;
     if(!j || !j.ok){
       host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
@@ -53,6 +59,8 @@ async function ppccLoad(){
     PPCC.data = j;
     ppccRender();
   }catch(e){
+    if(_seq !== PPCC.seq) return;
+    if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     PPCC.loading = false;
     ppcBusy("ppcc_body", false);
     if(!PPCC.data){
@@ -77,7 +85,7 @@ function ppccSort(k){
   else { PPCC.sort = k; PPCC.desc = true; }
   ppccRender();
 }
-function ppccSet(f, v){ PPCC[f] = v; ppccRender(); }
+function ppccSet(f, v){ PPCC[f] = v; ppcRedrawKeepingFocus(ppccRender); }
 /* THE SEARCH BOX. Three separate faults, measured on the running screen with
  * this account's 254 campaigns:
  *
@@ -842,7 +850,7 @@ function ppccTable(j, cur){
     + '<span class="ppc-filterlabel" style="font-size:11px;letter-spacing:.5px;'
     +   'margin-left:14px">MIN SPEND</span>'
     + '<input class="ppc-input" style="width:60px;padding:3px 8px;font-size:12px" '
-    +   'value="' + _pEsc(PPCC.minSpend) + '" placeholder="0" '
+    +   'id="ppcc_min" value="' + _pEsc(PPCC.minSpend) + '" placeholder="0" '
     +   'oninput="ppccSet(\'minSpend\', this.value)">'
     + '<span class="ppc-filterlabel" style="font-size:11px;letter-spacing:.5px;'
     +   'margin-left:14px">ACOS</span>'
@@ -855,7 +863,7 @@ function ppccTable(j, cur){
     +     '<div class="fill" style="width:' + (Number(PPCC.maxAcos) / 2)
     +       '%;background:var(--ppc-blue)"></div>'
     +     '<input type="range" min="0" max="200" step="5" value="'
-    +       PPCC.maxAcos + '" style="accent-color:var(--ppc-blue)" '
+    +       PPCC.maxAcos + '" id="ppcc_acos" style="accent-color:var(--ppc-blue)" '
     +       'oninput="ppccSet(\'maxAcos\', this.value)">'
     +   '</div></div>'
     + '</div>';

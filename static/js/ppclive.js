@@ -33,7 +33,12 @@ const PPCL = {data: null, loading: false, days: 7, cumulative: false,
 
 async function ppclLoad(force){
   const host = document.getElementById("ppcl_body");
-  if(!host || PPCL.loading) return;
+  if(!host) return;
+  // THE NEWEST ASK WINS. This returned while a load was running, so a second
+  // date clicked meanwhile was thrown away and the first window's figures were
+  // drawn under the second one's button (review, 30 Sep 2026). Every ask now
+  // loads; only the latest reply is drawn.
+  const _seq = PPCL.seq = (PPCL.seq || 0) + 1;
   PPCL.loading = true;
   ppcBusy("ppcl_body", true);
   if(!PPCL.data){
@@ -41,11 +46,12 @@ async function ppclLoad(force){
       + 'color:var(--ppc-muted)"><span class="genspin"></span> '
       + 'Reading the advertising figures…</div></div>';
   }
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
   try{
-    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/live?" + ppcQS({
       days: PPCL.days, cumulative: PPCL.cumulative ? 1 : 0}))).json();
     if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    if(_seq !== PPCL.seq) return;           // a newer ask is on its way
     PPCL.loading = false;
     if(!j || !j.ok){
       host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
@@ -57,6 +63,8 @@ async function ppclLoad(force){
     PPCL.data = j;
     ppclRender();
   }catch(e){
+    if(_seq !== PPCL.seq) return;
+    if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     PPCL.loading = false;
     ppcBusy("ppcl_body", false);
     if(!PPCL.data){
@@ -66,7 +74,12 @@ async function ppclLoad(force){
   }
 }
 
-function ppclSetDays(d){ PPCL.days = d; PPCL.asinData = {}; ppclLoad(true); }
+function ppclSetDays(d){
+  PPCL.days = d; PPCL.asinData = {}; ppclLoad(true);
+  // An open product panel reads its line again for the new days, rather than
+  // spinning over the emptied cache.
+  if(PPCL.openAsin) _ppclFetchAsin(PPCL.openAsin);
+}
 function ppclToggleCum(){ PPCL.cumulative = !PPCL.cumulative; ppclLoad(true); }
 
 function ppclRender(){
@@ -286,6 +299,10 @@ function ppclProducts(j, cur){
 
 function ppclAsinPanel(asin, cur){
   const d = PPCL.asinData[asin];
+  if(d && d.err){
+    return '<div class="ppcl-detail" style="color:var(--ppc-red)">'
+      + _pEsc(d.err) + '</div>';
+  }
   if(!d){
     return '<div class="ppcl-detail"><span class="genspin"></span> '
       + 'Reading this product…</div>';
@@ -309,14 +326,24 @@ async function ppclOpenAsin(asin){
   PPCL.openAsin = (PPCL.openAsin === asin) ? null : asin;
   ppclRender();
   if(!PPCL.openAsin || PPCL.asinData[asin]) return;
+  return _ppclFetchAsin(asin);
+}
+
+/* One product's line, for the days the screen shows NOW. A reply for another
+ * day count (the days changed while it was on its way) is dropped, and a
+ * failure is said in the panel -- it used to leave "Reading this product..."
+ * spinning for ever (review, 30 Sep 2026). */
+async function _ppclFetchAsin(asin){
+  const days = PPCL.days;
+  let j = null;
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
   try{
-    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
-    const j = await (await fetch("/ppc/live/asin?"
-      + ppcQS({asin: asin, days: PPCL.days}))).json();
-    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
-    if(j && j.ok){
-      PPCL.asinData[asin] = j;
-      if(PPCL.openAsin === asin) ppclRender();
-    }
-  }catch(e){ /* the row stays open with its notice */ }
+    j = await (await fetch("/ppc/live/asin?"
+      + ppcQS({asin: asin, days: days}))).json();
+  }catch(e){ j = null; }
+  if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+  if(PPCL.days !== days) return;
+  PPCL.asinData[asin] = (j && j.ok) ? j
+    : {err: (j && j.error) || "Could not read this product's figures."};
+  if(PPCL.openAsin === asin) ppclRender();
 }

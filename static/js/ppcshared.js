@@ -26,6 +26,27 @@ function _pEsc(s){
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/* REDRAW WITHOUT LOSING THE BOX BEING TYPED IN. Every PPC screen rebuilds its
+ * whole body on each keystroke of a filter box, so the element being typed
+ * into stopped existing and the next letter went to the page -- the bug
+ * ppccKeepFocus fixed for one box, and four others still had (review of the PPC
+ * pages, 30 Sep 2026). A box keeps focus and caret when it has an id and its
+ * value= is drawn back. Only a box that WAS focused gets it back. */
+function ppcRedrawKeepingFocus(render){
+  const el = document.activeElement;
+  const id = (el && el.id && el.tagName === "INPUT") ? el.id : "";
+  let caret = null;
+  if(id){ try{ caret = el.selectionStart; }catch(e){ caret = null; } }
+  render();
+  if(!id) return;
+  const n = document.getElementById(id);
+  if(!n || n === el) return;
+  try{
+    n.focus();
+    if(caret !== null && caret !== undefined && n.setSelectionRange) n.setSelectionRange(caret, caret);
+  }catch(e){}            // a range input has no caret; focus is enough
+}
+
 /* The account and marketplace every call is scoped to. `account` is the one
  * spelling the app settled on -- see domain/request_account.py. */
 function ppcQS(extra){
@@ -707,12 +728,13 @@ function ppcOpp(v){
   return '<span class="ppc-opp ' + (Number(v) >= 40 ? "hi" : "lo")
     + '" title="OUR score, 0-100, not Amazon\'s — how much there is to gain by '
     + 'looking at this one. Three parts, added:\n'
-    + '  up to 40  money at stake, on a square-root scale so one big campaign '
-    + 'cannot own the list\n'
-    + '  up to 35  how far past break-even the ACOS is (35 outright if it spent '
-    + 'and sold nothing)\n'
-    + '  up to 25  clicks that bought no order — 25 at ten or more clicks and '
-    + 'no sale, tapering to 0 at a 10% conversion rate\n'
+    // The formula as domain/ppc_analytics._opportunity computes it (section
+    // 20). The old wording described an earlier version (review, 30 Sep 2026).
+    + '  up to 40  money at stake: the square root of this spend over the '
+    + 'biggest spender in the same table, so one big campaign cannot own the list\n'
+    + '  up to 35  how far past break-even the ACOS is; with no sales, the spend '
+    + 'against what one order may cost, so a 50p test click is not a finding\n'
+    + '  up to 25  clicks that bought no order, by volume: 25 at thirty or more\n'
     + 'Inputs are Amazon\'s own spend, sales, clicks and orders for this window; '
     + 'the weighting is ours. Blank when nothing was spent — no spend is no '
     + 'opportunity and no problem. 40 and over is worth opening.">'

@@ -739,11 +739,15 @@ def run_harvest(search_term_rows: list,
     # 2. Harvest = NEW converting terms not already targeted (excludes branded
     #    conquest, which the caller decides). Adds each in all 3 match types.
     harvest_rows = []
+    # HOW MANY WERE ACTUALLY LEFT OUT for being targeted already -- the screen
+    # printed the size of the list supplied instead (review, 30 Sep 2026).
+    skipped_targeted = 0
     for r in status_rows:
         if r["status"] != STATUS_CONVERTING:
             continue
         term = r["customer_search_term"]
         if term in already:
+            skipped_targeted += 1
             continue                          # already targeted -- skip
         for mt in ("Exact", "Phrase", "Broad"):
             harvest_rows.append({
@@ -780,6 +784,7 @@ def run_harvest(search_term_rows: list,
             "harvest_rows": harvest_rows,
             "negative_rows": negative_rows,
             "counts":       dict(counts),
+            "excluded_already_targeted": skipped_targeted,
             "totals":       totals}
 
 

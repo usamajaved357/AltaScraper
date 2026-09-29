@@ -32,7 +32,12 @@ const PPCT = {data: null, loading: false, sort: "spend", desc: true, q: "",
 
 async function ppctLoad(){
   const host = document.getElementById("ppct_body");
-  if(!host || PPCT.loading) return;
+  if(!host) return;
+  // THE NEWEST ASK WINS. This returned while a load was running, so a second
+  // date clicked meanwhile was thrown away and the first window's figures were
+  // drawn under the second one's button (review, 30 Sep 2026). Every ask now
+  // loads; only the latest reply is drawn.
+  const _seq = PPCT.seq = (PPCT.seq || 0) + 1;
   PPCT.loading = true;
   // The screen stays on and dims rather than going blank -- see ppcBusy.
   ppcBusy("ppct_body", true);
@@ -41,12 +46,13 @@ async function ppctLoad(){
       + 'color:var(--ppc-muted)"><span class="genspin"></span> '
       + 'Reading the search terms…</div></div>';
   }
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
-    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/analytics/terms?" + qs)).json();
     if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    if(_seq !== PPCT.seq) return;           // a newer ask is on its way
     PPCT.loading = false;
     if(!j || !j.ok){
       host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
@@ -58,6 +64,8 @@ async function ppctLoad(){
     PPCT.data = j;
     ppctRender();
   }catch(e){
+    if(_seq !== PPCT.seq) return;
+    if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     PPCT.loading = false;
     ppcBusy("ppct_body", false);
     if(!PPCT.data){
@@ -74,8 +82,12 @@ function ppctSort(k){
   else { PPCT.sort = k; PPCT.desc = true; }
   ppctRender();
 }
-function ppctSet(field, v){ PPCT[field] = v; ppctRender(); }
-function ppctFilter(v){ PPCT.q = (v || "").toLowerCase(); ppctRender(); }
+function ppctSet(field, v){ PPCT[field] = v; ppcRedrawKeepingFocus(ppctRender); }
+function ppctFilter(v){
+  PPCT.qShown = (v || "");
+  PPCT.q = PPCT.qShown.toLowerCase();
+  ppcRedrawKeepingFocus(ppctRender);     // the box keeps its cursor
+}
 function ppctToggleZero(){ PPCT.zeroOnly = !PPCT.zeroOnly; ppctRender(); }
 function ppctToggleRow(i){
   PPCT.open = (PPCT.open === i) ? null : i;
@@ -212,7 +224,7 @@ function ppctRender(){
     +   'align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">'
     + '<span style="font-size:16px;font-weight:700">Search Terms</span>'
     + '<div style="display:flex;gap:12px;align-items:center">'
-    +   '<input class="ppc-input" placeholder="Filter search terms…" '
+    +   '<input class="ppc-input" id="ppct_q" value="' + _pEsc(PPCT.qShown || "") + '" placeholder="Filter search terms…" '
     +     'style="width:200px" oninput="ppctFilter(this.value)">'
     +   '<button class="ppc-btn" style="background:transparent;'
     +     'color:var(--ppc-muted)" onclick="ppctExport()">⬇ Export</button>'
@@ -295,18 +307,18 @@ function ppctRender(){
     + 'flex-wrap:wrap">'
     + '<span class="ppc-filterlabel">SPEND</span>'
     + '<input class="ppc-input" style="width:65px;padding:5px 8px;font-size:12px" '
-    +   'placeholder="Min" value="' + _pEsc(PPCT.minSpend) + '" '
+    +   'id="ppct_min" placeholder="Min" value="' + _pEsc(PPCT.minSpend) + '" '
     +   'oninput="ppctSet(\'minSpend\', this.value)">'
     + '<span style="color:var(--ppc-dim)">–</span>'
     + '<input class="ppc-input" style="width:65px;padding:5px 8px;font-size:12px" '
-    +   'placeholder="Max" value="' + _pEsc(PPCT.maxSpend) + '" '
+    +   'id="ppct_max" placeholder="Max" value="' + _pEsc(PPCT.maxSpend) + '" '
     +   'oninput="ppctSet(\'maxSpend\', this.value)">'
     + '<div style="display:flex;align-items:center;gap:8px;margin-left:16px">'
     +   '<span class="ppc-filterlabel">ACOS</span>'
     +   '<div class="ppc-slider">'
     +     '<div class="track"></div>'
     +     '<div class="fill" style="width:' + (Number(PPCT.maxAcos) / 2) + '%"></div>'
-    +     '<input type="range" min="0" max="200" step="5" value="'
+    +     '<input type="range" id="ppct_acos" min="0" max="200" step="5" value="'
     +       PPCT.maxAcos + '" oninput="ppctSet(\'maxAcos\', this.value)">'
     +   '</div>'
     +   '<span style="font-size:11px;color:var(--ppc-muted);white-space:nowrap">'
@@ -357,7 +369,13 @@ function ppctSummary(rows, cur, ch){
   const filtered = !!(PPCT.q || PPCT.match !== "All" || PPCT.brand !== "All"
                       || PPCT.zeroOnly || PPCT.minSpend || PPCT.maxSpend
                       || Number(PPCT.maxAcos) < 200);
-  const cell = function(label, value, chg, help){
+  // WHICH WAY IS GOOD, AND IN WHAT UNIT, through the shared ppcChangeText: this
+  // painted every rise green (spend, ACOS and CPC rising included) and put "%"
+  // on ACOS / CTR / CVR, which move in points (review, 30 Sep 2026).
+  const units = (PPCT.data && PPCT.data.change_units) || {};
+  const good = {spend: "", sales: "up", acos_pct: "down", cpc: "down", clicks: "up",
+                impressions: "up", ctr_pct: "up", cvr_pct: "up", orders: "up"};
+  const cell = function(label, value, chg, help, key){
     return '<div class="ppc-sumcell">'
       + '<div class="k">' + label
       +   '<span class="ppc-q" title="' + _pEsc(help || "") + '">?</span></div>'
@@ -365,23 +383,22 @@ function ppctSummary(rows, cur, ch){
                               ? ppcDash("Nothing to work this out from.")
                               : value) + '</span>'
       + ((filtered || chg === null || chg === undefined) ? ""
-         : ('<span class="c" style="color:' + (chg >= 0 ? "var(--ppc-green)"
-             : "var(--ppc-red)") + '">' + (chg >= 0 ? "+" : "")
-            + Number(chg).toFixed(1) + '%</span>'))
+         : ('<span class="c">' + ppcChangeText(chg, good[key] || "", "", units[key])
+            + '</span>'))
       + '</div>';
   };
   return '<div class="ppc-sumgrid">'
-    + cell("TOTAL SPEND", ppcMoney0(spend, cur), ch.spend)
-    + cell("TOTAL SALES", ppcMoney0(sales, cur), ch.sales)
+    + cell("TOTAL SPEND", ppcMoney0(spend, cur), ch.spend, "", "spend")
+    + cell("TOTAL SALES", ppcMoney0(sales, cur), ch.sales, "", "sales")
     + cell("AVG ACOS", rate(spend, sales), ch.acos_pct,
-           "Spend over sales, across the rows shown.")
-    + cell("AVG CPC", clicks ? ppcMoney(spend / clicks, cur) : null, ch.cpc)
-    + cell("TOTAL CLICKS", ppcNum(clicks), ch.clicks)
+           "Spend over sales, across the rows shown.", "acos_pct")
+    + cell("AVG CPC", clicks ? ppcMoney(spend / clicks, cur) : null, ch.cpc, "", "cpc")
+    + cell("TOTAL CLICKS", ppcNum(clicks), ch.clicks, "", "clicks")
     + '</div><div class="ppc-sumgrid last">'
-    + cell("TOTAL IMPRESSIONS", ppcNum(impr), ch.impressions)
-    + cell("AVG CTR", rate(clicks, impr, 2), ch.ctr_pct)
-    + cell("AVG CVR", rate(orders, clicks, 2), ch.cvr_pct)
-    + cell("TOTAL PURCHASES", ppcNum(orders), ch.orders)
+    + cell("TOTAL IMPRESSIONS", ppcNum(impr), ch.impressions, "", "impressions")
+    + cell("AVG CTR", rate(clicks, impr, 2), ch.ctr_pct, "", "ctr_pct")
+    + cell("AVG CVR", rate(orders, clicks, 2), ch.cvr_pct, "", "cvr_pct")
+    + cell("TOTAL PURCHASES", ppcNum(orders), ch.orders, "", "orders")
     + cell("TOTAL PROFIT",
            ((profitKnown && n) ? ppcMoney0(profit, cur) : null), null,
            "Estimated from this account's measured fee and stock cost. Blank "

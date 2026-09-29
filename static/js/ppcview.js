@@ -484,6 +484,15 @@ function _pvFooter(j){
 async function ppcReportUpload(input){
   const f = input && input.files && input.files[0];
   if(!f) return;
+  // A REPORT IS ONE MARKETPLACE'S. In the "all marketplaces" view this sent
+  // "__all__", the rows were filed under it, and the toast said "Kept 812 rows"
+  // over screens that stayed empty (review, 30 Sep 2026).
+  if(typeof WS_MARKET !== "undefined" && WS_MARKET === "__all__"){
+    input.value = "";
+    toast("Pick one marketplace first: a search term report belongs to one "
+          + "marketplace, and nothing was uploaded.");
+    return;
+  }
   const fd = new FormData();
   fd.append("file", f);
   try{

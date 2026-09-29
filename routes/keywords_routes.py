@@ -59,9 +59,11 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     def _last_full_week():
         """The week that FINISHED most recently. The current one is partial, and
         a partial week compared against a whole one always looks like a crash."""
-        today = datetime.date.today()
-        end = today - datetime.timedelta(days=today.weekday() + 1)   # last Saturday
-        return (end - datetime.timedelta(days=6)).isoformat(), end.isoformat()
+        # AMAZON'S WEEK, Sunday to Saturday, from the one place that owns it
+        # (Rule 12). The sum here, `weekday() + 1` days back, landed on a SUNDAY,
+        # so a call with no dates asked for a Monday-Sunday week Amazon does not
+        # have (review of the advertising pages, 30 Sep 2026).
+        return _ba._last_complete_week()
 
     def _dates():
         s0, e0 = _last_full_week()

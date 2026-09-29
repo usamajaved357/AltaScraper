@@ -129,7 +129,9 @@ function salesDrawCampaigns(){
     // most efficient one on the screen.
     if(x === null || x === undefined) return 1;
     if(y === null || y === undefined) return -1;
-    if(typeof x === "string") return dir * (x < y ? 1 : x > y ? -1 : 0);
+    // The same direction as the numbers: A-Z when the header says ascending.
+    // It was inverted, so a descending (▾) text column read A-Z (review, 30 Sep).
+    if(typeof x === "string") return dir * (x < y ? -1 : x > y ? 1 : 0);
     return dir * (x - y);
   });
 

@@ -169,6 +169,25 @@ def check_wasted_spend(rows, currency="", oos_skus=None):
                 ident = v.lower()
                 break
         was_empty = bool(ident and ident in oos)
+        # AMAZON'S SEARCH-TERM REPORT DOES NOT NAME THE ADVERTISED PRODUCT, so
+        # a term row usually has no identity to match. With something out of
+        # stock in the window, "no sales" might be "nothing to buy" -- and a
+        # negative keyword is the irreversible answer. The check used to match
+        # nothing and recommend the negative anyway (review, 30 Sep 2026).
+        if not ident and oos:
+            out.append(_f(
+                WARN, "wasted-spend-stock-unknown", term,
+                "%s%.2f spent over %d clicks, no sales -- while %d product(s) "
+                "were out of stock" % (currency, spend, clicks, len(oos)),
+                "Enough clicks to judge it, but Amazon's search-term report "
+                "does not say which product this term advertised, so it cannot "
+                "be told apart from clicks on a product that could not be bought.",
+                "Check that the products in %s were in stock over this window "
+                "before adding \"%s\" as a negative exact keyword."
+                % (r.get("campaign_name") or "that campaign", term),
+                {"spend": spend, "clicks": clicks, "sales": 0,
+                 "out_of_stock_unknown": True}))
+            continue
         if was_empty:
             out.append(_f(
                 WARN, "wasted-spend-oos", term,
@@ -336,6 +355,12 @@ def check_budget_capped(campaigns, currency=""):
         spend = _n(c.get("spend"))
         if budget is None or spend is None or budget <= 0:
             continue
+        # THE BUDGET IS PER DAY; the spend is the window's. Compared as they
+        # came, 30 days at 3.00 a day (90.00) "pressed against" an 8.00 budget
+        # and nearly every campaign was reported capped (review, 30 Sep 2026).
+        days = _n(c.get("days"))
+        if days and days > 1:
+            spend = spend / days
         if spend < budget * BUDGET_CAP_FRACTION:
             continue
         a = acos(spend, c.get("sales"))

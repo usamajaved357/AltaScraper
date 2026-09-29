@@ -201,13 +201,17 @@ function drpcErr(msg){
 }
 
 async function drpcLoad(force){
-  if(DRPC.loading) return;
+  // THE NEWEST ASK WINS. This returned while a load ran, so a sub-page clicked
+  // meanwhile drew the old page under the new tab, and a changed activity
+  // filter was dropped (review, 30 Sep 2026). Every ask loads; only the latest
+  // one draws.
+  const _seq = DRPC.seq = (DRPC.seq || 0) + 1;
   DRPC.loading = true;
   // The account this load is for. Every page below awaits Amazon's mirror; a
   // reply landing after a switch must not become account B's page -- and the
   // plan page SEEDS THE DRAFT that Save sends (master audit S3/S5).
   const _sc = (typeof screenScope === "function") ? screenScope() : null;
-  const _gone = () => _sc && !screenStillIn(_sc);
+  const _gone = () => (_sc && !screenStillIn(_sc)) || _seq !== DRPC.seq;
   try{
     if(DRPC.page === "setup"){
       if(!DRPC.setup || force){

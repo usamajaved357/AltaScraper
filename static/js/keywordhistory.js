@@ -33,8 +33,10 @@ function _kwhEsc(s) {
 async function kwhLoad() {
   KWH.loading = true; kwhRender();
   try {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/keywords/history" + _kwhQs({
       week: KWH.week, prev: KWH.prev, q: KWH.q }))).json();
+    if (_sc && !screenStillIn(_sc)) return;   // switched account meanwhile
     if (j && j.ok) {
       KWH.weeks = j.weeks || []; KWH.rows = j.rows || [];
       KWH.movers = j.movers || []; KWH.counts = j.counts || null;

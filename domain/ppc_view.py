@@ -585,6 +585,45 @@ def load_rows(config_path, workspace_id, marketplace, report_id=None,
         return []
 
 
+# What a search term's days add up on. One term under one targeting in one ad
+# group is one row on every screen; its days are summed (review, 30 Sep 2026).
+TERM_KEY = ("search_term", "keyword", "match_type", "campaign", "ad_group")
+_TERM_SUMS = ("impressions", "clicks", "spend", "sales", "orders", "units")
+
+
+def load_terms(config_path, workspace_id, marketplace, report_id=None,
+               start=None, end=None):
+    """The newest report's search terms, ONE ROW PER TERM, its days added up,
+    biggest spend first.
+
+    Since the daily API pull (7 Sep 2026) the table holds a row per term PER
+    DAY, and every reader took those rows as terms: Search Terms listed a term
+    up to thirty times with a day's figures each, a 1000-row cap then dropped
+    about 700 of them in no fixed order, and every threshold -- ten clicks to
+    be "qualified" waste, two orders to harvest -- was tested against a single
+    day, so almost nothing ever passed (review of the PPC pages, 30 Sep 2026).
+    `days` says how many days a row is made of; `date` is kept only when it is
+    one day."""
+    acc = {}
+    for r in load_rows(config_path, workspace_id, marketplace, report_id, start, end):
+        k = tuple(str(r.get(f) or "") for f in TERM_KEY)
+        a = acc.get(k)
+        if a is None:
+            a = dict(r)
+            a["days"] = 0
+            for f in _TERM_SUMS:
+                a[f] = None
+            acc[k] = a
+        elif a.get("date") != r.get("date"):
+            a["date"] = None
+        a["days"] += 1
+        for f in _TERM_SUMS:
+            v = r.get(f)
+            if v is not None:
+                a[f] = (a[f] or 0) + v
+    return sorted(acc.values(), key=lambda x: (-(x.get("spend") or 0), str(x.get("search_term") or "")))
+
+
 def dated_window(config_path, workspace_id, marketplace, report_id=None):
     """Can this account's search terms follow a date picker? And over what.
 

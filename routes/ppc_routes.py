@@ -36,6 +36,48 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
     controls."
     """
 
+    def _positive(v):
+        """A typed number that is finite and above zero -> float, else None."""
+        import math
+        try:
+            f = float(str(v).strip())
+        except (TypeError, ValueError):
+            return None
+        return f if (math.isfinite(f) and f > 0) else None
+
+    def _typed_bid_budget():
+        """The daily budget and default bid AS TYPED -> (budget, bid, None), or
+        (None, None, refusal). Never a default: a cleared box used to become
+        0.30 / 8.00 in the bulk file while the label said "you set this, never
+        auto", and -1 or nonsense went through (Rule 8; review, 30 Sep 2026)."""
+        budget = _positive(request.form.get("daily_budget"))
+        bid = _positive(request.form.get("default_bid"))
+        if budget is None or bid is None:
+            return None, None, (jsonify({"ok": False, "error": (
+                "Type the daily budget and the default bid -- both must be "
+                "numbers above zero. A cleared box is never replaced with a "
+                "default.")}), 400)
+        return budget, bid, None
+
+    def _harvest_symbol():
+        """The money symbol for this account's marketplace, from what it sells
+        in (sales_data.currency_for). It was "$" for the US and "£" for every
+        other marketplace, so DE/FR/IT/ES files read "£10 rule" (review, 30 Sep
+        2026). Falls back to that old rule when nothing has sold yet."""
+        mk = (request.form.get("marketplace") or "UK").upper()
+        try:
+            from domain import sales_data as _sd
+            from domain import weekly_grid as _wg
+            aid, m2 = _ppc_scope()
+            code = _sd.currency_for(CONFIG_PATH, aid, m2) if (aid and m2) else ""
+            sym = _wg._CURRENCY_PREFIX.get(code)
+            if sym is not None:
+                return sym or (code + " ")
+        except Exception:
+            pass
+        return {"US": "$", "CA": "$", "UK": "£", "DE": "€", "FR": "€", "IT": "€",
+                "ES": "€", "NL": "€", "BE": "€", "IE": "€"}.get(mk, "")
+
     @app.route("/ppc/build_campaigns", methods=["POST"])
     def ppc_build_campaigns():
         """Build the Sponsored Products bulk CSV from an uploaded keyword file
@@ -62,11 +104,9 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                 return jsonify({"ok": False, "error": "asin, sku, and product_short_name are all required"}), 400
             if asin == sku:
                 return jsonify({"ok": False, "error": "SKU cannot equal ASIN -- use the seller SKU from Seller Central"}), 400
-            try:
-                budget = float(request.form.get("daily_budget") or 8.0)
-                bid    = float(request.form.get("default_bid")  or 0.30)
-            except ValueError:
-                return jsonify({"ok": False, "error": "daily_budget and default_bid must be numbers"}), 400
+            budget, bid, bad = _typed_bid_budget()
+            if bad:
+                return bad
             try:
                 conquest    = tuple(json.loads(request.form.get("conquest_asins")    or "[]"))
                 compbrands  = tuple(json.loads(request.form.get("competitor_brands") or "[]"))
@@ -163,12 +203,14 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                 return jsonify({"ok": False, "error": "asin, sku, and product_short_name are required"}), 400
             if asin == sku:
                 return jsonify({"ok": False, "error": "SKU cannot equal ASIN"}), 400
-            try:
-                break_even = float(request.form.get("break_even_acos") or 0.35)
-                budget     = float(request.form.get("daily_budget")    or 8.0)
-                bid        = float(request.form.get("default_bid")     or 0.30)
-            except ValueError:
-                return jsonify({"ok": False, "error": "break_even_acos, daily_budget, default_bid must be numbers"}), 400
+            budget, bid, bad = _typed_bid_budget()
+            if bad:
+                return bad
+            break_even = _positive(request.form.get("break_even_acos"))
+            if break_even is None or break_even > 1:
+                return jsonify({"ok": False, "error": (
+                    "Break-even ACOS must be a fraction between 0 and 1 -- 0.35 "
+                    "for 35%.")}), 400
 
             # Already-targeted keywords (excluded from harvest to prevent duplicate
             # (keyword, match-type) pairs at upload time). Optional; accepts:
@@ -188,7 +230,7 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                 return jsonify({"ok": False, "error": f"invalid targeted_kws JSON: {je}"}), 400
 
             cfg = _PPC.HarvestConfig(break_even_acos=break_even,
-                                      currency=("$" if (request.form.get("marketplace") or "UK").upper() == "US" else "£"))
+                                      currency=_harvest_symbol())
             result = _PPC.run_harvest(ingest["rows"],
                                         current_targeting_kws=already,
                                         cfg=cfg)
@@ -241,7 +283,7 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                 "ok":            True,
                 "counts":        result["counts"],
                 "totals":        result["totals"],
-                "excluded_already_targeted": len(already),
+                "excluded_already_targeted": result.get("excluded_already_targeted", 0),
                 "downloads":     downloads,
                 "filenames":     fnames,
             })
@@ -681,9 +723,11 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                             "error": "PPC module not available: %s"
                                      % _PPC_IMPORT_ERR}), 500
         aid, mkt = _ppc_scope()
-        if not aid or not mkt:
+        # "__ALL__" is a view, not a marketplace: rows filed under it are on no
+        # screen (review, 30 Sep 2026).
+        if not aid or not mkt or mkt == "__ALL__":
             return jsonify({"ok": False, "error": (
-                "Open an account and pick a marketplace first.")}), 400
+                "Open an account and pick one marketplace first.")}), 400
         f = request.files.get("file")
         if not f:
             return jsonify({"ok": False, "error": "no file"}), 400
@@ -818,7 +862,10 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
         # subsets rather than two periods. None until there are two.
         all_reports = _pv.reports(CONFIG_PATH, aid, mkt)
         change = None
-        if len(all_reports) > 1:
+        # NOT WHILE THE PICKER DRIVES: the current rows are then the picked
+        # days and the previous report is its whole window, so 7 days read as
+        # "-75%" against 30 (review, 30 Sep 2026). No comparison beats a wrong one.
+        if len(all_reports) > 1 and not (_qs and _qe):
             prev_rows = _pv.load_rows(CONFIG_PATH, aid, mkt,
                                       all_reports[1]["report_id"])
             change = _pv.compare(totals, _pv.totals(prev_rows))
@@ -829,7 +876,7 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
             "reports": all_reports,
             "totals": totals,
             "change": change,
-            "compared_with": (all_reports[1] if len(all_reports) > 1 else None),
+            "compared_with": (all_reports[1] if change is not None else None),
             "terms": _pv.by_term(rows, brands)[:400],
             "match_types": _pv.by_match_type(rows),
             "campaigns": _pv.by_campaign(rows),
