@@ -1941,6 +1941,14 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         Compliance Risk and IP Risk are, because those three are this app's own
         verdict about its own copy, and a listing that is live on Amazon has as
         much right to a correct badge as one that is not."""
+        # A BULK REWRITE NAMES ITS ACCOUNT (4G, 29 Sep 2026): with none named,
+        # _ws() fell back to the server's open account -- another tab's, with
+        # two open. The page names it now (reqscope.js); an unnamed call refuses.
+        import domain.request_account as _rqa_rs
+        if not _rqa_rs.named_now():
+            return jsonify({"ok": False, "error": (
+                "Which account? Reload the page and try again -- a rescan is "
+                "applied only to the account the page names.")}), 400
         try:
             ws, _rows, changes = _rescan_compute()
             if not changes:
@@ -2552,6 +2560,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
     @app.route("/clear_empty", methods=["POST"])
     def clear_empty():
         """Delete every data row whose SKU, Title, Competitor ASIN and Product Type are all blank."""
+        # A DELETE NAMES ITS ACCOUNT (4G, 29 Sep 2026) -- see rescan_apply.
+        import domain.request_account as _rqa_ce
+        if not _rqa_ce.named_now():
+            return jsonify({"ok": False, "error": (
+                "Which account? Reload the page and try again -- empty rows are "
+                "cleared only in the account the page names.")}), 400
         try:
             ws   = _ws()
             vals = _repo.read_grid(ws)

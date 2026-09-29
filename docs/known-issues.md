@@ -127,6 +127,23 @@ The central activity log (Employee Performance) resolves the actor one way for a
   vs /data) the reader may never see what the writer wrote. READ, not traced.
 - `/healthz` checks nothing; `requirements.txt` is unpinned (manifest §10).
 
+## Open account — left open after the 4G fixes (29 Sep 2026)
+Fixed: browser callers now name the account on /clear_empty, /rescan/*,
+/approve, /edit, /brand/*, the Miles and brand streams; the brand routes read
+the named account; /clear_empty and /rescan/apply refuse with none named; the
+brand run and Miles streams count as work in the guard. Still open (READ):
+- `/brand/run` never passes the account to the generator: output goes to the
+  "dropshipping" store with the global credentials (jack_uk's) and brand
+  settings. Owner decision (owner-review #24).
+- Miles: `_MILES_STATE["items"]` (the uploaded item list) is process-wide, and a
+  new stream re-attaches to whatever run is active -- tab B can see A's run log,
+  and a list uploaded in B can be run into A's sheet.
+- `howworks.js setStatus` and `autofix.js applySuggestion` read the account at
+  send time (not pinned across `await ensureCardTab`).
+- The rescan preview and apply are not pinned to the same account.
+- `enterWorkspace` never clears CUR_ACCOUNT, nor /view/set the open account
+  (view workspaces only).
+
 ## dashboard.py — remaining feature code (4D review, 29 Sep 2026): intentional debt
 3,737 lines; build_app (839) is composition and stays. The largest feature
 blocks -- _resolve_fields (416), _save_miles_templates (310), _load_schema (238),

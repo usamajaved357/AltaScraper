@@ -329,16 +329,26 @@ RULES = [
     ("/miles/generate",                 "edit"),
     ("/miles/optimize",                 "edit"),
     ("/rescan/apply",                   "edit"),
+    # The brand run starts paid AI generation over a GET stream; it had no
+    # rule, so any signed-in user could start one (4G review, 29 Sep 2026).
+    ("/brand/run",                      "edit"),
 ]
 
 # Paths whose GET DOES WORK -- a streamed run is a GET, because EventSource can
 # only send GETs. The feature check below lets any read through on "view" level
 # before RULES are consulted, which was right for reads and meant a view-only
 # user could start GET /run/api_submit (master audit C4). These count as writes.
-WORK_OVER_GET = ("/run/",)
-# ...except the two under it that only report.
+WORK_OVER_GET = ("/run/",
+                 # The brand run and the three Miles streams are GETs that start
+                 # paid AI work and write drafts (EventSource). Not listed, a
+                 # view-only user could start one, and a link on another site
+                 # could (4G account-scope review, 29 Sep 2026).
+                 "/brand/run/", "/miles/run", "/miles/generate", "/miles/optimize")
+# ...except the ones under them that only report.
 WORK_OVER_GET_EXCEPT = ("/run/health", "/run/stack",
-                        "/run/plan")     # a plan: spends and writes nothing
+                        "/run/plan",     # a plan: spends and writes nothing
+                        "/miles/run_log", "/miles/run_csv", "/miles/runs",
+                        "/miles/run_active", "/miles/run_tail")
 
 # One action, two powers, told apart by a BODY field rather than the path.
 # (path, field, value, permission). Checked after the path's own rule.
@@ -738,6 +748,9 @@ def feature_for(path):
 WRITE_RULES = [
     ("/ai/settings",                    "manage_accounts"),
     ("/admin/logic_settings",           "manage_accounts"),
+    # The brand panel's Google connection (service-account path, Drive URL) is
+    # app-wide config; saving it needed only "edit" (4G review, 29 Sep 2026).
+    ("/brand/connection",               "manage_accounts"),
 ]
 
 

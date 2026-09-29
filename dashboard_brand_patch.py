@@ -85,8 +85,11 @@ def register(app, _cfg, _ws, _records, _run_lock, _running, _ANSI, SCRIPT, sysmo
         # account is active, its config "brands" list is the allow-list. The
         # Dropshipping workspace (no active account) shows none of the account
         # trademarks. This stops brands leaking across accounts.
+        # The account the PAGE names first (4G, 29 Sep 2026) -- this read the
+        # server's open account, owned by whichever tab switched last.
         try:
-            aid = _state.get("active_account_id") if _state else None
+            from domain import request_account as _rqa
+            aid = _rqa.current(_state) or None
         except Exception:
             aid = None
         allow = None
@@ -135,8 +138,12 @@ def register(app, _cfg, _ws, _records, _run_lock, _running, _ANSI, SCRIPT, sysmo
         # "no trademark set for this account" (the generator's BRAND GUARD reads the
         # same account list). Saving a brand and using it are the same intent.
         assigned = False
+        # THE ACCOUNT THE PAGE NAMES, not the server's open one (4G, 29 Sep
+        # 2026): with two tabs open a brand saved in one was assigned to the
+        # account the other tab had opened.
         try:
-            aid = _state.get("active_account_id") if _state else None
+            from domain import request_account as _rqa
+            aid = _rqa.current(_state) or None
         except Exception:
             aid = None
         if aid:

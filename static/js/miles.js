@@ -74,7 +74,7 @@ function milesRun(reattach){
   // the backend detects the active run and replays its live log instead of starting a new one.
   const url = reattach ? "/miles/run"
               : ("/miles/run" + (skipDone && skipDone.checked ? "?skip_done=1" : "?skip_done=0"));
-  ES=new EventSource(url);
+  ES=new EventSource((typeof acctStreamUrl === "function") ? acctStreamUrl(url) : url);
   let _sawBusy=false, _sawErr=false;   // so we don't falsely toast "finished" on a busy/blocked run
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=true;
   const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;
@@ -222,7 +222,8 @@ function milesGenerate(){
   sessionStorage.setItem("mg_tab",   tab.trim());
   sessionStorage.setItem("mg_limit", (lim.trim() && parseInt(lim)>0) ? parseInt(lim).toString() : "");
   const qs=params.toString();
-  ES=new EventSource("/miles/generate"+(qs?"?"+qs:""));
+  const _gu = "/miles/generate"+(qs?"?"+qs:"");
+  ES=new EventSource((typeof acctStreamUrl === "function") ? acctStreamUrl(_gu) : _gu);
   const gb=document.getElementById("miles_genbtn"); if(gb) gb.disabled=true;
   const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;
   ES.onmessage=e=>{
@@ -252,7 +253,8 @@ function milesOptimize(){
   if(sheet.trim()) params.set("sheet", sheet.trim());
   if(tab.trim())   params.set("tab",   tab.trim());
   const qs=params.toString();
-  ES=new EventSource("/miles/optimize"+(qs?"?"+qs:""));
+  const _ou = "/miles/optimize"+(qs?"?"+qs:"");
+  ES=new EventSource((typeof acctStreamUrl === "function") ? acctStreamUrl(_ou) : _ou);
   const ob=document.getElementById("miles_optbtn"); if(ob) ob.disabled=true;
   const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;
   ES.onmessage=e=>{

@@ -149,7 +149,8 @@ async function brandRun(testMode){
   const log=document.getElementById('brandlog'); log.style.display='block';
   log.textContent=testMode?('TEST RUN \u2014 first '+limit+' listing(s)\n'):'GENERATING ALL listings\n';
   const stop=document.getElementById('b_stopbtn'); if(stop) stop.style.display='inline-block';
-  const es=new EventSource('/brand/run/'+encodeURIComponent(b_name.value)+'?limit='+limit);
+  const _bu='/brand/run/'+encodeURIComponent(b_name.value)+'?limit='+limit;
+  const es=new EventSource((typeof acctStreamUrl === "function") ? acctStreamUrl(_bu) : _bu);
   window._brandES = es;
   es.onmessage=e=>{log.textContent+=e.data+'\n'; log.scrollTop=log.scrollHeight;};
   es.addEventListener('end',()=>{es.close(); if(stop) stop.style.display='none';});
@@ -179,7 +180,9 @@ async function brandRemoveFromAccount(name){
   if(!await uiConfirm('Remove "'+name+'" from this account?\n\nThis unassigns the trademark from this workspace. (The brand profile itself is kept and can be re-added later.)')) return;
   try{
     const r=await (await fetch('/accounts/remove_brand',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({brand:name})})).json();
+      // The account on screen: the route reads `id`, else the server's open
+      // account -- another tab's, with two open (4G, 29 Sep 2026).
+      body:JSON.stringify({brand:name, id:(typeof acctId === "function" ? acctId() : "") || ""})})).json();
     if(!r.ok){ await uiAlert('Could not remove: '+(r.error||'?')); return; }
     if(window.ACCOUNTS && window.CUR_ACCOUNT){ /* refresh local copy */ }
     brandRefresh();

@@ -105,6 +105,11 @@ const ACCT_SCOPED_PATHS = [
   "/settings/ads", "/settings/ads/", "/input/", "/drive/", "/miles/", "/miles_template/render",
   "/sync/", "/variant/", "/agent/", "/submit/target", "/submit/precheck",
   "/dup_check",
+  // Added 29 Sep 2026 (4G open-account map): writes whose browser callers named
+  // no account, so the server's open one decided -- deleting empty rows,
+  // applying a compliance rescan, approving from the "how it works" panel,
+  // auto-fix's own edits, and a brand's save/list.
+  "/clear_empty", "/rescan/", "/approve", "/edit", "/brand/",
 ];
 /* ...and the tab's MARKETPLACE with it, unless the url already names one. The
  * server otherwise uses the marketplace last picked in ANY tab: the account
@@ -119,6 +124,26 @@ function acctMktUrl(url){
   if(!m || m === "__all__") return u;
   return u + (u.indexOf("?") >= 0 ? "&" : "?") + "marketplace=" + encodeURIComponent(m);
 }
+/* A STREAM names its account too. new EventSource(url) does not go through
+ * fetch(), so the wrapper below never stamped it: the Miles generate / optimize
+ * / run streams and the brand run all ran for the server's open account --
+ * another tab's, with two open (4G, 29 Sep 2026). Every EventSource that starts
+ * account work builds its url through this. */
+function acctStreamUrl(url){
+  return acctMktUrl(acctUrl(url));
+}
+/* Does the request BODY already name its account? A caller that chose one --
+ * above all a bulk loop pinned with acctBodyFor(pin) -- is never overridden:
+ * stamping the account open NOW onto its url would name two accounts in one
+ * request after a mid-loop switch, and routes read them in different orders. */
+function _bodyNamesAccount(init){
+  try{
+    const b = init && init.body;
+    if(typeof b !== "string" || b.indexOf("account") < 0) return false;
+    const o = JSON.parse(b);
+    return !!(o && typeof o === "object" && (o.account || o.account_id));
+  }catch(e){ return false; }
+}
 function acctScopedPath(url){
   const u = String(url || "");
   if(u.charAt(0) !== "/" || /[?&]account=/.test(u)) return false;
@@ -131,7 +156,10 @@ function acctScopedPath(url){
   if(typeof window === "undefined" || !window.fetch || window.fetch._acctScoped) return;
   const _orig = window.fetch.bind(window);
   const _scoped = function(input, init){
-    try{ if(typeof input === "string" && acctScopedPath(input)) input = acctMktUrl(acctUrl(input)); }
+    try{
+      if(typeof input === "string" && acctScopedPath(input)
+         && !_bodyNamesAccount(init)) input = acctMktUrl(acctUrl(input));
+    }
     catch(e){ /* never let the stamp stop the request */ }
     return _orig(input, init);
   };
