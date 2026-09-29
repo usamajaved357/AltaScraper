@@ -20,16 +20,38 @@ import domain.request_account as _req_acct
 
 def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
 
+    def _profile_mkt(aid):
+        """The ONE marketplace this account's advertising profile covers
+        (ads_sync.marketplace_for, the scheduler's rule) -> (mkt, note). Every
+        call goes to the account's single profile, so the screen's marketplace
+        is not the answer: viewing IT filed the UK profile's campaigns under IT
+        (review, 30 Sep 2026). note is non-empty when Amazon could not say."""
+        cfg = _cfg() if callable(_cfg) else (_cfg or {})
+        acc = next((a for a in (cfg.get("accounts") or []) if str(a.get("id")) == str(aid)), None)
+        if not acc:
+            return "", "no such account"
+        from domain import ads_sync as _as
+        try:
+            return _as.marketplace_for(CONFIG_PATH, acc)
+        except Exception as e:
+            return "", str(e)[:160]
+
     def _read_scope():
         from routes import scope as _scope_mod
-        return _scope_mod.ads_account(request, state=_state, active_account=_active_account,
-                                      cfg=_cfg, req_acct=_req_acct)
+        aid, mkt = _scope_mod.ads_account(request, state=_state, active_account=_active_account,
+                                          cfg=_cfg, req_acct=_req_acct)
+        if aid:
+            pm, note = _profile_mkt(aid)
+            if pm and not note:
+                mkt = pm
+        return aid, mkt
 
     def _write_scope(b):
         """The account and marketplace a WRITE names -> (aid, mkt, refusal).
         Named in the body, or refused: a write never lands on whichever account
         the server happens to have open."""
-        aid = str(b.get("account") or b.get("id") or "").strip()
+        # "account" only: the body's "id" is the THING being changed.
+        aid = str(b.get("account") or "").strip()
         if not aid:
             return "", "", (jsonify({"ok": False, "error": (
                 "The request did not say which account -- nothing was changed.")}), 400)
@@ -42,6 +64,13 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             mkt = str(acc.get("default_marketplace") or "").upper()
         if not mkt:
             return "", "", (jsonify({"ok": False, "error": "no marketplace for this account"}), 400)
+        # THE PROFILE'S MARKETPLACE WINS, and a screen naming another one is
+        # refused rather than written under the wrong name.
+        pm, note = _profile_mkt(aid)
+        if pm and not note and pm != mkt:
+            return "", "", (jsonify({"ok": False, "error": (
+                "This account's advertising is on %s, not %s -- open %s to change it. "
+                "Nothing was changed." % (pm, mkt, pm))}), 409)
         return aid, mkt, None
 
     def _who():
@@ -82,7 +111,7 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             return bad
         from domain import ppc_control as _pc
         got = _pc.change(CONFIG_PATH, aid, mkt, str(b.get("kind") or ""),
-                         b.get("id"), b.get("campaign_id"),
+                         b.get("entity_id"), b.get("campaign_id"),
                          state=b.get("state"), amount=b.get("amount"), who=_who())
         got.update({"account": aid, "marketplace": mkt})
         return jsonify(got), (200 if got.get("ok") else 400)

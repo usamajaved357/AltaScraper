@@ -31,6 +31,13 @@ const PNL = {data: null, loading: false, expenses: null, adding: false,
  * range; the Finance tab calls pnlLoad("fin_pnl", its own query). Same route,
  * same domain/pnl.build -- so the two cannot disagree (Rule 12). */
 async function pnlLoad(hostId, qsIn){
+  // ONE STATEMENT ON SCREEN AT A TIME: the other place's copy is cleared, so
+  // its buttons cannot act on this one's dates (review, 30 Sep 2026).
+  const _prev = PNL.host;
+  if(_prev && _prev !== (hostId || "pnl_body")){
+    const old = document.getElementById(_prev);
+    if(old) old.innerHTML = "";
+  }
   PNL.host = hostId || "pnl_body";
   PNL.qs = (qsIn === undefined) ? null : qsIn;
   const host = document.getElementById(PNL.host);

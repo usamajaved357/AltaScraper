@@ -52,9 +52,11 @@ async function ppcxRefreshLive(btn){
 }
 
 /* One change, end to end. `what` names it for the dialogs. */
-async function _pxChange(body, what, beforeTxt, afterTxt){
-  const sc = _pxScope();
-  const pin = (typeof screenScope === "function") ? screenScope() : null;
+async function _pxChange(body, what, beforeTxt, afterTxt, pinned){
+  // Taken before the FIRST dialog by the caller when there was one (the amount
+  // prompt), so the confirmation can never name an account switched to meanwhile.
+  const sc = (pinned && pinned.sc) || _pxScope();
+  const pin = (pinned && pinned.pin) || ((typeof screenScope === "function") ? screenScope() : null);
   const ok = await uiConfirm(
       what + "\n\n  now:  " + beforeTxt + "\n  new:  " + afterTxt
       + "\n\nAccount: " + (sc.label || sc.account) + " · " + sc.marketplace
@@ -82,7 +84,7 @@ async function _pxChange(body, what, beforeTxt, afterTxt){
 /* Campaign on / off. */
 async function ppcxSetState(campaignId, name, current){
   const to = (String(current).toUpperCase() === "ENABLED") ? "PAUSED" : "ENABLED";
-  const j = await _pxChange({kind: "campaign", id: campaignId, campaign_id: campaignId, state: to},
+  const j = await _pxChange({kind: "campaign", entity_id: campaignId, campaign_id: campaignId, state: to},
                             (to === "PAUSED" ? "Pause" : "Turn on") + " campaign “" + name + "”",
                             String(current || "?"), to);
   if(j && j.ok && typeof ppccLoad === "function") ppccLoad();
@@ -102,32 +104,36 @@ async function _pxAskMoney(label, current){
   return Math.round(n * 100) / 100;
 }
 
+function _pxPin(){ return {sc: _pxScope(), pin: (typeof screenScope === "function") ? screenScope() : null}; }
+
 async function ppcxSetBudget(campaignId, name, current){
+  const pinned = _pxPin();
   const n = await _pxAskMoney("Daily budget for “" + name + "”", current);
   if(n === null) return;
   const cur = _pxCur();
-  const j = await _pxChange({kind: "campaign", id: campaignId, campaign_id: campaignId, amount: n},
+  const j = await _pxChange({kind: "campaign", entity_id: campaignId, campaign_id: campaignId, amount: n},
                             "Daily budget for “" + name + "”",
                             current === null || current === undefined ? "not known" : ppcMoney(current, cur).replace(/<[^>]*>/g, ""),
-                            ppcMoney(n, cur).replace(/<[^>]*>/g, ""));
+                            ppcMoney(n, cur).replace(/<[^>]*>/g, ""), pinned);
   if(j && j.ok && typeof ppccLoad === "function") ppccLoad();
 }
 
 /* Ad group default bid, keyword bid, target bid, and their on/off. */
 async function ppcxSetBid(kind, id, campaignId, label, current){
+  const pinned = _pxPin();
   const n = await _pxAskMoney((kind === "ad_group" ? "Default bid for ad group “" : "Bid for “") + label + "”", current);
   if(n === null) return;
   const cur = _pxCur();
-  const j = await _pxChange({kind: kind, id: id, campaign_id: campaignId, amount: n},
+  const j = await _pxChange({kind: kind, entity_id: id, campaign_id: campaignId, amount: n},
                             (kind === "ad_group" ? "Default bid, ad group “" : "Bid, “") + label + "”",
                             current === null || current === undefined ? "not known" : ppcMoney(current, cur).replace(/<[^>]*>/g, ""),
-                            ppcMoney(n, cur).replace(/<[^>]*>/g, ""));
+                            ppcMoney(n, cur).replace(/<[^>]*>/g, ""), pinned);
   if(j && j.ok) ppcxLoadStructure(campaignId, true);
 }
 
 async function ppcxToggle(kind, id, campaignId, label, current){
   const to = (String(current).toUpperCase() === "ENABLED") ? "PAUSED" : "ENABLED";
-  const j = await _pxChange({kind: kind, id: id, campaign_id: campaignId, state: to},
+  const j = await _pxChange({kind: kind, entity_id: id, campaign_id: campaignId, state: to},
                             (to === "PAUSED" ? "Pause " : "Turn on ") + kind.replace("_", " ") + " “" + label + "”",
                             String(current || "?"), to);
   if(j && j.ok) ppcxLoadStructure(campaignId, true);
@@ -179,12 +185,12 @@ function ppcxManageHtml(r){
   const id = String(r.campaign_id);
   const s = PPCX.structure[id];
   const cur = _pxCur();
-  let h = '<div class="ppcx-manage" style="margin-top:14px;border-top:1px solid var(--ppc-line);padding-top:12px">'
+  let h = '<div class="ppcx-manage" style="margin-top:14px;border-top:1px solid var(--ppc-border);padding-top:12px">'
     + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">'
     + '<b style="font-size:13px">Manage on Amazon</b>'
     + '<button class="ppc-btn" onclick="event.stopPropagation();ppcxLoadStructure(' + jsArg(id) + ', true)">'
     +   (s ? 'Re-read' : 'Show ad groups, keywords and bids') + '</button>'
-    + '<span style="font-size:11px;color:var(--ppc-muted)">every change asks you first, and is read back from Amazon</span>'
+    + '<span style="font-size:11px;color:var(--ppc-muted)">every change asks you first; bids, budgets and on/off are read back from Amazon</span>'
     + '</div>';
   if(PPCX.loading[id]) return h + '<div style="font-size:12px"><span class="genspin"></span> Reading Amazon…</div></div>';
   if(!s) return h + '</div>';
@@ -197,9 +203,11 @@ function ppcxManageHtml(r){
     return String(st).toUpperCase() === "ENABLED" ? '<span class="ppc-badge enabled">ENABLED</span>'
          : '<span class="ppc-badge plain">' + _pEsc(st || "") + '</span>';
   };
+  const KEY = {"Ad groups": "ad_groups", "Keywords": "keywords", "Product targets": "targets",
+               "Negative keywords": "negatives"};
   const table = function(title, rows, cols){
     if(rows === null) return '<div style="font-size:12px;color:var(--ppc-red)">' + _pEsc(title) + ': could not be read — '
-                              + _pEsc(((s.errors || {})[title.toLowerCase().replace(/ /g, "_")]) || "") + '</div>';
+                              + _pEsc(((s.errors || {})[KEY[title]]) || "") + '</div>';
     if(!rows.length) return '';
     return '<div style="font-size:12px;font-weight:600;margin:10px 0 4px">' + _pEsc(title) + ' (' + rows.length + ')</div>'
       + '<div style="overflow-x:auto"><table><tbody>' + rows.map(cols).join("") + '</tbody></table></div>';

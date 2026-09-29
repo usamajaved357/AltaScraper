@@ -457,7 +457,10 @@ def ads_sync(workspace_id=None):
         # shown as enabled here").
         try:
             from domain import ppc_control as _pcl
-            res["campaign_list"] = _pcl.refresh_campaigns(config_path, aid, mkt).get("ok")
+            _cl = _pcl.refresh_campaigns(config_path, aid, mkt)
+            res["campaign_list"] = _cl.get("ok")
+            if not _cl.get("ok"):
+                res.setdefault("errors", []).append("campaign list: %s" % (_cl.get("error") or "not read"))
         except Exception as _e:
             res.setdefault("errors", []).append("campaign list: %s" % str(_e)[:160])
         asked.append({"workspace": aid, "marketplace": mkt,

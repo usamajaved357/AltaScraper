@@ -27,6 +27,16 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   Amazon" beside it on live listings; saves that stay in the app say so on live
   listings; bulk results say how many Amazon took, of how many. Source: chat,
   30 Sep 2026.
+- **30 Sep 2026 — Campaigns can be changed from the app.** "i also want an
+  option to turn on or off the campaigns and change the budget, bids and rules
+  and every other feature that we have in seller central, i want it here ...
+  i already approve your suggestions". Built: Sponsored Products campaign
+  on/off and daily budget, ad group default bid and on/off, keyword and
+  product-target bid and on/off, add negative keyword. Rule 8 is kept by
+  construction: every value is the owner's typed value (boxes start empty),
+  confirmed with Amazon's before -> after, "publish" permission, the account
+  named and pinned, read before and read back, ledgered. Nothing automatic
+  writes. Source: chat, 30 Sep 2026.
 - **10 Aug 2026 — Competitor product images are accepted for now.** Knowingly
   departs from `amazon_violation_avoidance_plan.md` §1C. Do not raise it as a
   defect unprompted. That plan is written as an arbitrage playbook, which

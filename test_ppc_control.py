@@ -111,5 +111,32 @@ JS = open(os.path.join(HERE, "static", "js", "ppccontrol.js"), "rb").read().deco
 check("a money box starts empty (nothing suggested)", '+ "\\nType the new amount.", "",' in JS, True)
 check("the account is pinned before the dialog", "screenStillIn(pin)" in JS, True)
 
+print("\n== 5. the routes, driven (review of 30 Sep 2026) ==")
+from flask import Flask                     # noqa: E402
+import routes.ppc_control_routes as R       # noqa: E402
+AS.marketplace_for = lambda cp, acc: ("UK", "")       # the profile covers UK
+app = Flask(__name__)
+R.register(app, CONFIG_PATH=CFG, _cfg=lambda: json.load(open(CFG)),
+           _state={"active_account_id": "ws1", "active_marketplace": "IT"},
+           _active_account=lambda: {"id": "ws1"})
+cl = app.test_client()
+g = cl.post("/ppc/control/change", json={"confirmed": True, "entity_id": "ws1", "kind": "campaign",
+                                         "campaign_id": "C1", "state": "PAUSED"})
+check("no account named -> refused, even with an id that looks like one",
+      (g.status_code, "did not say which account" in g.get_json()["error"]), (400, True))
+g = cl.post("/ppc/control/change", json={"confirmed": True, "account": "ws1", "marketplace": "IT",
+                                         "entity_id": "C1", "kind": "campaign", "campaign_id": "C1",
+                                         "state": "PAUSED"})
+check("a screen naming another marketplace than the ad profile's is refused",
+      (g.status_code, "advertising is on UK" in g.get_json()["error"]), (409, True))
+before = list(CALLS)
+g = cl.post("/ppc/control/change", json={"account": "ws1", "marketplace": "UK", "entity_id": "C1",
+                                         "kind": "campaign", "campaign_id": "C1", "state": "PAUSED"})
+check("not confirmed -> refused, nothing sent", (g.status_code, CALLS == before), (400, True))
+g = cl.get("/ppc/control/campaigns?account=ws1&marketplace=IT")
+check("reading the list files it under the PROFILE's marketplace, not the screen's",
+      (g.get_json().get("marketplace"),
+       c.execute("SELECT COUNT(*) FROM ads_campaigns WHERE marketplace='IT'").fetchone()[0]), ("UK", 0))
+
 print("\nFAILURES: %d" % len(FAILS))
 sys.exit(1 if FAILS else 0)

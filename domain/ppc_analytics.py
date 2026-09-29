@@ -977,10 +977,15 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
     for _cid, _g in _latest.items():
         if _cid in _seen or _g.get("status_source") != "amazon":
             continue
+        if str(_g.get("status") or "").upper() == "ARCHIVED":
+            continue            # finished on Amazon; nothing to switch back on
         raw.append({"campaign_id": _cid, "name": _g.get("campaign_name") or _cid,
                     "status": _g.get("status"), "budget": _g.get("budget"),
                     "ad_product": "SPONSORED_PRODUCTS", "impressions": 0, "clicks": 0,
-                    "spend": 0.0, "orders": 0, "sales": 0.0, "status_source": "amazon"})
+                    "spend": 0.0, "orders": 0, "sales": 0.0, "status_source": "amazon",
+                    # Did nothing in these days: listed for its switch, kept out
+                    # of the headline, the map and the counts.
+                    "quiet": True})
 
     # The scoring set, and the biggest spend in it. Taken from whichever window
     # the scores will be made on, so the denominator and the numerators are the

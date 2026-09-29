@@ -566,7 +566,9 @@ function ppccBreakdown(j, cur){
  */
 function ppccMap(j, cur){
   const all = (j.campaigns || []).filter(function(r){
-    return r.spend !== null && r.spend !== undefined
+    // A campaign that did nothing in these days is not a point on a map of
+    // what spend earned (they sat in a cluster at the origin).
+    return !r.quiet && r.spend !== null && r.spend !== undefined
         && r.profit !== null && r.profit !== undefined;
   });
   if(!all.length){
@@ -831,6 +833,13 @@ function ppccCohorts(j, cur){
     + bar + cards + '</div>';
 }
 
+/* Sponsored Products only: the controls act through Amazon's SP campaign list,
+ * which does not hold Brands or Display campaigns (review, 30 Sep 2026). */
+function _ppccSP(r){
+  const p = String((r && r.ad_product) || "SPONSORED_PRODUCTS").toUpperCase();
+  return p === "SPONSORED_PRODUCTS";
+}
+
 /* ---- 0. what the advertising made or lost, all campaigns --------------------
  *
  *     "i have no idea how much profit or loss i am making in all campaigns and
@@ -845,6 +854,7 @@ function ppccHeadline(j, cur){
   let spend = 0, sales = 0, prof = 0, known = 0, unknown = 0;
   let won = 0, wonN = 0, lost = 0, lostN = 0;
   rows.forEach(function(r){
+    if(r.quiet) return;             // did nothing in these days
     spend += Number(r.spend || 0); sales += Number(r.sales || 0);
     if(r.profit === null || r.profit === undefined){ if(Number(r.spend || 0) > 0) unknown++; return; }
     const p = Number(r.profit); prof += p; known++;
@@ -991,7 +1001,7 @@ function ppccTable(j, cur){
             ? '<span class="ppc-q" title="From the last day this campaign had ad activity, not Amazon\'s current setting. Press Read live status.">?</span>'
             : '')
       // ON / OFF, from here (owner, 30 Sep 2026). Archived is final on Amazon.
-      +   ((typeof ppcxSetState === "function"
+      +   ((typeof ppcxSetState === "function" && _ppccSP(r)
             && ["ENABLED", "PAUSED"].indexOf(String(r.status || "").toUpperCase()) >= 0)
             ? ' <button class="ppc-btn" style="font-size:10.5px;padding:1px 7px" '
               + 'onclick="event.stopPropagation();ppcxSetState(' + jsArg(id) + ',' + jsArg(r.name || id)
@@ -999,7 +1009,7 @@ function ppccTable(j, cur){
               + (String(r.status).toUpperCase() === "ENABLED" ? "Pause" : "Turn on") + '</button>'
             : '') + '</td>'
       + '<td style="white-space:nowrap">' + ppcMoney(r.budget, cur, "Not known yet -- press Read live status.")
-      +   (typeof ppcxSetBudget === "function"
+      +   ((typeof ppcxSetBudget === "function" && _ppccSP(r))
             ? ' <button class="ppc-btn" style="font-size:10.5px;padding:1px 6px" title="Change the daily budget" '
               + 'onclick="event.stopPropagation();ppcxSetBudget(' + jsArg(id) + ',' + jsArg(r.name || id) + ','
               + (r.budget == null ? "null" : Number(r.budget)) + ')">✎</button>' : '')
@@ -1027,7 +1037,7 @@ function ppccTable(j, cur){
     T.clicks += Number(r.clicks || 0); T.orders += Number(r.orders || 0);
     if(r.profit !== null && r.profit !== undefined){ T.profit += Number(r.profit); T.pk++; }
   });
-  h += '</tbody><tfoot><tr style="font-weight:700;border-top:2px solid var(--ppc-line)">'
+  h += '</tbody><tfoot><tr style="font-weight:700;border-top:2px solid var(--ppc-border)">'
     + '<td></td><td></td><td>' + rows.length + ' campaign' + (rows.length === 1 ? '' : 's') + ' shown</td>'
     + '<td></td><td></td><td></td>'
     + '<td class="ppc-tint-profit">' + (T.pk ? ppcProfit(T.profit, cur, "greenred") : ppcDash("None of these could be costed.")) + '</td>'
@@ -1097,6 +1107,6 @@ function ppccDetail(j, r, cur){
     h += '</tbody></table></div>';
   }
   // CHANGE IT ON AMAZON: ad groups, keywords, targets, negatives (ppccontrol.js).
-  if(typeof ppcxManageHtml === "function") h += ppcxManageHtml(r);
+  if(typeof ppcxManageHtml === "function" && _ppccSP(r)) h += ppcxManageHtml(r);
   return h + '</div></td></tr>';
 }

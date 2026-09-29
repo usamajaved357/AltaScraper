@@ -196,6 +196,13 @@ change needs it, via register injection.
   handling.py), FBA included -- Amazon's behaviour not checked. READ, low.
 - Settlement tab ad spend uses per-product Ads API spend only (no invoice
   fallback). READ.
+- **PPC sales are 30-day attribution** (spCampaigns sales30d/purchases30d),
+  while Seller Central's Campaign Manager shows 7-day for sellers, so ad sales,
+  ACOS and ad profit read higher here. Needs one raw report with both columns
+  first (Rule 4). READ.
+- **Campaign controls cover Sponsored Products only** (Brands/Display need
+  their own v3/v4 endpoints). Amazon "rules" (automation) are not built; the
+  Dr PPC console's plans/rules only propose. READ.
 - **Repricer: supplier links already stored without ?var=** stay FAILED; they
   need removing and adding again (the add now resolves or offers a pick). READ.
 - **Repricer: eBay "calculated" postage is never used**, so such suppliers stay
