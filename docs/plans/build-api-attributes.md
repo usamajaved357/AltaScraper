@@ -97,4 +97,10 @@ not the whole payload. Before B1:
 | B6 | `build_api_attributes` becomes the ordered list of phase calls in `listing/builder.py` (CLAUDE.md's intended home); the engine re-exports it | medium |
 | B7 | (owner decision) the Rule 1 identifier pass | owner |
 
-Status: analysis and plan only. Nothing in it has been changed.
+Status (30 Sep 2026): B0 (330c007), B1+B2 (9e13f02) done. B3 done for the
+text/brand/model/offer/fulfilment phase and the dimensions phase, moved
+verbatim to `listing/attributes_phases.py` (golden payloads byte-identical;
+payload-guardian PASS). Still in the engine between them, in order: images
+(needs `_fetchable`/`_is_ours`, which read `config` and print), list_price +
+shipping weight + merchant_shipping_group (needs the engine's
+`_shape_list_price`). B4-B6 not started; B7 is the owner's.
