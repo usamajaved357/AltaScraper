@@ -45,6 +45,16 @@ def register(app, *, CONFIG_PATH, SCRIPT, _cfg, _active_account, _state, _requir
             _acc = _active_account()
         except Exception:
             _acc = None
+        # NO ACCOUNT, NO JOB (owner decision, read.txt 29 Sep 2026: "A preview
+        # job must have an explicit account at the time it starts. Do not infer
+        # ownership later from whichever account happens to be open."). /run
+        # already refused here; the queue let the job through with no
+        # --account-id, and the generator's credential fallback is the global
+        # block. Refused before anything is queued, in the words /run uses.
+        if not str((_acc or {}).get("id") or "").strip():
+            return jsonify({"ok": False, "error": (
+                "No account is open. Open the account this preview is for, "
+                "then try again.")}), 400
         args = build_api_run_args(
             mode, script=SCRIPT, python_exe=_sys.executable, skus=sku, minimal=minimal,
             active_account=_acc,
