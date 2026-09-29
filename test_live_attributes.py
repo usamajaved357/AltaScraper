@@ -62,9 +62,11 @@ def truthy(label, got):
 
 
 # ---------------------------------------------------------------------------
-# Lift the REAL _renest out of the generator.
+# Lift the REAL _renest out of listing/attributes_helpers.py -- moved there
+# verbatim from the generator in plan B2 (29 Sep 2026); the builder imports it
+# under the same name, so this is still the function the payload uses.
 # ---------------------------------------------------------------------------
-SRC = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
+SRC = open(_os_repo.path.join(_REPO, "listing", "attributes_helpers.py"), encoding="utf-8").read()
 _tree = ast.parse(SRC)
 _fn = None
 for _node in ast.walk(_tree):
@@ -72,8 +74,11 @@ for _node in ast.walk(_tree):
         _fn = _node
         break
 
-print("\nloading the real _renest out of amazon_listing_generator.py")
-truthy("_renest was found in the generator", _fn is not None)
+print("\nloading the real _renest out of listing/attributes_helpers.py")
+truthy("_renest was found where the builder imports it from", _fn is not None)
+_GEN = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
+truthy("  and the builder really imports that one",
+       "from listing.attributes_helpers import (_renest," in _GEN)
 if _fn is None:
     print("\n1 failed\n  FAILED: _renest has moved -- update this test to follow it")
     sys.exit(1)

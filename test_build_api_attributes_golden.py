@@ -44,15 +44,24 @@ import amazon_listing_generator as G            # noqa: E402
 import build_api_attributes_cases as C          # noqa: E402
 
 
-def run_all():
+def run_all(explicit=False):
+    """explicit=False: the engine globals decide (the original way).
+    explicit=True: marketplace_id / minimal_mode passed as arguments (B1), with
+    the globals set to the OPPOSITE values -- the arguments must win."""
     out = {}
     for name, row, pt, props, req, cfg in C.CASES:
         for mkt, mid in (("UK", C.UK), ("US", C.US)):
             for mm in (False, True):
-                G.MARKETPLACE_ID = mid
-                G.MINIMAL_MODE = mm
+                if explicit:
+                    G.MARKETPLACE_ID = C.US if mid == C.UK else C.UK
+                    G.MINIMAL_MODE = not mm
+                    kw = {"marketplace_id": mid, "minimal_mode": mm}
+                else:
+                    G.MARKETPLACE_ID = mid
+                    G.MINIMAL_MODE = mm
+                    kw = {}
                 with contextlib.redirect_stdout(io.StringIO()):
-                    a = G.build_api_attributes(dict(row), pt, props, set(req), dict(cfg))
+                    a = G.build_api_attributes(dict(row), pt, props, set(req), dict(cfg), **kw)
                 out["%s|%s|%s" % (name, mkt, "minimal" if mm else "full")] = \
                     json.dumps(a, sort_keys=True, ensure_ascii=False)
     return out
@@ -74,6 +83,13 @@ for k in sorted(set(want) | set(got)):
         print("  DIFFERENT %-44s at char %d:\n    was: %s\n    now: %s"
               % (k, i, a[max(0, i - 60):i + 80], b[max(0, i - 60):i + 80]))
 print("%d golden payloads, %d identical, %d different" % (len(want), len(want) - len(fails), len(fails)))
+
+# B1: the arguments decide, not the engine globals.
+if "marketplace_id" in G.build_api_attributes.__code__.co_varnames:
+    exp = run_all(explicit=True)
+    diff = [k for k in got if exp.get(k) != got[k]]
+    print("explicit marketplace_id/minimal_mode: %d identical, %d different" % (len(got) - len(diff), len(diff)))
+    fails += ["%s (explicit arguments)" % k for k in diff]
 
 # RULE 1 IS NEVER RECORDED AWAY. A golden file could otherwise pin a violation
 # as "expected": these hold for every payload, whatever the recording says.

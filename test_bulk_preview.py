@@ -120,7 +120,8 @@ try:
     G.output_ws = lambda config, gc, sid, tab: object()
     G._safe_records = lambda ws: [dict(r) for r in RECORDS]
     G._raw_schema_bounded = lambda pt, creds, hard_timeout=180: ({"item_name": {}}, [], None)
-    G.build_api_attributes = lambda row, pt, props, required, config: {"item_name": [{"value": "x"}]}
+    # **kw: run_api now passes marketplace_id / minimal_mode explicitly (plan B1).
+    G.build_api_attributes = lambda row, pt, props, required, config, **kw: {"item_name": [{"value": "x"}]}
     REPO.read_headers = lambda ws: list(HEAD)
     REPO.batch_write = lambda ws, updates, value_input_option="RAW": WRITES.extend(updates)
     SP.ListingsItemsV20210801 = _Listings

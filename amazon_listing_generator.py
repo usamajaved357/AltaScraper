@@ -3762,7 +3762,10 @@ def _shape_list_price(field_schema: dict, price, mid: str):
         val = round(float(str(price)), 2)
     except Exception:
         return []
-    _def_cur = "USD" if MARKETPLACE_ID == US_MARKETPLACE_ID else "GBP"
+    # The currency of the marketplace this payload is FOR (`mid`), not of the
+    # engine's global -- identical in every run today (run_api passes
+    # mid == MARKETPLACE_ID), and correct once the caller names it (plan B1).
+    _def_cur = "USD" if mid == US_MARKETPLACE_ID else "GBP"
     if not ip:                       # schema has no list_price shape -> safe default
         return [{"currency": _def_cur, "value": val}]
     o = {}
@@ -3886,10 +3889,21 @@ from listing.shaper import shape_by_schema
 _LAST_COMPLIANCE_NOTES = {}
 
 
-def build_api_attributes(row: dict, pt: str, props: dict, required: set, config: dict) -> dict:
+from listing.attributes_helpers import (_renest, _is_public_url, _allowed_values,  # plan B2
+                                       _cbc_value, _enum_of_prop, _valid_text_attr,
+                                       _watt_number, _has_real_number)
+
+
+def build_api_attributes(row: dict, pt: str, props: dict, required: set, config: dict,
+                         marketplace_id: str = None, minimal_mode: bool = None) -> dict:
     """Assemble the SP-API 'attributes' object for one listing, gated to `props`
-    (the live schema for this product type) so nothing inapplicable is sent."""
-    mid = MARKETPLACE_ID
+    (the live schema for this product type) so nothing inapplicable is sent.
+
+    `marketplace_id` / `minimal_mode` are the run's marketplace and minimal
+    flag, passed by run_api (plan B1). Left out, they default to the engine's
+    MARKETPLACE_ID / MINIMAL_MODE exactly as before, so no caller changes."""
+    mid = MARKETPLACE_ID if marketplace_id is None else marketplace_id
+    _minimal = MINIMAL_MODE if minimal_mode is None else bool(minimal_mode)
     A   = {}
     g   = lambda k: str(row.get(k, "") or "").strip()
 
@@ -3915,70 +3929,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     #   -> "battery": {"weight": {"value":"180","unit":"grams"}}
     # The downstream wrapping (array-of-one + marketplace_id) is applied later by
     # the normal attribute handling; here we only rebuild the object shape.
-    def _renest(flat: dict) -> dict:
-        """Re-nest flat dot-keys into an object tree.
-
-        Handles COLLISION between keys of different depths gracefully:
-        e.g. if `flat` contains BOTH `leg.length = "feet"` (an old shallow key
-        from a prior schema-extractor version) AND `leg.length.decimal_value =
-        "50.0"` + `leg.length.unit = "feet"` (deeper keys from the current
-        extractor version), the deeper keys win because they're strictly more
-        specific -- the shallow scalar gets promoted to a dict node with the
-        scalar preserved under a synthetic `.value` sub-key (so no data is
-        silently dropped).
-
-        Before this defensiveness, `cur.setdefault(p, {})` returned the
-        existing scalar; the next iteration crashed with 'str object does
-        not support item assignment' as soon as the sheet accumulated keys
-        at multiple depths -- which was inevitable once the extractor
-        started walking deeper on each fix. See the assert-strings that
-        Amazon returned from prior runs mixed with the new decimal_value/
-        unit sub-keys."""
-        nested, plain = {}, {}
-        # Iterate shortest-key-first so shallow entries are placed as leaves
-        # first, then get PROMOTED to dicts when a deeper sibling arrives.
-        # (If we ran longest-first, the deeper writes would land in fresh
-        # dicts and the shallow scalar arriving later would overwrite the
-        # whole subtree.)
-        for k in sorted([x for x in flat.keys() if isinstance(x, str)], key=lambda s: s.count(".")):
-            v = flat[k]
-            if "." in k and not k.startswith("_"):
-                top, rest = k.split(".", 1)
-                # If `nested[top]` was previously set to a scalar (from an
-                # even-shallower key like just "leg" = "feet"), promote it.
-                if top in nested and not isinstance(nested[top], dict):
-                    _prev = nested[top]
-                    nested[top] = {"value": _prev}
-                cur = nested.setdefault(top, {})
-                parts = rest.split(".")
-                for p in parts[:-1]:
-                    if p in cur and not isinstance(cur[p], dict):
-                        _prev = cur[p]
-                        cur[p] = {"value": _prev}
-                    cur = cur.setdefault(p, {})
-                # Final leaf: if a dict is already there (deeper keys arrived
-                # earlier despite sort, or a prior iteration created one),
-                # don't overwrite it -- store under `.value` instead.
-                _leaf = parts[-1]
-                if _leaf in cur and isinstance(cur[_leaf], dict) and not isinstance(v, dict):
-                    cur[_leaf].setdefault("value", v)
-                else:
-                    cur[_leaf] = v
-            else:
-                # Plain key (no dot). If nested already has this parent as a
-                # dict from a deeper key that came earlier, don't overwrite
-                # the dict -- fold the plain value into it as `.value`.
-                if k in nested and isinstance(nested[k], dict) and not isinstance(v, dict):
-                    nested[k].setdefault("value", v)
-                else:
-                    plain[k] = v
-        # nested objects win where a flat parent also exists
-        for top, obj in nested.items():
-            if isinstance(plain.get(top), dict):
-                plain[top].update(obj)
-            else:
-                plain[top] = obj
-        return plain
+    # _renest: moved to listing/attributes_helpers.py (plan B2, verbatim).
     if any(isinstance(k, str) and "." in k for k in pa.keys()):
         pa = _renest(pa)
 
@@ -4069,9 +4020,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # are NOT required to create a listing, so only send a value when it's a real
     # http(s) URL; otherwise skip it (the listing still goes through; images can
     # be added later in Seller Central / via a hosted URL).
-    def _is_public_url(u):
-        u = str(u or "").strip()
-        return u.lower().startswith("http://") or u.lower().startswith("https://")
+    # _is_public_url: moved to listing/attributes_helpers.py (plan B2, verbatim).
 
     def _fetchable(u):
         """A URL Amazon can actually reach, or "".
@@ -4366,19 +4315,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # has no such field" from "we failed to ask", and dropping on a failed fetch
     # would quietly strip a good listing. The dropped names are collected and
     # printed, never discarded in silence.
-    def _allowed_values(fprop):
-        """Amazon's allowed list for this field, read the same way the schema
-        extractor reads it -- value.enum, then item.enum, then the field's own."""
-        if not isinstance(fprop, dict):
-            return []
-        items = fprop.get("items", {})
-        ip = items.get("properties", {}) if isinstance(items, dict) else {}
-        vp = ip.get("value", {}) if isinstance(ip, dict) else {}
-        out = (vp.get("enum") if isinstance(vp, dict) else None) \
-            or (ip.get("enum") if isinstance(ip, dict) else None) \
-            or (items.get("enum") if isinstance(items, dict) else None) \
-            or fprop.get("enum") or []
-        return [str(a) for a in out]
+    # _allowed_values: moved to listing/attributes_helpers.py (plan B2, verbatim).
 
     _schema_names = set(props or {}) | set(required or set())
     _dropped_unknown = []
@@ -4723,29 +4660,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     def _schema_wants(_f):
         return (_f in required) or isinstance(props.get(_f), dict)
 
-    def _cbc_value(_prop, _yes=True):
-        # contains_battery_or_cell is an ENUM (e.g. "Yes"/"No") for some product
-        # types (UNMANNED_AERIAL_VEHICLE) and a BOOLEAN for others. Sending JSON
-        # `true` to an enum field fails with "select an approved value from the
-        # list". Inspect the schema: if it declares an enum, pick the allowed
-        # value meaning "yes"; otherwise fall back to boolean True.
-        _enum = []
-        if isinstance(_prop, dict):
-            _it  = _prop.get("items", {}) if isinstance(_prop.get("items"), dict) else {}
-            _itp = _it.get("properties", {}) if isinstance(_it, dict) else {}
-            _vpp = _itp.get("value", {}) if isinstance(_itp, dict) else {}
-            _enum = [str(x) for x in (_vpp.get("enum") or _itp.get("enum")
-                                      or _it.get("enum") or _prop.get("enum") or [])]
-        _want = ("yes", "true", "1") if _yes else ("no", "false", "0",
-                                                   "no_battery", "none")
-        if _enum:
-            for _e in _enum:
-                if str(_e).strip().lower() in _want:
-                    return _e
-            # Nothing on the list says what we mean. Do NOT fall back to the
-            # first entry -- that is how "battery" ended up on a vacuum flask.
-            return None
-        return bool(_yes)
+    # _cbc_value: moved to listing/attributes_helpers.py (plan B2, verbatim).
 
     # ANSWERED ONLY WHEN AMAZON ACTUALLY REQUIRES IT, and answered HONESTLY.
     #
@@ -5186,13 +5101,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # model_name / special_feature / warranty_description /
     # battery_installation_device_type, plus the hazmat structure error. Fill them
     # here, schema-driven, so the listing validates on the FIRST preview.
-    def _enum_of_prop(_p):
-        if not isinstance(_p, dict):
-            return []
-        _it  = _p.get("items", {}) if isinstance(_p.get("items"), dict) else {}
-        _itp = _it.get("properties", {}) if isinstance(_it, dict) else {}
-        _vpp = _itp.get("value", {}) if isinstance(_itp, dict) else {}
-        return [str(x) for x in (_vpp.get("enum") or _itp.get("enum") or _it.get("enum") or _p.get("enum") or [])]
+    # _enum_of_prop: moved to listing/attributes_helpers.py (plan B2, verbatim).
 
     _cond_title = g("Item Name") or g("Title") or ""
     _cond_hay   = (_cond_title + " " + g("Product Description")).lower()
@@ -5209,18 +5118,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # whenever it's absent, empty, or malformed.
     _lang_c = "en_US" if mid == US_MARKETPLACE_ID else "en_GB"
 
-    def _valid_text_attr(_v):
-        # Valid = non-empty list whose every entry is a dict with a non-empty
-        # `value`. Anything else (missing, "", [], flat string, dict missing
-        # value) is treated as broken and rebuilt.
-        if not isinstance(_v, list) or not _v:
-            return False
-        for _e in _v:
-            if not isinstance(_e, dict):
-                return False
-            if not str(_e.get("value", "")).strip():
-                return False
-        return True
+    # _valid_text_attr: moved to listing/attributes_helpers.py (plan B2, verbatim).
 
     # model_name (free text): mirror the generated model number, else short title.
     if not _valid_text_attr(A.get("model_name")):
@@ -5404,20 +5302,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # otherwise DROP it entirely. A torch listing is valid without wattage.
     _watt_in_a = A.get("wattage")
 
-    def _watt_number(_v):
-        """Return the numeric part of a wattage value in any shape, or '' if none."""
-        cand = ""
-        if isinstance(_v, list) and _v:
-            f = _v[0]
-            cand = (f.get("value") if isinstance(f, dict) else f)
-        elif isinstance(_v, dict):
-            cand = _v.get("value")
-        else:
-            cand = _v
-        if cand is None:
-            return ""
-        m = re.search(r"-?\d+(?:\.\d+)?", str(cand))
-        return m.group(0) if m else ""
+    # _watt_number: moved to listing/attributes_helpers.py (plan B2, verbatim).
 
     # Determine if this product type even declares wattage (when schema loaded).
     _watt_declared = isinstance(props.get("wattage"), dict) and bool(props.get("wattage"))
@@ -5442,21 +5327,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
                 pass
 
     # FINAL wattage guard (bulletproof): never return an empty/None/partial wattage.
-    def _has_real_number(_v):
-        cand = None
-        if isinstance(_v, list) and _v:
-            first = _v[0]
-            cand = first.get("value") if isinstance(first, dict) else first
-        elif isinstance(_v, dict):
-            cand = _v.get("value")
-        else:
-            cand = _v
-        if cand is None:
-            return False
-        s = str(cand).strip().lower()
-        if s in ("", "none", "null"):
-            return False
-        return bool(re.search(r"-?\d", s))
+    # _has_real_number: moved to listing/attributes_helpers.py (plan B2, verbatim).
 
     if "wattage" in A:
         _wf = A.get("wattage")
@@ -5620,7 +5491,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
 
     # MINIMAL MODE: keep only what Amazon strictly requires + offer essentials,
     # so a listing can be created now and enriched later in Seller Central.
-    if MINIMAL_MODE:
+    if _minimal:
         _keep = set(required) | {
             # offer / identity essentials needed for any buyable listing
             "item_name", "brand", "product_description", "bullet_point",
@@ -6189,7 +6060,8 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
         if not props:
             console.print(f"  row {i} {sku}: no schema for {pt} -- skip"); skip += 1; continue
 
-        attrs = build_api_attributes(row, pt, props, required, config)
+        attrs = build_api_attributes(row, pt, props, required, config,
+                                     marketplace_id=MARKETPLACE_ID, minimal_mode=MINIMAL_MODE)
         body  = {"productType": pt, "requirements": "LISTING", "attributes": attrs}
         # Save the EXACT payload we are about to send, so the dashboard can show
         # the literal wire data (not just the field view). Pretty-printed for the

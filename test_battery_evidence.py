@@ -94,15 +94,19 @@ falsy("nor does num_batteries",
       '("num_batteries" in pa or _has_prop("num_batteries") or _is_batt)' in src)
 
 print("\n== the yes/no answer is honest, and never invented ==")
+# _cbc_value moved verbatim to listing/attributes_helpers.py (plan B2, 29 Sep
+# 2026); the builder imports it under the same name. Same checks, its new home.
+helpers = open(os.path.join(HERE, "listing", "attributes_helpers.py"), encoding="utf-8").read()
+truthy("the builder uses the moved picker", "_cbc_value," in src and "from listing.attributes_helpers import" in src)
 truthy("the enum picker can say NO as well as YES",
-       'def _cbc_value(_prop, _yes=True):' in src)
+       'def _cbc_value(_prop, _yes=True):' in helpers)
 truthy("  with the words that mean no",
-       '"no", "false", "0",' in src and '"no_battery", "none"' in src)
+       '"no", "false", "0",' in helpers and '"no_battery", "none"' in helpers)
 # The old code ended `return _enum[0]` -- if nothing on the list said "yes" it
 # sent the first entry, whatever it happened to be. That is how "battery"
 # landed on a vacuum flask.
 truthy("  and it refuses rather than picking the first item off the list",
-       "that is how \"battery\" ended up on a vacuum flask" in src)
+       "that is how \"battery\" ended up on a vacuum flask" in helpers)
 truthy("  the cell count follows the same answer",
        '"value": (1 if _has_battery else 0)' in src)
 
