@@ -80,9 +80,11 @@ check("  from the shared picker, not a second fetch",
   /ppLoad\(/.test(PG) && !/\/catalog\/products/.test(PG));
 check("  and the picker is the thing that fetches",
   /\/catalog\/products/.test(codeOnly(read("static/js/productpicker.js"))));
-// A picker of four hundred rows is a scrollbar nobody uses, and a silent cap
-// reads as "that is all there is".
-check("  capped, and it says so", /slice\(0, 60\)/.test(PG) && /Showing 60 of/.test(PG));
+// EVERY PRODUCT IS LISTED (owner, 30 Sep 2026: "i want to see all in the list").
+// It was capped at 60 with a note; with 133 products that hid more than half.
+check("  every product is listed, no cap", /items\.forEach\(/.test(PG) && !/slice\(0, 60\)/.test(PG)
+      && !/Showing 60 of/.test(PG));
+check("  and pictures load only as they scroll into view", /loading="lazy"/.test(PG));
 check("the chosen product is named", /imgp_which/.test(PG));
 
 console.log("== the picker does not scroll away ==");
