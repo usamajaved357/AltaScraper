@@ -237,11 +237,7 @@ def push_patches(creds, mkt, seller_id, sku, marketplace_id, product_type, patch
     res = _al.patch(creds, mkt, seller_id, sku, marketplace_id, product_type, patches,
                     issue_locale=("en_US" if str(mkt).upper() == "US" else "en_GB"))
     if res.get("status") != _al.OK:
-        why = res.get("error") or rejected
-        if res.get("issues"):
-            why += " -- " + "; ".join(
-                str(i.get("message") or "")[:issue_width] for i in res["issues"][:3])
-        return False, why, ""
+        return False, _al.refusal_text(res, rejected, issue_width), ""
     return True, "", res.get("submission_id")
 
 

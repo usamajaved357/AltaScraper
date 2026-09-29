@@ -465,10 +465,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                         [_img.build_patch(slot, url, mkt_id)],
                         issue_locale=("en_US" if mkt == "US" else "en_GB"))
         if res["status"] != _al.OK:
-            why = res["error"] or "Amazon rejected it"
-            if res["issues"]:
-                why += " -- " + "; ".join(str(i.get("message") or "")[:140]
-                                          for i in res["issues"][:3])
+            why = _al.refusal_text(res, "Amazon rejected it")   # the one wording
             return jsonify({"ok": False, "error": why}), 502
         return jsonify({"ok": True, "slot": slot, "sku": sku,
                         "submission_id": res["submission_id"],
@@ -721,10 +718,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         res = _al.put(creds, mkt, seller, parent_sku, mkt_id, pt, pattrs,
                       issue_locale=locale)
         if res["status"] != _al.OK:
-            why = res["error"] or "Amazon rejected the parent"
-            if res["issues"]:
-                why += " -- " + "; ".join(str(i.get("message") or "")[:140]
-                                          for i in res["issues"][:3])
+            why = _al.refusal_text(res, "Amazon rejected the parent")   # the one wording
             # Nothing else is sent. Half a family is the state Amazon accepts in
             # silence and which makes the products disappear from search.
             return jsonify({"ok": False, "stage": "parent", "error": why,
@@ -740,10 +734,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                 done.append(c["sku"])
             else:
                 failed.append({"sku": c["sku"],
-                               "error": (r["error"] or "rejected") + (
-                                   " -- " + "; ".join(str(i.get("message") or "")[:120]
-                                                      for i in r["issues"][:2])
-                                   if r["issues"] else "")})
+                               "error": _al.refusal_text(r, "rejected", width=120, count=2)})
 
         return jsonify({"ok": not failed, "stage": "children",
                         "parent_sku": parent_sku,

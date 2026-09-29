@@ -224,11 +224,11 @@ change needs it, via register injection.
 - FIXED 29 Sep 2026: getOrderItems was read in four places, only one following
   NextToken; now api/amazon_orders.order_items_raw is the one read
   (test_order_items_one_read.py).
-- **The "send a patch, word Amazon's refusal" code is shared for PRICE writes
-  only** (domain/source_apply.push_patches). The image pushes in
-  routes/listing_routes.py (~805) and routes/variations_routes.py (~463, ~722,
-  ~737) still write it out, with "Amazon rejected it"/140 and `mkt == "US"`.
-  Folding them in is a follow-up (change review, 29 Sep 2026).
+- PARTLY FIXED 29 Sep 2026: every write that reports a refusal now words it
+  through api/amazon_listings.refusal_text (price sends, the listing and
+  variation image pushes, the variation parent and children). The image and
+  variation sends still build their own `issue_locale` with `mkt == "US"`
+  (not upper-cased) -- harmless while routes/scope upper-cases the marketplace.
 - **"Account id -> credentials" has a third copy** in domain/amazon_fees._creds_for
   (finds the account with accounts.get_account and returns an error tuple)
   beside domain/source_apply.seller_creds (a loop, raises). Read

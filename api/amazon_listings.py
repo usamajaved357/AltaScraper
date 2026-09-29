@@ -443,3 +443,19 @@ def patch(creds, marketplace, seller_id, sku, marketplace_id, product_type,
     if out["status"] != OK and not out["error"]:
         out["error"] = "Amazon answered %s" % (out["amazon_status"] or "nothing")
     return out
+
+def refusal_text(res, default, width=140, count=3):
+    """A refused put/patch in words: the error, else `default`, then Amazon's own
+    issue messages -- the first `count`, each cut at `width` characters.
+
+    ONE wording for every write that reports a refusal (price sends, image
+    pushes, variation families), each keeping its own default, width and count
+    so no message changed when they were joined (29 Sep 2026). Amazon's words,
+    never a paraphrase (Rule 4).
+    """
+    res = res or {}
+    why = res.get("error") or default
+    issues = res.get("issues") or []
+    if issues:
+        why += " -- " + "; ".join(str(i.get("message") or "")[:width] for i in issues[:count])
+    return why

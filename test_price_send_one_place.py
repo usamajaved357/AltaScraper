@@ -73,6 +73,25 @@ for n in ("price_routes", "sourcing_routes"):
     check("%s calls amazon_listings.patch by hand nowhere" % n, re.findall(r"_al\.patch\(", SRC[n]), [])
 check("source_apply calls it once (inside push_patches)", SRC["source_apply"].count("_al.patch("), 1)
 
+print("\n== one wording for a refused write (api/amazon_listings.refusal_text) ==")
+res = {"error": "", "issues": [{"message": "m" * 200}, {"message": "two"}, {"message": "three"}]}
+check("error missing -> default, then issues", AL.refusal_text(res, "Amazon rejected it"),
+      "Amazon rejected it -- " + "m" * 140 + "; two; three")
+check("  the variation children keep their width and count",
+      AL.refusal_text(res, "rejected", width=120, count=2), "rejected -- " + "m" * 120 + "; two")
+check("an error wins over the default, with no issues it stands alone",
+      AL.refusal_text({"error": "throttled", "issues": []}, "x"), "throttled")
+LR = open(os.path.join(HERE, "routes", "listing_routes.py"), encoding="utf-8").read()
+VR = open(os.path.join(HERE, "routes", "variations_routes.py"), encoding="utf-8").read()
+check("the listing image push uses it", '_al.refusal_text(res, "Amazon rejected it")' in LR, True)
+check("the variation image push and parent use it (2)", VR.count('_al.refusal_text(res, "Amazon rejected'), 2)
+check("the variation children use it", '_al.refusal_text(r, "rejected", width=120, count=2)' in VR, True)
+check("the price send uses it", "_al.refusal_text(res, rejected, issue_width)" in SRC["source_apply"], True)
+check("no route words Amazon's issues by hand any more",
+      [n for n, s in (("listing_routes", LR), ("variations_routes", VR), ("price_routes", SRC["price_routes"]),
+                      ("sourcing_routes", SRC["sourcing_routes"]))
+       if re.search(r'i\.get\("message"\) or ""\)\[:1[24]0\]', s)], [])
+
 print("\n== one credential lookup for the repricer (F7) ==")
 from domain import accounts as ACC             # noqa: E402
 ACC.account_creds = lambda a: {"token": a.get("id")}

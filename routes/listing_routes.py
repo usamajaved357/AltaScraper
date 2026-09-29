@@ -805,10 +805,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         res = _al.patch(creds, mkt, seller, sku, mid, ptype or "PRODUCT", patches,
                         issue_locale=("en_US" if mkt == "US" else "en_GB"))
         if res["status"] != _al.OK:
-            why = res["error"] or "Amazon rejected it"
-            if res["issues"]:
-                why += " -- " + "; ".join(str(i.get("message") or "")[:140]
-                                          for i in res["issues"][:3])
+            why = _al.refusal_text(res, "Amazon rejected it")   # the one wording
             return jsonify({"ok": False, "error": why,
                             "status": res["amazon_status"], "issues": res["issues"],
                             "public_url": public_url}), 502
