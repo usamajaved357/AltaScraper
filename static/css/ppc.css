@@ -235,9 +235,11 @@
   display: inline-block; font-size: 11px; font-weight: 700;
   padding: 3px 14px; border-radius: 4px; text-transform: uppercase;
 }
-.ppc-badge.broad{  background: var(--ppc-orange-bg); color: var(--ppc-orange); }
-.ppc-badge.phrase{ background: var(--ppc-green-bg);  color: var(--ppc-green); }
-.ppc-badge.exact{  background: var(--ppc-cyan-bg);   color: var(--ppc-cyan); }
+/* Match types wear Campaign Analytics' colours (owner, 29 Sep 2026): exact red,
+   phrase blue, broad teal -- the --as-viz-* tokens, so both screens agree. */
+.ppc-badge.broad{  background: color-mix(in srgb, var(--as-viz-broad) 18%, transparent);  color: var(--as-viz-broad); }
+.ppc-badge.phrase{ background: color-mix(in srgb, var(--as-viz-phrase) 18%, transparent); color: var(--as-viz-phrase); }
+.ppc-badge.exact{  background: color-mix(in srgb, var(--as-viz-exact) 18%, transparent);  color: var(--as-viz-exact); }
 .ppc-badge.plain{
   background: transparent; color: var(--ppc-dim);
   font-size: 11px; font-weight: 400; padding: 0;

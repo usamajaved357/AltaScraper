@@ -389,7 +389,7 @@ function ppctSummary(rows, cur, ch){
     + '</div>';
 }
 
-/* Match type, exactly as the mockup colours it: transparent tints for the three
+/* Match type, in Campaign Analytics' colours (ppc.css): transparent tints for the three
  * real match types, plain dim text for the long targeting names, and a small PT
  * pill when the term is an ASIN rather than something anybody typed. */
 function ppctMatchBadge(m, isPt){

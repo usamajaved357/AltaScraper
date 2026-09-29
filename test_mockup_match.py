@@ -220,7 +220,7 @@ check("  and the sub-label's", "font-size:11px" in rule(LR, ".inv-head .th-sub{"
 for sel, w in ((".col-cb{", "28px"), (".col-status{", "100px"),
                (".col-perf{", "120px"), (".col-inv{", "110px"),
                (".col-price{", "145px"), (".col-fees{", "105px"),
-               (".col-actions{", "24px")):
+               (".col-actions{", "96px")):  # 96px since 29 Sep 2026: Review + dots (owner)
     truthy("%s is still %s" % (sel.strip("{"), w), "width:" + w in rule(LR, sel))
 falsy("no horizontal scroll was added to the wrapper",
       re.search(r"overflow-x:\s*(auto|scroll)", rule(LR, ".lrwrap{")) is not None)

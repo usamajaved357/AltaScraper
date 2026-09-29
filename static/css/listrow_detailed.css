@@ -130,7 +130,9 @@
 .col-inv{ width:110px; white-space:nowrap; }
 .col-price{ width:145px; white-space:nowrap; }
 .col-fees{ width:105px; white-space:nowrap; }
-.col-actions{ width:24px; text-align:center; }
+/* 96px: Review + the dots (owner, 29 Sep 2026); was 24px for the dots alone. */
+.col-actions{ width:96px; text-align:center; white-space:nowrap; }
+.col-actions .lr-review{ padding:4px 10px; font-size:12px; margin-right:4px; vertical-align:middle; }
 
 /* NO TRANSITION ON THE ROW, and the hover paints the CELLS.
  *

@@ -1440,6 +1440,12 @@ function detailedRow(r, isChild){
         // dots here open drawerMore(), the overflow menu that already holds
         // these actions, so nothing is reimplemented (Rule 12).
     + '<td class="col-actions" onclick="event.stopPropagation()">'
+    // REVIEW, as in the table and card views (owner, 29 Sep 2026: "yes
+    // detailed listing view i agree"). Every row here is one this app holds,
+    // so it always has a draft to review; it opens exactly what the row click
+    // opens (openListing).
+    +   '<button type="button" class="btn primary lr-review" title="Open this listing\'s product page"'
+    +   ' onclick="openListing(' + jsArg(r.sku) + ')">Review</button>'
     // A BUTTON, not a bare icon: an <i> cannot be reached with Tab, so this
     // menu was mouse-only. The look is unchanged (listrow_detailed.css).
     +   '<button type="button" class="act-dots" title="Everything else" aria-label="More actions"'

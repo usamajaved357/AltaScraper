@@ -86,6 +86,24 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 
 ## UI
 
+- **29 Sep 2026 — Direction A's five open design questions answered.** Owner:
+  "yes aways visible but you can addthe option to hide but use new ddesign from
+  the mockup we decided, yes app should ope on the new home screen, yes change
+  the light theme from hardcored onto shared colors, yes match search term
+  badges how you suggested, yes detailed listing view i agree". So:
+  1. **Navigation is an always-visible icon rail** (prototype A,
+     prototypes/design-review/A-cockpit.html), with a control to hide it.
+     SUPERSEDES "Navigation is an overlay sidebar at every width".
+  2. **The app opens on a Home screen** (prototype A's queue board: counts you
+     can clear, each opening the filtered screen; then this window's figures).
+  3. **Hard-coded colours move onto the shared colour tokens so light mode can
+     be offered** -- including the listing drawer's literal hex. SUPERSEDES the
+     29 Aug 2026 drawer-hex entry below for colour VALUES; its folded panels,
+     layout and behaviour are unchanged. The PDP layout stays locked (28 Sep).
+  4. **Search terms badges use Campaign Analytics' match-type colours**
+     (exact red, phrase blue, broad teal, auto pink).
+  5. **The detailed Listings view gets a Review button** like the other two.
+  Source: owner answer, 29 Sep 2026.
 - **28 Sep 2026 — The product page (PDP) is not to be redesigned.** "i love my
   current pdp page i will not change it". Rules out PDP changes in any design
   option.
