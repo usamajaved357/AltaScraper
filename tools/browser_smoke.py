@@ -37,7 +37,7 @@ SCREENS = ("listings sales traffic hourly orders returns finance inventory weekl
            "kwhistory ranktracker trackers alerts monitor ppc ppcanalytics ppcterms "
            "ppccampaigns ppclive drppc drppcconsole asinstudio imagelib imagerefs "
            "imagestudio uploads variations sellerimport reimbursements brief "
-           "aiusage notify permissions setup sync miles").split()
+           "aiusage notify permissions team setup sync miles").split()
 
 # Requests that name no account ON PURPOSE, each checked against its route
 # (28 Sep 2026): none reads the server's open account. Anything else a tab asks
@@ -74,6 +74,21 @@ def _copy_sandbox(dst):
         src.backup(out)
         out.close()
         src.close()
+
+
+def _seed_team(tmp):
+    """Two made-up team members in the TEMPORARY copy, so the Team screen is
+    checked with people on it. Invited only -- no password -- so the app stays
+    in its no-login setup mode (auth/users.is_bootstrap) and nothing else in
+    this run changes."""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from auth import users as _u
+    cp = os.path.join(tmp, "config.json")
+    _u.create_user(cp, "ali.lister@example.test", name="Ali (test)", role="lister",
+                   workspaces=["*"])
+    _u.create_user(cp, "sara.viewer@example.test", name="Sara (test)", role="viewer",
+                   workspaces=[])
+    assert _u.is_bootstrap(cp), "seeding the team must not turn on the login"
 
 
 # Data that exists in ONE account only, so a screen showing it under the other
@@ -271,6 +286,7 @@ def main(argv):
     cwd = os.getcwd()
     try:
         _copy_sandbox(tmp)
+        _seed_team(tmp)
         os.chdir(tmp)      # anything written relative to the cwd lands in the copy
         srv, base = _serve(tmp)
         log = {"page_errors": [], "console_errors": [], "server_5xx": [], "client_4xx": {},
@@ -339,6 +355,19 @@ def main(argv):
                 for sec in screens:
                     cur["where"] = "%s:%s" % (tag, sec)
                     _visit(page, sec, log, shots, tag)
+                    if sec == "team":
+                        # TEAM DRAWS ITS LIST (read.txt Priority 3): not stuck
+                        # on "Loading", not an error, and the summary/filter
+                        # agree with the rows drawn.
+                        log.setdefault("team", {})[tag] = page.evaluate("""() => {
+                          const b = document.getElementById('teambody');
+                          if (!b) return {drawn: false, why: 'no #teambody'};
+                          const t = b.innerText || '';
+                          const rows = b.querySelectorAll('tr[data-team-id]').length;
+                          return {drawn: !/Loading|Could not load/.test(t) && (rows > 0 || /Nobody added yet/.test(t)),
+                                  rows: rows, add_form: !!document.getElementById('nu_email'),
+                                  summary: (document.getElementById('team_summary') || {}).textContent || ''};
+                        }""")
                     if _marks_on(page, tag):
                         log["marker_seen_in_own_account"].append(cur["where"])
                     for m in _marks_on(page, other):
@@ -429,7 +458,7 @@ def main(argv):
                             ce.dispatchEvent(ev);
                             return !ev.defaultPrevented; }""")
                         # A modal opened OVER the page keeps the keyboard.
-                        page.evaluate("() => { try { openUsers(); } catch (e) {} }")
+                        page.evaluate("() => { try { document.getElementById('usersmodal').classList.add('open'); } catch (e) {} }")
                         page.wait_for_timeout(300)
                         over = 0
                         for _ in range(12):
@@ -479,10 +508,13 @@ def main(argv):
 
             # THE OLDER MODALS (.modalwrap), via the Users dialog: named a
             # dialog, focus moves in, Tab stays in, focus returns on close.
+            # Opened by its CLASS, not openUsers(): the Users button now opens
+            # the Team screen (29 Sep 2026). What is under test is dialog.js's
+            # one watcher, the same for every .modalwrap.
             cur["where"] = "modal keyboard"
             try:
                 page.evaluate("() => { const b=document.querySelector('.skiplink'); if(b) b.focus(); }")
-                page.evaluate("() => { try { openUsers(); } catch (e) {} }")
+                page.evaluate("() => { try { document.getElementById('usersmodal').classList.add('open'); } catch (e) {} }")
                 page.wait_for_timeout(400)
                 mk = {"role": page.evaluate("() => { const m=document.querySelector('#usersmodal .modal')||document.getElementById('usersmodal'); return m && m.getAttribute('role'); }"),
                       "focus_inside": page.evaluate("() => { const m=document.getElementById('usersmodal'); return !!(m && m.contains(document.activeElement)); }")}

@@ -82,6 +82,41 @@ docs/changelog.md when it deploys. Claude maintains this file automatically.
   (docs/proposals/liked-pages-anatomy.md). Recorded, NOT restyled -- design
   work is parked by the owner (28 Sep 2026).
 
+## Left open from the Team slice 1 reviews (29 Sep 2026)
+
+Fixed in the slice: Team gated by manage_users alone (users.js SECTION_PERMISSION /
+sectionLevel, matching guard `/users`); unknown account ids shown, never dropped;
+summary cleared on loading/error; "Invite expired" filter; one `_rolePreset`.
+Left open (READ by the reviewers, not fixed):
+- **Inherit + role (low, server, pre-existing).** `auth/users.py` feature_level
+  checks ROLE_FEATURES[role][page] before the parent area, so a page set to
+  "Inherit (sales)" resolves to the ROLE's level, not the parent's the editor
+  shows. The new role picker makes this reachable on existing people.
+- **A stored user with no role becomes "viewer" on the next save (low).**
+  `public()` reports a missing role as viewer; feature_level treated it as
+  lister. Only hand-edited/legacy records; not checked whether any exist.
+- **Two editors for page access (owner decision).** Team's editor still has
+  "What may they SEE?" and accounts; User permissions edits the same settings as
+  a grid. Wording now says both do; trimming one is a behaviour change.
+- **Team / User permissions nav icons nearly identical** (`ti-users` above
+  `ti-users-group`); changing the permissions icon needs the owner's OK.
+- **"Which workspaces?"** in the add form / editor vs "Accounts" on the rows.
+- **`#usersmodal` markup is now unreachable** on the dashboard (the Users button
+  opens Team); browser_smoke opens it by class to test dialog.js. Deleting it
+  needs approval.
+- Permission badges are `db-chip`, so mobile.css gives them a 34px min height on
+  phones (older code; not visually verified).
+
+## Wrong "who did it" (found 29 Sep 2026 while designing the activity log)
+- `routes/drppc_console_routes.py:63-69` `_who()` calls `auth.guard.current_user()`,
+  which does not exist; the except swallows it, so Dr PPC settings/plans/rules/
+  events store who = "". CONFIRMED by reading.
+- `routes/sourcing_routes.py:963` reads `session.get("user")`, never set, so a
+  manual repricer price records manual_by "". CONFIRMED by reading.
+- `dashboard.py:237` reads `session.get("email")`, never set; the selfcheck error
+  log falls back to the uid. CONFIRMED by reading.
+The central activity log (Employee Performance) resolves the actor one way for all.
+
 ## Fixed on the development branch, NOT yet in production
 
 On `claude-environment-setup` (local, not merged or deployed — production still

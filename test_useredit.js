@@ -223,7 +223,10 @@ function domSandbox(listJson) {
 
   // --- the list of people, with its four buttons per row ---
   await vm.runInContext("renderUsers()", s);
-  const listHtml = nodes["usersbody"].innerHTML;
+  // The list draws into the Team screen (#teambody) when there is one, else the
+  // old modal's #usersbody (29 Sep 2026: Team is where people are managed).
+  // This fake DOM has every id, so Team wins, as it does on the real page.
+  const listHtml = (nodes["teambody"] || nodes["usersbody"]).innerHTML;
   const rowHandlers = handlersIn(listHtml);
   check("the user list drew its buttons", rowHandlers.length > 0, true);
   rowHandlers.forEach(function (h) {

@@ -1296,6 +1296,7 @@ function navTo(sec){
   if(sec==="imagelib"){ if(typeof imagelibOnOpen==="function") imagelibOnOpen(); }
   if(sec==="uploads"){ if(typeof uploadsOnOpen==="function") uploadsOnOpen(); }
   if(sec==="permissions"){ if(typeof permissionsOnOpen==="function") permissionsOnOpen(); }
+  if(sec==="team"){ if(typeof teamOnOpen==="function") teamOnOpen(); }
   // studioPickerOnOpen draws the product picker and then calls
   // imagestudioOnOpen itself, so the Studio works with nothing chosen -- it no
   // longer has to be entered from Listings.
@@ -1386,7 +1387,7 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup",
                        "weekly","daily","orders","returns","variations","sellerimport",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
-                       "compliance","categories","drppc","permissions",
+                       "compliance","categories","drppc","permissions","team",
                        // The three advertising screens. One computation layer
                        // behind all three (domain/ppc_analytics.py).
                        "ppcanalytics","ppcterms","ppccampaigns","ppclive",
