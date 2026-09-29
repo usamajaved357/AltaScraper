@@ -37,7 +37,7 @@ SCREENS = ("listings sales traffic hourly orders returns finance inventory weekl
            "kwhistory ranktracker trackers alerts monitor ppc ppcanalytics ppcterms "
            "ppccampaigns ppclive drppc drppcconsole asinstudio imagelib imagerefs "
            "imagestudio uploads variations sellerimport reimbursements brief "
-           "aiusage notify permissions team setup sync miles").split()
+           "aiusage notify permissions team performance setup sync miles").split()
 
 # Requests that name no account ON PURPOSE, each checked against its route
 # (28 Sep 2026): none reads the server's open account. Anything else a tab asks
@@ -46,6 +46,10 @@ SCREENS = ("listings sales traffic hourly orders returns finance inventory weekl
 GLOBAL_OK = {
     "/accounts/list": "the account list itself (filtered by who may see it)",
     "/users/list": "the user list",
+    # Employee Performance is team-wide like AI spend; domain/activity limits the
+    # rows to the viewer's accounts, and the Account filter adds ?account=.
+    "/activity/summary": "team-wide, limited server-side to the viewer's accounts",
+    "/activity/list": "team-wide, limited server-side to the viewer's accounts",
     "/brand/list": "brands across accounts",
     "/sync/capabilities": "one row per visible account",
     "/monitor/overview": "the ASIN monitor is app-wide",
@@ -84,11 +88,24 @@ def _seed_team(tmp):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from auth import users as _u
     cp = os.path.join(tmp, "config.json")
-    _u.create_user(cp, "ali.lister@example.test", name="Ali (test)", role="lister",
-                   workspaces=["*"])
+    ali = _u.create_user(cp, "ali.lister@example.test", name="Ali (test)", role="lister",
+                         workspaces=["*"])[0]["id"]
     _u.create_user(cp, "sara.viewer@example.test", name="Sara (test)", role="viewer",
                    workspaces=[])
     assert _u.is_bootstrap(cp), "seeding the team must not turn on the login"
+    # A little recorded work, so Employee Performance is checked with a summary
+    # on it -- ONLY into the temporary copy, checked the way _serve checks it.
+    os.environ.pop("ALTASCRAPER_DB", None)
+    from data.db import db_path as _dbp
+    if not os.path.abspath(_dbp(cp)).lower().startswith(os.path.abspath(tmp).lower()):
+        raise SystemExit("STOP: seeding would write outside the temporary copy")
+    from domain import activity as _act
+    for action, cat, n, ok in (("listing.edit", "listings", 1, True),
+                               ("image.generate", "images", 4, True),
+                               ("amazon.submit", "amazon", 2, False)):
+        _act.record(cp, action, category=cat, workspace_id="dev_test_a", marketplace="UK",
+                    entity_type="sku", entity_id="ZZ-TEST-1" if n == 1 else "",
+                    entity_count=n, ok=ok, summary="Seeded: " + action, user_id=ali)
 
 
 # Data that exists in ONE account only, so a screen showing it under the other
@@ -367,6 +384,20 @@ def main(argv):
                           return {drawn: !/Loading|Could not load/.test(t) && (rows > 0 || /Nobody added yet/.test(t)),
                                   rows: rows, add_form: !!document.getElementById('nu_email'),
                                   summary: (document.getElementById('team_summary') || {}).textContent || ''};
+                        }""")
+                    if sec == "performance":
+                        # EMPLOYEE PERFORMANCE DRAWS: the period buttons, and a
+                        # summary or the empty state -- never stuck on Loading,
+                        # never an error.
+                        page.wait_for_timeout(400)
+                        log.setdefault("performance", {})[tag] = page.evaluate("""() => {
+                          const b = document.getElementById('perf_body');
+                          if (!b) return {drawn: false, why: 'no #perf_body'};
+                          const t = b.innerText || '';
+                          return {drawn: !/Loading/.test(t) && !b.querySelector('.ui-error'),
+                                  periods: document.querySelectorAll('#perf_periods .segbtn').length,
+                                  people_rows: b.querySelectorAll('tbody tr').length,
+                                  empty: /No recorded work/.test(t), text: t.slice(0, 120)};
                         }""")
                     if _marks_on(page, tag):
                         log["marker_seen_in_own_account"].append(cur["where"])

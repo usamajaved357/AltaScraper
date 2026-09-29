@@ -99,7 +99,26 @@ for generate, retry, export, regen, api (preview), api submit and api verify.
      `BODY_RULES` (e.g. `/preview/enqueue` with `mode: api_submit` needs
      "publish")
 - Roles (`auth/users.py`): owner (everything), manager (edit, upload_images,
-  approve_delete, publish, ppc), lister (edit, upload_images), viewer (none).
+  approve_delete, publish, ppc, view_activity), lister (edit, upload_images),
+  viewer (none). A permission added later reaches existing records through their
+  ROLE via `LATER_PERMISSIONS` (v2 upload_images, v3 view_activity).
+- Screens gated by a PERMISSION rather than a page level: `users.js
+  SECTION_PERMISSION` (team -> manage_users, performance -> view_activity),
+  decided by `sectionLevel()` for the nav, the door check and read-only marks.
+- **Activity / audit log (29 Sep 2026)** -- who did what, one system:
+  `routes/activity_routes.py` registers ONE `after_request` hook; it asks
+  `domain/activity_catalog.py` whether the request is catalogued work (writes,
+  plus the `/run/generate|regen|retry|api_submit` GETs), skips anything the
+  doorman did not admit (3xx/401/503, signed out, another site), and records it
+  through `domain/activity.py` (table `activity_log`; only writer and reader).
+  The account comes from the guard's own `named_workspaces`; several accounts
+  -> filed under none. Stored: who (`job_owner.person`, the one "who is this"
+  lookup), account, marketplace, kind, entity, count, sentence, ok / refused,
+  redacted detail (field NAMES; values only for a short safe list; file names,
+  never content; secret-named keys dropped). Reads: `/activity/summary|list`
+  (view_activity), limited to the viewer's accounts; the Employee Performance
+  screen (`performance.js`). A new write route is recorded by adding one
+  catalogue line, never by feature code.
 - **A new route that publishes, spends money, deletes or exposes credentials
   must be added to RULES**, specific path above its broader prefix.
   (memory: permission-table)

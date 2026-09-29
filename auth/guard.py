@@ -62,6 +62,11 @@ RULES = [
     #    it is exempted before the broader /users rule.
     ("/users/me",                       None),
     ("/users",                          "manage_users"),
+    # -- Employee Performance: what EVERY team member did. Reads, but reads of
+    #    other people's work, so they need their own permission (owner and
+    #    manager presets). domain/activity.py also limits the rows to the
+    #    accounts the viewer may open.
+    ("/activity",                       "view_activity"),
 
     # -- credentials and settings. /accounts/list and /accounts/select are the
     #    two everyone needs just to open a workspace, so they are exempted here

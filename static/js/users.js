@@ -177,6 +177,9 @@ const SECTION_FEATURE = {
   // Team (29 Sep 2026) is listed for the coverage test, but it is decided by
   // SECTION_PERMISSION below (manage_users), not by this page level.
   team:"permissions",
+  // Employee Performance: listed for the coverage test; decided by
+  // SECTION_PERMISSION (view_activity), like /activity in auth/guard.py.
+  performance:"permissions",
   // Phase 1 analytics. Mapped ON ARRIVAL rather than left to be noticed later:
   // an unmapped section is never hidden, and that default is what let /brief
   // show revenue to a user with sales="none". These read Brand Analytics --
@@ -205,7 +208,7 @@ function featureLevel(feat){
 // somebody given "manage users" gets Team even if their "accounts" area is none
 // (a lister's preset), and somebody without it never sees Team, whatever their
 // page levels say. Listed here, a section ignores SECTION_FEATURE.
-const SECTION_PERMISSION = { team: "manage_users" };
+const SECTION_PERMISSION = { team: "manage_users", performance: "view_activity" };
 
 // The one answer to "what may this person do with this screen":
 // "none" / "view" / "edit", or "" when the section is not mapped at all.

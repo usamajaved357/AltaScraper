@@ -1,0 +1,27 @@
+    <div id="sec_performance" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-activity"></i> Employee Performance</h2>
+        <div class="sub">What each team member did, counted from the app's own record of work, and whether each action worked. Only the accounts you can open are included.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="perfLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+      </div>
+      <div class="ui-toolbar" style="flex-wrap:wrap;gap:8px;margin:4px 0 10px">
+        <div id="perf_periods" role="group" aria-label="Period"></div>
+        <span id="perf_custom" hidden style="gap:6px;align-items:center;flex-wrap:wrap">
+          <label class="cc" style="font-size:12px">From <input class="rc-in" type="date" id="perf_from" onchange="perfLoad()" style="margin:0;width:auto"></label>
+          <label class="cc" style="font-size:12px">To <input class="rc-in" type="date" id="perf_to" onchange="perfLoad()" style="margin:0;width:auto"></label>
+        </span>
+        <span class="spacer"></span>
+        <select class="rc-in" id="perf_user" aria-label="Employee" onchange="perfUserChanged()" style="margin:0;width:auto"><option value="__all">Everyone</option></select>
+        <select class="rc-in" id="perf_account" aria-label="Account" onchange="perfAccountChanged()" style="margin:0;width:auto"><option value="">All my accounts</option></select>
+        <select class="rc-in" id="perf_mkt" aria-label="Marketplace" onchange="perfLoad()" style="margin:0;width:auto"><option value="">All marketplaces</option></select>
+        <select class="rc-in" id="perf_cat" aria-label="Kind of work" onchange="perfLoad()" style="margin:0;width:auto"><option value="">All kinds of work</option></select>
+        <select class="rc-in" id="perf_ok" aria-label="Result" onchange="perfLoad()" style="margin:0;width:auto">
+          <option value="">Worked or not</option>
+          <option value="1">Worked</option>
+          <option value="0">Failed or refused</option>
+        </select>
+      </div>
+      <div id="perf_body" style="padding:4px 0"></div>
+    </div>

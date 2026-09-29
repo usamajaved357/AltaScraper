@@ -39,6 +39,24 @@ def current():
         return UNOWNED
 
 
+def person(config_path, uid=None):
+    """WHO A USER ID IS: {"id", "name", "email"}, or {} when unknown.
+
+    The ONE lookup behind every "who did it" label (Rule 12): the upload
+    history (upload_log.uploader), the activity log (activity.person) and Dr
+    PPC's records all name people through this. `uid` None = the signed-in
+    user. Each caller chooses how to word the label; the lookup is shared."""
+    try:
+        uid = current() if uid is None else str(uid or "")
+        if not uid:
+            return {}
+        from auth import users
+        u = users.get_user(config_path, uid) or {}
+        return {"id": uid, "name": str(u.get("name") or ""), "email": str(u.get("email") or "")}
+    except Exception:
+        return {}
+
+
 def _is_manager(config_path):
     """Can the caller manage users? They see everything."""
     try:

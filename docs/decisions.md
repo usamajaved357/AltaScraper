@@ -170,6 +170,21 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   Source: memory secrets-in-git-history. (27 Sep 2026: no `backup/*` or
   `refs/original` refs remain in the local repo.)
 
+## Team and Employee Performance
+
+- **29 Sep 2026 — Team manages people; Employee Performance shows their work.**
+  "Team = manage employees. Employee Performance = see what work they did."
+  "Do NOT create a second user or permission system." "Do not invent a
+  performance score. Record objective work/activity evidence." "Only
+  appropriate owner/admin/manager roles should see employee-wide performance."
+  Implemented as the `view_activity` permission in the owner and manager
+  presets; the one activity log is described in docs/architecture.md §4.
+  Defaults Claude took where the rule is not yet stated (active/owner-review.md):
+  automatic Amazon checks are not counted as a person's work; refusals are
+  recorded as "refused"; edits keep the field name and the new value only;
+  records are kept for ever. Per-person marketplace limits: not built (no rule).
+  Source: roadmap, read.txt 29 Sep 2026 (active/roadmap-2026-09-29.md).
+
 ## Working agreements
 
 - **27 Sep 2026 — One long-running development branch.** `D:\AltaScraper-wt\claude-environment`

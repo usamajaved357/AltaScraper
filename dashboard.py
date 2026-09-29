@@ -3502,6 +3502,9 @@ def build_app(backend=None):
     _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
     import routes.users_routes as _users_routes
     _users_routes.register(app, CONFIG_PATH=CONFIG_PATH)
+    # Employee Performance: the one activity log's recorder and its reads.
+    import routes.activity_routes as _activity_routes
+    _activity_routes.register(app, CONFIG_PATH=CONFIG_PATH, APP_PASSWORD=_APP_PASSWORD)
 
     # Keep EVERY connected account+marketplace's live catalogue fresh, server-side.
     # The browser timer could only refresh the one workspace that happened to be

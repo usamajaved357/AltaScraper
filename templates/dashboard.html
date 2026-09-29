@@ -526,6 +526,7 @@
       </div>
       <div class="navkids">
         <a class="navitem" data-sec="team" href="#" onclick="return navGo(event,'team')" title="Everyone who can sign in: role, access, accounts, active or not"><i class="ti ti-users"></i> Team</a>
+        <a class="navitem" data-sec="performance" href="#" onclick="return navGo(event,'performance')" title="What each team member did, from the app's record of work: counts and a timeline"><i class="ti ti-activity"></i> Employee Performance</a>
         <a class="navitem" data-sec="permissions" href="#" onclick="return navGo(event,'permissions')" title="Who can open which accounts, and what they can do inside them"><i class="ti ti-users-group"></i> User permissions</a>
         <a class="navitem" data-sec="setup" id="nav_setup" href="#" onclick="return navGo(event,'setup')"><i class="ti ti-settings"></i> Brand setup</a>
         <!-- Called "Account & sheets" while a spreadsheet WAS the store. It is
@@ -721,6 +722,7 @@
          seventeen dropdowns each have to be opened to be read. -->
 {% include "screens/sec_permissions.html" %}
 {% include "screens/sec_team.html" %}
+{% include "screens/sec_performance.html" %}
 
     <!-- IMAGE LIBRARY, its own page.
          "i should not have to go from one page to another to just create
@@ -1131,6 +1133,8 @@
 <!-- User permissions, laid out the way Seller Central lays them out. -->
 <script src="/static/js/permissions.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/team.js?v={{ ASSET_V }}"></script>
+<!-- Employee Performance: reads the one activity log (domain/activity.py). -->
+<script src="/static/js/performance.js?v={{ ASSET_V }}"></script>
 <!-- What Generate would do, shown before you press it. -->
 <script src="/static/js/genplan.js?v={{ ASSET_V }}"></script>
 <!-- The fold that holds the drop zone and the queue above the drafts table.

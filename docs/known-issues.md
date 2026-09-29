@@ -115,7 +115,21 @@ Left open (READ by the reviewers, not fixed):
   manual repricer price records manual_by "". CONFIRMED by reading.
 - `dashboard.py:237` reads `session.get("email")`, never set; the selfcheck error
   log falls back to the uid. CONFIRMED by reading.
-The central activity log (Employee Performance) resolves the actor one way for all.
+The central activity log (Employee Performance) resolves the actor one way for all
+(`domain/job_owner.person`); these three still need moving onto it.
+
+## Activity log — left open (29 Sep 2026 reviews)
+- Some callers post a catalogued write naming NO account (`autofix.js` /edit,
+  `howworks.js` /approve; `_srcBody`'s `__all__`), so that work is filed under
+  no account and only a viewer of every account sees it. Existing Rule 14 gaps
+  in those callers, not in the log. READ.
+- Auto-fix posts /edit in its own loop, so its automatic edits count as edits by
+  whoever started it. READ, not traced further; owner may want them separate.
+- An upload's activity row does not link to its upload_log entry (no upload id
+  reaches the hook). READ.
+- The hook parses a JSON body again (third parse for large base64 uploads);
+  the insert happens before the reply is sent (busy_timeout 30s under a long
+  write lock). READ, low.
 
 ## Fixed on the development branch, NOT yet in production
 

@@ -53,14 +53,20 @@ PERMISSIONS = {
     "ppc":             "Change PPC campaigns, bids and budgets",
     "manage_accounts": "View and change Amazon credentials, accounts and settings",
     "manage_users":    "Add, change and remove users",
+    # Employee Performance (29 Sep 2026): "Only appropriate owner/admin/manager
+    # roles should see employee-wide performance." Seeing what EVERYONE did is
+    # its own permission, so it can be given to a manager without also letting
+    # them add or remove people.
+    "view_activity":   "See what each team member did (Employee Performance)",
 }
 
 # Roles are presets, not a separate mechanism -- picking a role fills in the
 # permission list, which remains individually editable afterwards.
 ROLES = {
     "owner":   ["edit", "upload_images", "approve_delete", "publish", "ppc",
-                "manage_accounts", "manage_users"],
-    "manager": ["edit", "upload_images", "approve_delete", "publish", "ppc"],
+                "manage_accounts", "manage_users", "view_activity"],
+    "manager": ["edit", "upload_images", "approve_delete", "publish", "ppc",
+                "view_activity"],
     # A lister keeps what they had: drafts and the image library. Take
     # upload_images away and they can still design images but not keep them;
     # take `edit` away and they can work on images without touching listings.
@@ -98,8 +104,11 @@ ROLES = {
 # stored list decides, exactly as before, so a deliberate removal still holds.
 # PERMS_VERSION stamps a record as soon as it is written by a version that
 # knows all of these, after which nothing is inferred at all.
-PERMS_VERSION = 2
-LATER_PERMISSIONS = {2: {"upload_images"}}
+PERMS_VERSION = 3
+LATER_PERMISSIONS = {2: {"upload_images"},
+                     # Every owner and manager written before Employee
+                     # Performance existed gets it from their role.
+                     3: {"view_activity"}}
 
 # ---- per-feature access, the way Amazon's child accounts work ------------
 # A permission answers "may they DO this?". It does not answer "may they SEE
