@@ -100,6 +100,9 @@ check("a value with no match returns empty, for the caller to keep the original"
 print("\n== the three rules the builder applies around it ==")
 SRC = open(os.path.join(HERE, "amazon_listing_generator.py"), encoding="utf-8").read()
 FN = SRC.split("def build_api_attributes(")[1].split("\ndef ")[0]
+# Plans B3/B4 (29 Sep 2026) moved builder phases, verbatim, into
+# listing/attributes_phases.py (the snapping loop is phase_pa_map); still the builder's code.
+FN += open(os.path.join(HERE, "listing", "attributes_phases.py"), encoding="utf-8").read()
 truthy("the builder snaps against the LIVE schema enum",
        "_snap = snap_to_valid(v, _allow)" in FN)
 # is_fragile's list is exactly True/False and 52 drafts answered it "No".
@@ -115,7 +118,7 @@ truthy("  but kept where Amazon DOES offer one",
 truthy("compliance fields are left alone",
        "f not in _COMPLIANCE_PASSTHROUGH" in FN)
 truthy("what was snapped is reported, not done silently",
-       "Snapped to Amazon's allowed values" in SRC)
+       "Snapped to Amazon's allowed values" in FN)   # moved with the loop (B4)
 
 print("\n%d failed" % len(fails))
 for f in fails:

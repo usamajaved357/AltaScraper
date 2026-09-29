@@ -97,10 +97,14 @@ not the whole payload. Before B1:
 | B6 | `build_api_attributes` becomes the ordered list of phase calls in `listing/builder.py` (CLAUDE.md's intended home); the engine re-exports it | medium |
 | B7 | (owner decision) the Rule 1 identifier pass | owner |
 
-Status (30 Sep 2026): B0 (330c007), B1+B2 (9e13f02) done. B3 done for the
+Status (29 Sep 2026): B0 (330c007), B1+B2 (9e13f02) done. B3 done for the
 text/brand/model/offer/fulfilment phase and the dimensions phase, moved
 verbatim to `listing/attributes_phases.py` (golden payloads byte-identical;
 payload-guardian PASS). Still in the engine between them, in order: images
 (needs `_fetchable`/`_is_ours`, which read `config` and print), list_price +
 shipping weight + merchant_shipping_group (needs the engine's
-`_shape_list_price`). B4-B6 not started; B7 is the owner's.
+`_shape_list_price`). B4 done: the pa-mapping phase (`phase_pa_map`) and the
+required-field backfill (`phase_required_backfill`, which returns the names it
+filled) moved verbatim the same way; the three `_cond_*` lines that open the
+conditionally-required safety net stayed with it. B5-B6 not started; B7 is the
+owner's.
