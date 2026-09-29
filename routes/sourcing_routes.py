@@ -538,7 +538,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             # 'live' is refused here on purpose. Phase D owns arming, and it will
             # require a min_price first -- the only guard that survives a
             # misread supplier cost.
-            _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
+            _repo.enrol(CONFIG_PATH, wsid, mkt, sku)   # new -> dry run; an armed SKU stays armed
             # ASK AMAZON ITS FEE NOW, while somebody is here to see it fail.
             #
             # The alternative is that the first price this SKU is ever given
@@ -801,7 +801,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                 rule = _sourcing.rule_with_defaults(
                     _repo.rule_for(CONFIG_PATH, wsid, mkt, sku))
                 if rule.get("min_price") is not None:
-                    _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="live")
+                    _repo.set_mode(CONFIG_PATH, wsid, mkt, sku, "live")
                     armed.append(sku)
 
         note = "%d min price%s updated" % (len(done), "" if len(done) == 1 else "s")
@@ -1124,7 +1124,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         have = {r["sku"] for r in _repo.enrolled(CONFIG_PATH, wsid, mkt)}
         for sku in skus:
             was = sku in have
-            _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
+            _repo.enrol(CONFIG_PATH, wsid, mkt, sku)   # new -> dry run; an armed SKU stays armed
             # The same default a single enrolment gets. "Track everything" is
             # how most SKUs arrive on this screen, so leaving it out here would
             # mean the setting only applied to the ones added one at a time.
@@ -1290,15 +1290,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         # one price or stock level, so this source could never produce a usable
         # reading -- it would sit in every sweep answering "could not tell", and
         # the repricer would correctly do nothing, silently, for ever.
+        # UNLESS ONLY ONE CAN BE MEANT (owner, 30 Sep 2026: a 3-variation
+        # listing with 2 out of stock has no ?var= and was refused). The one
+        # in-stock child is linked and said; several, or any unknown, come back
+        # as a list to pick from (domain/ebay_variation -- the one rule).
+        _link_note = ""
         if kind == "ebay" and not _ebay.variation_id_from_url(url):
             _c = _cfg() if callable(_cfg) else (_cfg or {})
             app_id = str(_c.get("ebay_app_id", "") or "")
             cert_id = str(_c.get("ebay_cert_id", "") or "")
             if app_id and cert_id:
-                probe = _ebay.get_item(url, app_id, cert_id,
-                                       marketplace=_ebay.site_for(mkt))
-                if probe["status"] == _ebay.GROUP:
-                    return jsonify({"ok": False, "error": probe["error"]}), 400
+                from domain import ebay_variation as _ev
+                res = _ev.resolve(url, app_id, cert_id, marketplace=_ebay.site_for(mkt))
+                if res.get("choose"):
+                    return jsonify({"ok": False, "choose": True, "error": res["error"],
+                                    "variations": res["variations"], "sku": sku}), 400
+                url = res.get("url") or url
+                _link_note = res.get("note") or ""
 
         # Not add_source: the same supplier link twice is two fetches of the same
         # answer on every sweep, and that supplier then counts twice in the
@@ -1309,9 +1317,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             priority=int(b.get("priority") or 100),
             shipping_override=b.get("shipping_override"))
         return jsonify({"ok": True, "id": sid, "created": created,
-                        "note": ("" if created else
-                                 "That link was already a source for this SKU, "
-                                 "so nothing was added.")})
+                        "url": url,
+                        "note": (" ".join(x for x in (
+                            _link_note,
+                            "" if created else
+                            "That link was already a source for this SKU, "
+                            "so nothing was added.") if x))})
 
     @app.route("/sourcing/source/update", methods=["POST"])
     def sourcing_source_update():
@@ -1319,12 +1330,21 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         sid = b.get("source_id")
         if not sid:
             return jsonify({"ok": False, "error": "no source"}), 400
+        wsid, mkt = _where()
+        if not _repo.source_belongs(CONFIG_PATH, sid, wsid, mkt):
+            return jsonify({"ok": False, "error": "no supplier of that id in this account"}), 404
+        ship = None
+        if "shipping_override" in b and b["shipping_override"] not in ("", None):
+            try:
+                ship = float(str(b["shipping_override"]).strip())
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "postage must be an amount, e.g. 2.99"}), 400
+            if ship < 0:
+                return jsonify({"ok": False, "error": "postage cannot be negative"}), 400
         if "enabled" in b:
             _repo.set_source_enabled(CONFIG_PATH, sid, bool(b["enabled"]))
         if "shipping_override" in b:
-            v = b["shipping_override"]
-            _repo.set_shipping_override(
-                CONFIG_PATH, sid, None if v in ("", None) else float(v))
+            _repo.set_shipping_override(CONFIG_PATH, sid, ship)
         return jsonify({"ok": True})
 
     @app.route("/sourcing/source/remove", methods=["POST"])
@@ -1332,6 +1352,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         b = _body()
         if not b.get("source_id"):
             return jsonify({"ok": False, "error": "no source"}), 400
+        wsid, mkt = _where()
+        if not _repo.source_belongs(CONFIG_PATH, b["source_id"], wsid, mkt):
+            return jsonify({"ok": False, "error": "no supplier of that id in this account"}), 404
         _repo.remove_source(CONFIG_PATH, b["source_id"])
         return jsonify({"ok": True})
 
@@ -1439,6 +1462,28 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         wsid, mkt = _where()
         vals = {k: v for k, v in (b.get("rule") or {}).items()
                 if k in _sourcing.DEFAULT_RULE}
+        # NOT THE PAGE'S TO SET: the fee rate, VAT and currency are measured or
+        # come from the account, and a value saved here overrode them per SKU
+        # (repricer review, 30 Sep 2026).
+        for _k in ("referral_rate", "vat_rate", "vat_unknown", "currency"):
+            vals.pop(_k, None)
+        # THE PLAIN NUMBERS MUST BE NUMBERS. Text or a negative saved here made
+        # decide() fail for that SKU on every run, so it was never priced.
+        for _k in ("stale_after_hours", "max_change_pct", "min_change",
+                   "in_stock_quantity", "handling_buffer_days", "max_dispatch_days",
+                   "min_profit", "min_roi_pct", "shipping_label", "ads_margin"):
+            if _k not in vals or vals[_k] in (None, ""):
+                continue
+            try:
+                _v = float(str(vals[_k]).strip())
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": (
+                    "%s must be a number -- got %r" % (_k.replace("_", " "), vals[_k]))}), 400
+            if _v < 0:
+                return jsonify({"ok": False, "error": (
+                    "%s cannot be negative" % _k.replace("_", " "))}), 400
+            vals[_k] = int(_v) if _k in ("in_stock_quantity", "handling_buffer_days",
+                                         "max_dispatch_days") and _v == int(_v) else _v
 
         # A MISTYPED TARGET MUST NOT LOOK LIKE NO TARGET.
         # A percentage that does not parse would store, fail every check inside
@@ -1558,6 +1603,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         merged = _sourcing.rule_with_defaults(
             {**_repo.rule_for(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip()),
              **vals})
+        # A MINIMUM ABOVE THE MAXIMUM has no price that keeps both; refused
+        # here rather than discovered by the next run (repricer review, 30 Sep).
+        _mn, _mx = merged.get("min_price"), merged.get("max_price")
+        if _mn is not None and _mx is not None and float(_mn) > float(_mx):
+            return jsonify({"ok": False, "error": (
+                "the minimum price %.2f is above the maximum %.2f -- no price "
+                "keeps both" % (float(_mn), float(_mx)))}), 400
         m_pct = merged.get("target_margin_pct")
         if m_pct is not None:
             # AFTER VAT, the same limit the pricing itself works to: margin is a
@@ -1608,7 +1660,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
         if not b.get("live"):
-            _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
+            _repo.set_mode(CONFIG_PATH, wsid, mkt, sku, "dry_run")
             return jsonify({"ok": True, "mode": "dry_run"})
 
         rule = _sourcing.rule_with_defaults(_repo.rule_for(CONFIG_PATH, wsid, mkt, sku))
@@ -1617,7 +1669,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                 "Set a minimum price for this SKU first. It is the one guard that "
                 "still works when a supplier's page is misread, so nothing is "
                 "armed without it.")}), 400
-        _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="live")
+        _repo.set_mode(CONFIG_PATH, wsid, mkt, sku, "live")
         return jsonify({"ok": True, "mode": "live",
                         "note": ("Armed. It will push at most one change every "
                                  "%.0f hours, and never below %.2f."

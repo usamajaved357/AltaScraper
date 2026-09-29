@@ -252,7 +252,11 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
             decision["fees"] = _fees.breakdown_for(
                 config_path, workspace_id, marketplace, current.get("asin"),
                 _at, is_fba=_is_fba(current),
-                currency=current.get("currency") or "GBP",
+                # The marketplace's own currency (current_for carries none, so
+                # US/EU fee panels were built in GBP; repricer review, 30 Sep).
+                currency=(current.get("currency") or rule.get("currency")
+                          or _sourcing.CURRENCY_FOR.get(str(marketplace or "").upper())
+                          or "GBP"),
                 rate=rule.get("referral_rate"), basis=rule.get("fee_basis") or "",
                 detail=rule.get("fee_detail") or "")
     except Exception:
