@@ -194,9 +194,10 @@ On an app row, `r.asin` is the **competitor reference** parsed from the SKU
 - **JSON files beside config.json:** users.json, app_state.json,
   cogs_overrides.json, live_snapshots.json, notify.json, trackers.json,
   categories.json, compliance_scans.json, asin_monitor*.json, miles_bundles*.json,
-  image_url_key and others (full list: docs/deployment-manifest.md §5;
-  run_status.json is NOT here -- it sits in the code folder,
-  listing/run_status.py). Some are written atomically
+  image_url_key and others (full list: docs/deployment-manifest.md §5), and
+  the run heartbeat, one file per account: `run_status.<account>.json`
+  (`run_status.json` for a run with no account), beside CONFIG_PATH since
+  29 Sep 2026 (listing/run_status.py). Some are written atomically
   (`domain/jsonstore.write_json_atomic`); several are truncated then rewritten.
 - **config.json:** `config/settings.py` `read_raw` / `write_raw` (atomic) is the
   single writer (the last direct writers -- accounts, known sellers, brand

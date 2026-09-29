@@ -28,42 +28,48 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         """Which account and marketplace this request is about.
 
         `account` is the standard spelling across the app; request_account.named
-        accepts `account_id` as well for the older callers. Falls back to the
-        open workspace, because a tracking number belongs to one order of one
-        account and there is no sensible all-accounts answer.
+        accepts `account_id` as well for the older callers.
+
+        THE ACCOUNT MUST BE NAMED (29 Sep 2026). This used to fall back to the
+        server's open account -- owned by whichever browser tab switched last --
+        so a tracking sheet read with no account named was filed under another
+        company's orders (CLAUDE.md Rule 14). Every browser caller names one
+        (ordertracking.js _otQS, orders.js _ordTrackWrite); with none, _need
+        refuses in words. Likewise the marketplace is the one asked for, else
+        the ACCOUNT's own -- never the server's last-selected one.
         """
+        from flask import g
+        from domain import order_scope as _osc
+        g.trk_refused = None
         b = request.get_json(silent=True) or {}
         aid = _req_acct.named(request) or str(b.get("account") or "").strip()
+        asked = (request.args.get("marketplace") or b.get("marketplace") or "").upper()
+        if asked == "__ALL__":
+            asked = ""
         if not aid:
-            aid = str((_state or {}).get("active_account_id", "") or "")
-        if not aid:
-            try:
-                aid = str((_active_account() or {}).get("id") or "")
-            except Exception:
-                aid = ""
-        mkt = (request.args.get("marketplace") or b.get("marketplace")
-               or _state.get("active_marketplace") or "").upper()
-        if aid and not mkt:
-            # The Orders page is not where a marketplace is chosen, so the
-            # global one is often unset there. The account's own default is the
-            # right answer and is never a guess -- it is where its orders came
-            # from. (The order-cost upload had this exact gap and refused every
-            # attempt with "need an account, marketplace and order".)
-            mkt = _account_marketplace(aid)
+            return "", ""
+        # THE SAME RULES AS THE OTHER ORDERS WRITES (domain/order_scope.py):
+        # an account this app has, and one of its own marketplaces -- the one
+        # asked for, else its default, which is where its orders came from.
+        # An account it does not have ("__all__" included) and a marketplace
+        # that is not the account's are refused, not filed somewhere.
+        acc = _osc.account(_cfg, aid)
+        if acc is None:
+            g.trk_refused = (jsonify({"ok": False, "error": (
+                "There is no account called %r in this app." % aid)}), 404)
+            return "", ""
+        mkt = _osc.marketplace(acc, asked)
+        if asked and not mkt:
+            g.trk_refused = (jsonify({"ok": False, "error": (
+                "That marketplace is not one of %s's, so nothing was done."
+                % (acc.get("label") or aid))}), 400)
+            return aid, ""
         return aid, mkt
 
-    def _account_marketplace(aid):
-        for a in ((_cfg() or {}).get("accounts") or []):
-            if str(a.get("id") or "") != aid:
-                continue
-            m = str(a.get("default_marketplace") or "").strip().upper()
-            if m:
-                return m
-            ms = a.get("marketplaces") or []
-            return str(ms[0]).upper() if ms else ""
-        return ""
-
     def _need(aid, mkt, what="that"):
+        from flask import g
+        if getattr(g, "trk_refused", None):
+            return g.trk_refused
         missing = [n for n, v in (("account", aid), ("marketplace", mkt)) if not v]
         if not missing:
             return None
@@ -228,6 +234,9 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         upload can safely treat a blank cell as "leave this alone".
         """
         aid, mkt = _scope()
+        from flask import g
+        if getattr(g, "trk_refused", None):
+            return g.trk_refused        # an account it lacks, or not its marketplace
         b = request.get_json(force=True) or {}
         oid = str(b.get("order_id") or "").strip()
         missing = [n for n, v in (("account", aid), ("marketplace", mkt),

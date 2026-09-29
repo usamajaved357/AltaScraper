@@ -100,7 +100,8 @@ it: dashboard.py:411-424).
 | `media/`, `uploads/`, `brands/*/profile.json`, `miles_templates/` | PERSISTENT | images, original uploaded files (kept for ever), brand profiles |
 | `live_snapshots.json`, `cogs_overrides.json`, `trackers.json`, `categories.json`, `compliance_scans.json`, `asin_monitor*.json`, `sync_*.json`, `model_number_counter.json`, `image_recipes.json`, `miles_*.json`, `marketplace_health.json` | PERSISTENT (some rebuildable) | model_number_counter must not go backwards |
 | `ppc_out/`, `inventory_out/cache`, `autofix_logs/`, `brand_analytics_cache/`, `.disk_history.json`, `config.json.bak-*` | GENERATED | safe to lose |
-| `run_status.json`, rule files (`compliance_rules.json`, `ip_rules.json`, `valid_values.json`, `forbidden_*.txt`, `miles_fonts/`) | GENERATED / in the image | code folder, recreated by each deploy |
+| `run_status.<account>.json` (`run_status.json` for a run with no account) | GENERATED, beside config.json since 29 Sep 2026 | the run heartbeat; safe to lose |
+| rule files (`compliance_rules.json`, `ip_rules.json`, `valid_values.json`, `forbidden_*.txt`, `miles_fonts/`) | GENERATED / in the image | code folder, recreated by each deploy |
 
 ## 6. Background work started at boot
 

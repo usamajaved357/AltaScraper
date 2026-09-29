@@ -121,10 +121,13 @@ The central activity log (Employee Performance) resolves the actor one way for a
 (`domain/job_owner.person` / `label`).
 
 ## Deployment — found in the 29 Sep 2026 audit
-- `run_status.json`: the generator writes it in the CODE folder
-  (listing/run_status.py:48; amazon_listing_generator.py passes no app_dir) but
-  routes/listing_routes.py reads it from the CONFIG folder. On the server (/app
-  vs /data) the reader may never see what the writer wrote. READ, not traced.
+- FIXED 29 Sep 2026 (dev branch): the run heartbeat was written in the CODE
+  folder and read from the CONFIG folder, so on the server the dashboard never
+  saw a run's pulse. It is now written beside CONFIG_PATH, ONE FILE PER ACCOUNT
+  (runs for different accounts go at the same time), and /run/health and
+  /run/stack read only the asking account's (test_run_status_location.py).
+  Still open: a relative CONFIG_PATH with a launcher that changes the working
+  folder (Miles) would write elsewhere -- absolute on Render, so not live.
 - `/healthz` checks nothing; `requirements.txt` is unpinned (manifest §10).
 
 ## Open account — left open after the 4G fixes (29 Sep 2026)
@@ -205,8 +208,13 @@ change needs it, via register injection.
   orders_routes._marketplace, tracking_routes._account_marketplace and
   routes/scope.marketplace. Its fallback equals orders_routes'; it adds "the
   asked marketplace must be one of the account's own". Folding the other three
-  onto it is the remaining fix (tracking_routes also falls back to the open
-  account, which order_scope never does).
+  onto it is the remaining fix. (FIXED 29 Sep 2026: tracking_routes no longer
+  falls back to the open account or marketplace and uses order_scope's
+  account/marketplace rules -- test_tracking_named_account.py.) Still open: the
+  tracking toolbar sends the tab's WS_MARKET while the Orders rows use the
+  account's default marketplace, and uses CUR_ACCOUNT, which enterWorkspace does
+  not clear (view workspaces); /tracking/refresh (a carrier call that may cost)
+  has no RULES entry -- owner's call.
 - **Dispatch to Amazon (/orders/ship/confirm) is built and OFF.** Turning it on
   or off is the owner's: config `ship_confirm_enabled: true` (read fresh on
   every send; no restart). Never sent for real yet; every carrier goes as

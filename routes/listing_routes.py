@@ -2998,12 +2998,16 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                             "stream_attached": False, "mine": 0,
                             "elsewhere": len(_all) - len(mine)})
 
+        # THIS ACCOUNT'S heartbeat (one file per account, listing/run_status),
+        # and the process handle only if it is that run's process: the last
+        # process started may be another account's.
+        _app_dir = os.path.dirname(os.path.abspath(CONFIG_PATH))
+        _hb_pid = (run_status.read(_app_dir, account=_acct) or {}).get("pid")
         proc = _running.get("proc")
         alive = None
-        if proc is not None:
+        if proc is not None and _hb_pid and proc.pid == _hb_pid:
             alive = (proc.poll() is None)   # the real handle beats a PID lookup
-        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)),
-                                   proc_alive=alive)
+        info = run_status.classify(app_dir=_app_dir, proc_alive=alive, account=_acct)
         info["stream_attached"] = bool(_running.get("on"))
         info["mine"] = len(mine)
         info["elsewhere"] = len(_all) - len(mine)
@@ -3019,11 +3023,13 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         This is exactly how both freezes were diagnosed. Read-only: py-spy
         samples the process from outside and never modifies or resumes it.
         """
-        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)))
-        pid = info.get("pid")
-        proc = _running.get("proc")
-        if proc is not None and proc.poll() is None:
-            pid = proc.pid
+        # ONLY THE RUN OF THE ACCOUNT ASKING. A stack dump carries SKUs; the
+        # last process started may be another account's, so the pid comes from
+        # this account's own heartbeat and nothing else (account-scope review,
+        # 29 Sep 2026).
+        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)),
+                                   account=_rqa.current(_state))
+        pid = info.get("pid") if info.get("state") in ("RUNNING", "STALLED") else None
         if not pid:
             return jsonify({"ok": False, "error": "no run process to inspect"})
 

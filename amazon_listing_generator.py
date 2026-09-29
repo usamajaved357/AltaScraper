@@ -6019,7 +6019,7 @@ async def main():
 
     # Heartbeat: from here on the run reports its own pulse to run_status.json,
     # independent of the log pipe, so the dashboard can tell RUNNING from STUCK.
-    run_status.start(total=total, mode=mode)
+    run_status.start(total=total, mode=mode, account=str(config.get("_account_id") or ""))
     run_status.install_console_heartbeat(console)
 
     for idx, row in enumerate(products, 1):
