@@ -146,9 +146,10 @@ open page (miles_template.js every 10 min, autoverify.js `/run/api_verify`).
 ## 9. Rollback
 
 - Code: the production commit before any change is recorded and tagged (see
-  docs/runbooks/backup-and-parallel-test.md). Rolling back = redeploy that commit
-  (Render "Rollback" to the previous deploy, or push the tag's commit to the
-  deploy branch — a push, so the owner's explicit instruction).
+  docs/runbooks/promotion-and-rollback.md: tag `prod-backup-2026-09-29`).
+  Rolling back = Render "Rollback" to the previous deploy, then `git revert -m 1`
+  of the promotion merge pushed to main (history kept) — a push, so the owner's
+  explicit instruction. Exact steps: promotion-and-rollback.md §4.
 - Data: restore the §5 files from the pre-change backup with the app stopped.
   The database schema changes on this branch are ADDITIVE only (new tables /
   columns), so an older build runs on a newer database; a newer build's new

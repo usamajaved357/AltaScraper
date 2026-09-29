@@ -16,15 +16,10 @@ Level 4).** Steps marked CLAUDE are local and reversible.
 
 ## 1. Code backup (git protects code only)
 
-OWNER — creates refs on GitHub (a push):
-```
-git tag -a pre-modernization-production-2026-09-29 0e5529e953fd5e4d9b421b0f9f1c5b4fb0a8afc3 -m "Production before the modernization branch"
-git push origin pre-modernization-production-2026-09-29
-git push origin 0e5529e953fd5e4d9b421b0f9f1c5b4fb0a8afc3:refs/heads/legacy-main-backup-2026-09-29
-```
-Check: `git ls-remote origin "refs/tags/pre-modernization*" "refs/heads/legacy-*"`
-shows both at 0e5529e. A tag is immutable by convention; GitHub branch
-protection on `legacy-main-backup-2026-09-29` makes the branch so too.
+DONE locally 29 Sep 2026: annotated tag `prod-backup-2026-09-29` and branch
+`legacy/production-2026-09-29`, both at 0e5529e, plus a verified bundle file.
+Putting them on GitHub (a push) and protecting them: promotion-and-rollback.md
+§0-§1.
 
 ## 2. Data backup (what git does not hold) — OWNER, on the live server
 
@@ -114,8 +109,5 @@ safe (quota is shared — keep the test short); writes are not done.
 
 ## 5. Rolling back production after a cutover (if ever needed)
 
-- Render → the service → Deploys → "Rollback" to the last 0e5529e deploy, or
-  push `pre-modernization-production-2026-09-29` to main (OWNER).
-- Data: if the new build wrote data the old one mishandles, stop the service,
-  restore `/data` from the §2 backup, start it. Work done since the backup is
-  lost — which is why the backup is taken immediately before cutover, again.
+The exact procedure (Render rollback, history-preserving `git revert -m 1` of
+the promotion merge, data, last resort) is in promotion-and-rollback.md §4.
