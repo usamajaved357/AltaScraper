@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Telling Amazon an order was dispatched (30 Sep 2026) -- built, OFF, mock-tested.
+"""Telling Amazon an order was dispatched (29 Sep 2026) -- built, OFF, mock-tested.
 
 Amazon is NEVER contacted here: api.amazon_orders_ship is replaced by a fake
 that records every call. Pins:
   - the request matches Amazon's ConfirmShipmentRequest (Rule 4: ordersV0.json,
-    read 30 Sep 2026) -- required fields, ISO ship date, carrierCode "Other" +
+    read 29 Sep 2026) -- required fields, ISO ship date, carrierCode "Other" +
     carrierName (no guessed carrier codes); whole unshipped orders only
   - while the owner's switch is off, /orders/ship/confirm refuses BEFORE any
     Amazon call, even a read; the switch is read FRESH, both ways

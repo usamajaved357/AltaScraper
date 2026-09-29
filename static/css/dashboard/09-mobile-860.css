@@ -44,6 +44,26 @@
   .appbar .barbtn{ font-size:12px; padding:6px 8px; }
   .appbar .barbtn span{ display:none; }
   #whoami{ display:none !important; }
+  /* THE ACCOUNT CHIP GIVES WAY, the icons do not. It is nowrap and would not
+     shrink, so at 360-430px the bar measured 467px wide: the Users and privacy
+     buttons sat off the edge, and opening an order scrolled the whole page
+     sideways under the clipped overflow (dispatch browser check, 29 Sep 2026).
+     The name is cut with an ellipsis instead -- still on screen, still the
+     account; the full name is in the switcher it opens. */
+  .appbar .acct-switch-chip{ flex:0 1 auto; min-width:0; overflow:hidden; }
+  .appbar .acct-switch-chip #appbar_acct_label{ min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  /* THE NAME FIRST. The decorative store icon goes, and the marketplace label
+     gives way several times faster than the name (it still reads "UK..."). */
+  .appbar .acct-switch-chip .ti-building-store{ display:none; }
+  .appbar .acct-switch-chip .acct-ctx-mkt{ flex:0 6 auto; min-width:40px; overflow:hidden;
+                                           text-overflow:ellipsis; white-space:nowrap; }
+  .appbar .acct-switch-chip #appbar_acct_label{ flex:0 1 auto; }
+  /* "Users" is a bare word, so `.barbtn span{display:none}` above never hid it:
+     icon only here like its neighbours (the word stays in the markup, so the
+     button keeps its name for a screen reader), and the account name gets the
+     room back. */
+  .appbar #usersbtn{ font-size:0; }
+  .appbar #usersbtn .ti{ font-size:16px; }
 
   /* ---- workspace: stack, do not sit side by side ---- */
   #workspace.show{ flex-direction:column; min-height:auto; }

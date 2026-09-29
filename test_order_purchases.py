@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Orders "To buy" (30 Sep 2026): recording that an order was bought from the supplier.
+"""Orders "To buy" (29 Sep 2026): recording that an order was bought from the supplier.
 
 A RECORD A PERSON MAKES -- the app buys nothing. Pins:
   - the record is kept per order of ONE account; another account's rows never

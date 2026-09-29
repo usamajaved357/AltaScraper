@@ -1,5 +1,5 @@
 // The "Bought from the supplier?" box on an opened order (static/js/orders.js
-// ordPurchasePanel, 30 Sep 2026). A RECORD a person makes -- nothing is bought.
+// ordPurchasePanel, 29 Sep 2026). A RECORD a person makes -- nothing is bought.
 //
 // Pins: FBA orders get no box; recorded purchases are listed with a Remove that
 // carries the row's own account and marketplace; the form posts to

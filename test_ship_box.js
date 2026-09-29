@@ -1,4 +1,4 @@
-// The "Preview dispatch to Amazon" box (static/js/orders.js, 30 Sep 2026).
+// The "Preview dispatch to Amazon" box (static/js/orders.js, 29 Sep 2026).
 // Pins: only FBM orders still to post get it; preview posts the row's own
 // account with the typed tracking and carrier; a Send button is drawn ONLY when
 // the server says sending is switched on; Send asks first and stops on "no".

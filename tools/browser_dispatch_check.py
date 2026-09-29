@@ -293,6 +293,12 @@ def main(argv):
                 .forEach(e => { const r = e.getBoundingClientRect(); if (r.width && r.right > W + 2) out.push((e.id || e.tagName) + ' +' + Math.round(r.right - W)); });
                 return out; }""")
             check("[%s] nothing in the dispatch box runs past the screen edge" % tag, not wide, str(wide))
+            # The whole page, not just the box: an over-wide top bar made the page
+            # scroll sideways under its clipped overflow when an order opened.
+            side = page.evaluate("() => [window.scrollX, document.documentElement.scrollLeft, document.body.scrollLeft, "
+                                 "document.body.scrollWidth - document.documentElement.clientWidth]")
+            check("[%s] the page is not pushed sideways (scroll and overflow 0)" % tag,
+                  all(v <= 1 for v in side), str(side))
             check("[%s] no JavaScript errors" % tag, not errs, "; ".join(errs[:3]))
             calls.clear()
             ctx.close()

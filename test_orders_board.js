@@ -55,7 +55,7 @@ const rows = [row({ ship_by: iso(5 * H) }), row({ ship_by: iso(-H) }), row({ sta
 const c = sb._ordTabCounts(rows);
 check("Needs action = dispatch + tracking + problem", c.action, c.dispatch + c.tracking + c.problem);
 check("All counts every order", c.all, rows.length);
-// Re-pinned 30 Sep 2026: "To buy" is drawn now that purchases are recorded
+// Re-pinned 29 Sep 2026: "To buy" is drawn now that purchases are recorded
 // (domain/order_purchases.py); "Returns & messages" still has no data.
 check("the plan's tabs, in order, minus the one with no data", vm.runInContext("ORD_TABS", sb).map(t => t[0]),
       ["action", "tobuy", "dispatch", "tracking", "problem", "transit", "fba", "all"]);

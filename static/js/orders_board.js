@@ -15,7 +15,7 @@
  * messages" (Amazon's messages are not available). Drawn empty it would claim
  * "nothing to do".
  *
- * "To buy" (30 Sep 2026): an FBM order still to post with no purchase recorded
+ * "To buy" (29 Sep 2026): an FBM order still to post with no purchase recorded
  * against it (domain/order_purchases.py -- a record a person makes; the app
  * buys nothing). It is a subset of "To dispatch", not a state of its own.
  */

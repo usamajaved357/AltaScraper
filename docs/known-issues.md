@@ -195,7 +195,7 @@ change needs it, via register injection.
   the insert happens before the reply is sent (busy_timeout 30s under a long
   write lock). READ, low.
 
-## Orders "To buy" -- left open (30 Sep 2026 reviews)
+## Orders "To buy" -- left open (29 Sep 2026 reviews)
 - **"Mark as bought" is still offered when the records could not be read.**
   Deliberate: an unreadable table should not stop someone recording a purchase.
   The cost is a possible second record on an order already recorded; Remove
@@ -215,10 +215,12 @@ change needs it, via register injection.
   would need a second packageReferenceId, not yet seen); Transparency items are
   refused. Still to capture on the first real send: Amazon's reply, whether
   "Other" is accepted, and the UK carrier-code list.
-- **Orders list on a phone (390px) is badly squeezed** under an open order:
-  the order cell wraps "GBP 19.99" one letter per line (seen in
-  active/shots-dispatch/phone_2_preview_on.png, 30 Sep 2026). The dispatch
-  box itself fits. Not yet investigated.
+- FIXED 29 Sep 2026 (not yet in production): **the Orders list on a phone
+  squeezed to one letter per line** with an order open (the table stayed a
+  table while its rows were cards; static/css/orders_panel.css), and **the top
+  bar was 467px wide at 360-430px**, pushing the page sideways (account chip
+  would not shrink, "Users" kept its word; static/css/dashboard/09-mobile-860.css).
+  On a phone the account name is now cut with "..." (e.g. "DEV Test ...").
 - **getOrderItems is read in four places** (domain/orders_live.order_items, two
   in routes/orders_routes, api/amazon_orders_ship.order_items). The last is the
   only one that follows NextToken pages and keeps OrderItemId; folding the
@@ -713,7 +715,7 @@ Checks added in Milestones 1-3:
 - test_helpers.js now exports the page's own `jsArg` for sandboxed tests.
 
 **test_order_panel.js fails when run on its own (`node test_order_panel.js`,
-12 CSS checks) but passes under `run_tests.py`** (seen 30 Sep 2026). It reads
+12 CSS checks) but passes under `run_tests.py`** (seen 29 Sep 2026). It reads
 `static/css/dashboard.css`, while the `.odp*` rules now live in
 `static/css/dashboard/19-order-panel.css`. Not investigated further; run it
 through the runner.

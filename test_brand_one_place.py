@@ -141,7 +141,7 @@ check("  with no complaint", note, "")
 print("\n== one copy of the rule, used by every caller ==")
 src = open(os.path.join(HERE, "amazon_listing_generator.py"),
            encoding="utf-8").read()
-# Plan B3 (30 Sep 2026) moved the builder's brand lines, verbatim, into
+# Plan B3 (29 Sep 2026) moved the builder's brand lines, verbatim, into
 # listing/attributes_phases.py; the builder's call is counted there now.
 src += open(os.path.join(HERE, "listing", "attributes_phases.py"), encoding="utf-8").read()
 check("the helper is defined once",

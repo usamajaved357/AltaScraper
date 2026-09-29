@@ -2,7 +2,7 @@
 
 ONE CALL, NOT TWO. "Mark dispatched" and "upload tracking" are the same Amazon
 request: confirmShipment REQUIRES the tracking number, the carrier, the ship
-date and every line with its quantity (Amazon's schema, read 30 Sep 2026 --
+date and every line with its quantity (Amazon's schema, read 29 Sep 2026 --
 models/orders-api-model/ordersV0.json, ConfirmShipmentRequest/PackageDetail).
 
 OFF UNTIL THE OWNER SWITCHES IT ON. It is a real, visible change on a real

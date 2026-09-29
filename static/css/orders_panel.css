@@ -283,6 +283,14 @@ table.ordtable tbody tr.ordrow.rowon{ background:var(--as-action-subtle); }
 @media (max-width: 640px){
   table.ord-board-table{ min-width:0 !important; }
   table.ord-board-table thead{ display:none; }
+  /* THE TABLE STOPS BEING A TABLE on a phone. With the rows as cards but the
+     table still a table, opening an order added its detail row as the only
+     real table row left -- a fixed-layout table then worked its columns out
+     from that one colspan cell, and every card squeezed to 17px, one letter
+     per line (seen in the dispatch browser check, 29 Sep 2026). */
+  table.ord-board-table, table.ord-board-table > tbody{ display:block; width:100%; }
+  table.ord-board-table tbody tr.orddetail,
+  table.ord-board-table tbody tr.orddetail > td{ display:block; width:auto; }
   table.ord-board-table tbody tr.ordrow{
     display:block; padding:10px 12px; border-bottom:1px solid var(--as-border-subtle);
   }

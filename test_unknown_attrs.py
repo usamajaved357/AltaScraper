@@ -50,7 +50,7 @@ def truthy(label, got):
 
 SRC = open(os.path.join(HERE, "amazon_listing_generator.py"), encoding="utf-8").read()
 FN = SRC.split("def build_api_attributes(")[1].split("\ndef ")[0]
-# Plan B3 (30 Sep 2026) moved the text/offer and dimension phases of the builder,
+# Plan B3 (29 Sep 2026) moved the text/offer and dimension phases of the builder,
 # verbatim, into listing/attributes_phases.py; they are still the builder's code.
 FN += open(os.path.join(HERE, "listing", "attributes_phases.py"), encoding="utf-8").read()
 

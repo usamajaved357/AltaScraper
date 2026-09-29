@@ -9,7 +9,7 @@ checks the switch, so nothing may call confirm_shipment except that module's
 caller, routes/order_ship_routes.py, after it has checked.
 
 The request body is Amazon's ConfirmShipmentRequest, passed through exactly as
-built (Rule 4: models/orders-api-model/ordersV0.json, read 30 Sep 2026).
+built (Rule 4: models/orders-api-model/ordersV0.json, read 29 Sep 2026).
 """
 
 
@@ -46,7 +46,7 @@ def confirm_shipment(creds, marketplace_enum, order_id, request_body):
     shaped {"message": ...}) comes back as an ordinary response. So the reply's
     status is read -- the library puts it in the payload for a bodiless 2xx,
     which is what confirmShipment's 204 is (sp_api/base/_core.parse_response)
-    -- and anything else raises NotConfirmed (review finding, 30 Sep 2026).
+    -- and anything else raises NotConfirmed (review finding, 29 Sep 2026).
     A refusal with Amazon's errors is raised by the library as it was.
     """
     oc = _client(creds, marketplace_enum)

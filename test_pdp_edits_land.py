@@ -50,7 +50,7 @@ def nojs_comments(s):
 PDP = nojs_comments(read("static", "js", "pdp.js"))
 AF = nojs_comments(read("static", "js", "autofix.js"))
 GEN = read("amazon_listing_generator.py")
-# Plan B3 (30 Sep 2026): the builder's brand lines moved verbatim to
+# Plan B3 (29 Sep 2026): the builder's brand lines moved verbatim to
 # listing/attributes_phases.py, which build_api_attributes calls.
 GEN += read("listing", "attributes_phases.py")
 

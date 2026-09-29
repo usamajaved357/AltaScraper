@@ -266,7 +266,7 @@ RULES = [
     ("/orders/detail",                  None),
     # "I bought this from the supplier" -- a note in this app's own table. It
     # buys nothing, sends nothing to Amazon or a supplier, and removing one
-    # forgets only that note, so both are ordinary editing (30 Sep 2026).
+    # forgets only that note, so both are ordinary editing (29 Sep 2026).
     ("/orders/purchase/remove",         "edit"),
     ("/orders/purchase",                "edit"),
     # Telling Amazon an order shipped is a real, buyer-visible change that

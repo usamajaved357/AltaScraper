@@ -196,6 +196,10 @@ def _serve(tmp):
     os.environ["CONFIG_PATH"] = os.path.join(tmp, "config.json")
     for k in ("PORT", "APP_PASSWORD", "ALTASCRAPER_DB"):
         os.environ.pop(k, None)
+    # A browser check starts NOTHING in the background: no scheduler, monitor,
+    # nightly backup or supplier repair (config/background.py). They were armed
+    # here, on the temporary copy, until 29 Sep 2026.
+    os.environ["ALTASCRAPER_BACKGROUND"] = "off"
     sys.path.insert(0, ROOT)
     from data.db import db_path
     dbp = os.path.abspath(db_path())
