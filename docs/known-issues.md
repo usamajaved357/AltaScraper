@@ -127,6 +127,20 @@ The central activity log (Employee Performance) resolves the actor one way for a
   vs /data) the reader may never see what the writer wrote. READ, not traced.
 - `/healthz` checks nothing; `requirements.txt` is unpinned (manifest §10).
 
+## Money formulas — audited 29 Sep 2026 (active/map-4H-vat.md)
+- The VAT-out formula `gross*r/(1+r)` is the same everywhere (rounding differs:
+  per order vs per window -- pennies). Fixed: the account form saving an
+  unanswered VAT rate as 0 (a0d07ba); a 100% rate refused.
+- NOT duplicates: `sales_data.vat_rate_for` is the lookup, and
+  `unit_profit.account_vat_status` reads the file and calls it -- one rule.
+- Intentional debt: `order_profit.for_lines` works its fee on net revenue, but
+  its money figures are overwritten by `period_money` in its only caller
+  (for_period) -- no screen shows them; fix only if a new caller uses them.
+  The margin-target save check re-derives the limit with the same `_kept` VAT
+  factor as `floor_from_target` -- consistent, cost-independent sanity check.
+- Owner decisions: generator profit/floor leave VAT in (owner-review #19);
+  fee VAT on non-VAT accounts not invoice-verified (#20).
+
 ## Price writes — left open (29 Sep 2026 map: active/map-4F-price-writes.md)
 - `/optimize/push` (listing/patches._build_patches) writes a price with an
   INVENTED offer shape (no marketplace/currency/audience), no read-before-write,

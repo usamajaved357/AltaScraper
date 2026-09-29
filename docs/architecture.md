@@ -131,6 +131,14 @@ for generate, retry, export, regen, api (preview), api submit and api verify.
   the consent URL carries `&version=beta` (`DRAFT_VERSION_PARAM`), which must be
   removed when the app is published. (memory: oauth-multitenant)
 
+- **SP-API clients (4E, 29 Sep 2026):** `api/sp_client.client(ApiClass, creds,
+  code, rule=..., timeout=...)` builds a client; the marketplace-code rules are
+  NAMED there (API, UPPER_OR_UK, AS_GIVEN_OR_UK, UPPER_OR_US, US_OR_UK) because
+  they genuinely differ by caller. New code picks a rule instead of writing
+  `getattr(Marketplaces, ...)` inline. Not yet on it: orders (raise, owner
+  decision 5), the generator, dashboard, several routes, credential builders
+  (map: active/map-4E-spapi-clients.md).
+
 ## 5. Which account a request acts on
 
 - `_state` (domain/workspace_state.WorkspaceState): the keys
