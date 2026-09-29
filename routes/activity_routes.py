@@ -34,6 +34,33 @@ def register(app, *, CONFIG_PATH, APP_PASSWORD=""):
         return (not APP_PASSWORD and _u.is_bootstrap(CONFIG_PATH)
                 and not session.get("uid") and _g.open_gate_allowed())
 
+    @app.before_request
+    def _snapshot_before_edit():
+        # THE OLD VALUE, for "field: old -> new" on a listing edit. Registered
+        # after the doorman, so a refused request never gets here. Only when the
+        # request names exactly one account -- never the open one.
+        try:
+            if request.method != "POST" or request.path != "/edit":
+                return None
+            from flask import g
+            from auth import guard as _g
+            body = _g.request_body_for_check(request) or {}
+            # THE SAME ACCOUNT /edit WRITES: it opens _store_for(b.get("account"))
+            # (routes/listing_routes.py). Only that field, and only when it is
+            # the one account the request names -- a request naming the account
+            # any other way gets no old value rather than another store's.
+            acct = str(body.get("account") or "").strip()
+            accts = _g.named_workspaces(request.path, request.args, body)
+            if not acct or accts != [acct]:
+                return None
+            from domain import activity_catalog as _cat
+            g._activity_before = _cat.edit_before_value(
+                CONFIG_PATH, acct, str(body.get("sku") or "").strip(),
+                body.get("target"), str(body.get("key") or "").strip())
+        except Exception:
+            pass
+        return None
+
     @app.after_request
     def _record_activity(response):
         # NEVER lets recording change the answer: every failure is swallowed.
@@ -57,8 +84,9 @@ def register(app, *, CONFIG_PATH, APP_PASSWORD=""):
             body = _g.request_body_for_check(request) or {}
             ct = (request.content_type or "").lower()
             files = request.files if ct.startswith("multipart/form-data") else None
+            from flask import g
             d = _cat.describe(request.method, request.path, body, request.args,
-                              files, response)
+                              files, response, before=getattr(g, "_activity_before", None))
             if d:
                 from domain import activity as _act
                 # A person as the entity (team work) is named, not shown as an id.

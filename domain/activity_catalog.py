@@ -197,6 +197,40 @@ def match(method, path):
     return None
 
 
+def edit_before_value(config_path, account, sku, target, key):
+    """THE OLD VALUE of the field one /edit is about to change, or None.
+
+    Read BEFORE the route runs (routes/activity_routes' before_request) with the
+    same lookups /edit uses -- data.backend.store_for on the body's `account`
+    (the store /edit writes; never the open one), listing.repo.locate and
+    listing.repo.attributes_of -- so the record can say
+    "item_name: 'Old' -> 'New'". Never raises; None when it cannot tell (no
+    account named, no row yet, a secret-named field)."""
+    try:
+        if not account or not sku or not key or _act._is_secret_key(key):
+            return None
+        from data import backend as _be
+        from listing import repo as _repo
+        ws = _be.store_for(account, {}, config_path)
+        if ws is None:
+            return None
+        found = _repo.locate(ws, sku)
+        if not found.ok:
+            return None
+        headers = found.headers or []
+        if target == "col":
+            if key not in headers:
+                return None
+            return _repo.cell_value(ws, found.row, headers.index(key) + 1, default="")
+        if target == "attr":
+            if "Attributes JSON" not in headers:
+                return None
+            return _repo.attributes_of(ws, found.row, headers).get(key, "")
+    except Exception:
+        return None
+    return None
+
+
 def _first_list(body):
     for k in _LIST_KEYS:
         v = (body or {}).get(k)
@@ -285,7 +319,7 @@ def _outcome(response):
     return ok, status, err[:300]
 
 
-def describe(method, path, body, args, files, response):
+def describe(method, path, body, args, files, response, before=None):
     """Everything the log needs about one catalogued request, or None."""
     hit = match(method, path)
     if not hit:
@@ -316,8 +350,9 @@ def describe(method, path, body, args, files, response):
     vals = _values(body)
     if path == "/edit" and isinstance(body, dict):
         # /edit sends {sku, key, value}: `key` is the FIELD NAME. The new value
-        # is listing content (title, bullet, price...), kept short; the old
-        # value is not available here.
+        # is listing content (title, bullet, price...), kept short. The OLD
+        # value was read before the route ran (edit_before_value) and is added
+        # below only if the edit worked -- a refused edit changed nothing.
         if body.get("key"):
             vals["field"] = str(body.get("key"))[:60]
             v = body.get("value")
@@ -345,6 +380,10 @@ def describe(method, path, body, args, files, response):
     ok, status, err = _outcome(response)
     if err:
         detail["error"] = err
+    if (ok and path == "/edit" and "new_value" in vals
+            and isinstance(before, (str, int, float, bool))):
+        vals["old_value"] = before
+        detail["values"] = vals
     summary = phrase
     if eid:
         summary += " " + eid

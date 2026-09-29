@@ -144,7 +144,7 @@ const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
     el("perf_cat").value = ""; el("perf_ok").value = "";
     s.fetchReplies.push(TL([{ ts: 1800000000, user_label: "Ali", category: "listings", action: "listing.edit",
       summary: "Edited a listing SKU-1", workspace_id: "acct_a", marketplace: "UK", ok: false,
-      detail: { values: { field: "item_name" } } },
+      detail: { values: { field: "item_name", old_value: "Old title", new_value: "New title" } } },
       { ts: 1800000001, user_label: "Ali", category: "listings", action: "listing.status",
         summary: "Refused: changed a listing's approval status", workspace_id: "acct_a", ok: false, detail: { refused: true } }]));
     await vm.runInContext("perfOpenTimeline('u_ali', 'Ali')", s);
@@ -152,6 +152,7 @@ const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
     check("a timeline is one person's list", /^\/activity\/list\?limit=200&from=\d+&to=\d+&user=u_ali$/.test(s.calls[1]), true);
     check("  the Employee filter follows it", el("perf_user").value, "u_ali");
     check("  each action with the field it changed", h.indexOf("field: item_name") > 0, true);
+    check("  and its old and new value", h.indexOf("('Old title' → 'New title')") > 0, true);
     check("  failed and refused told apart", [h.indexOf(">failed</td>") > 0, h.indexOf(">refused</td>") > 0], [true, true]);
     check("  focus moves to the way back", s.focused, "tl-back");
     s.fetchReplies.push(TL([]));

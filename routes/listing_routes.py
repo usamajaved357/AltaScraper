@@ -2135,14 +2135,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             elif target == "attr":
                 if "Attributes JSON" not in headers:
                     return jsonify({"ok": False, "error": "no attributes column"}), 400
-                acol = headers.index("Attributes JSON") + 1
-                cur  = _repo.cell_value(ws, trow, acol) or "{}"
-                try:
-                    obj = json.loads(cur)
-                except Exception:
-                    obj = {}
-                if not isinstance(obj, dict):
-                    obj = {}
+                obj = _repo.attributes_of(ws, trow, headers)   # the one reader
                 if str(value).strip() == "":
                     obj.pop(key, None)
                 else:

@@ -62,6 +62,22 @@ def _edit():
     b = request.get_json(force=True) or {}
     if b.get("sku") == "BAD":
         return jsonify({"ok": False, "error": "no such SKU"})
+    if b.get("key") == "Source URL":
+        return jsonify({"ok": False, "error": "column not editable"}), 400
+    # Like the real /edit: WRITE the new value, so a before-value read after
+    # the write would record new -> new and fail the test.
+    if b.get("account") and b.get("target") in ("col", "attr"):
+        from data.backend import store_for
+        from listing import repo as _r
+        ws = store_for(b["account"], {}, CFG)
+        found = _r.locate(ws, b.get("sku"))
+        if found.ok:
+            if b["target"] == "col" and b.get("key") in found.headers:
+                _r.set_field(ws, found.row, b["key"], b.get("value"), headers=found.headers)
+            elif b["target"] == "attr":
+                obj = _r.attributes_of(ws, found.row, found.headers)
+                obj[b["key"]] = b.get("value")
+                _r.set_field(ws, found.row, "Attributes JSON", json.dumps(obj), headers=found.headers)
     return jsonify({"ok": True})
 
 
@@ -219,6 +235,40 @@ c.post("/users/update", json={"id": ali, "role": "manager"})
 check("team work names the person, not their id",
       ("Ali" in rows()[0]["summary"], ali in rows()[0]["summary"]), (True, False))
 
+print("== an edit keeps the OLD value too (master baatain: safe before/after) ==")
+from data.store import ListingStore            # noqa: E402
+ListingStore("acct_a", config_path=CFG).upsert_row(
+    {"SKU": "BEF-1", "Status": "GENERATED", "Title": "Old title",
+     "Attributes JSON": json.dumps({"color": "red"})})
+ListingStore("acct_b", config_path=CFG).upsert_row(
+    {"SKU": "BEF-1", "Status": "GENERATED", "Title": "B's title"})
+as_user(ali)
+c.post("/edit", json={"sku": "BEF-1", "target": "col", "key": "Title", "value": "New title", "account": "acct_a"})
+v = rows()[0]["detail"]["values"]
+check("a column edit: old and new", (v.get("old_value"), v.get("new_value")), ("Old title", "New title"))
+c.post("/edit", json={"sku": "BEF-1", "target": "attr", "key": "color", "value": "blue", "account": "acct_a"})
+v = rows()[0]["detail"]["values"]
+check("an attribute edit: old and new", (v.get("old_value"), v.get("new_value")), ("red", "blue"))
+c.post("/edit", json={"sku": "BEF-1", "target": "col", "key": "Title", "value": "x"})
+check("no account named: no old value is guessed from any store",
+      "old_value" in rows()[0]["detail"].get("values", {}), False)
+c.post("/edit", json={"sku": "BEF-1", "target": "col", "key": "Title", "value": "Third", "account": "acct_a"})
+v = rows()[0]["detail"]["values"]
+check("the stub really wrote, so the old value is read BEFORE the write",
+      (v.get("old_value"), v.get("new_value")), ("New title", "Third"))
+c.post("/edit", json={"sku": "BEF-1", "target": "col", "key": "Title", "value": "x", "workspace_id": "acct_a"})
+check("an account named any other way than `account` (what /edit writes) keeps no old value",
+      "old_value" in rows()[0]["detail"].get("values", {}), False)
+c.post("/edit", json={"sku": "BEF-1", "target": "col", "key": "Source URL", "value": "x", "account": "acct_a"})
+check("a refused edit changed nothing, so it keeps no old value",
+      (rows()[0]["ok"], "old_value" in rows()[0]["detail"].get("values", {})), (False, False))
+DASH = open(os.path.join(HERE, "dashboard.py"), encoding="utf-8").read()
+check("the doorman is registered before the recorder (a refused request reads nothing)",
+      0 < DASH.find("app.before_request(_make_doorman(") < DASH.find("_activity_routes.register(app"), True)
+c.post("/edit", json={"sku": "BEF-1", "target": "col", "key": "api_key", "value": "x", "account": "acct_a"})
+check("a secret-named field keeps neither value",
+      [k for k in ("old_value", "new_value") if k in (rows()[0]["detail"] or {}).get("values", {})], [])
+
 print("== signed out: nothing is written ==")
 app2 = Flask("with_password")
 app2.secret_key = "test-only-2"
@@ -303,13 +353,16 @@ j3 = c.get("/activity/list?from=0&to=4000000000").get_json()
 check("  so a manager of acct_a never sees it",
       any(x["entity_id"] == "TWO-ACCTS" for x in j3["rows"]), False)
 as_user(boss)
-# 6 from the first section + submit, preview, refusal, and the signed-in app2 submit
-check("summary counts per person", [p["total"] for p in s["people"] if p["user_id"] == ali], [10])
+# As the acct_a manager: 6 from the first section + submit, preview, refusal, the
+# signed-in app2 submit, and 6 of the 7 before/after edits -- the one naming no
+# account is filed under none, which a scoped manager does not see.
+check("summary counts per person", [p["total"] for p in s["people"] if p["user_id"] == ali], [16])
 check("a bad period is refused plainly",
       c.get("/activity/list?from=10&to=5").status_code, 400)
 f = c.get("/activity/list?from=0&to=4000000000&user=%s&ok=0" % ali).get_json()
 check("filter to one person's failures", [x["action"] for x in f["rows"]],
-      ["listing.status", "listing.generate", "price.set", "listing.edit"])   # the refusal is not-worked too
+      # newest first: the refused "Source URL" edit, the guard refusal, then the rest
+      ["listing.edit", "listing.status", "listing.generate", "price.set", "listing.edit"])
 
 print("== the catalogue names real routes ==")
 src = ""

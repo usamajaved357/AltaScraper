@@ -323,7 +323,12 @@ function perfDrawTimeline(j) {
   rows.forEach(function (r) {
     const d = r.detail || {};
     const extra = [];
-    if (d.values && d.values.field) extra.push("field: " + d.values.field);
+    if (d.values && d.values.field) {
+      // "field: 'old' → 'new'" when the old value was recorded; else just the field.
+      const short = function (x) { const s = String(x); return s.length > 60 ? s.slice(0, 60) + "…" : s; };
+      extra.push("field: " + d.values.field
+        + ("old_value" in d.values ? " ('" + short(d.values.old_value) + "' → '" + short(d.values.new_value) + "')" : ""));
+    }
     if (d.files && d.files.length) extra.push("file: " + d.files.join(", "));
     if (d.fields && d.fields.length && !(d.values && d.values.field)) extra.push("sent: " + d.fields.slice(0, 6).join(", "));
     const res = d.refused ? "refused" : (r.ok ? "worked" : "failed");
