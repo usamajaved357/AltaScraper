@@ -52,6 +52,21 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     def _body():
         return request.get_json(silent=True) or {}
 
+    def _price_of(b):
+        """(price, None) or (None, refusal reply), for preview AND apply --
+        apply used to take any float, zero and negatives included, because
+        only preview refused them (price-write map F1, 29 Sep 2026). The rule
+        is listing.pricing.usable_price, shared with every price-writing route."""
+        from listing import pricing as _pricing
+        p, why = _pricing.usable_price(b.get("price"))
+        if why == "not_positive":
+            return None, (jsonify({"ok": False, "error": (
+                "A price of zero or less is not a price. To stop selling "
+                "something, set its stock to zero instead.")}), 400)
+        if why:
+            return None, (jsonify({"ok": False, "error": "that is not a price"}), 400)
+        return p, None
+
     def _live(sku, acc, mkt):
         """What Amazon currently holds for this SKU. None means it would not say.
 
@@ -194,14 +209,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": False, "error": "no sku"}), 400
         if not mkt:
             return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
-        try:
-            new_price = float(b.get("price"))
-        except (TypeError, ValueError):
-            return jsonify({"ok": False, "error": "that is not a price"}), 400
-        if new_price <= 0:
-            return jsonify({"ok": False, "error": (
-                "A price of zero or less is not a price. To stop selling "
-                "something, set its stock to zero instead.")}), 400
+        new_price, refused = _price_of(b)
+        if refused:
+            return refused
 
         live = _live(sku, acc, mkt)
         if live is None:
@@ -285,10 +295,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": False, "error": "not confirmed"}), 400
         if not (sku and mkt):
             return jsonify({"ok": False, "error": "need a sku and a marketplace"}), 400
-        try:
-            new_price = float(b.get("price"))
-        except (TypeError, ValueError):
-            return jsonify({"ok": False, "error": "that is not a price"}), 400
+        new_price, refused = _price_of(b)
+        if refused:
+            return refused
 
         # PUBLISHING, so the publish gate applies -- this changes what buyers pay
         # on a real listing.
@@ -335,13 +344,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
         # Recorded in the same place the repricer records its own changes, so one
         # history answers "why did this price move" whoever moved it.
+        # The record_action call here passed an argument it does not take, and
+        # the swallowed TypeError meant no price-editor change was ever
+        # recorded; now the one manual-price recorder the repricer's box uses.
         try:
-            from domain import source_repo as _repo
-            _repo.record_action(CONFIG_PATH, wsid, mkt, sku,
-                                {"price": new_price, "reason": "changed by hand"},
-                                applied=1, error="")
-        except Exception:
-            pass
+            from domain import source_apply as _sapply
+            _sapply.record_manual_price(CONFIG_PATH, wsid, mkt, sku, new_price,
+                                        was=was, how="price editor",
+                                        pauses_repricer=False)
+        except Exception as _e:
+            # Amazon already has the price, so this must not fail the reply --
+            # but it is SAID: a silent except is how this never recorded at all.
+            print("[price] %s: the change was sent but not recorded: %s" % (sku, _e), flush=True)
 
         return jsonify({"ok": True, "sku": sku, "was": was, "now": new_price,
                         "submission_id": res.get("submission_id"),
@@ -448,25 +462,30 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
         # THE FIGURES FROM THE PREVIEW, not a percentage applied again. Each one
         # is still validated -- a browser is not a trusted source of prices.
-        wanted = []
+        from listing import pricing as _pricing
+        wanted, refused_rows = [], []
         for r in (b.get("rows") or []):
             sku = str((r or {}).get("sku") or "").strip()
-            try:
-                p = float((r or {}).get("new"))
-            except (TypeError, ValueError):
+            p, why = _pricing.usable_price((r or {}).get("new"))
+            if not sku:
                 continue
-            if sku and p > 0:
-                wanted.append((sku, round(p, 2)))
+            if why:
+                # Said, not silently dropped: the row the person saw is not sent.
+                refused_rows.append({"sku": sku, "error": "%r is not a usable price"
+                                     % ((r or {}).get("new"),)})
+                continue
+            wanted.append((sku, round(p, 2)))
         if not wanted:
             return jsonify({"ok": False, "error": (
-                "Nothing to apply — run the preview first.")}), 400
+                "Nothing to apply — run the preview first."),
+                "failures": refused_rows}), 400
 
         allow_below = bool(b.get("below_floor_ok"))
         from api import amazon_listings as _al
         from domain import source_apply as _apply
         mkt_id = _acc_mod.marketplace_id(mkt)
         locale = "en_US" if mkt == "US" else "en_GB"
-        done, failed = [], []
+        done, failed = [], list(refused_rows)
         for sku, new_price in wanted:
             # RE-READ EACH LISTING. The offer is deep-copied from what Amazon
             # holds so the currency, audience and any scheduled pricing survive
@@ -500,13 +519,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 failed.append({"sku": sku, "error": why})
                 continue
             try:
-                from domain import source_repo as _repo
-                _repo.record_action(CONFIG_PATH, wsid, mkt, sku,
-                                    {"price": new_price,
-                                     "reason": "bulk %+g%% by hand" % float(b.get("percent") or 0)},
-                                    applied=1, error="")
-            except Exception:
-                pass
+                from domain import source_apply as _sapply
+                _sapply.record_manual_price(
+                    CONFIG_PATH, wsid, mkt, sku, new_price, was=was,
+                    how="bulk %+g%%" % float(b.get("percent") or 0),
+                    pauses_repricer=False)
+            except Exception as _e:
+                print("[price] %s: the change was sent but not recorded: %s" % (sku, _e), flush=True)
             done.append({"sku": sku, "was": was, "now": new_price})
 
         return jsonify({"ok": not failed, "changed": len(done),

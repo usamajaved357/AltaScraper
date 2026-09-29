@@ -72,7 +72,11 @@ check("Dr PPC no longer calls the missing guard.current_user()",
 check("  and names people through job_owner.label", "_jo.label(CONFIG_PATH)" in drppc, True)
 check("the manual price no longer reads session['user']",
       bool(re.search(r"""session\w*\.get\(["']user["']\)""", sourcing)), False)
-check("  and names people through job_owner.label", "_jo.label(CONFIG_PATH)" in sourcing, True)
+# Since 29 Sep 2026 the manual price is recorded by
+# domain/source_apply.record_manual_price, which names the person the same way.
+sapply = code("domain", "source_apply.py")
+check("  and names people through job_owner.label",
+      "record_manual_price(" in sourcing and "_jo.label(config_path)" in sapply, True)
 check("the error log no longer reads session['email']",
       'session.get("email")' in dash, False)
 from auth import guard as G                      # noqa: E402

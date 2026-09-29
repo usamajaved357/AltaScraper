@@ -894,14 +894,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         sku = (b.get("sku") or "").strip()
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
-        try:
-            price = float(str(b.get("price")).replace("£", "").replace("$", "")
-                          .replace(",", "").strip())
-        except (TypeError, ValueError):
+        # The shared rule (listing.pricing.usable_price): NaN and infinity used
+        # to pass the `<= 0` check here and reach Amazon (price-write map).
+        from listing import pricing as _pricing_mod
+        price, _why = _pricing_mod.usable_price(str(b.get("price")), strip_symbols=True)
+        if _why == "not_a_number":
             return jsonify({"ok": False, "error": (
                 "that must be an amount, e.g. 18.47 -- got %r"
                 % b.get("price"))}), 400
-        if price <= 0:
+        if _why:
             return jsonify({"ok": False, "error": (
                 "a price has to be above zero")}), 400
 
@@ -954,38 +955,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             return jsonify({"ok": False, "error": why}), 400
 
         # RECORDED AS A MANUAL OVERRIDE, in the same log the automatic changes
-        # go to. A price that moved with no entry beside it is a price nobody
-        # can account for later, and "who changed this" is the first question
-        # asked when one looks wrong.
-        # Was session.get("user"), a key nothing ever sets, so every manual
-        # price said "set by hand" whoever set it.
-        who = ""
-        try:
-            from domain import job_owner as _jo
-            who = _jo.label(CONFIG_PATH)
-        except Exception:
-            who = ""
-        decision = {
-            "action": "update", "price": round(price, 2),
-            "quantity": None, "lead_days": None, "source_id": None,
-            "manual": True, "manual_by": who,
-            "reason": ("Manual: %s%s set by %s"
-                       % (("%.2f -> " % float(was)) if was is not None else "",
-                          "%.2f" % price, who or "hand")),
-            "blocked_by": "", "rejections": [], "inputs_age_mins": None,
-        }
-        _repo.record_action(CONFIG_PATH, wsid, mkt, sku, decision,
-                            current=cur, applied=1,
-                            at=_dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        # AND THE APP'S OWN RECORD OF WHAT IT IS SELLING FOR. Without this the
-        # next decision compares the supplier against the OLD price, so a hand
-        # raise would immediately read as "too dear, cut it" -- which is the
-        # opposite of "the repricer respects the manual change".
-        try:
-            from domain import live_snapshots as _ls
-            _ls.set_price(CONFIG_PATH, wsid, mkt, sku, round(price, 2))
-        except Exception:
-            pass
+        # go to, and the app's own record of the price updated -- one helper
+        # for every manual price path (domain/source_apply.record_manual_price).
+        # A price that moved with no entry beside it is a price nobody can
+        # account for later, and "who changed this" is the first question asked
+        # when one looks wrong.
+        from domain import source_apply as _sapply
+        _sapply.record_manual_price(CONFIG_PATH, wsid, mkt, sku, price,
+                                    was=was, current=cur)
         return jsonify({"ok": True, "price": round(price, 2), "was": was,
                         "submission_id": res.get("submission_id"),
                         "note": ("Amazon has it as %.2f. It can take a few "

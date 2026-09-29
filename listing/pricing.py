@@ -106,6 +106,33 @@ PRICING_RULE_MIN_PROFIT     = 0.00   # £ per unit -- see MIN_ROI_PCT below
 PRICING_RULE_MIN_ROI_PCT    = 0.0    # % of landed cost; 0 = break-even floor
 
 
+def usable_price(value, strip_symbols=False):
+    """(price, "") when `value` is a real selling price, else (None, why).
+
+    THE ONE ANSWER to "can this be sent to Amazon as a price?" for the price
+    editor (preview/apply), the percentage change and the repricer's manual
+    price. Each had its own check, and they disagreed: apply took any float,
+    the percentage route let infinity through, the manual price let NaN and
+    infinity through (price-write map F1, 29 Sep 2026). NOT YET used by
+    /optimize/push (listing/patches._build_patches), which invents its own
+    offer shape -- recorded in docs/known-issues.md (price-write map F5).
+
+    why: "not_a_number" (unparseable, NaN, infinite) or "not_positive" (<= 0).
+    strip_symbols: accept "£18.47", "$1,299.00" (the repricer's typed box)."""
+    raw = value
+    if strip_symbols and isinstance(raw, str):
+        raw = raw.replace("£", "").replace("$", "").replace(",", "").strip()
+    try:
+        p = float(raw)
+    except (TypeError, ValueError):
+        return None, "not_a_number"
+    if not math.isfinite(p):
+        return None, "not_a_number"
+    if p <= 0:
+        return None, "not_positive"
+    return p, ""
+
+
 def _round_up(v):
     """2dp, rounded UP -- a floor rounded DOWN is not a floor."""
     return math.ceil(round(v * 100, 6)) / 100.0

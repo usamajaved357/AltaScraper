@@ -325,6 +325,9 @@ def check_repricer(ctx):
     if acts is None:
         return _r("repricer", "Prices changed overnight", G_MONEY, UNKNOWN,
                   needs="the repricer's action log")
+    # The REPRICER's changes: a price typed into the price editor is recorded
+    # in the same log (since 29 Sep 2026) but is not the repricer's doing.
+    acts = [a for a in acts if a.get("action") != "price_editor"]
     pushed = [a for a in acts if _n(a.get("applied")) == 1]
     failed = [a for a in acts if _n(a.get("applied")) == -1]
     if failed:

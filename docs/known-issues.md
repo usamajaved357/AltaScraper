@@ -127,6 +127,19 @@ The central activity log (Employee Performance) resolves the actor one way for a
   vs /data) the reader may never see what the writer wrote. READ, not traced.
 - `/healthz` checks nothing; `requirements.txt` is unpinned (manifest §10).
 
+## Price writes — left open (29 Sep 2026 map: active/map-4F-price-writes.md)
+- `/optimize/push` (listing/patches._build_patches) writes a price with an
+  INVENTED offer shape (no marketplace/currency/audience), no read-before-write,
+  no floor, no usable_price check, productType from the browser, VALID counted
+  as success, and records nothing. Fix belongs with the shared price core and
+  the listing-payload-guardian. READ.
+- A new listing submitted to the US sends purchasable_offer currency "GBP"
+  (listing/builder.py _offer) while list_price follows the marketplace. Payload
+  change: needs the raw US schema/reply first (Rule 4). READ.
+- Workspace publish gate differs by path (price editor: seller_scope_allowed,
+  which ignores can_publish False; repricer box and job: none; optimize/submit:
+  can_publish). READ; owner to confirm the intended gate.
+
 ## Activity log — left open (29 Sep 2026 reviews)
 - Some callers post a catalogued write naming NO account (`autofix.js` /edit,
   `howworks.js` /approve; `_srcBody`'s `__all__`), so that work is filed under

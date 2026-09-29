@@ -47,9 +47,18 @@ def is_enabled(cfg):
     return bool(cfg.get("repricer_enabled", False))
 
 
+# A price changed in the PRICE EDITOR (one listing or a bulk %). Recorded since
+# 29 Sep 2026 (the editor's recording had been failing silently), under its own
+# action so it does NOT start the repricer's rest period -- it never did, and
+# whether it should is the owner's decision (it would also pause the stock-out
+# protection on every SKU a bulk change touched). The repricer's own price box
+# records "update" and keeps pausing, as before.
+PRICE_EDITOR_ACTION = "price_editor"
+
+
 def _last_applied(config_path, ws, mkt, sku):
     for a in _repo.recent_actions(config_path, ws, mkt, sku, limit=50):
-        if a.get("applied") == 1:
+        if a.get("applied") == 1 and a.get("action") != PRICE_EDITOR_ACTION:
             return a
     return None
 
@@ -267,6 +276,57 @@ def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
         pass
     return {"sku": sku, "applied": 1, "blocked_by": "", "decision": out,
             "submission_id": res["submission_id"]}
+
+
+def record_manual_price(config_path, ws, mkt, sku, price, was=None, current=None,
+                        how="", who=None, pauses_repricer=True):
+    """A person changed a live price: write it down where the repricer writes
+    its own changes, and update the app's record of what it is selling for.
+
+    ONE place for every manual price path (the repricer's price box, the price
+    editor, the percentage change). The price editor's two routes used to call
+    record_action with an argument it does not take (`error=""`); the TypeError
+    was swallowed, so no hand-made price change was ever recorded (price-write
+    review, 29 Sep 2026). Either way the next repricer decision compares against
+    the NEW price (the snapshot below).
+
+    pauses_repricer: True for the repricer's own box (action "update": its rest
+    period starts from the change, as it always did); False for the price
+    editor (action PRICE_EDITOR_ACTION: recorded, but it pauses nothing and is
+    not counted as a repricer push -- the behaviour it had before, see above).
+    `how`: "" for the repricer's box (its wording kept), else a short phrase
+    such as "price editor" or "bulk +5%" put in front of the sentence."""
+    if who is None:
+        try:
+            from domain import job_owner as _jo
+            who = _jo.label(config_path)
+        except Exception:
+            who = ""
+    sentence = ("Manual: %s%s set by %s"
+                % (("%.2f -> " % float(was)) if was is not None else "",
+                   "%.2f" % price, who or "hand"))
+    decision = {
+        "action": "update" if pauses_repricer else PRICE_EDITOR_ACTION,
+        "price": round(price, 2),
+        "quantity": None, "lead_days": None, "source_id": None,
+        "manual": True, "manual_by": who,
+        "reason": ("%s -- %s" % (how, sentence)) if how else sentence,
+        "blocked_by": "", "rejections": [], "inputs_age_mins": None,
+    }
+    _repo.record_action(config_path, ws, mkt, sku, decision,
+                        current=(current if current is not None else {"price": was}),
+                        applied=1,
+                        at=_dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    # AND THE APP'S OWN RECORD OF WHAT IT IS SELLING FOR. Without this the
+    # next decision compares the supplier against the OLD price, so a hand
+    # raise would immediately read as "too dear, cut it" -- which is the
+    # opposite of "the repricer respects the manual change".
+    try:
+        from domain import live_snapshots as _ls
+        _ls.set_price(config_path, ws, mkt, sku, round(price, 2))
+    except Exception:
+        pass
+    return decision
 
 
 def _notify_push(config_path, ws, mkt, sku, decision, current):
