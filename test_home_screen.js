@@ -162,6 +162,17 @@ truthy("Home on the rail is the sidebar's Home item, if this person may see it",
 truthy("each group button comes from a .navgroup[data-rail]", RAIL.includes('.navgroup[data-rail]'));
 truthy("every group in the sidebar has a rail name",
        (HTML.match(/<div class="navgroup" data-grp="[a-z]+"(?! data-rail=)/g) || []).length === 0);
+// Owner, 30 Sep 2026: no hide/show option; sub-pages open on hover.
+truthy("the rail has no Hide button", !/data-nr="-hide"/.test(RAIL) && !/navRailSetHidden/.test(RAIL));
+truthy("  and the menu has no Show icon bar item", !/id="railshow"/.test(HTML));
+truthy("  and anyone who hid it gets it back", /removeItem\("alta_navrail"\)/.test(RAIL));
+truthy("a group's screens open when the pointer rests on its button",
+       /addEventListener\("mouseover"/.test(RAIL) && /navRailOpen\(\{currentTarget: b\}, name, true\)/.test(RAIL));
+truthy("  without pulling keyboard focus into the menu", /if\(!hover && typeof uiMenuKeys/.test(RAIL));
+// Owner, 30 Sep 2026: every name readable ("Invent..." at 64px). Measured in a
+// browser at 1440 and 1024: at 80px no label is cut.
+const RCSS = fs.readFileSync("static/css/navrail.css", "utf8");
+truthy("the rail is wide enough for its names (80px)", /width:80px/.test(RCSS) && /padding-left:80px/.test(RCSS));
 truthy("Escape knows about the rail's menu", fs.readFileSync("static/js/escape.js", "utf8").includes('"nrfly"'));
 
 console.log(fails ? "\n" + fails + " failed" : "\nFAILURES: 0");

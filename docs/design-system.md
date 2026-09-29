@@ -181,8 +181,9 @@ until scrolled into view (motion.js). Durations and easing are tokens.
 - Sales preset segmented control is gold.
 - Listings toolbar consolidation (Costs ▾) is the owner's own earlier redesign.
 - **Navigation [decided 29 Sep 2026]: an always-visible 64px icon rail**
-  (prototype A; navrail.js / navrail.css) above 860px, hideable (`alta_navrail`,
-  brought back by "Show icon bar" in the menu). It is built from the sidebar:
+  (prototype A; navrail.js / navrail.css) above 860px, always shown -- no hide
+  control (owner, 30 Sep 2026); a group's screens open when the pointer rests on
+  its button, or on a click / key. It is built from the sidebar:
   Home plus one button per `.navgroup[data-rail]`, each opening a menu of that
   group's screens that presses the sidebar's own items. The overlay sidebar
   stays as the full menu (rail "Menu", the hamburger, Ctrl+B) and is the only

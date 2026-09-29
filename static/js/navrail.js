@@ -17,32 +17,19 @@
 // the active highlight are exactly the sidebar's. A screen added to the sidebar
 // appears here by itself.
 //
-// Hidden: body.railoff, remembered per browser (a preference about how someone
-// works, like the bookmarks). On a phone (<= 860px, MNAV_BREAKPOINT) the rail is
-// not drawn at all: 64px of a 390px screen is a sixth of it, and the phone keeps
-// its drawer (the owner's mobile layout, matched to Orbit).
+// ALWAYS SHOWN, NO HIDE (owner, 30 Sep 2026: "i dont want that option to hide
+// sidebar and show side bar, i am okay with the small symbols"). A group's
+// screens open when the pointer RESTS on its button ("the side menu bar should
+// show the different subpages after the cursor is hover over it") -- a click
+// still opens it too, for touch screens and the keyboard. On a phone
+// (<= 860px, MNAV_BREAKPOINT) the rail is not drawn at all: the phone keeps its
+// drawer (the owner's mobile layout, matched to Orbit).
 
-const NAVRAIL_KEY = "alta_navrail";      // "0" = hidden by the person
-
-function navRailHidden(){
-  try{ return localStorage.getItem(NAVRAIL_KEY) === "0"; }catch(e){ return false; }
+// Anyone who used the old Hide gets the rail back: the preference is gone.
+function _nrForgetHidden(){
+  try{ localStorage.removeItem("alta_navrail"); }catch(e){}
+  document.body.classList.remove("railoff");
 }
-
-function navRailSetHidden(hide){
-  try{ localStorage.setItem(NAVRAIL_KEY, hide ? "0" : "1"); }catch(e){}
-  navRailClose();
-  navRailApply();
-  // Charts size themselves to their container, which just changed width.
-  try{ window.dispatchEvent(new Event("resize")); }catch(e){}
-}
-
-function navRailApply(){
-  const hide = navRailHidden();
-  document.body.classList.toggle("railoff", hide);
-  const t = document.getElementById("railshow");
-  if(t) t.style.display = hide ? "" : "none";
-}
-
 function _nrEsc(s){ return (typeof esc === "function") ? esc(String(s == null ? "" : s)) : String(s == null ? "" : s); }
 
 // Visible to this person: not display:none on the item itself (permissions and
@@ -88,9 +75,7 @@ function _nrHtml(){
   });
   h += '<span class="nr-sp"></span>'
      + '<button type="button" class="nr-btn" data-nr="-menu" onclick="navRailClose();mnavOpen()" title="The full menu, with the account and marketplace (Ctrl+B)">'
-     + '<i class="ti ti-menu-2" aria-hidden="true"></i><span>Menu</span></button>'
-     + '<button type="button" class="nr-btn" data-nr="-hide" onclick="navRailSetHidden(true)" title="Hide this bar. Bring it back from the menu: Show icon bar.">'
-     + '<i class="ti ti-arrow-bar-to-left" aria-hidden="true"></i><span>Hide</span></button>';
+     + '<i class="ti ti-menu-2" aria-hidden="true"></i><span>Menu</span></button>';
   return h;
 }
 
@@ -157,9 +142,11 @@ function navRailClose(){
 /* The group's screens, as a menu beside the rail. Choosing one presses the
  * sidebar's own item (see the top of this file). Pressing the same button
  * again shuts it; pressing another group's button swaps to that group. */
-function navRailOpen(ev, name){
-  const btn = ev && ev.currentTarget;
+function navRailOpen(ev, name, hover){
+  const btn = (ev && ev.currentTarget && ev.currentTarget.nodeType === 1) ? ev.currentTarget
+            : document.querySelector('#navrail .nr-btn[data-nr="' + name + '"]');
   const wasOpen = btn && btn.getAttribute("aria-expanded") === "true";
+  if(wasOpen && hover) return;              // already showing: resting on it changes nothing
   navRailClose();
   if(wasOpen) return;
   const g = document.querySelector('.navgroup[data-grp="' + name + '"]');
@@ -189,7 +176,40 @@ function navRailOpen(ev, name){
   const top = Math.max(48, Math.min(r.top, window.innerHeight - m.offsetHeight - 8));
   m.style.top = top + "px";
   btn.setAttribute("aria-expanded", "true");
-  if(typeof uiMenuKeys === "function") uiMenuKeys(m, btn, navRailClose);
+  // Opened by a click or a key: the keyboard moves into the menu. Opened by
+  // the pointer resting there: focus stays put, or merely passing over the
+  // rail would pull the page's focus away.
+  if(!hover && typeof uiMenuKeys === "function") uiMenuKeys(m, btn, navRailClose);
+  m.addEventListener("mouseenter", _nrHoverKeep);
+  m.addEventListener("mouseleave", _nrHoverLeave);
+}
+
+/* OPEN ON HOVER. A short pause before opening, so sweeping the pointer down
+ * the rail does not flash every menu; a longer one before closing, so the
+ * pointer can travel from the button across to the menu beside it. */
+let _nrOpenT = 0, _nrCloseT = 0;
+function _nrHoverKeep(){ clearTimeout(_nrCloseT); }
+function _nrHoverLeave(){
+  clearTimeout(_nrOpenT);
+  clearTimeout(_nrCloseT);
+  _nrCloseT = setTimeout(navRailClose, 350);
+}
+function _nrHoverInit(){
+  const rail = document.getElementById("navrail");
+  if(!rail) return;
+  rail.addEventListener("mouseover", function(e){
+    const b = e.target.closest && e.target.closest(".nr-btn");
+    if(!b) return;
+    _nrHoverKeep();
+    clearTimeout(_nrOpenT);
+    if(b.getAttribute("aria-haspopup") !== "menu"){      // Home, Menu: no sub-pages
+      _nrOpenT = setTimeout(navRailClose, 150);
+      return;
+    }
+    const name = b.getAttribute("data-nr");
+    _nrOpenT = setTimeout(function(){ navRailOpen({currentTarget: b}, name, true); }, 120);
+  });
+  rail.addEventListener("mouseleave", _nrHoverLeave);
 }
 
 /* ONE outside-click listener for the life of the page. A listener per menu
@@ -220,8 +240,9 @@ function _nrSoon(){
 }
 
 document.addEventListener("DOMContentLoaded", function(){
-  navRailApply();
+  _nrForgetHidden();
   navRailBuild();
+  _nrHoverInit();
   document.addEventListener("click", _nrOutside);
   const side = document.querySelector("#workspace .sidebar");
   if(side && typeof MutationObserver === "function"){
