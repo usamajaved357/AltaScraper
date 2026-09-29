@@ -215,6 +215,10 @@ change needs it, via register injection.
   would need a second packageReferenceId, not yet seen); Transparency items are
   refused. Still to capture on the first real send: Amazon's reply, whether
   "Other" is accepted, and the UK carrier-code list.
+- **Orders list on a phone (390px) is badly squeezed** under an open order:
+  the order cell wraps "GBP 19.99" one letter per line (seen in
+  active/shots-dispatch/phone_2_preview_on.png, 30 Sep 2026). The dispatch
+  box itself fits. Not yet investigated.
 - **getOrderItems is read in four places** (domain/orders_live.order_items, two
   in routes/orders_routes, api/amazon_orders_ship.order_items). The last is the
   only one that follows NextToken pages and keeps OrderItemId; folding the

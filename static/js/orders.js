@@ -1538,7 +1538,10 @@ async function ordShipConfirm(orderId, accountId, marketplace, btn){
   }
   const msg = pv.summary + " The buyer is told it is on its way, and it cannot "
             + "be taken back from here. Send it?";
-  const yes = (typeof uiConfirm === "function") ? await uiConfirm(msg) : false;
+  const yes = (typeof uiConfirm === "function")
+    ? await uiConfirm(msg, {title: "Send to Amazon?", ok: "Send to Amazon",
+                            cancel: "Don't send", danger: true})
+    : false;
   if(!yes){ if(btn) btn.disabled = false; return; }
   const res = await _ordWriteThenReload("/orders/ship/confirm", pv.body, orderId, accountId,
     "Sent.", "Not sent to Amazon: ");
@@ -1597,8 +1600,11 @@ async function _ordWriteThenReload(url, body, orderId, accountId, okMsg, failWor
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)})).json();
     if(!j || !j.ok){
+      // An answer that says the result is NOT KNOWN is not a failure: the
+      // "not saved / not sent" prefix would contradict it (seen in the
+      // browser check), so it is shown in its own words.
       if(typeof toast === "function")
-        toast(fail + ((j && j.error) || "unknown"));
+        toast((j && j.uncertain ? "" : fail) + ((j && j.error) || "unknown"));
       return j || null;
     }
     if(typeof toast === "function")

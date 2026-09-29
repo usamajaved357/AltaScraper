@@ -192,6 +192,12 @@ def describe(payload):
     """The request in words, for the preview."""
     d = (payload or {}).get("packageDetail") or {}
     n = sum(int(x.get("quantity") or 0) for x in d.get("orderItems") or [])
+    when = str(d.get("shipDate", ""))
+    try:
+        # Read by a person: "29 Sep 2026, 08:26 UTC", not the ISO the request carries.
+        when = _dt.datetime.strptime(when, "%Y-%m-%dT%H:%M:%SZ").strftime("%d %b %Y, %H:%M UTC").lstrip("0")
+    except ValueError:
+        pass
     return ("Amazon would be told: shipped %s, %d item%s, %s tracking %s."
-            % (d.get("shipDate", ""), n, "" if n == 1 else "s",
+            % (when, n, "" if n == 1 else "s",
                d.get("carrierName") or d.get("carrierCode", ""), d.get("trackingNumber", "")))
