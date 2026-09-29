@@ -165,3 +165,12 @@
 @media (max-width:720px){
   .pdpi-slots{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
+
+/* NO HOVER, NO HIDDEN BUTTONS (PDP review, 30 Sep 2026). On a phone or with the
+   keyboard there is no hover, so the slot's x and the library's delete could
+   never be reached. Shown always there, at a thumb-sized 34px; and shown to
+   the keyboard whenever focus is inside the tile. */
+@media (hover:none){
+  .pdpi-slotx, .pdpi-del{ display:flex; width:34px; height:34px; }
+}
+.pdpi-slot:focus-within .pdpi-slotx, .pdpi-thumb:focus-within .pdpi-del{ display:flex; }

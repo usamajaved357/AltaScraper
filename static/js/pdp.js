@@ -327,6 +327,8 @@ function pdpOpen(sku){
     // mark ANOTHER listing's Amazon errors as "you have changed this", which is
     // a claim about work that was never done.
     PDP_EDITED_FIELDS = new Set();
+    // The Attributes filter is about the listing it was chosen on.
+    if(typeof PDP_ATTR_FILTER !== "undefined") PDP_ATTR_FILTER = "all";
   }
   // The drawer and this page are two views of one listing; having both open
   // means two title boxes saving to the same cell.
@@ -402,7 +404,7 @@ function pdpOpen(sku){
   if(r.product_type && typeof loadSchemas === "function"
      && !(SCHEMAS[r.product_type] && (SCHEMAS[r.product_type].attrs||[]).length)){
     loadSchemas([r.product_type], false, (typeof rowMkt==="function")?rowMkt(r):"")
-      .then(() => { if(PDP_SKU === sku) pdpRender(); }).catch(() => {});
+      .then(() => { if(PDP_SKU === sku) pdpRenderWhenIdle(sku); }).catch(() => {});
   }
   // What Amazon currently holds, for the comparison column. Already asked for
   // above when there is no draft -- lvEnsure is re-entrant, so a second call
@@ -418,6 +420,9 @@ function pdpOpen(sku){
 function pdpClose(opts){
   if(!PDP_SKU) return;
   PDP_SKU = "";
+  // Reopening the same listing reads its slots again: a failed or old read
+  // (no Push button, stale "on Amazon") no longer outlives the page.
+  if(typeof pdpImagesForget === "function"){ try{ pdpImagesForget(); }catch(e){} }
   const _opener = PDP_OPENER; PDP_OPENER = null;
   // THE LIST UNDERNEATH IS ANOTHER COPY OF THE ROW, and it goes stale the same
   // way the hero did.
@@ -492,14 +497,21 @@ document.addEventListener("keydown", function(e){
  * Registered once, on the document, rather than on the panel: the panel is
  * rebuilt on every render and a listener on it would be dropped each time. */
 document.addEventListener("keydown", function(ev){
+  // Enter / Space on the page's own clickable panels (_pdpKeyable).
+  if(ev.key === "Enter" || ev.key === " "){ if(pdpIsOpen()) _pdpKeyPress(ev); return; }
   if(ev.key !== "Escape" || !pdpIsOpen()) return;
   const el = document.activeElement;
   const tag = el ? String(el.tagName || "").toLowerCase() : "";
   const typing = el && (el.isContentEditable === true
                         || tag === "input" || tag === "textarea" || tag === "select");
   if(typing){ try{ el.blur(); }catch(e){} return; }
-  // A dialog or a menu over the page owns Escape first.
-  if(document.querySelector(".uidlg, .uiinline")) return;
+  // A dialog or a menu over the page owns Escape first. A dialog that has just
+  // closed itself on this same key marks it handled (defaultPrevented), and a
+  // modal opened from the page (Image library, Optimize) is still open when
+  // this runs: Escape on either used to close the product page as well
+  // (PDP review, 30 Sep 2026).
+  if(ev.defaultPrevented) return;
+  if(document.querySelector(".uidlg, .uiinline, .modalwrap.open, #nrfly, .tilemenu")) return;
   pdpClose();
 });
 
@@ -595,6 +607,11 @@ function pdpHero(r){
     +       '<input class="pdp-barcode" id="pdp_barcode" '
     +       'value="' + esc(r.barcode || "") + '" placeholder="none" '
     +       'inputmode="numeric" autocomplete="off" spellcheck="false" '
+    // LOCKED WHERE THE OFFER TAB LOCKS IT (_lockOn, autofix.js): on a listing
+    // live on Amazon the barcode belongs to the ASIN and a change is refused;
+    // a catalogue-only listing has no draft to save into; a read-only
+    // workspace saves nothing. It was always editable here (PDP review, 30 Sep).
+    +       (pdpBarcodeLocked(r) ? 'readonly title="' + esc(pdpBarcodeLocked(r)) + '" ' : '')
     // jsArg (users.js, one global scope) -- the one escaper for a value
     // inside an inline handler (Milestone 2).
     +       'oninput="pdpBarcodeTyped(' + jsArg(r.sku) + ', this.value)" '
@@ -861,6 +878,8 @@ function pdpAttrRows(m){
   })();
 
   let nMatch = 0, nDiff = 0, nOnlyAmz = 0, nOnlyUs = 0;
+  // The fill link counts exactly what lvFillEmpty copies (lvFillTodo).
+  const _nFillFn = (typeof lvFillTodo === "function") ? lvFillTodo : null;
   // Which group heading has been drawn, so one is drawn per family and only
   // when a member of it actually survived the filter.
   let openGroup = "";
@@ -1040,8 +1059,8 @@ function pdpAttrRows(m){
     +   fbtn("differs", "Differs", nDiff) + fbtn("amazon", "Only Amazon", nOnlyAmz)
     +   fbtn("empty", "Empty") + '</div>'
     + '<div class="pdp-attrs">' + rows + empty + '</div>'
-    + (nOnlyAmz ? '<div class="pdp-more" onclick="lvFillEmpty(' + jsArg(sku) + ')">'
-        + '<i class="ti ti-arrow-down"></i> Fill ' + nOnlyAmz + ' empty field(s) from Amazon</div>' : "")
+    + ((_nFillFn ? _nFillFn(sku).length : nOnlyAmz) ? '<div class="pdp-more" onclick="lvFillEmpty(' + jsArg(sku) + ')">'
+        + '<i class="ti ti-arrow-down"></i> Fill ' + (_nFillFn ? _nFillFn(sku).length : nOnlyAmz) + ' empty field(s) from Amazon</div>' : "")
     + (m.productType ? '<div class="pdp-more amber" onclick="saveDefault(' + jsArg(sku) + ',' + jsArg(m.productType) + ',this)"><i class="ti ti-star"></i> Remember these as defaults for all '
         + esc(m.productType) + ' listings</div>' : "");
 }
@@ -1471,7 +1490,7 @@ function pdpRefreshChecks(sku){
         ? ROWS.findIndex(function(x){ return String(x.sku) === String(sku); })
         : -1;
       if(i >= 0) ROWS[i] = Object.assign({}, ROWS[i], j.row);
-      pdpRender();
+      pdpRenderWhenIdle(sku);
     })
     .catch(function(){});
 }
@@ -1493,6 +1512,71 @@ function pdpRefreshChecks(sku){
  * edit. Fields save when they lose focus, so the refresh waits for that, plus a
  * moment for the save's own request, and then runs.
  */
+/* EVERY CLICKABLE THING ON THE PAGE WORKS FROM THE KEYBOARD. The tabs, the
+ * sidebar items, the checks and "Back to listings" are div/a elements with an
+ * onclick and no href, so Tab skipped them and Enter did nothing (PDP review,
+ * 30 Sep 2026). Each gets a tab stop and a role once drawn; Enter or Space on
+ * it presses it (the keydown listener below). The look is unchanged. */
+function _pdpKeyable(host){
+  if(!host || typeof host.querySelectorAll !== "function") return;
+  host.querySelectorAll("[onclick]:not(button):not(a[href]):not(input):not(select):not(textarea):not(label)")
+    .forEach(function(el){
+      // A wrapper whose onclick only stops a click travelling up is not a control.
+      if(/^\s*event\.stopPropagation\(\);?\s*$/.test(el.getAttribute("onclick") || "")) return;
+      if(!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
+      if(!el.hasAttribute("role")){
+        if(el.classList.contains("pdp-tab")){
+          el.setAttribute("role", "tab");
+          el.setAttribute("aria-selected", el.classList.contains("active") ? "true" : "false");
+        } else el.setAttribute("role", "button");
+      }
+    });
+  const bar = host.querySelector(".pdp-tabs");
+  if(bar && !bar.hasAttribute("role")) bar.setAttribute("role", "tablist");
+}
+function _pdpKeyPress(ev){
+  const el = ev.target;
+  const host = document.getElementById("pdp");
+  if(!el || !host || typeof host.contains !== "function" || !host.contains(el) || !el.getAttribute) return;
+  if(!el.hasAttribute("onclick") || /^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(el.tagName)
+     && !(el.tagName === "A" && !el.hasAttribute("href"))) return;
+  if(el.isContentEditable) return;
+  ev.preventDefault();
+  el.click();
+}
+
+/* REDRAW, BUT NOT UNDER SOMEBODY'S FINGERS. The late answers (/row, the
+ * product type's schema, what Amazon holds) used to redraw straight away and
+ * wipe a box being typed in -- its caret, and the text not yet saved (PDP
+ * review, 30 Sep 2026). While a field on the page has focus, the redraw waits
+ * for it to lose focus (which saves it), then a moment, then runs. */
+function _pdpTyping(){
+  const host = document.getElementById("pdp");
+  const el = document.activeElement;
+  const tag = el ? String(el.tagName || "").toLowerCase() : "";
+  // A checkbox, a radio or a read-only box holds no half-typed text.
+  const kind = String((el && el.type) || "").toLowerCase();
+  if(tag === "input" && (el.readOnly || /^(checkbox|radio|button|submit|file|range|color)$/.test(kind))) return null;
+  return (el && host && typeof host.contains === "function" && host.contains(el)
+          && (el.isContentEditable === true || tag === "input" || tag === "textarea" || tag === "select"))
+         ? el : null;
+}
+function pdpRenderWhenIdle(sku){
+  if(!PDP_SKU || (sku && String(PDP_SKU) !== String(sku))) return;
+  const el = _pdpTyping();
+  if(el){
+    // One wait per field, however many redraws asked for one meanwhile.
+    if(el._pdpWaiting) return;
+    el._pdpWaiting = true;
+    el.addEventListener("blur", function(){
+      el._pdpWaiting = false;
+      setTimeout(function(){ pdpRenderWhenIdle(sku); }, 800);
+    }, {once: true});
+    return;
+  }
+  pdpRender();
+}
+
 function pdpAfterAction(sku){
   if(!PDP_SKU || String(PDP_SKU) !== String(sku)) return;
   const host = document.getElementById("pdp");
@@ -1626,6 +1710,17 @@ function pdpBarcodeTyped(sku, val){
  * THE CLASH CHECK DOES NOT GATE THIS. A clash is reported, never enforced --
  * he may be about to delete the other listing, and an app that refuses the
  * typing is an app he has to fight. */
+/* Why the hero barcode box may not be edited, or "" when it may. */
+function pdpBarcodeLocked(r){
+  if(!r) return "";
+  if(typeof window !== "undefined" && window.WS_READONLY) return "Read-only workspace: nothing is saved from here.";
+  if(r.catalogue_only) return "This listing exists only on Amazon; there is no draft here to save a barcode into.";
+  const live = (typeof lsInLiveCatalogue === "function") ? !!lsInLiveCatalogue(r)
+             : String(r.status || "").toUpperCase() === "LIVE";
+  if(live) return "Live on Amazon: the barcode belongs to the ASIN in Amazon's catalogue, so a change here would be refused. Amazon Support can amend it.";
+  return "";
+}
+
 async function pdpBarcodeSave(sku, val){
   const v = String(val || "").trim();
   if(typeof editField !== "function") return;
@@ -1806,9 +1901,12 @@ function pdpSyncThis(sku){
       }
       if(typeof toast === "function") toast("Pulled in. Reloading the listing…");
       if(typeof loadRows === "function"){
-        Promise.resolve(loadRows()).then(function(){ pdpRender(); });
+        Promise.resolve(loadRows()).then(function(){
+          if(typeof pdpImagesForget === "function") pdpImagesForget();
+          pdpRender(); pdpAfterAction(sku);
+        });
       }else{
-        pdpRender();
+        pdpRender(); pdpAfterAction(sku);
       }
     })
     .catch(e => { if(typeof toast === "function") toast(String(e)); });
@@ -1930,7 +2028,8 @@ function pdpMarkDirty(){
 function pdpSaveAndFinish(){
   try{
     const a = document.activeElement;
-    if(a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT")) a.blur();
+    if(a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT"
+             || a.isContentEditable)) a.blur();
   }catch(e){}
   setTimeout(pdpClose, 120);
 }
@@ -2082,6 +2181,7 @@ function pdpRender(){
     +   pdpSidebar(r)
     +   '<div class="pdp-content">' + blocking + tab + '</div>'
     + '</div>' + pdpFooter(r) + '</div>';
+  _pdpKeyable(host);
 
   // The bullets' shared byte budget is measured from the DOM once the cards
   // exist -- the same call openDrawer makes, for the same reason.
@@ -2187,7 +2287,9 @@ function pdpOpenGenerator(){
  * live value copied in). Mirrors _rebuildDrawerData; called from it, so there
  * is one place that decides a listing view is stale. */
 function pdpRebuild(sku){
-  if(PDP_SKU && String(PDP_SKU) === String(sku)) pdpRender();
+  // Never under a box being typed in: a late answer (Amazon's copy, a save
+  // elsewhere) waits for the field to lose focus (pdpRenderWhenIdle).
+  if(PDP_SKU && String(PDP_SKU) === String(sku)) pdpRenderWhenIdle(sku);
 }
 
 /* THE HERO IS A COPY OF THE ROW, AND A COPY GOES STALE.
@@ -2257,7 +2359,11 @@ function pdpPath(){
 function pdpOpenFromUrl(sku){
   sku = String(sku || "");
   if(!sku) return false;
-  const r = (typeof ROWS !== "undefined") ? ROWS.find(x => String(x.sku) === sku) : null;
+  const r = ((typeof ROWS !== "undefined") ? ROWS.find(x => String(x.sku) === sku) : null)
+         // A listing opened from Amazon's catalogue reopens too -- when the
+         // catalogue this account holds really lists it.
+         || (((typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS) || []).some(function(it){ return String(it && it.sku) === sku; })
+             ? pdpCatalogueRow(sku) : null);
   if(!r) return false;
   pdpOpen(sku);
   return true;

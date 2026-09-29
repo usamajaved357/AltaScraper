@@ -131,6 +131,14 @@ def check_url(url):
                 "the image directly. Otherwise use an image that is already "
                 "on a public https:// address."
                 % (u.split("?")[0][:60] or "a local path"))
+    # AN ADDRESS ON THIS COMPUTER. When the app runs locally, the public address
+    # built from the request is https://127.0.0.1:5000/img/... -- well formed, so
+    # Amazon says ACCEPTED, and then it cannot fetch it (PDP review, 30 Sep 2026).
+    host = re.sub(r"^https?://", "", u, flags=re.I).split("/")[0].split(":")[0].lower()
+    if host in ("localhost", "127.0.0.1", "0.0.0.0", "[::1]", "::1") or host.endswith(".local"):
+        return ("That image address (%s) is on this computer, where Amazon cannot "
+                "reach it. Send images from the live app, or set PUBLIC_BASE_URL "
+                "to the app's public address." % host)
     return ""
 
 

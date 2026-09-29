@@ -187,7 +187,7 @@ function lvEnsure(r){
     const onDrawer = (typeof DRAWER_SKU !== "undefined") && String(DRAWER_SKU) === sku;
     const onPdp    = (typeof PDP_SKU !== "undefined") && String(PDP_SKU) === sku;
     if(onDrawer && typeof _rebuildDrawerData === "function") _rebuildDrawerData(sku);
-    else if(onPdp && typeof pdpRebuild === "function") pdpRebuild(sku);
+    else if(onPdp && typeof pdpRebuild === "function") pdpRebuild(sku);   // waits while typing
   });
 }
 
@@ -195,10 +195,14 @@ function lvEnsure(r){
 function lvRefresh(sku){
   sku = String(sku);
   delete LIVE_ATTRS[sku];
-  const r = (typeof ROWS !== "undefined") ? ROWS.find(x => String(x.sku) === sku) : null;
-  if(!r) return;
+  // A listing opened from Amazon's catalogue has no row in ROWS; its "Try
+  // again" did nothing and left blank fields (PDP review, 30 Sep 2026).
+  const r = ((typeof ROWS !== "undefined") ? ROWS.find(x => String(x.sku) === sku) : null)
+         || ((typeof pdpCatalogueRow === "function") ? pdpCatalogueRow(sku) : null)
+         || {sku: sku};
   lvEnsure(r);
   if(typeof _rebuildDrawerData === "function") _rebuildDrawerData(sku);   // show "checking"
+  if(typeof PDP_SKU !== "undefined" && String(PDP_SKU) === sku && typeof pdpRender === "function") pdpRender();
 }
 
 /* SAME VALUE, WRITTEN TWO WAYS, IS STILL THE SAME VALUE.
@@ -339,6 +343,12 @@ async function lvUse(sku, key){
   if(!L || L.state !== "ok") return;
   const val = L.values[key];
   if(val == null) return;
+  // The same keys "Fill from Amazon" never copies: above all the GTIN-exemption
+  // declaration, which is the owner's tick and nothing else (Rule 1).
+  if(typeof lvFillable === "function" && !lvFillable(key)){
+    toast("This field is not copied from Amazon here. The barcode and the GTIN exemption are set on the Offer tab.");
+    return;
+  }
   try{
     const j = await (await fetch("/edit", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -356,6 +366,30 @@ async function lvUse(sku, key){
  * ONLY THE EMPTY ONES. A value already in the row is left exactly as it is,
  * even when Amazon disagrees with it -- overwriting those is the destructive
  * direction and is left as a per-field decision. */
+/* EXACTLY WHAT "FILL FROM AMAZON" WILL COPY -- the one list the link counts
+ * and the button copies, so the two numbers cannot disagree. */
+function lvFillTodo(sku){
+  const L = (typeof lvGet === "function") ? lvGet(sku) : null;
+  const r = (typeof ROWS !== "undefined" && ROWS) ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+  if(!L || L.state !== "ok" || !r) return [];
+  const a = r.attributes || {};
+  return Object.keys(L.values || {}).filter(k => {
+    if((L.multi||{})[String(k).split(".")[0]]) return false;   // never the multis
+    if(!lvFillable(k)) return false;
+    const cur = a[k];
+    return cur == null || String(cur).trim() === "";
+  });
+}
+
+/* WHAT "FILL FROM AMAZON" MAY COPY. Not the image slots (the Images tab owns
+ * them), and never the barcode or the GTIN-exemption declaration: whether this
+ * listing claims the exemption is the owner's tick, never a value copied in
+ * (Rule 1). These were copied without being counted, so the link said "Fill 3"
+ * and the confirm said "Copy 9" (PDP review, 30 Sep 2026). */
+function lvFillable(k){
+  return !/image_locator|product_identifier|product_id_exemption|gtin|merchant_suggested_asin/i.test(String(k));
+}
+
 async function lvFillEmpty(sku){
   // The account these values are copied INTO, taken before the confirmation:
   // every write names it, so a switch part-way cannot send the rest to the new
@@ -364,12 +398,7 @@ async function lvFillEmpty(sku){
   const L = lvGet(sku);
   const r = ROWS.find(x => String(x.sku) === String(sku));
   if(!L || L.state !== "ok" || !r) return;
-  const a = r.attributes || {};
-  const todo = Object.keys(L.values).filter(k => {
-    if((L.multi||{})[String(k).split(".")[0]]) return false;   // never the multis
-    const cur = a[k];
-    return cur == null || String(cur).trim() === "";
-  });
+  const todo = lvFillTodo(sku);
   if(!todo.length){ toast("Nothing to fill — every field Amazon has is already set."); return; }
   const ok = await uiConfirm("Copy " + todo.length + " value(s) from Amazon into this "
     + "listing?\n\nOnly fields that are currently EMPTY are filled. Nothing is sent to "

@@ -406,6 +406,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
             return jsonify({"ok": False, "error": "not confirmed"}), 400
         if not (sku and slot):
             return jsonify({"ok": False, "error": "need a sku and a slot"}), 400
+        # SOMEBODY ELSE'S PHOTO IS NEVER THIS LISTING'S MAIN IMAGE -- the owner's
+        # rule the submit already applies ("i do not want to send the ebay or
+        # amazon competitor image to amazon as my own image"). The push routes
+        # did not ask; the product page's Push made that reachable (review,
+        # 30 Sep 2026). One test, domain/image_urls.is_ours.
+        if slot == "main_product_image_locator":
+            from domain import image_urls as _iu
+            if not _iu.is_ours(CONFIG_PATH, url):
+                return jsonify({"ok": False, "error": (
+                    "That main image is the source listing's own photograph, not "
+                    "yours, so it is not sent as your main image. Upload or "
+                    "generate your own picture for Main.")}), 400
 
         # AN IMAGE IN THIS APP'S OWN LIBRARY IS ALREADY PUBLISHABLE.
         #
@@ -469,6 +481,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
             return jsonify({"ok": False, "error": why}), 502
         return jsonify({"ok": True, "slot": slot, "sku": sku,
                         "submission_id": res["submission_id"],
+                        # Amazon can ACCEPT and still list problems; they are
+                        # passed on rather than dropped (PDP review, 30 Sep 2026).
+                        "issues": res.get("issues") or [],
                         "note": "Amazon usually shows a new image within a few minutes."})
 
     @app.route("/variations/themes")
