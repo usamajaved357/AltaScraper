@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototype C — Exception-First Decision Dashboard</title>
+<link rel="stylesheet" href="../../static/vendor/tabler-icons/tabler-icons.min.css">
+<link rel="stylesheet" href="shared/proto.css">
+<style>
+/* ===== C: EXCEPTION-FIRST =====
+   The app tells you what changed and what needs a decision, ranked by money at
+   risk, across every account. Normal things stay quiet and one click away. */
+body{--acc:var(--line2)}
+.lockline{height:4px;background:var(--acc)}
+.top{display:flex;align-items:center;gap:10px;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.top .brand{font-weight:800;letter-spacing:.3px;margin-right:6px}
+.top .sp{flex:1}
+.acctchip{display:flex;align-items:center;gap:7px;border:1px solid var(--line2);background:var(--panel2);border-radius:999px;padding:4px 11px}
+.acctchip.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+.acctchip .f{background:var(--red-bg);color:var(--red);border-radius:999px;padding:0 6px;font-size:11.5px;font-weight:700}
+.acctchip .f.zero{background:var(--ok-bg);color:var(--ok)}
+.layout{display:grid;grid-template-columns:190px 1fr;min-height:calc(100vh - 90px)}
+.nav{border-right:1px solid var(--line);padding:12px 8px;background:var(--panel)}
+.nav button{display:flex;width:100%;gap:9px;align-items:center;border:0;background:none;border-radius:9px;padding:8px 10px;color:var(--ink2);text-align:left}
+.nav button.on{background:var(--panel2);color:var(--ink)}
+.nav .n{margin-left:auto;background:var(--red-bg);color:var(--red);border-radius:999px;padding:0 6px;font-size:11.5px}
+.nav hr{border:0;border-top:1px solid var(--line);margin:10px 4px}
+.nav .quiet{font-size:12.5px}
+.page{padding:18px 22px;max-width:1150px}
+h2{margin:0 0 4px;font-size:19px} .lead{color:var(--ink2);margin:0 0 14px}
+.head{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;margin-bottom:16px}
+.big{background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:16px}
+.big .v{font-size:30px;font-weight:800}
+.big .ch{font-size:13px}
+.moved li{margin-bottom:4px}
+.feed{display:flex;flex-direction:column;gap:10px}
+.find{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:start;background:var(--panel);
+  border:1px solid var(--line2);border-left:4px solid var(--line2);border-radius:12px;padding:12px 14px}
+.find.sev3{border-left-color:var(--red)} .find.sev2{border-left-color:var(--warn)} .find.sev1{border-left-color:var(--accent)}
+.find .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:18px;background:var(--panel2)}
+.find.sev3 .ic{color:var(--red);background:var(--red-bg)} .find.sev2 .ic{color:var(--warn);background:var(--warn-bg)}
+.find h3{margin:0;font-size:14.5px}
+.find .meta{font-size:12px;color:var(--ink2);margin:2px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.find .risk{font-weight:700;color:var(--gold)}
+.find .acts{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.find .acts .row{display:flex;gap:6px}
+.find.done{opacity:.55}
+.achip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line2);border-radius:999px;padding:1px 8px}
+.clear{padding:14px;border:1px solid var(--ok-line);background:var(--ok-bg);color:var(--ok);border-radius:12px}
+.mission{display:flex;gap:12px;align-items:center;padding:12px 14px;margin-bottom:12px;border-radius:12px;
+  background:var(--accent-bg);border:1px solid var(--accent-line)}
+.mission .bar{flex:0 0 160px;height:8px;background:var(--panel3);border-radius:999px;overflow:hidden}
+.mission .bar div{height:100%;background:var(--accent)}
+table.t{width:100%;border-collapse:collapse}
+table.t th{text-align:left;color:var(--ink2);font-size:12px;font-weight:600;padding:8px;border-bottom:1px solid var(--line2)}
+table.t td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+table.t tr.focus td{background:rgba(242,114,114,.06)}
+table.t tr:hover td{background:var(--panel2);cursor:pointer}
+.evid{font-size:12.5px;color:var(--red);margin-top:3px}
+.quietbox{margin-top:14px;border:1px dashed var(--line2);border-radius:12px}
+.quietbox summary{padding:10px 12px;cursor:pointer;color:var(--ink2)}
+.overlay{position:fixed;inset:31px 0 0 0;z-index:100;background:rgba(5,7,12,.55);display:flex;justify-content:flex-end}
+.sheet{width:min(720px,100%);height:100%;overflow:auto;background:var(--panel);border-left:1px solid var(--line2)}
+.sheet .h{padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+.sheet .b{padding:16px 18px}
+.said{border:1px solid var(--red-line);background:var(--red-bg);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.said h4{margin:0 0 6px}
+.said .q{font-family:ui-monospace,monospace;font-size:12.5px;color:#ffd0d0;background:rgba(0,0,0,.2);padding:8px;border-radius:7px;margin:6px 0}
+.inlinefix{display:flex;gap:8px;align-items:center;margin-top:8px}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:13px}
+.kv span:nth-child(odd){color:var(--ink2)}
+.wf{display:grid;grid-template-columns:170px 1fr 110px;gap:6px 10px;align-items:center;font-size:13px}
+.wf .b{height:18px;border-radius:4px}
+.checking{display:flex;gap:8px;align-items:center;color:var(--ink2);font-size:13px}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.nav{display:flex;overflow:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .nav button{width:auto;white-space:nowrap}.nav hr,.nav .quiet{display:none}.head{grid-template-columns:1fr}.find{grid-template-columns:1fr}.find .acts{align-items:flex-start}}
+</style>
+</head>
+<body>
+<div class="lockline" id="lockline" data-piece="C2"
+  data-why="Colour-coded account lock|When you are inside one account, a stripe in that account's colour runs across the top of every screen and its chip is outlined.
+On Today you see every account at once (the owner runs several); the moment you act on a finding the app LOCKS to that finding's account, because every fix belongs to exactly one account."></div>
+<header class="top" id="top" data-piece="C2"
+  data-why="All accounts, with their counts|Each account is a chip showing how many findings it has (green 0 = all clear). You see which company needs you before choosing one — the reverse of the current app, where you pick an account first and then look for problems."></header>
+<div class="layout">
+  <nav class="nav" id="nav" data-piece="C1"
+    data-why="Findings first, menus second|Navigation leads with Today; the four working screens follow. Everything else in the current app (43 items) lives under 'Everything else', collapsed — you get there from a finding far more often than from a menu."></nav>
+  <main class="page" id="page"></main>
+</div>
+
+<script src="shared/data.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+const S = {scope: "all", mkt: null, screen: "today", mission: null, open: null, snoozed: {}, dismissed: {}, done: [], checking: false};
+const A = () => pAcct(S.scope === "all" ? "northfield_uk" : S.scope);
+
+/* "1 listing" / "2 listings" -- a finding title is read at a glance. */
+const pl = (n, one, many) => n + " " + (n === 1 ? one : (many || one + "s"));
+/* ===== findings: computed, ranked by money at risk ===== */
+function findings(){
+  const out = [];
+  P_ACCOUNTS.forEach(a => {
+    if(S.scope !== "all" && a.id !== S.scope) return;
+    const L = pListings(a.id), O = pOrders(a.id), t = (pSales(a.id).totals || {});
+    const refused = L.filter(l => l.status === "refused");
+    if(refused.length) out.push({id: a.id + ":refused", sev: 3, acct: a, icon: "ti-x", title: pl(refused.length, "listing") + " Amazon refused",
+      why: "They are not selling. Amazon said exactly what is wrong: " + refused.map(l => '“' + l.issues[0].field + '”').join(", ") + ".",
+      risk: refused.reduce((s, l) => s + (l.price || 0) * 20, 0), riskNote: "est. monthly sales at your price",
+      action: "Fix them", go: () => mission(a.id, "listings", "refused", "Fix " + pl(refused.length, "listing") + " Amazon refused", refused.map(l => l.sku))});
+    const late = O.filter(o => o.stage === "late");
+    if(late.length) out.push({id: a.id + ":late", sev: 3, acct: a, icon: "ti-alarm", title: pl(late.length, "order") + " late to ship",
+      why: "Late shipments count against the account's health. " + late.map(o => esc(o.title)).join("; ") + ".",
+      risk: late.reduce((s, o) => s + o.total, 0), riskNote: "order value", action: "Ship them",
+      go: () => mission(a.id, "orders", "late", "Ship " + pl(late.length, "late order"), late.map(o => o.id))});
+    const buy = O.filter(o => o.stage === "to_buy");
+    if(buy.length) out.push({id: a.id + ":buy", sev: 2, acct: a, icon: "ti-shopping-cart", title: pl(buy.length, "order") + " not bought from the supplier",
+      why: "Ship-by dates: " + buy.map(o => o.shipBy).join(", ") + ". Buy today to stay on time.",
+      risk: buy.reduce((s, o) => s + o.total, 0), riskNote: "order value", action: "Buy them",
+      go: () => mission(a.id, "orders", "to_buy", "Buy " + pl(buy.length, "order") + " from the supplier", buy.map(o => o.id))});
+    const nocost = L.filter(l => l.status === "live" && l.cost == null);
+    if(nocost.length) out.push({id: a.id + ":nocost", sev: 2, acct: a, icon: "ti-coin", title: pl(nocost.length, "selling product") + " with no cost",
+      why: (t.unitsNoCost || 0) + " units sold with profit not known — your profit figure is too high until these are set.",
+      risk: null, riskNote: "profit accuracy", action: "Set costs",
+      go: () => mission(a.id, "listings", "nocost", "Set the cost on " + pl(nocost.length, "product"), nocost.map(l => l.sku))});
+    const low = L.filter(l => l.status === "live" && l.stock != null && l.stock <= 3);
+    if(low.length) out.push({id: a.id + ":stock", sev: 2, acct: a, icon: "ti-package", title: pl(low.length, "product") + " about to run out",
+      why: low.map(l => esc(l.title) + " — " + l.stock + " left, sells ~" + Math.round(l.sold30 / 30 * 10) / 10 + "/day").join("; "),
+      risk: low.reduce((s, l) => s + l.price * l.sold30 / 30 * 14, 0), riskNote: "2 weeks of sales", action: "Restock",
+      go: () => mission(a.id, "listings", "stock", "Restock " + pl(low.length, "product"), low.map(l => l.sku))});
+    const review = L.filter(l => l.status === "review");
+    if(review.length) out.push({id: a.id + ":review", sev: 1, acct: a, icon: "ti-eye", title: pl(review.length, "draft") + " waiting for your review",
+      why: "Nothing is lost while they wait, but they are not selling either.", risk: null, riskNote: "", action: "Review them",
+      go: () => mission(a.id, "listings", "review", "Review " + pl(review.length, "draft"), review.map(l => l.sku))});
+  });
+  return out.filter(f => !S.snoozed[f.id] && !S.dismissed[f.id])
+            .sort((x, y) => y.sev - x.sev || (y.risk || 0) - (x.risk || 0));
+}
+
+/* ===== top bar + nav ===== */
+function renderTop(){
+  const all = (() => { const s = S.scope; S.scope = "all"; const f = findings(); S.scope = s; return f; })();
+  const col = S.scope === "all" ? "var(--line2)" : pAcct(S.scope).colour;
+  document.body.style.setProperty("--acc", col);
+  document.getElementById("top").innerHTML = '<span class="brand">AltaScraper</span>'
+    + '<button class="acctchip ' + (S.scope === "all" ? "on" : "") + '" onclick="setScope(\'all\')"><i class="ti ti-layout-grid"></i> All accounts</button>'
+    + P_ACCOUNTS.map(a => { const n = all.filter(f => f.acct.id === a.id && f.sev >= 2).length;
+        return '<button class="acctchip ' + (S.scope === a.id ? "on" : "") + '" onclick="setScope(\'' + a.id + '\')"><span class="dot" style="background:' + a.colour + '"></span>' + esc(a.name) + '<span class="f ' + (n ? "" : "zero") + '">' + (n || "✓") + '</span></button>'; }).join("")
+    + '<span class="sp"></span>'
+    + (S.scope !== "all" ? '<span class="muted" style="font-size:12.5px">Working in <b style="color:var(--ink)">' + esc(pAcct(S.scope).name) + ' · ' + (S.mkt || pAcct(S.scope).mkts[0]) + '</b></span>' : '<span class="muted" style="font-size:12.5px">Last 30 days · all marketplaces</span>');
+}
+function renderNav(){
+  const n = findings().filter(f => f.sev >= 2).length;
+  const it = [["today","ti-bolt","Today",n],["listings","ti-list","Listings"],["orders","ti-receipt","Orders"],["money","ti-report-money","Money"]];
+  document.getElementById("nav").innerHTML = it.map(([k,i,l,c]) => '<button class="' + (S.screen === k ? "on" : "") + '" onclick="goS(\'' + k + '\')"><i class="ti ' + i + '"></i>' + l + (c ? '<span class="n">' + c + '</span>' : '') + '</button>').join("")
+    + '<hr><details class="quiet"><summary class="muted" style="padding:6px 10px;cursor:pointer">Everything else</summary>'
+    + ["Inventory","Returns","Repricer","Advertising","Keywords","Images","Trackers","Settings"].map(x => '<button class="quiet" disabled title="Not in this prototype">' + x + '</button>').join("") + '</details>';
+}
+function setScope(s){ S.scope = s; S.mkt = null; S.mission = null; S.open = null; render(); }
+function goS(k){ S.screen = k; S.mission = null; render(); }
+
+/* ===== TODAY ===== */
+async function refreshToday(){
+  S.checking = true; render(); await wait(sim() === "slow" ? 1800 : 600); S.checking = false; render();
+}
+function renderToday(){
+  const F = findings();
+  const accts = S.scope === "all" ? P_ACCOUNTS.filter(a => !a.empty) : [pAcct(S.scope)];
+  const sums = accts.map(a => ({a, t: pSales(a.id).totals})).filter(x => x.t);
+  const profitLine = sums.map(x => '<div>' + '<span class="dot" style="background:' + x.a.colour + '"></span> ' + esc(x.a.name) + ': <b>' + money(x.t.profit, x.a.cur) + '</b> <span class="muted">(' + money(x.t.profit - x.t.prevProfit, x.a.cur, {plus: true}) + ' vs previous 30 days)</span></div>').join("");
+  return '<h2>Today</h2><p class="lead">What needs a decision, most money at risk first. Everything not listed here is fine.</p>'
+    + '<div class="head"><div class="big" data-piece="C3" data-why="One reconciled figure first|Before any list, the one answer to \'is the business OK?\' — profit per account, with its change. Different currencies are never added together.\nIt carries its own caveat (\'costs missing\') instead of looking more certain than it is."><div class="muted">Profit, last 30 days</div>' + (profitLine || '<div class="muted">No sales yet.</div>') + '<div class="muted" style="margin-top:6px;font-size:12.5px">Real profit is lower while some costs are missing — see below.</div></div>'
+    + '<div class="big"><div class="muted">What moved it</div><ul class="moved" style="margin:6px 0 0;padding-left:18px"><li>Bath mat sales up 22% (price held)</li><li>Soap dispenser: fee rate up after a size change</li><li>2 refunds on the grill pan</li></ul></div></div>'
+    + '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px"><b>' + pl(F.length, 'finding') + '</b><span class="sp" style="flex:1"></span>' + (S.checking ? '<span class="checking"><i class="ti ti-loader-2"></i> Checking every account…</span>' : '<button class="btn" onclick="refreshToday()"><i class="ti ti-refresh"></i> Check again</button>') + '</div>'
+    + '<div class="feed" data-piece="C3" data-why="The finding card|Each card is one decision: what is wrong, which account, WHY it matters, how much money is at risk, and one button that takes you to the exact rows that fix it.\nIt stays until it is fixed — a problem is not a notification that fades. \'Snooze\' and \'Not a problem\' are explicit and reversible, so the list stays honest.">'
+    + (F.length ? F.map(f => '<div class="find sev' + f.sev + '"><div class="ic"><i class="ti ' + f.icon + '"></i></div><div><h3>' + f.title + '</h3>'
+        + '<div class="meta"><span class="achip"><span class="dot" style="background:' + f.acct.colour + '"></span>' + esc(f.acct.name) + ' · ' + f.acct.mkts[0] + '</span>'
+        + (f.risk != null ? '<span class="risk">' + money(f.risk, f.acct.cur) + ' at risk</span><span>' + esc(f.riskNote) + '</span>' : f.riskNote ? '<span>affects ' + esc(f.riskNote) + '</span>' : '') + '</div>'
+        + '<div>' + f.why + '</div></div><div class="acts"><button class="btn primary" onclick="_F[\'' + f.id + '\'].go()">' + f.action + ' →</button>'
+        + '<div class="row"><button class="btn" onclick="S.snoozed[\'' + f.id + '\']=1;render()" title="Hide until tomorrow">Snooze</button><button class="btn" onclick="S.dismissed[\'' + f.id + '\']=1;render()" title="Hide; you can undo from Done today">Not a problem</button></div></div></div>').join("")
+      : '<div class="clear" data-piece="C8" data-why="All clear is a real state|When nothing needs you, the screen says so plainly and per account — a quiet screen is information, not an empty page."><i class="ti ti-circle-check"></i> All clear' + (S.scope === "all" ? " in every account" : " in " + esc(pAcct(S.scope).name)) + '. Nothing needs a decision right now.</div>')
+    + '</div>'
+    + (S.done.length || Object.keys(S.snoozed).length || Object.keys(S.dismissed).length ? '<details class="quietbox"><summary>Done today, snoozed and dismissed (' + (S.done.length + Object.keys(S.snoozed).length + Object.keys(S.dismissed).length) + ')</summary><div style="padding:0 12px 12px">'
+      + S.done.map(d => '<div class="find done" style="margin-top:8px"><div class="ic"><i class="ti ti-check"></i></div><div><h3>' + esc(d) + '</h3></div><div></div></div>').join("")
+      + '<button class="btn" style="margin-top:8px" onclick="S.snoozed={};S.dismissed={};render()">Show snoozed and dismissed again</button></div></details>' : '');
+}
+
+/* ===== MISSION: a finding opens its exact rows ===== */
+function mission(acct, screen, kind, title, ids){
+  S.scope = acct; S.screen = screen; S.mission = {kind, title, ids, total: ids.length}; render();
+}
+function missionBar(){
+  const m = S.mission; if(!m) return "";
+  const left = m.ids.length, done = m.total - left;
+  return '<div class="mission" data-piece="C8" data-why="You came here to…|A finding opens a normal screen with a mission bar: what you came to do, and progress. When the last one is done the bar says so and offers the way back to Today.\nThe bar is the confirmation that the action worked — no toast to miss."><i class="ti ti-target-arrow"></i><div style="flex:1"><b>' + esc(m.title) + '</b><div class="muted" style="font-size:12.5px">' + (left ? done + " of " + m.total + " done" : "All done — this finding is gone from Today.") + '</div></div>'
+    + '<div class="bar"><div style="width:' + (done / m.total * 100) + '%"></div></div>'
+    + '<button class="btn" onclick="S.mission=null;goS(\'today\')">Back to Today</button></div>';
+}
+function missionDone(id){
+  const m = S.mission; if(!m) return;
+  m.ids = m.ids.filter(x => x !== id);
+  if(!m.ids.length) S.done.push("Done: " + m.title);
+}
+
+/* ===== LISTINGS ===== */
+function renderListings(){
+  if(S.scope === "all") return '<h2>Listings</h2><p class="lead">Pick an account at the top — a listing always belongs to one.</p>';
+  const a = pAcct(S.scope);
+  let L = pListings(a.id), quiet = [];
+  if(S.mission){ const ids = new Set(S.mission.ids); quiet = L.filter(l => !ids.has(l.sku)); L = L.filter(l => ids.has(l.sku)); }
+  if(a.empty) return '<div class="clear" style="color:var(--ink2);background:var(--panel);border-color:var(--line2)">' + esc(a.name) + ' has no listings yet. When there are problems with listings, they will appear on Today.</div>';
+  return missionBar() + '<h2>Listings · ' + esc(a.name) + '</h2>'
+    + (L.length ? tableL(L, a) : '<div class="muted">Nothing left in this finding.</div>')
+    + (S.mission ? '<details class="quietbox"><summary>' + quiet.length + ' other listing(s) in ' + esc(a.name) + ' — fine, not part of this</summary><div style="padding:0 10px 10px">' + tableL(quiet, a) + '</div></details>' : '');
+}
+function tableL(L, a){
+  return '<table class="t" data-piece="C4" data-why="The table shows evidence on the row|Rows that are part of the finding carry Amazon\'s words directly under the title. Everything that is fine is folded away below, so the table opens on the problem and nothing else.">'
+    + '<thead><tr><th>Status</th><th>Product</th><th>Price</th><th>Cost</th><th>Profit / unit</th><th>Stock</th></tr></thead><tbody>'
+    + L.map(l => '<tr class="' + (l.issues.length ? "focus" : "") + '" onclick="S.open=\'' + l.sku + '\';render()"><td><span class="pill ' + l.status + '">' + l.status + '</span></td><td><b>' + esc(l.title) + '</b><div class="muted" style="font-size:11.5px;font-family:ui-monospace,monospace">' + esc(l.sku) + '</div>'
+      + (l.issues.length ? '<div class="evid">Amazon: ' + esc(l.issues[0].msg) + '</div>' : '') + (l.cost == null && l.status === "live" ? '<div class="evid" style="color:var(--warn)">No cost — profit not known</div>' : '') + '</td>'
+      + '<td>' + money(l.price, a.cur) + '</td><td>' + money(l.cost, a.cur) + '</td><td>' + money(pUnitProfit(l), a.cur) + '</td><td>' + (l.stock ?? '<span class="unknown">not known</span>') + '</td></tr>').join("") + '</tbody></table>';
+}
+
+/* ===== PDP overlay: evidence first ===== */
+function renderPdp(){
+  const l = P_LISTINGS.find(x => x.sku === S.open); if(!l) return "";
+  const a = pAcct(l.acct), p = pUnitProfit(l);
+  const amazon = l.issues.filter(i => i.kind === "amazon" || i.field === "barcode");
+  return '<div class="overlay" onclick="if(event.target===this){S.open=null;render()}"><div class="sheet" role="dialog" aria-modal="true" data-piece="C5" data-why="Product page: evidence first, over the list|The product still opens OVER the list (the existing AltaScraper pattern, kept) so the finding and its other rows are one Escape away.\nWhat Amazon said comes first, quoted exactly, with the fix right under it — you should not have to scroll to learn why a listing is not selling. Details come after, because they only matter once the problem is solved.">'
+    + '<div class="h"><div style="display:flex;gap:8px;align-items:center"><span class="dot" style="background:' + a.colour + '"></span><span class="muted">' + esc(a.name) + ' · ' + a.mkts[0] + '</span><span class="pill ' + l.status + '">' + l.status + '</span><span style="flex:1"></span><button class="btn" onclick="S.open=null;render()" aria-label="Close"><i class="ti ti-x"></i></button></div><h3 style="margin:8px 0 0">' + esc(l.title) + '</h3></div>'
+    + '<div class="b">'
+    + (amazon.length ? amazon.map(i => '<div class="said"><h4><i class="ti ti-message-exclamation"></i> Amazon said</h4><div class="q">' + esc(i.msg) + '</div><div class="muted" style="font-size:12.5px">Field: <b>' + esc(i.field) + '</b></div>'
+        + '<div class="inlinefix"><input placeholder="' + (i.field === "item_weight" ? "e.g. 1.8 kg" : i.field === "country_of_origin" ? "e.g. PK" : "new value") + '" aria-label="' + esc(i.field) + '"><button class="btn primary" onclick="fixC(\'' + l.sku + '\',\'' + i.field + '\')">Save & resubmit…</button></div></div>').join("")
+      : l.compliance ? '<div class="said" style="border-color:var(--warn-line);background:var(--warn-bg)"><h4>' + (l.compliance.level === "prohibited" ? "Prohibited here" : "Gated") + '</h4>' + esc(l.compliance.note) + '</div>'
+      : l.cost == null ? '<div class="said" style="border-color:var(--warn-line);background:var(--warn-bg)"><h4>No cost set</h4>Profit on this product is not known.<div class="inlinefix"><input placeholder="cost per unit" aria-label="Cost"><button class="btn primary" onclick="costC(\'' + l.sku + '\')">Save cost</button></div></div>'
+      : '<div class="clear" style="margin-bottom:14px"><i class="ti ti-circle-check"></i> Nothing wrong with this listing.</div>')
+    + '<div class="kv"><span>Price</span><span>' + money(l.price, a.cur) + '</span><span>Cost</span><span>' + money(l.cost, a.cur) + '</span><span>Profit / unit</span><span>' + money(p, a.cur) + '</span><span>Stock</span><span>' + (l.stock ?? "—") + '</span><span>Barcode</span><span>' + (esc(l.barcode) || '<span class="unknown">none</span>') + '</span><span>Our ASIN</span><span>' + (esc(l.own) || '<span class="unknown">not on Amazon yet</span>') + '</span></div>'
+    + '<details style="margin-top:14px"><summary class="muted">All fields, images and history</summary><p class="muted">The full editor lives here, folded — it matters once the problem above is solved.</p></details>'
+    + '</div></div></div>';
+}
+async function fixC(sku, f){
+  const l = P_LISTINGS.find(x => x.sku === sku), a = pAcct(l.acct);
+  const ok = await confirmBox({title: "Save " + f + " and resubmit?", acct: a, body: esc(l.title), foot: "Sends the listing again with the corrected field. Nothing is charged.", ok: "Resubmit"});
+  if(!ok) return;
+  await wait(sim() === "slow" ? 1400 : 600);
+  if(sim() === "fail"){
+    l.issues = [{kind:"amazon", field:"bullet_point", msg:"Amazon: bullet_point #2 contains a prohibited claim (\"eco-friendly\")."}];
+    render(); return;   // the NEW reply replaces the old one, in place -- the finding stays
+  }
+  l.issues = l.issues.filter(i => i.field !== f);
+  if(!l.issues.length){ l.status = "submitted"; missionDone(sku); S.open = null; }
+  render();
+}
+function costC(sku){ const l = P_LISTINGS.find(x => x.sku === sku); l.cost = 6.8; missionDone(sku); S.open = null; render(); }
+
+/* ===== ORDERS ===== */
+function renderOrders(){
+  if(S.scope === "all") return '<h2>Orders</h2><p class="lead">Pick an account at the top. Late and unbought orders from every account are on Today.</p>';
+  const a = pAcct(S.scope), O = pOrders(a.id);
+  if(a.empty) return '<div class="clear" style="color:var(--ink2);background:var(--panel);border-color:var(--line2)">No orders in ' + esc(a.name) + '.</div>';
+  const ids = S.mission ? new Set(S.mission.ids) : null;
+  const hot = ids ? O.filter(o => ids.has(o.id)) : O.filter(o => ["late","to_buy"].includes(o.stage));
+  const rest = O.filter(o => !hot.includes(o));
+  const row = o => '<tr class="' + (o.stage === "late" ? "focus" : "") + '"><td><b>' + esc(o.title) + '</b> ×' + o.qty + '<div class="muted" style="font-size:12px">' + o.id + ' · ' + esc(o.buyer) + '</div>' + (o.stage === "late" ? '<div class="evid">Ship-by was ' + o.shipBy + '</div>' : o.stage === "to_buy" ? '<div class="evid" style="color:var(--warn)">Not bought yet · ship by ' + o.shipBy + '</div>' : '') + '</td><td>' + money(o.total, a.cur) + '</td><td>' + money(o.paid, a.cur) + '</td><td>'
+    + (o.stage === "to_buy" || (o.stage === "late" && o.paid == null) ? '<button class="btn primary" onclick="event.stopPropagation();buyC(\'' + o.id + '\')">Buy · record paid</button>' : o.stage === "late" || o.stage === "to_ship" ? '<button class="btn primary" onclick="event.stopPropagation();shipC(\'' + o.id + '\')">Add tracking</button>' : '<span class="muted">' + esc(o.tracking) + '</span>') + '</td></tr>';
+  return missionBar() + '<h2>Orders · ' + esc(a.name) + '</h2>'
+    + '<table class="t" data-piece="C6" data-why="Exceptions on top, the rest folded|Only orders that need something are open. The reason is written on the row (late since…, not bought…), and the button is the fix. Everything on time is folded below — present, but not asking for attention."><thead><tr><th>Order</th><th>Total</th><th>Paid supplier</th><th></th></tr></thead><tbody>' + (hot.length ? hot.map(row).join("") : '<tr><td colspan="4" class="muted">Nothing needs you here.</td></tr>') + '</tbody></table>'
+    + '<details class="quietbox"><summary>' + rest.length + ' order(s) on track</summary><div style="padding:0 10px 10px"><table class="t"><tbody>' + rest.map(row).join("") + '</tbody></table></div></details>';
+}
+async function buyC(id){
+  const o = P_ORDERS.find(x => x.id === id), a = pAcct(o.acct);
+  const ok = await confirmBox({title: "Record the supplier purchase", acct: a, body: esc(o.title) + " ×" + o.qty + " — we open the supplier page; the price paid is recorded as 11.40 in this prototype.", ok: "Open supplier & record"});
+  if(!ok) return; o.paid = 11.40; if(o.stage === "to_buy") o.stage = "to_ship"; missionDone(id); render();
+}
+function shipC(id){ const o = P_ORDERS.find(x => x.id === id); o.tracking = "RM 000 111 222 GB"; o.stage = "shipped"; missionDone(id); render(); }
+
+/* ===== MONEY ===== */
+function renderMoney(){
+  const accts = S.scope === "all" ? P_ACCOUNTS : [pAcct(S.scope)];
+  return '<h2>Money · last 30 days</h2><p class="lead">One figure per account, then where it came from. Currencies are never added together.</p>'
+    + accts.map(a => { const t = (pSales(a.id).totals); if(!t) return '<div class="big" style="margin-bottom:12px"><b>' + esc(a.name) + '</b> — no sales yet.</div>';
+      const lines = [["Revenue", t.revenue, "var(--accent)"],["VAT", -t.vat, "#6b7a90"],["Amazon fees", -t.fees, "var(--gold)"],["Advertising", t.ads == null ? null : -t.ads, "var(--ai)"],["Refunds", -t.refunds, "var(--red)"],["Goods (known)", -t.cogsKnown, "var(--ink3)"],["Overheads", -t.overhead, "#4b5566"],["Profit", t.profit, "var(--ok)"]];
+      return '<div class="big" style="margin-bottom:12px" data-piece="C7" data-why="Headline, then a waterfall|The profit figure leads, with its change. The waterfall shows every step from what buyers paid to what you kept, in the same order every time, so a jump in one line is visible at a glance. A line that is not known (ads not connected) is written in words, not drawn as zero.">'
+        + '<div style="display:flex;gap:10px;align-items:baseline"><span class="dot" style="background:' + a.colour + '"></span><b>' + esc(a.name) + '</b><span class="v" style="font-size:26px;font-weight:800;margin-left:auto">' + money(t.profit, a.cur) + '</span></div>'
+        + '<div class="muted" style="text-align:right;font-size:12.5px;margin-bottom:10px">' + money(t.profit - t.prevProfit, a.cur, {plus: true}) + ' vs previous 30 days · <span style="color:var(--warn)">' + t.unitsNoCost + ' units with no cost — real profit is lower</span></div>'
+        + '<div class="wf">' + lines.map(([n, v, c]) => '<span class="muted">' + n + '</span><div>' + (v == null ? '<span class="unknown">not connected</span>' : '<div class="b" style="width:' + Math.max(2, Math.abs(v) / t.revenue * 100) + '%;background:' + c + '"></div>') + '</div><span class="num">' + money(v, a.cur) + '</span>').join("") + '</div></div>'; }).join("");
+}
+
+/* ===== render ===== */
+window._F = {};
+function render(){
+  findings().forEach(f => _F[f.id] = f);
+  renderTop(); renderNav();
+  const p = document.getElementById("page");
+  p.innerHTML = S.screen === "today" ? renderToday() : S.screen === "listings" ? renderListings()
+              : S.screen === "orders" ? renderOrders() : renderMoney();
+  const old = document.querySelector(".overlay"); if(old) old.remove();
+  if(S.open) document.body.insertAdjacentHTML("beforeend", renderPdp());
+  notesRefresh();
+}
+document.addEventListener("keydown", e => { if(e.key === "Escape" && S.open && !document.querySelector(".modal-wrap")){ S.open = null; render(); } });
+protoBanner("C · Exception-First");
+/* Open a given state from the address, e.g. #finding=northfield_uk:refused&open=<sku>&notes=1 */
+(function(){
+  const H = new URLSearchParams(location.hash.slice(1));
+  if(H.get("scope")) S.scope = H.get("scope");
+  if(H.get("screen")) S.screen = H.get("screen");
+  render(); notesInit();
+  if(H.get("finding") && _F[H.get("finding")]) _F[H.get("finding")].go();
+  if(H.get("open")){ S.open = H.get("open"); render(); }
+  if(H.get("notes")){ document.body.classList.add("notes"); notesRefresh(); }
+})();
+</script>
+</body>
+</html>

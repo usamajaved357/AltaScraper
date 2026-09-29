@@ -36,11 +36,41 @@ def read(*p):
         return f.read()
 
 
+# ---------------------------------------------------------------------------
+# A FIXTURE OF ITS OWN (28 Sep 2026). This used to open jack_uk's listings in
+# the owner's real database; it now seeds a temp database with two jack_uk
+# listings (with a handling time) and one on nestwell_goods -- the other
+# account is there so "scoped to this workspace only" has something to leave
+# out. Environment set BEFORE any app import.
+# ---------------------------------------------------------------------------
+import json as _jsonf                                   # noqa: E402
+import tempfile as _tmpf                                # noqa: E402
+
+_FIX = _tmpf.mkdtemp(prefix="fixt_handling_")
+CFG = os.path.join(_FIX, "config.json")
+_DBP = os.path.join(_FIX, "altascraper.db")
+with open(CFG, "w", encoding="utf-8") as _fh:
+    _jsonf.dump({"anthropic_api_key": "test-placeholder-not-a-key",
+                 "accounts": [{"id": w, "name": w, "marketplace": "UK"}
+                              for w in ("jack_uk", "nestwell_goods")]}, _fh)
+os.environ["CONFIG_PATH"] = CFG
+os.environ["ALTASCRAPER_DB"] = _DBP
+
 print("== the database's worksheet shim answers .spreadsheet ==")
+from data import db as _sdb                             # noqa: E402
 from data.store import ListingStore, SheetLikeStore     # noqa: E402
 from listing import repo as _repo                       # noqa: E402
 
-s = SheetLikeStore(ListingStore("jack_uk", config_path=os.path.join(HERE, "config.json")))
+assert os.path.abspath(_sdb.db_path(CFG)) == os.path.abspath(_DBP)
+assert os.path.dirname(os.path.abspath(_DBP)) == os.path.abspath(_FIX)
+for _ws, _sku in (("jack_uk", "8.99_3Days_B000FIXH01"),
+                  ("jack_uk", "9.99_3Days_B000FIXH02"),
+                  ("nestwell_goods", "7.99_2Days_B000FIXH03")):
+    ListingStore(_ws, config_path=CFG).upsert_row(
+        {"SKU": _sku, "Status": "GENERATED", "Title": "Fixture " + _sku,
+         "Handling Days": "3"})
+
+s = SheetLikeStore(ListingStore("jack_uk", config_path=CFG))
 check("SheetLikeStore has .spreadsheet", hasattr(s, "spreadsheet"), True)
 book = s.spreadsheet
 wss = book.worksheets()

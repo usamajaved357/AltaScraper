@@ -22,21 +22,23 @@ const src = fs.readFileSync(path.join(__dirname, "static/js/finance.js"), "utf8"
 // Rows shaped as domain/contribution.by_product really returns them -- the three
 // on jack_uk are real, the loss-maker and the family are added to exercise the
 // paths the live account does not currently have.
+// net_revenue (sales after VAT) added 28 Sep 2026: margin is now profit over
+// sales AFTER VAT on every screen. These rows carry no VAT, so it equals revenue.
 const ROWS = [
   {asin: "B0H7N2Q5GG", title: "Bayonet Ceiling Fan", parent_asin: "",
-   units: 13, revenue: 370.74, vat: 0, fees: 60.4, cogs: 196.3, refunds: 0,
+   units: 13, revenue: 370.74, vat: 0, net_revenue: 370.74, fees: 60.4, cogs: 196.3, refunds: 0,
    ad_spend: null, uncosted_units: 0, contribution: 78.76, margin_pct: 21.24},
   {asin: "B0H8PQBH55", title: "Weed Slasher", parent_asin: "",
-   units: 1, revenue: 18.32, vat: 0, fees: 3.2, cogs: 10.99, refunds: 0,
+   units: 1, revenue: 18.32, vat: 0, net_revenue: 18.32, fees: 3.2, cogs: 10.99, refunds: 0,
    ad_spend: null, uncosted_units: 0, contribution: 4.14, margin_pct: 22.6},
   {asin: "B0H8SWCZ6G", title: "Pinch Bolt Set", parent_asin: "",
-   units: 1, revenue: 13.33, vat: 0, fees: 2.1, cogs: 8.49, refunds: 0,
+   units: 1, revenue: 13.33, vat: 0, net_revenue: 13.33, fees: 2.1, cogs: 8.49, refunds: 0,
    ad_spend: null, uncosted_units: 0, contribution: -5.00, margin_pct: -37.5},
   {asin: "B0KID1", title: "Sock Small", parent_asin: "B0PARENT",
-   units: 4, revenue: 40.00, vat: 0, fees: 6.0, cogs: 20.0, refunds: 0,
+   units: 4, revenue: 40.00, vat: 0, net_revenue: 40.00, fees: 6.0, cogs: 20.0, refunds: 0,
    ad_spend: null, uncosted_units: 0, contribution: 14.0, margin_pct: 35.0},
   {asin: "B0KID2", title: "Sock Large", parent_asin: "B0PARENT",
-   units: 2, revenue: 20.00, vat: 0, fees: 3.0, cogs: 0, refunds: 0,
+   units: 2, revenue: 20.00, vat: 0, net_revenue: 20.00, fees: 3.0, cogs: 0, refunds: 0,
    ad_spend: null, uncosted_units: 2, contribution: null, margin_pct: null},
 ];
 

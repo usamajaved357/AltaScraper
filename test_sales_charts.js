@@ -22,6 +22,8 @@ function truthy(label, got) { check(label, !!got, true); }
 
 // Load the two real files into one scope, as the browser does.
 const src = fs.readFileSync(path.join(ROOT, "static/js/salescharts.js"), "utf8");
+// The page's own jsArg (users.js); handlers use it since Milestone 2.
+globalThis.jsArg = require("./test_helpers.js").jsArg;
 const sales = fs.readFileSync(path.join(ROOT, "static/js/sales.js"), "utf8");
 
 // Only the chart-picking function is needed from sales.js; the rest reaches for
@@ -356,7 +358,7 @@ console.log("\n=== the week chart names its days ===");
   const days = ["2026-08-09","2026-08-10","2026-08-11","2026-08-12",
                 "2026-08-13","2026-08-14","2026-08-15"];
   const out = mk(days.map((d, i) => ({label: d, value: 10 + i})));
-  const texts = [...out.matchAll(/fill="rgb\(156,163,175\)">([A-Za-z]{3})</g)].map(m => m[1]);
+  const texts = [...out.matchAll(/class="sc-tick">([A-Za-z]{3})</g)].map(m => m[1]);   // tick class since 29 Sep 2026
   check("the week reads as days of the week", texts,
         ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]);
   // At band centres, so the first label is not half-clipped by the y-axis.
@@ -364,10 +366,18 @@ console.log("\n=== the week chart names its days ===");
   check("seven of them", xs.length, 7);
   truthy("the first sits half a band in from the axis", Math.abs(xs[0] - 106.43) < 0.5);
   truthy("and the last half a band in from the right", Math.abs(xs[6] - 603.57) < 0.5);
+  // Colours by class since 29 Sep 2026 (light theme). The classes carry Orbit's
+  // measured tick grey exactly (--sc-tick-text, dark #9ca3af) and the gridline as
+  // the shared --as-neutral-border (#3a4358; Orbit's #374151 is within dE 4).
+  {
+    const SC = require("fs").readFileSync(__dirname + "/static/css/dashboard/08-sales-dashboard.css", "utf8");
+    truthy("the gridline class is styled", SC.includes(".sc-grid{ stroke:var(--sc-grid-line); }"));
+    truthy("the tick class is styled", SC.includes(".sc-tick{ fill:var(--sc-tick-text); }"));
+  }
   truthy("the gridlines are Orbit's dashed rule",
-         out.includes('stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"'));
+         out.includes('class="sc-grid" stroke-width="1" stroke-dasharray="3 3"'));
   truthy("  and the tick text its 11px grey",
-         out.includes('font-size="11"') && out.includes('fill="rgb(156,163,175)"'));
+         out.includes('font-size="11"') && out.includes('class="sc-tick"'));
 }
 
 console.log("\n=== which lines are shaded is a fact about each line ===");

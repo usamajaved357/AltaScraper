@@ -230,6 +230,21 @@ class RunSlots(object):
                 stopped += 1
         return stopped
 
+    def belongs_elsewhere(self, proc, account):
+        """True if `proc` is attached to a live slot of a DIFFERENT, named
+        account. The legacy single `_running["proc"]` handle holds whichever
+        run started last, so Stop's fallback must ask this before ending it
+        (master audit A15: Stop in one account could end another's run)."""
+        if proc is None or not account:
+            return False
+        with self._lock:
+            self._reap()
+            for s in self._slots.values():
+                if s.get("proc") is proc:
+                    s_acct = str(s.get("account") or "")
+                    return bool(s_acct) and s_acct != str(account)
+        return False
+
     def busy(self):
         with self._lock:
             self._reap()

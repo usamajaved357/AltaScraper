@@ -3,7 +3,7 @@
 For each tracked ASIN x marketplace: fetch live offers (monitor/pricing), diff the seller set
 against the stored baseline, raise in-app alerts, and append a snapshot to history. Runs on a
 daemon thread while the app is up (catch-up on startup). Read-only surveillance through the
-monitor account (default jack_uk). NO Slack, NO external notifications.
+monitor account (asin_monitor_account; no default). NO Slack, NO external notifications.
 
 State (gitignored asin_monitor_history.json):
   baselines    : {"<asin>::<mkt>": <last fetch_offers_batch result>}  -- for the next diff
@@ -27,7 +27,14 @@ from monitor import schedule as _sched
 # percentage and an absolute floor (avoids alerting on 1p rounding).
 PRICE_CHANGE_PCT = 5.0
 PRICE_CHANGE_ABS = 1.0
-_MONITOR_ACCOUNT_DEFAULT = "jack_uk"
+# NO DEFAULT ACCOUNT (owner decision, read.txt 29 Sep 2026): "A background
+# monitor must explicitly know which account it belongs to. If no account is
+# configured, fail safely and report the configuration problem." This was
+# "jack_uk", so an unconfigured monitor quietly ran on Jack Reacherd's
+# credentials.
+NO_ACCOUNT = ("No account is set for the ASIN monitor, so nothing was checked. "
+              "Set asin_monitor_account in the app's configuration to the "
+              "account the monitor belongs to (for example jack_uk).")
 _CALL_PACING_S = 1.5          # (legacy single-call pacing; batch path uses _BATCH_PACING_S)
 _BATCH_SIZE = 20              # getItemOffersBatch does up to 20 (asin x marketplace) per call
 _BATCH_PACING_S = 2.0         # spacing between batch calls (the batch endpoint is heavier)
@@ -91,8 +98,11 @@ def _load_hist(config_path):
 
 
 def _save_hist(config_path, d):
-    with open(_hist_path(config_path), "w", encoding="utf-8") as f:
-        json.dump(d, f, indent=2, ensure_ascii=False)
+    # Atomically (domain/jsonstore): a crash mid-write used to leave the
+    # baselines empty, and every ASIN then read as newly changed. Still raises.
+    from domain import jsonstore
+    if not jsonstore.write_json_atomic(_hist_path(config_path), d, indent=2):
+        raise OSError("could not write asin_monitor_history.json")
 
 
 def _now():
@@ -403,7 +413,9 @@ def _make_alert(d, item, mkt, ev):
 # ---------------- the check ----------------
 def _resolve_creds(cfg, config_path):
     import accounts as _acc
-    aid = cfg.get("asin_monitor_account") or _MONITOR_ACCOUNT_DEFAULT
+    aid = str(cfg.get("asin_monitor_account") or "").strip()
+    if not aid:
+        return None, NO_ACCOUNT
     acc = _acc.get_account(cfg, aid, config_path) if hasattr(_acc, "get_account") else None
     if not acc:
         return None, f"monitor account '{aid}' not found"
@@ -482,7 +494,9 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
         return {"ok": True, "checks": 0, "note": "no ASINs tracked"}
     creds, err = _resolve_creds(cfg, config_path)
     if err:
-        _STATUS.update(last_run=_now(), last_run_ok=False)
+        # phase/error are what the Monitor screen reads to say WHY (monitor.js),
+        # so a configuration problem is shown there, not only in a terminal.
+        _STATUS.update(last_run=_now(), last_run_ok=False, phase="failed", error=err)
         log("[asin-monitor] " + err)
         return {"ok": False, "error": err}
 
@@ -677,6 +691,10 @@ def start_scheduler(cfg_getter, config_path, interval=None, initial_delay=25):
     """
     global _SCHED_STARTED
     if _SCHED_STARTED:
+        return
+    from config import background as _bg
+    if not _bg.enabled():
+        print("[asin-monitor] " + _bg.refusal("monitor loop"), flush=True)
         return
     _SCHED_STARTED = True
     forced = int(interval) if interval else 0

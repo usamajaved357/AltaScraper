@@ -21,6 +21,7 @@ This module stores bytes. It holds no opinion about what is in them.
 import json
 import os
 import tempfile
+import time
 
 
 def path_beside_config(config_path, filename):
@@ -62,7 +63,19 @@ def write_json_atomic(path, data, indent=None):
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=indent)
-            os.replace(tmp, path)          # atomic on Windows and Linux
+            # atomic on Windows and Linux -- but on Windows it is REFUSED
+            # (PermissionError) while another thread has the target open to
+            # read it, which the ASIN monitor's page does while a run saves ~56
+            # times. A reader holds it for milliseconds, so wait briefly and
+            # try again rather than fail the save (batch 1 review).
+            for _attempt in range(10):
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:
+                    if _attempt == 9:
+                        raise
+                    time.sleep(0.05)
         except Exception:
             try:
                 os.unlink(tmp)

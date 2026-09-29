@@ -87,7 +87,10 @@ for d in (".", "routes"):
 holes, guarded_count, exempt_seen = [], 0, set()
 for path in files:
     try:
-        src = open(os.path.join(HERE, path), encoding="utf-8").read()
+        # EACH FILE ON ITS OWN, read raw: a route's body runs to the next route
+        # IN THIS FILE, so the test runner's feature text (tests_support) would
+        # sweep code moved out of dashboard.py into its last route.
+        src = open(os.path.join(HERE, path), "rb").read().decode("utf-8")
     except Exception:
         continue
     lines = src.splitlines()

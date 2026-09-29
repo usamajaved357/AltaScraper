@@ -9,6 +9,7 @@ agent). ppc_deliverables (domain) is imported inline in the bodies.
 Routes: POST /ppc/build_campaigns, GET /ppc/download/<fname>, POST /ppc/harvest,
         POST /ppc/deliverable, POST /ppc/agent
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import os
 
@@ -505,7 +506,7 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                             f"Deliverable built: {list(downloads.keys())}\n")
                 try:
                     import anthropic
-                    client = anthropic.Anthropic(api_key=key)
+                    client = _ai_client(key)
                     r = client.messages.create(model=CHAT_MODEL, max_tokens=600,
                                                  system=system,
                                                  messages=[{"role": "user", "content": user_msg}])
@@ -601,7 +602,7 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
 
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             r = client.messages.create(
                 model=CHAT_MODEL, max_tokens=1200,
                 system=system,
@@ -933,12 +934,6 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
                     "A brand word has to be at least two letters. A single "
                     "letter matches almost every search term, which would mark "
                     "the whole account as branded.")}), 400
-            for t in add:
-                conn.execute("INSERT OR IGNORE INTO ppc_brand_terms "
-                             "(workspace_id, term, added_at) VALUES (?,?,?)",
-                             (aid, t, now))
-            for t in drop:
-                conn.execute("DELETE FROM ppc_brand_terms WHERE "
-                             "workspace_id=? AND term=?", (aid, t))
-            conn.commit()
+            # The one writer (domain/ppc_view, audit A11).
+            _pv.change_brand_terms(CONFIG_PATH, aid, add, drop, now)
         return jsonify({"ok": True, "terms": _pv.brand_terms(CONFIG_PATH, aid)})

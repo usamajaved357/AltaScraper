@@ -133,7 +133,13 @@ function brandviewDraw(){
       + '<thead><tr>'
       + '<th style="text-align:left">Marketplace</th>'
       + '<th>Revenue</th><th>Units</th><th>Orders</th>'
-      + '<th>Amazon fees</th><th>Stock cost</th><th>Profit</th><th>Margin</th>'
+      // "after ads": the figure comes from sales_data.totals, which since
+      // 28 Sep 2026 takes measured ad spend off -- the same profit the Sales
+      // page shows. Said on the header so the column is not read as gross.
+      + '<th>Amazon fees</th><th>Stock cost</th>'
+      + '<th title="After VAT, Amazon\'s fees, stock cost, your per-product '
+      + 'charges and measured ad spend — the same profit the Sales page shows">'
+      + 'Profit (after ads)</th><th>Margin</th>'
       + '</tr></thead><tbody>';
     live.forEach(function(r){
       const nm = (typeof mktName === "function") ? mktName(r.marketplace) : r.marketplace;

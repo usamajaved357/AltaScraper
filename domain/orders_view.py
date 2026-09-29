@@ -203,7 +203,22 @@ def _fee_for(order_total, referral_rate, fees=None):
         "the finance records" % (rate * 100))
 
 
-def profit_for(items, order_total, cost_of, referral_rate=None, fees=None):
+def _vat_in(amount, vat_rate):
+    """The VAT inside a VAT-inclusive amount, at the account's rate. 0 when none.
+
+    Through listing/pricing.achieved -- the one per-sale formula every profit
+    screen uses -- so an order and a listing cannot take VAT out two ways.
+    """
+    from listing import pricing as _pricing
+    try:
+        return float(_pricing.achieved(float(amount or 0.0), 0.0, 0.0,
+                                       vat_rate=vat_rate).get("vat") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def profit_for(items, order_total, cost_of, referral_rate=None, fees=None,
+               vat_rate=None):
     """(profit, margin_pct, note) for one order, or (None, None, why).
 
     `cost_of` is a function sku -> (cost_or_None, source), which is
@@ -260,13 +275,18 @@ def profit_for(items, order_total, cost_of, referral_rate=None, fees=None):
                             "cannot be worked out" % ", ".join(unknown[:3]))
 
     fee, fee_note = _fee_for(order_total, referral_rate, fees)
-    profit = round(float(order_total) - fee - cogs, 2)
-    margin = (round(profit / float(order_total) * 100, 1)
-              if float(order_total) else None)
-    return profit, margin, fee_note
+    # VAT OUT, at the account's own setting -- the order total is what the
+    # buyer paid, VAT included, and that part is HMRC's. Margin is over the
+    # total after VAT, as on every other profit screen (owner, 28 Sep 2026).
+    # The same arithmetic as a listing's, from listing/pricing.achieved.
+    from listing import pricing as _pricing
+    got = _pricing.achieved(float(order_total), cogs, 0.0,
+                            other_fees=fee, vat_rate=vat_rate)
+    return got["profit"], got["margin_pct"], fee_note
 
 
-def profit_detail(items, order_total, cost_of, referral_rate=None, fees=None):
+def profit_detail(items, order_total, cost_of, referral_rate=None, fees=None,
+                  vat_rate=None):
     """Everything an order row needs about what it made, in one call.
 
     {profit, margin_pct, roi_pct, cogs, fees, note}
@@ -282,9 +302,11 @@ def profit_detail(items, order_total, cost_of, referral_rate=None, fees=None):
     is unknown, nothing is shown at all.
     """
     profit, margin, note = profit_for(items, order_total, cost_of, referral_rate,
-                                      fees)
+                                      fees, vat_rate=vat_rate)
     out = {"profit": profit, "margin_pct": margin, "roi_pct": None,
            "cogs": None, "fees": None, "note": note,
+           "vat": (round(_vat_in(order_total, vat_rate), 2)
+                   if order_total is not None else None),
            "fees_basis": (fees or {}).get("basis") or "estimated"}
     if profit is None:
         return out
@@ -302,7 +324,8 @@ def profit_detail(items, order_total, cost_of, referral_rate=None, fees=None):
     return out
 
 
-def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
+def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None,
+                   vat_rate=None):
     """What each LINE of an order brought in and what came off it.
 
         "i am not able to see the earnings of each order and not the breakdown of
@@ -329,7 +352,13 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
     That is an estimate; `fee_estimated` is True and the screen says so. Once the
     finance records land, domain/order_finance.py has the real per-order figures.
     """
-    rate = DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)
+    # THE RATE THE ESTIMATE WAS ACTUALLY MADE AT. amazon_fees.estimate puts it
+    # on its reply; the detail route passes no referral_rate, so reading only
+    # that made the panel say "estimated at 15%" under a fee worked out at this
+    # account's measured rate.
+    _used = (fees or {}).get("rate")
+    rate = (float(_used) if _used is not None else
+            (DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)))
     its = [i for i in (items or []) if i]
     total = None
     try:
@@ -355,7 +384,7 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
         line_rev.append(rev)
     rev_sum = sum(line_rev)
 
-    out, t_rev, t_cogs, t_fee = [], 0.0, 0.0, 0.0
+    out, t_rev, t_cogs, t_fee, t_vat = [], 0.0, 0.0, 0.0, 0.0
     any_unknown = False
     for it, rev in zip(its, line_rev):
         sku = str(it.get("sku") or "")
@@ -369,7 +398,10 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
             fee = round(order_fee * (rev / rev_sum), 2)
         else:
             fee = None
-        profit = (round(rev - fee - cogs, 2)
+        # VAT OUT of the line, at the account's setting, as the order's own
+        # profit does -- so the lines still add up to the order.
+        vat = _vat_in(rev, vat_rate)
+        profit = (round(rev - vat - fee - cogs, 2)
                   if (fee is not None and cogs is not None) else None)
         if cogs is None:
             any_unknown = True
@@ -381,9 +413,10 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
             "cogs": (None if cogs is None else round(cogs, 2)),
             "cogs_source": src or "",
             "fee": fee, "fee_estimated": (fee_basis != "actual"),
+            "vat": round(vat, 2),
             "profit": profit,
-            "margin_pct": (round(profit / rev * 100, 1)
-                           if (profit is not None and rev) else None),
+            "margin_pct": (round(profit / (rev - vat) * 100, 1)
+                           if (profit is not None and rev - vat) else None),
             "roi_pct": (round(profit / cogs * 100, 1)
                         if (profit is not None and cogs) else None),
             "note": ("" if cost is not None else
@@ -391,6 +424,7 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
                      "and this line's profit appears"),
         })
         t_rev += rev
+        t_vat += vat
         if cogs is not None:
             t_cogs += cogs
         if fee is not None:
@@ -398,6 +432,9 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
 
     totals = {
         "revenue": round(t_rev, 2),
+        # VAT taken out of the lines, at the account's own setting.
+        "vat": round(t_vat, 2),
+        "vat_rate": vat_rate,
         "order_total": total,
         "fees": round(t_fee, 2) if order_fee is not None else None,
         "fee_rate": rate,
@@ -415,7 +452,8 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
     }
     # The order's own profit follows the same all-or-nothing rule as everywhere
     # else -- profit_for owns it, and is called rather than repeated (Rule 12).
-    p, m, note = profit_for(items, order_total, cost_of, referral_rate, fees)
+    p, m, note = profit_for(items, order_total, cost_of, referral_rate, fees,
+                            vat_rate=vat_rate)
     totals["profit"] = p
     totals["margin_pct"] = m
     totals["note"] = note

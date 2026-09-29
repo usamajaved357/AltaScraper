@@ -234,8 +234,8 @@ function _peResultHtml(j){
   }
 
   (j.warnings || []).forEach(function(w){
-    h += '<div style="display:flex;gap:7px;background:var(--warn-bg,rgba(227,183,104,.12));'
-       + 'border:1px solid var(--warn-line,rgba(227,183,104,.35));border-radius:8px;'
+    h += '<div style="display:flex;gap:7px;background:var(--warn-bg,color-mix(in srgb, var(--as-lit-e3b768-bg) 12%, transparent));'
+       + 'border:1px solid var(--warn-line,color-mix(in srgb, var(--as-lit-e3b768-bd) 35%, transparent));border-radius:8px;'
        + 'padding:8px 10px;margin-bottom:6px;font-size:12px;line-height:1.5">'
        + '<i class="ti ti-alert-triangle" style="color:var(--warn)"></i>'
        + '<span>' + _peEsc(w) + '</span></div>';

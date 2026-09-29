@@ -70,8 +70,8 @@ function sandbox(){
   };
   s.document.body = body;
   vm.createContext(s);
-  vm.runInContext(fs.readFileSync("D:/AltaScraper/static/js/marketplaces.js", "utf8"), s);
-  vm.runInContext(fs.readFileSync("D:/AltaScraper/static/js/switcher.js", "utf8"), s);
+  vm.runInContext(fs.readFileSync((__dirname + "/static/js/marketplaces.js"), "utf8"), s);
+  vm.runInContext(fs.readFileSync((__dirname + "/static/js/switcher.js"), "utf8"), s);
   return s;
 }
 
@@ -176,7 +176,7 @@ console.log("\n=== the menu opens under whatever was pressed ===");
 // It was hardcoded to the sidebar row, so opening it from the header chip put
 // the menu on the far side of the screen from the button -- and with the
 // sidebar shut, measured a hidden element.
-const sw = fs.readFileSync("D:/AltaScraper/static/js/switcher.js", "utf8");
+const sw = fs.readFileSync((__dirname + "/static/js/switcher.js"), "utf8");
 truthy("the anchor is the element the handler is on", /ev\.currentTarget/.test(sw));
 truthy("  with the sidebar row as the fallback", /_switchAnchor\(ev, "nav_acctswitch"\)/.test(sw));
 truthy("  and a hidden element is not used as one", /if\(r\.width \|\| r\.height\) return t;/.test(sw));
@@ -190,7 +190,7 @@ truthy("  and it follows navigation", /crumbSet\(sec\);/.test(shell0()));
 check("the account label is no longer written into the crumb",
       /crumbs"\)\.innerHTML=`<span class="sep">\/<\/span><span class="here">\$\{esc\(a\.label\)\}/.test(shell0()),
       false);
-function shell0(){ return fs.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8"); }
+function shell0(){ return fs.readFileSync((__dirname + "/static/js/shell.js"), "utf8"); }
 
 console.log("\n=== choosing does something, and closes ===");
 s = sandbox();
@@ -212,7 +212,7 @@ check("no account open says so plainly", s.els.nav_acct_label.textContent, "No a
 truthy("and the marketplace row is dimmed", s.els.nav_mktswitch.style.opacity === ".45");
 
 console.log("\n=== booting with no address opens an account, not the grid ===");
-const shell = fs.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8");
+const shell = fs.readFileSync((__dirname + "/static/js/shell.js"), "utf8");
 truthy("the last account is remembered", shell.indexOf("alta_last_account") >= 0);
 truthy("  and reopened on the next visit",
        /localStorage.getItem\("alta_last_account"\)/.test(shell));
@@ -231,7 +231,7 @@ truthy("and a fresh install with no accounts still gets the grid",
        /_altaBootDone\(\);\s*\r?\n\s*return;/.test(shell));
 
 console.log("\n=== it is on the page, before the code that calls it ===");
-const htmlPage = fs.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
+const htmlPage = fs.readFileSync((__dirname + "/templates/dashboard.html"), "utf8");
 truthy("the switcher is loaded", htmlPage.indexOf("js/switcher.js") >= 0);
 truthy("  after the marketplace table it uses",
        htmlPage.indexOf("js/marketplaces.js") < htmlPage.indexOf("js/switcher.js"));
@@ -250,12 +250,16 @@ console.log("\n=== there is no home page left ===");
  */
 {
   const fs2 = require("fs");
-  const tpl = fs2.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
-  const shell = fs2.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8");
-  const css2 = fs2.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
+  const tpl = fs2.readFileSync((__dirname + "/templates/dashboard.html"), "utf8");
+  const shell = fs2.readFileSync((__dirname + "/static/js/shell.js"), "utf8");
+  const css2 = fs2.readFileSync((__dirname + "/static/css/dashboard.css"), "utf8");
 
   check("the home screen markup is gone", /<div id="home"/.test(tpl), false);
-  check("  and the Home button with it", /ti-home/.test(tpl), false);
+  // The old Home BUTTON (top bar) stays gone. Home itself is back as a screen
+  // in the sidebar since 29 Sep 2026 (owner: the app opens on Home), so the
+  // icon is looked for in the top bar only.
+  const _appbar = tpl.slice(tpl.indexOf('<div class="appbar">'), tpl.indexOf('<div class="modalwrap" id="wsmodal">'));
+  check("  and the Home button with it", /ti-home/.test(_appbar), false);
   check("  and the All-workspaces backlink", /All workspaces<\/div>/.test(tpl), false);
   check("nothing reaches for the element that no longer exists",
         /getElementById\("home"\)/.test(shell), false);
@@ -268,7 +272,7 @@ console.log("\n=== there is no home page left ===");
   truthy("adding an account is still offered", /Add account/.test(shell));
   truthy("editing one is still offered", /openAccountEditor/.test(shell));
   truthy("the switcher is how you reach it",
-         /Manage accounts/.test(fs2.readFileSync("D:/AltaScraper/static/js/switcher.js", "utf8")));
+         /Manage accounts/.test(fs2.readFileSync((__dirname + "/static/js/switcher.js"), "utf8")));
   // Opening it must not unload the workspace behind it.
   check("opening the panel does not clear the open workspace",
         /function goHome\(\)\{[\s\S]{0,200}ACTIVE_WS\s*=\s*null/.test(shell.replace(/\s+/g, m => m[0] === "\n" ? "\n" : " ")),

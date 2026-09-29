@@ -32,6 +32,7 @@
 "use strict";
 
 let _DLG_OPEN = null;
+let _DLG_SEQ = 0;           // unique ids for aria-labelledby
 
 function _dlgEsc(s) {
   return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -51,6 +52,92 @@ function _dlgBody(message) {
 
 /* The shell every one of the three uses. `buttons` is drawn right-to-left in
  * the order given, and whichever is pressed resolves with its `value`. */
+/* KEEP TAB INSIDE `container` -- the one focus trap (CLAUDE.md Rule 12): the
+ * app's dialogs below and the product page overlay (pdp.js) both call this.
+ * Only VISIBLE, enabled controls count, so a hidden tab panel is skipped.
+ * Returns true when it moved focus. */
+function uiTrapTab(e, container) {
+  if (!container || e.key !== "Tab") return false;
+  const f = Array.prototype.slice.call(container.querySelectorAll(
+    'button,input,textarea,select,summary,a[href],[tabindex]:not([tabindex="-1"]),' +
+    '[contenteditable]:not([contenteditable="false"])'))
+    .filter(function (el) {
+      return !el.disabled && (el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    });
+  if (!f.length) { e.preventDefault(); return true; }
+  const a = document.activeElement;
+  const i = f.indexOf(a);
+  // Focus INSIDE the container but not in the list (an editable area, a custom
+  // widget): the browser's own Tab order is right there -- only the ends wrap
+  // (D3 review: Tab out of the PDP's title editor jumped to "Back").
+  if (i === -1 && container.contains(a) && a !== container) return false;
+  if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); return true; }
+  if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); return true; }
+  return false;
+}
+
+/* Is focus inside a layer drawn OVER the page (a modal, the chat, a menu, a
+ * popover, the drawer)? The product page's trap stands aside for these, so
+ * a layer opened on top of it keeps its own keyboard (D3 review). */
+function uiFocusInLayer(except) {
+  const a = document.activeElement;
+  if (!a || a === document.body) return false;
+  const layer = a.closest && a.closest(
+    '.uidlg-wrap,.modalwrap,.chatwrap,.tilemenu,.uiinline,#drawer,.rev,[role="dialog"],[role="menu"]');
+  return !!layer && layer !== except && !(except && except.contains(layer));
+}
+
+/* A DROPDOWN MENU THAT WORKS FROM THE KEYBOARD. Every "···" menu in the app
+ * (.tilemenu: the row menu, the product page's overflow, the toolbar menus) was
+ * mouse-only -- no role, no Escape, no arrow keys, and focus stayed on the page
+ * behind it. Call this once the menu is in the document:
+ *
+ *   role=menu / menuitem, focus on the first item, Up/Down/Home/End move,
+ *   Escape closes it and puts focus back on the button that opened it, Tab
+ *   closes it and lets focus move on. Keys stop here, so an Escape meant for
+ *   the menu does not also close the product page underneath it.
+ *
+ * `close` is the menu's own closer (closeTileMenu, closeRunMenu). */
+function uiMenuKeys(menu, opener, close) {
+  if (!menu) return;
+  const items = function () {
+    return Array.prototype.filter.call(menu.querySelectorAll("button,a[href]"),
+      function (b) { return !b.disabled && b.getClientRects().length; });
+  };
+  menu.setAttribute("role", "menu");
+  items().forEach(function (b) { b.setAttribute("role", "menuitem"); b.tabIndex = -1; });
+  if (opener && opener.setAttribute) opener.setAttribute("aria-haspopup", "menu");
+  const first = items()[0];
+  if (first) first.focus({ preventScroll: true });
+  const shut = function (back) {
+    try { close(); } catch (e) { if (menu.parentNode) menu.parentNode.removeChild(menu); }
+    if (back && opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
+  };
+  menu.addEventListener("keydown", function (e) {
+    const list = items();
+    const i = list.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = list.length; if (!n) return;
+      list[(i + (e.key === "ArrowDown" ? 1 : -1) + n) % n].focus();
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      if (list.length) list[e.key === "Home" ? 0 : list.length - 1].focus();
+    } else if (e.key === "Escape") {
+      e.preventDefault(); shut(true);
+    } else if (e.key === "Tab") {
+      // Back to the opener FIRST, then let Tab move on from there. Closing
+      // without it dropped focus to the page body, and a focus trap underneath
+      // (the product page) then sent it to its first control.
+      shut(true);
+      return;
+    } else {
+      return;
+    }
+    e.stopPropagation();
+  });
+}
+
 function _dlgOpen(o) {
   return new Promise(function (resolve) {
     // Only one at a time. A second one while the first is open would stack two
@@ -58,11 +145,17 @@ function _dlgOpen(o) {
     // this replaces, and it was never the desirable half of it.
     if (_DLG_OPEN) { try { _DLG_OPEN.close(null); } catch (e) { /* gone */ } }
 
+    // WHERE FOCUS WAS, to give it back (Milestone 12, audit section 14: the
+    // dialog had no focus return, so a keyboard user was dropped at the top of
+    // the page after every confirmation).
+    const opener = document.activeElement;
+    const tid = "uidlg_t" + (++_DLG_SEQ);
     const wrap = document.createElement("div");
     wrap.className = "uidlg-wrap";
     wrap.innerHTML =
-      '<div class="uidlg" role="dialog" aria-modal="true">'
-      + (o.title ? '<div class="uidlg-h">' + _dlgEsc(o.title) + "</div>" : "")
+      '<div class="uidlg" role="dialog" aria-modal="true"'
+      + (o.title ? ' aria-labelledby="' + tid + '"' : ' aria-label="Message"') + '>'
+      + (o.title ? '<div class="uidlg-h" id="' + tid + '">' + _dlgEsc(o.title) + "</div>" : "")
       + '<div class="uidlg-b">' + (o.html || _dlgBody(o.message)) + "</div>"
       + '<div class="uidlg-f">'
       + (o.buttons || []).map(function (b, i) {
@@ -80,10 +173,16 @@ function _dlgOpen(o) {
       _DLG_OPEN = null;
       document.removeEventListener("keydown", onKey, true);
       wrap.remove();
+      if (opener && opener.focus && document.contains(opener)) {
+        try { opener.focus(); } catch (e) { /* gone */ }
+      }
       resolve(value);
     };
     const onKey = function (e) {
       if (e.key === "Escape") { e.preventDefault(); close(o.cancelValue); }
+      // TAB STAYS INSIDE. aria-modal says the page behind is inert; without
+      // this, Tab walked straight out into it (audit section 14: no focus trap).
+      else if (e.key === "Tab") { uiTrapTab(e, wrap); }
       // Enter accepts, but NEVER from inside a textarea, where it is a newline.
       else if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
         const ok = (o.buttons || []).filter(function (b) { return b.primary; })[0];
@@ -293,3 +392,78 @@ function uiInline(anchor, o) {
     }, 0);
   });
 }
+
+/* THE OLDER MODALS (.modalwrap: accounts, sync, users, AI settings, the PPC
+ * builders, and a few made on the fly) had no dialog role, no focus trap and no
+ * focus return (design system, accessibility; UI inventory 28 Sep 2026). Rather
+ * than edit every opener, one watcher here: when a .modalwrap becomes open it is
+ * named a modal dialog and focus moves inside; while open, Tab stays inside
+ * (uiTrapTab, the same trap as above); when it closes or is removed, focus goes
+ * back to what had it. Batched to one check per animation frame. */
+(function () {
+  if (typeof document === "undefined" || typeof MutationObserver === "undefined") return;
+  function isOpen(m) {
+    // ACTUALLY ON SCREEN: a modal left .open inside a screen that was hidden
+    // keeps display:flex itself, and trapping Tab in it blocked the whole app
+    // (D3 review).
+    return m.classList.contains("open") && getComputedStyle(m).display !== "none"
+      && m.getClientRects().length > 0;
+  }
+  function opened(m) {
+    if (m._a11yOpen) return;
+    m._a11yOpen = { opener: document.activeElement };
+    const panel = m.querySelector(".modal") || m;
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    if (!panel.getAttribute("aria-label") && !panel.getAttribute("aria-labelledby")) {
+      const h = panel.querySelector("h1,h2,h3,h4,.modalh");
+      panel.setAttribute("aria-label", (h && h.textContent.trim().slice(0, 80)) || "Dialog");
+    }
+    setTimeout(function () {
+      if (m.contains(document.activeElement)) return;
+      const f = m.querySelector('input:not([type=hidden]),select,textarea,button,a[href],[tabindex]:not([tabindex="-1"])');
+      if (f) { try { f.focus({ preventScroll: true }); } catch (e) { /* ok */ } }
+    }, 0);
+  }
+  function closed(m) {
+    const st = m._a11yOpen;
+    m._a11yOpen = null;
+    if (st && st.opener && st.opener.focus && document.contains(st.opener)) {
+      try { st.opener.focus({ preventScroll: true }); } catch (e) { /* gone */ }
+    }
+  }
+  let queued = false;
+  function scan() {
+    queued = false;
+    document.querySelectorAll(".modalwrap").forEach(function (m) {
+      if (isOpen(m)) opened(m); else if (m._a11yOpen) closed(m);
+    });
+  }
+  const obs = new MutationObserver(function (records) {
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i];
+      // A modal REMOVED while open (the ones built on the fly) gives focus back.
+      for (let j = 0; j < r.removedNodes.length; j++) {
+        const n = r.removedNodes[j];
+        if (n && n._a11yOpen) closed(n);
+      }
+    }
+    if (!queued) { queued = true; requestAnimationFrame(scan); }
+  });
+  function start() {
+    obs.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style"] });
+    scan();
+  }
+  if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Tab" || e.defaultPrevented || document.querySelector(".uidlg-wrap")) return;
+    const open = Array.prototype.filter.call(document.querySelectorAll(".modalwrap"), isOpen);
+    if (!open.length) return;
+    // The TOPMOST by stacking order, as escape.js decides it -- not the last
+    // in the page.
+    open.sort(function (x, y) {
+      return (parseInt(getComputedStyle(y).zIndex, 10) || 0) - (parseInt(getComputedStyle(x).zIndex, 10) || 0);
+    });
+    uiTrapTab(e, open[0]);
+  });
+})();

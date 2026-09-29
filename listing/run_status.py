@@ -41,12 +41,35 @@ _MIN_WRITE_INTERVAL = 1.0
 
 _last_write = [0.0]
 _state = {}
+_ACCOUNT = [""]          # the account this process's run belongs to (start())
 
 
-def status_path(app_dir=None):
-    """The heartbeat file. Sits next to config.json; safe to delete any time."""
-    base = app_dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, "run_status.json")
+def _file_for(account):
+    """ONE FILE PER ACCOUNT. Runs for different accounts go at the same time
+    (domain/run_slots), and a single shared file let the last writer decide what
+    every account's progress bar said -- and which process /run/stack inspected
+    (account-scope review, 29 Sep 2026). A run with no account keeps the old
+    name, so nothing that ran before changes."""
+    import re
+    a = re.sub(r"[^A-Za-z0-9_.-]", "_", str(account or "").strip())[:80]
+    return "run_status.%s.json" % a if a else "run_status.json"
+
+
+def status_path(app_dir=None, account=None):
+    """The heartbeat file. Sits next to config.json; safe to delete any time.
+
+    NEXT TO THE SETTINGS, WHEREVER THEY ARE. The generator called this with no
+    app_dir, so it wrote beside the CODE, while the dashboard reads beside
+    CONFIG_PATH. Locally those are one folder; on the server they are /app and
+    /data, and the reader never saw a heartbeat (deployment audit, 29 Sep 2026).
+    The app hands CONFIG_PATH to every process it starts, so both sides now
+    answer from it; the code folder is only the fallback when nothing says.
+    """
+    base = app_dir
+    if not base and os.environ.get("CONFIG_PATH"):
+        base = os.path.dirname(os.path.abspath(os.environ["CONFIG_PATH"]))
+    base = base or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, _file_for(_ACCOUNT[0] if account is None else account))
 
 
 def _write(path, force=False):
@@ -70,12 +93,15 @@ def _write(path, force=False):
             pass
 
 
-def start(total=0, mode="", app_dir=None):
-    """Called once when a run begins."""
+def start(total=0, mode="", app_dir=None, account=""):
+    """Called once when a run begins. `account` names the file every later
+    beat()/finish() of this process writes (see _file_for)."""
+    _ACCOUNT[0] = str(account or "")
     _state.clear()
     _state.update({"state": "running", "pid": os.getpid(), "mode": mode,
                    "idx": 0, "total": total, "sku": "", "stage": "starting",
-                   "started": time.time(), "exit_code": None})
+                   "started": time.time(), "exit_code": None,
+                   "account": _ACCOUNT[0]})
     _write(status_path(app_dir), force=True)
 
 
@@ -147,23 +173,24 @@ def pid_alive(pid):
         return False
 
 
-def read(app_dir=None):
-    """The raw heartbeat file, or {} when there has never been a run."""
+def read(app_dir=None, account=None):
+    """The raw heartbeat file, or {} when there has never been a run.
+    `account` picks that account's file (the dashboard always names one)."""
     try:
-        with open(status_path(app_dir), encoding="utf-8") as f:
+        with open(status_path(app_dir, account), encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 
-def classify(app_dir=None, stall_after=STALL_AFTER_SECONDS, proc_alive=None):
+def classify(app_dir=None, stall_after=STALL_AFTER_SECONDS, proc_alive=None, account=None):
     """Combine 'when did it last act' with 'is it alive' into an honest verdict.
 
     proc_alive lets the caller pass what it already knows (the dashboard holds
     the real Popen handle, which is better evidence than a PID lookup, because a
     PID can be recycled).
     """
-    st = read(app_dir)
+    st = read(app_dir, account)
     if not st:
         return {"state": "IDLE", "detail": "no run has been started yet",
                 "idx": 0, "total": 0, "sku": "", "stage": "", "age": None,

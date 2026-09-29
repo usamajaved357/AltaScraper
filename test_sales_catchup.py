@@ -14,9 +14,14 @@ said 0 for that week. Nothing was late at Amazon's end; the app never asked.
 Drives the real worker loop with Amazon replaced, because the thing being tested
 is WHEN the app decides to ask, not what Amazon says back.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys, time, types
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 import domain.live_refresher as lr
 
@@ -40,7 +45,7 @@ check_true("and a cheap way to ask if it is behind", hasattr(lr, "_sales_gap"))
 check_true("budgeted per pass rather than all at once", lr.SALES_PER_PASS <= 5)
 
 print("\n== a pass does ONE thing, and sales waits for the catalogue ==")
-src = open(r"D:\AltaScraper\domain\live_refresher.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"domain\live_refresher.py"), encoding="utf-8").read()
 loop = src[src.index("def _loop("):src.index("def _supervisor(")]
 i_cat = loop.index("_refresh_one(")
 i_live = loop.index("_live_one(")

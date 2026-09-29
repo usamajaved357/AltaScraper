@@ -42,21 +42,12 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         return d if isinstance(d, dict) else {}
 
     def _scope():
-        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id") or "").strip()
-        mkt = (request.args.get("marketplace") or "").strip().upper()
-        b = request.get_json(silent=True) or {}
-        aid = aid or str(b.get("id") or "").strip()
-        mkt = mkt or str(b.get("marketplace") or "").strip().upper()
-        if not aid or not mkt:
-            acc = {}
-            try:
-                acc = (_active_account() or {}) if callable(_active_account) else {}
-            except Exception:
-                acc = {}
-            aid = aid or str(acc.get("id") or (_state or {}).get("active_account_id") or "")
-            mkt = mkt or str(acc.get("default_marketplace")
-                             or (_state or {}).get("active_marketplace") or "").upper()
-        return aid, (mkt or "UK")
+        # The shared resolver (routes/scope.pair): the marketplace follows the
+        # account the PAGE named, not the server's open one (Rule 12).
+        from routes import scope as _scope_mod
+        return _scope_mod.pair(request, state=_state,
+                               active_account=_active_account, cfg=_cfg,
+                               config_path=CONFIG_PATH, last_resort="UK")
 
     def _catalogue(wsid, mkt):
         """{asin: record} for this account, from the shared lookup."""

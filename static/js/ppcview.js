@@ -74,8 +74,10 @@ async function ppcAnalyticsLoad(force){
       if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
         qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
     }catch(e){}
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     j = await (await fetch("/ppc/analytics"
       + (qs.length ? "?" + qs.join("&") : ""))).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
   }catch(e){
     host.innerHTML = '<div class="odp-note warn" style="padding:14px">'
       + _pvEsc(String(e)) + '</div>';
@@ -213,7 +215,7 @@ function _pvChange(metric){
   const arrow = c.change_pct > 0 ? "▲" : "▼";
   const prev = j.compared_with || {};
   return '<span style="font-size:12px;font-weight:600;margin-left:7px;color:'
-    + (good ? "var(--ok)" : "#f87171") + '" title="'
+    + (good ? "var(--ok)" : "var(--red)") + '" title="'
     + _pvEsc("Was " + c.before + " in the previous report"
              + (prev.date_to ? " (to " + prev.date_to + ")" : "") + ". "
              + (good ? "This is the better direction for this metric."

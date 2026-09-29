@@ -245,7 +245,10 @@ truthy("  which writes the row as QUEUED", '"Status": "QUEUED"' in
 # The SKU is real from the start -- see data/input_row.to_listing_row for why a
 # temporary id would have had to be renamed later, and why the store cannot.
 truthy("the SKU is built by the generator's own build_sku",
-       "from amazon_listing_generator import build_sku" in read("data", "input_row.py"))
+       # Since the architecture batch A1 it is imported from its home,
+       # listing/flat_row.py -- the very function the generator re-exports.
+       "from amazon_listing_generator import build_sku" in read("data", "input_row.py")
+       or "from listing.flat_row import build_sku" in read("data", "input_row.py"))
 truthy("  and collisions are held off with the taken-SKU set",
        "taken_skus(" in _qstore and "taken=taken" in _upload)
 truthy("the hand-add route is still live",

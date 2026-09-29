@@ -61,6 +61,10 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         "  SUM(COALESCE(referral_fees,0))    referral_fees, "
         "  SUM(COALESCE(fba_fees,0))         fba_fees, "
         "  SUM(COALESCE(other_fees,0))       other_fees, "
+        # COUPON AND DEAL FEES, in their own column on rows the newer sync
+        # wrote. Not selected, net_proceeds_for never saw them here, while the
+        # Sales screen's money view -- reading every column -- took them off.
+        "  SUM(COALESCE(promo_fees,0))       promo_fees, "
         "  SUM(COALESCE(refunds,0))          refunds, "
         "  SUM(COALESCE(refund_units,0))     refund_units, "
         # THE FEE AMAZON GIVES BACK when an order is refunded. It was not
@@ -190,7 +194,7 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         # bucket with any uncosted unit reports nothing at all.
         contribution = _sd.profit_for([{
             "units_shipped": units, "cogs_units": costed,
-            "cogs": _f(d["cogs"]), "net_proceeds": net}])
+            "cogs": _f(d["cogs"]), "net_proceeds": net}], allow_uncosted=True)
 
         row = {
             "asin": asin,
@@ -222,8 +226,10 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
             "contribution": contribution,
             "currency": d.get("currency") or "",
         }
-        row["margin_pct"] = (round(contribution / row["revenue"] * 100, 2)
-                             if (contribution is not None and row["revenue"]) else None)
+        # Over sales AFTER VAT, the same as every other screen.
+        row["margin_pct"] = (round(contribution / row["net_revenue"] * 100, 2)
+                             if (contribution is not None and row["net_revenue"])
+                             else None)
         rows.append(row)
 
     rows.sort(key=lambda x: (-(x["revenue"] or 0), x["asin"]))
@@ -249,58 +255,51 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
     The table is correct and nearly empty, and a screen that shows one row for a
     busy month gets read as "nothing sold".
 
-    This reads order_lines: every order PLACED in the window, whether Amazon has
-    settled it or not. Forty of them, against the one. It ties to what was sold;
-    the settlement view ties to the payout. Neither is the truer number -- they
-    answer different questions -- so the screen offers both and says which is on.
+    This covers every order PLACED in the window, whether Amazon has settled it
+    or not. It ties to what was sold; the settlement view ties to the payout.
 
-    FEES ARE THE HYBRID, NOT AN ESTIMATE THROUGHOUT. Each order carries its own
-    settled fees where Amazon has sent them, and the account's measured rate
-    where it has not, exactly as domain/pnl.py does it -- and the rate is asked
-    of domain/order_profit, not worked out again here (Rule 12). Every reply says
-    how much of the window is which.
+    THE SAME ARITHMETIC AS THE SALES CARD, CUT BY PRODUCT. Every figure comes
+    from order_finance.complete_by_order_date(group="asin") -- the function the
+    Sales screen and the P&L add up by day -- and sales_data.net_proceeds_for.
+    Measured 27 Sep 2026, the copy of that arithmetic that lived here had
+    drifted four ways: it left the VAT IN (worked out, then never subtracted),
+    dropped the postage buyers paid, counted CANCELLED orders as sales, and
+    charged a two-product order's whole fee to both products. On jack_uk that
+    put this screen at 50.19 against the Sales card's 64.70 for the same month.
 
     REFUNDS KEEP THEIR OWN DATE. The owner's decision, unchanged: a refund
     belongs to the day the money moved, not the day of the sale, so a month
     already read does not change afterwards.
 
+    AN UNCOSTED PRODUCT IS SHOWN, flagged. The owner's rule: "if no cogs are
+    added show profit as wrong ... the user should know he needs to add cogs".
+    Each row carries uncosted_units, and the notes say the figure is too high.
+
     Returns (rows, totals) in the SAME shape as by_product, so the screen can
     switch between them without knowing which produced what.
     """
     from domain import order_profit as _op
+    from domain import order_finance as _of
 
     conn = _db.get_db(config_path)
 
-    # ---- what sold, on the order calendar --------------------------------
-    lines = list(conn.execute(
-        "SELECT asin, MIN(title) title, SUM(units) units, "
-        "       ROUND(SUM(COALESCE(revenue,0)),2) revenue, "
-        "       ROUND(SUM(COALESCE(cogs,0) * COALESCE(units,1)),2) cogs, "
-        "       SUM(CASE WHEN cogs IS NULL THEN 0 ELSE COALESCE(units,1) END) "
-        "         cogs_units, MAX(currency) currency "
-        "FROM order_lines WHERE workspace_id=? AND marketplace=? "
-        "AND substr(purchase_date,1,10)>=? AND substr(purchase_date,1,10)<=? "
-        "AND COALESCE(asin,'') <> '' GROUP BY asin",
-        (workspace_id, marketplace, start, end)))
-
-    # ---- Amazon's own fees, per ASIN, where the order has settled ---------
-    settled = {}
-    for r in conn.execute(
-            "SELECT o.asin, ROUND(SUM(COALESCE(f.referral_fees,0) "
-            "  + COALESCE(f.fba_fees,0) + COALESCE(f.other_fees,0)),2) fees, "
-            "  ROUND(SUM(COALESCE(o.revenue,0)),2) rev "
-            "FROM order_lines o JOIN order_fees f "
-            "  ON f.workspace_id=o.workspace_id AND f.marketplace=o.marketplace "
-            "  AND f.order_id=o.order_id "
-            "WHERE o.workspace_id=? AND o.marketplace=? "
-            "AND substr(o.purchase_date,1,10)>=? "
-            "AND substr(o.purchase_date,1,10)<=? "
-            "AND COALESCE(o.asin,'') <> '' GROUP BY o.asin",
-            (workspace_id, marketplace, start, end)):
-        settled[r["asin"]] = {"fees": _f(r["fees"]), "revenue": _f(r["rev"])}
-
     rate, rate_basis, rate_detail = _op.fee_rate(config_path, workspace_id,
                                                  marketplace, end)
+    per = _of.complete_by_order_date(config_path, workspace_id, marketplace,
+                                     start, end, fee_rate=rate,
+                                     vat_rate=vat_rate, group="asin")
+
+    titles = {}
+    try:
+        for r in conn.execute(
+                "SELECT asin, MIN(title) title FROM order_lines "
+                "WHERE workspace_id=? AND marketplace=? "
+                "AND substr(purchase_date,1,10)>=? AND substr(purchase_date,1,10)<=? "
+                "AND COALESCE(asin,'') <> '' GROUP BY asin",
+                (workspace_id, marketplace, start, end)):
+            titles[r["asin"]] = r["title"] or ""
+    except Exception:
+        titles = {}
 
     # ---- advertising, per ASIN -------------------------------------------
     ads = {}
@@ -310,30 +309,22 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
             "AND asin<>'*' GROUP BY asin",
             (workspace_id, marketplace, start, end)):
         ads[r["asin"]] = _f(r["spend"])
-    ads_connected = bool(ads)
-
-    # ---- refunds, on their own date --------------------------------------
-    refunds = {}
-    try:
-        for r in conn.execute(
-                "SELECT asin, ROUND(SUM(COALESCE(refunds,0)),2) refunds, "
-                "  SUM(COALESCE(refund_units,0)) ru, "
-                "  ROUND(SUM(COALESCE(promos,0)),2) promos "
-                "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
-                "AND date>=? AND date<=? AND asin<>'*' GROUP BY asin",
-                (workspace_id, marketplace, start, end)):
-            refunds[r["asin"]] = dict(r)
-    except Exception:
-        refunds = {}
+    acct_ads = conn.execute(
+        "SELECT SUM(spend) s FROM ads_daily WHERE workspace_id=? "
+        "AND marketplace=? AND date>=? AND date<=? AND asin='*'",
+        (workspace_id, marketplace, start, end)).fetchone()
+    acct_ad_spend = (None if not acct_ads or acct_ads["s"] is None
+                     else round(_f(acct_ads["s"]), 2))
+    ads_connected = bool(ads) or acct_ad_spend is not None
 
     names, parents = {}, {}
     try:
         from domain import catalogue as _cat
         idx = _cat.merged(config_path, [(workspace_id, marketplace)])
-        for ln in lines:
-            got = _cat.look(idx, None, ln["asin"]) or {}
+        for asin in per:
+            got = _cat.look(idx, None, asin) or {}
             if got.get("title"):
-                names[ln["asin"]] = got["title"]
+                names[asin] = got["title"]
     except Exception:
         pass
     try:
@@ -349,98 +340,117 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
     rows = []
     est_rev_total, actual_fee_total = 0.0, 0.0
     unknown_fee_rev, unknown_fee_rows = 0.0, 0
-    for ln in lines:
-        asin = ln["asin"]
-        revenue = _f(ln["revenue"])
-        units = int(ln["units"] or 0)
-        costed = int(ln["cogs_units"] or 0)
-        cogs = _f(ln["cogs"])
+    for asin, d in per.items():
+        if not asin:
+            # A line Amazon sent with no ASIN has nowhere to be shown; it is in
+            # the account's figure, and unattributed_revenue below says so.
+            continue
+        units = int(d.get("units") or 0)
+        costed = int(d.get("cogs_units") or 0)
+        cogs = _f(d.get("cogs"))
 
-        # THE HYBRID. What Amazon actually charged on the settled part, its own
-        # measured rate on the rest -- never one applied to everything.
-        s = settled.get(asin) or {}
-        fees_actual = _f(s.get("fees"))
-        unsettled_rev = max(0.0, revenue - _f(s.get("revenue")))
-        # AN UNMEASURED FEE RATE IS NOT A RATE OF ZERO.
-        #
-        # This read `float(rate or 0)`, and rate is None whenever it could not be
-        # measured -- a new account, or one with nothing settled yet. Revenue
-        # Amazon has not settled then carried NO fee at all, so its contribution
-        # was overstated by the whole referral fee, on the screen whose entire
-        # job is to say which products make money.
-        #
-        # It is the same mistake the advertising rule below already refuses to
-        # make: "subtracting an unknown ad spend as if it were nought makes every
-        # advertised product look better than it is". A fee is no different.
-        fee_unknown = (rate is None and unsettled_rev > 0)
-        fees = (round(fees_actual + unsettled_rev * float(rate), 2)
-                if rate is not None else round(fees_actual, 2))
-        est_rev_total += unsettled_rev
-        actual_fee_total += fees_actual
+        m = _sd.net_proceeds_for(d, vat_rate)
+        fees = round(_f(m["total_fees"]), 2)
+        net = m["net_proceeds"]
+        if net is None:
+            net = round(_f(d.get("principal")), 2)
+        est = _f(d.get("fees_estimated"))
+        actual_fee_total += fees - est
+        # THE REVENUE AMAZON HAS NOT SETTLED -- priced at the measured rate, or
+        # carrying no fee because none could be measured. Both are unsettled;
+        # counting only the first read "0.00 estimated" on exactly the accounts
+        # with nothing settled (found by Milestone 1, 28 Sep 2026).
+        if rate:
+            est_rev_total += est / float(rate)
+        est_rev_total += _f(d.get("revenue_fee_unknown"))
+        fee_unknown = int(d.get("orders_fee_unknown") or 0) > 0
         if fee_unknown:
-            unknown_fee_rev += unsettled_rev
+            unknown_fee_rev += _f(d.get("revenue_fee_unknown"))
             unknown_fee_rows += 1
-
-        rf = refunds.get(asin) or {}
-        refund = _f(rf.get("refunds"))
         ad = ads.get(asin)
 
-        vat, net_rev, basis = _sd.vat_for({"principal": revenue, "tax": None},
-                                          vat_rate)
-        net = round(revenue - fees - refund, 2)
-
-        # The same rule as everywhere else, called not repeated: a bucket with
-        # any uncosted unit reports no contribution at all, because uncosted
-        # units bring revenue and no cost and only ever flatter.
+        # The same rule as everywhere else, called not repeated -- with the
+        # owner's allowance for units nobody has costed yet.
+        charges = round(_f(d.get("charges")), 2)
         contribution = _sd.profit_for([{
             "units_shipped": units, "cogs_units": costed,
-            "cogs": cogs, "net_proceeds": net}])
+            "cogs": cogs, "charges": charges, "net_proceeds": net}],
+            allow_uncosted=True)
         # AND ADVERTISING COMES OFF IT. Only when it is known: subtracting an
         # unknown ad spend as if it were nought makes every advertised product
         # look better than it is, by exactly what is being spent on it.
         if contribution is not None and ad is not None:
             contribution = round(contribution - ad, 2)
         # AND A ROW WHOSE FEE IS UNKNOWN CANNOT STATE A CONTRIBUTION EITHER.
-        # The same rule as the uncosted units above and the unknown ad spend
-        # beside it: a figure missing one of its costs is not a smaller profit,
-        # it is not a profit at all. Reporting it would flatter this product by
-        # exactly whatever Amazon charges on the part it has not settled.
+        # The fee was left out, not estimated at nought, so the figure would
+        # flatter this product by whatever Amazon charges on its unsettled part.
         if fee_unknown:
             contribution = None
 
+        revenue = round(_f(d.get("principal")) + _f(d.get("tax")), 2)
+        net_rev = m["net_revenue"]
         row = {
             "asin": asin,
-            "title": names.get(asin) or (ln["title"] or ""),
+            "title": names.get(asin) or titles.get(asin) or "",
             "parent_asin": parents.get(asin) or "",
             "units": units,
             "units_ordered": units,
             "revenue": revenue,
-            "vat": vat, "net_revenue": net_rev, "vat_basis": basis,
+            "vat": m["vat"], "net_revenue": net_rev, "vat_basis": m["vat_basis"],
             "ordered_sales": revenue,
             "fees": fees,
-            "refunds": refund,
-            "refund_units": int(rf.get("ru") or 0),
-            "refund_fees_returned": 0.0,
-            "reimbursements": 0.0,
-            "promos": _f(rf.get("promos")),
+            "refunds": round(_f(d.get("refunds")), 2),
+            "refund_units": int(d.get("refund_units") or 0),
+            "refund_fees_returned": round(_f(d.get("refund_fees_returned")), 2),
+            "reimbursements": round(_f(d.get("reimbursements")), 2),
+            "promos": round(_f(d.get("promos")), 2),
             "cogs": cogs,
             "cogs_units": costed,
             "uncosted_units": max(0, units - costed),
+            # The owner's own per-unit charges (postage out, prep ...), taken
+            # off the contribution exactly as the Sales card takes them off.
+            "charges": charges,
             "net_proceeds": net,
             "ad_spend": (round(ad, 2) if ad is not None else None),
             "contribution": contribution,
-            "currency": ln["currency"] or "",
+            "currency": d.get("currency") or "",
         }
-        row["margin_pct"] = (round(contribution / revenue * 100, 2)
-                             if (contribution is not None and revenue) else None)
+        # Over sales after VAT, the same as every other screen.
+        row["margin_pct"] = (round(contribution / net_rev * 100, 2)
+                             if (contribution is not None and net_rev) else None)
         rows.append(row)
 
     rows.sort(key=lambda x: (-(x["revenue"] or 0), x["asin"]))
     totals = totals_for(rows)
     totals.update(unattributed(conn, workspace_id, marketplace, start, end, rows))
-    if totals.get("contribution") is not None and totals.get("unattributed_fees"):
-        totals["account_contribution"] = round(
-            totals["contribution"] - totals["unattributed_fees"], 2)
+
+    # ---- THE ACCOUNT'S FIGURE: the Sales card's, to the penny ------------
+    #
+    # The product rows cannot carry everything the account paid: ad spend no
+    # product can be matched to, and money on a line with no ASIN. The step
+    # from the products' total to the account's is shown rather than implied,
+    # and the account's figure is the one the Sales card and the P&L state.
+    acct = _op.for_period(config_path, workspace_id, marketplace, start, end,
+                          vat_rate=vat_rate, ads_connected=ads_connected,
+                          ad_spend=(acct_ad_spend or 0.0))
+    prod_ads = sum(r["ad_spend"] or 0 for r in rows)
+    gap_ads = round((acct_ad_spend or 0.0) - prod_ads, 2)
+    totals["unattributed_ad_spend"] = gap_ads if gap_ads >= 0.01 else 0.0
+    gap_rev = round(acct["revenue"] - (totals.get("revenue") or 0.0), 2)
+    totals["unattributed_revenue"] = gap_rev if gap_rev >= 0.01 else 0.0
+    totals["unattributed_pct"] = (
+        round(totals["unattributed_revenue"] / acct["revenue"] * 100, 1)
+        if acct["revenue"] and totals["unattributed_revenue"] else None)
+    totals["account_contribution"] = acct["profit"]
+    totals["account_margin_pct"] = acct["margin_pct"]
+    # THE ACCOUNT-LEVEL AMAZON CHARGE IS NOT ANSWERED HERE on this calendar.
+    # unattributed() finds it by comparing the settled feed with the product
+    # rows, which only holds when the rows ARE the settled feed; on the order
+    # calendar the rows cover unsettled trade too, and the comparison produces
+    # a number with no meaning. expenses.overhead_for owns that charge, and the
+    # Finance overhead step takes it from there (Rule 12).
+    totals["unattributed_fees"] = 0.0
+    totals["account_warning"] = acct.get("warning") or ""
 
     # HOW MUCH OF THIS IS AMAZON'S OWN FIGURE. A table whose fees are four
     # fifths estimated is a different document from one that is not.
@@ -450,9 +460,9 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
     totals["fee_rate_detail"] = rate_detail
     totals["fees_actual"] = round(actual_fee_total, 2)
     totals["estimated_revenue"] = round(est_rev_total, 2)
-    # The revenue carrying NO fee at all, because none could be measured. A
-    # different thing from estimated_revenue, which has a fee with a stated
-    # method behind it, and worth its own line: those products show no
+    # The revenue carrying NO fee at all, because none could be measured. It is
+    # INSIDE estimated_revenue (all unsettled revenue is, since Milestone 1) and
+    # also reported on its own here, because those products show no
     # contribution rather than a flattering one, and the screen should say why.
     totals["unpriced_fee_revenue"] = round(unknown_fee_rev, 2)
     totals["unpriced_fee_products"] = unknown_fee_rows
@@ -571,11 +581,19 @@ def totals_for(rows):
     t["products"] = len(rows)
     t["ad_spend"] = None if all(r.get("ad_spend") is None for r in rows) \
         else round(sum(r.get("ad_spend") or 0 for r in rows), 2)
-    t["contribution"] = _sd.profit_for([{
-        "units_shipped": t["units"], "cogs_units": t["cogs_units"],
-        "cogs": t["cogs"], "net_proceeds": t["net_proceeds"]}])
-    t["margin_pct"] = (round(t["contribution"] / t["revenue"] * 100, 2)
-                       if (t["contribution"] is not None and t["revenue"]) else None)
+    # THE SUM OF THE ROWS' OWN FIGURES, so the footer is what the column above
+    # it adds up to -- with a withheld row withholding the total, because a
+    # total that silently skips a product is a smaller number wearing the label
+    # of a complete one. A row is withheld only when its FEE is unknown; an
+    # uncosted row is shown, flagged (the owner's rule, see profit_for).
+    if any(r.get("contribution") is None for r in rows):
+        t["contribution"] = None
+    else:
+        t["contribution"] = round(sum(r["contribution"] for r in rows), 2)
+    # Over sales AFTER VAT, the same as every other screen.
+    t["margin_pct"] = (round(t["contribution"] / t["net_revenue"] * 100, 2)
+                       if (t["contribution"] is not None and t["net_revenue"])
+                       else None)
     # The one implementation of "which currency is this?" -- this used to be it,
     # spelled out here while three other places took rows[0] and got "" on any
     # range starting before the account's first sale. Now shared, so they cannot
@@ -691,11 +709,33 @@ def notes(rows, totals):
             "Ad spend is not connected, so this is contribution BEFORE "
             "advertising. On any product you advertise, the real "
             "contribution is lower by whatever you spent on it.")
+    # UNCOSTED UNITS ARE SHOWN, AND SAID. The owner's rule: "if no cogs are
+    # added show profit as wrong ... the user should know he needs to add
+    # cogs". Those products' contribution counts their stock as costing
+    # nothing, so it is too high by whatever the stock really cost.
+    uncosted = [r for r in rows if (r.get("uncosted_units") or 0) > 0]
+    if uncosted:
+        say(NOTE_WARN,
+            "%d product%s have %d unit%s with no cost recorded, so nothing was "
+            "subtracted for that stock and their contribution is HIGHER than "
+            "the truth. Set a cost, then press Sync."
+            % (len(uncosted), "" if len(uncosted) == 1 else "s",
+               sum(r["uncosted_units"] for r in uncosted),
+               "" if sum(r["uncosted_units"] for r in uncosted) == 1 else "s"))
     blank = [r["asin"] for r in rows if r["contribution"] is None]
     if blank:
         say(NOTE_WARN,
-            "%d product%s have units with no known cost, so no contribution "
-            "is shown for them — a partial cost would only ever make them "
-            "look better than they are. Set a cost, then press Sync."
+            "%d product%s show no contribution because Amazon's fee on them "
+            "could not be worked out -- this account has no measured fee rate "
+            "yet, and leaving the fee out would flatter them."
             % (len(blank), "" if len(blank) == 1 else "s"))
+    ua = totals.get("unattributed_ad_spend") or 0
+    if ua:
+        say(NOTE_INFO,
+            "%.2f %s of ad spend could not be matched to any product, so it is "
+            "in no row below. It is taken off the account's figure (%s), which "
+            "is the same profit the Sales screen shows."
+            % (float(ua), cur,
+               ("%.2f %s" % (float(totals["account_contribution"]), cur))
+               if totals.get("account_contribution") is not None else "not known"))
     return out

@@ -60,13 +60,13 @@ ok("  and only falls through when there is no product page to use",
 
 console.log("\n== no opener goes to the drawer any more ==");
 ok("the compliance chip opens the Compliance tab",
-   /tiledocs[\s\S]{0,400}openListingAt\('\$\{esc\(r\.sku\)\}','compliance'\)/.test(LIST));
+   /tiledocs[\s\S]{0,400}openListingAt\((?:'\$\{esc\(r\.sku\)\}'|\$\{jsArg\(r\.sku\)\}),'compliance'\)/.test(LIST));
 ok("the claim chip does too",
-   /tileclaim[\s\S]{0,200}openListingAt\('\$\{esc\(r\.sku\)\}','compliance'\)/.test(LIST));
+   /tileclaim[\s\S]{0,200}openListingAt\((?:'\$\{esc\(r\.sku\)\}'|\$\{jsArg\(r\.sku\)\}),'compliance'\)/.test(LIST));
 ok("the 'no copy yet' chip opens the details tab",
-   /tilecopy[\s\S]{0,500}openListingAt\('\$\{esc\(r\.sku\)\}','details'\)/.test(LIST));
+   /tilecopy[\s\S]{0,500}openListingAt\((?:'\$\{esc\(r\.sku\)\}'|\$\{jsArg\(r\.sku\)\}),'details'\)/.test(LIST));
 ok("'Edit details' in the tile menu goes through openListing",
-   /onclick="openListing\('\$\{esc\(sku\)\}'\);closeTileMenu\(\)"/.test(LIST));
+   /onclick="openListing\((?:'\$\{esc\(sku\)\}'|\$\{jsArg\(sku\)\})\);closeTileMenu\(\)"/.test(LIST));
 ok("clicking a run in the queue goes through openListing",
    /function rqOpenJob\(sku\)\{[\s\S]{0,200}openListing\(sku\)/.test(RQ));
 ok("  with the drawer only as its own last line",

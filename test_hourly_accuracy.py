@@ -17,10 +17,15 @@ timezone conversion is right too -- the grid is Europe/London, not UTC.
 Nothing was changed as a result. This test pins the parts that made it correct,
 so a later edit cannot quietly move them.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import datetime as dt
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -62,7 +67,7 @@ raw = {"PurchaseDate": "2026-08-15T10:00:00Z",
 check("the flattened shape", HS._fields(flat), HS._fields(raw))
 
 print("\n=== what is counted, and what is deliberately not left out ===")
-S = open(r"D:\AltaScraper\domain\hourly_sales.py", encoding="utf-8").read()
+S = open(_os_repo.path.join(_REPO, r"domain\hourly_sales.py"), encoding="utf-8").read()
 truthy("cancellations count at the hour they were PLACED",
        "Cancellations are included as placed" in S)
 truthy("  because removing them makes the morning change as you watch it",

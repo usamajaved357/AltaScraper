@@ -22,7 +22,7 @@ function check(label, got, want) {
                                                    + " want=" + JSON.stringify(want)));
 }
 
-const ROOT = "D:/AltaScraper";
+const ROOT = __dirname;
 const DIRS = ["static/js", "static/css", "templates", "domain", "routes", "listing",
               "api", "data", "auth"];
 const EXT = /\.(js|css|html|py)$/;

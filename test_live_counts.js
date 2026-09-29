@@ -28,8 +28,8 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const L = fs.readFileSync("D:/AltaScraper/static/js/listings.js", "utf8");
-const M = fs.readFileSync("D:/AltaScraper/static/js/miles_template.js", "utf8");
+const L = fs.readFileSync((__dirname + "/static/js/listings.js"), "utf8");
+const M = fs.readFileSync((__dirname + "/static/js/miles_template.js"), "utf8");
 
 console.log("=== the total counts both halves of the live list ===");
 truthy("the live app rows are worked out once and named",
@@ -84,9 +84,12 @@ truthy("  an unknown quantity is not counted as zero",
 // asserted, against the four statuses that replaced them. HOLD and ERROR are
 // still counted, folded into Generated, so an unmigrated database still shows
 // its rows somewhere rather than into nothing.
+// Re-pinned 28 Sep 2026: the "Generated" tile was deliberately relabelled
+// "Drafts" in the 26 Sep listings redesign (see the comment at the tiles in
+// listings.js). Still its own tile, counted from app rows.
 truthy("the drafts view keeps tiles of its own",
        /tile\(_n\(c\.QUEUED\), "Queued"/.test(L)
-       && /tile\(_n\(_gen\), "Generated"/.test(L));
+       && /tile\(_n\(_gen\), "(Generated|Drafts)"/.test(L));
 truthy("  and the old statuses are still counted somewhere",
        /c\.HOLD \+ c\.ERROR/.test(L));
 

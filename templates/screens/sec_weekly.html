@@ -1,0 +1,42 @@
+    <div id="sec_weekly" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-calendar-stats"></i> Weekly KPIs</h2>
+        <div class="sub">One week, every headline figure, frozen so it cannot change afterwards. Built from the Business Report and the Campaign Manager export — uploaded, or read from what this app already syncs.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span class="cc" style="font-size:11px">week of</span>
+          <input type="date" id="wk_week" onchange="weeklyLoad()"
+                 style="font-size:12px;padding:4px 6px"
+                 title="Any day in the week you are reporting on. The week runs Sunday to Saturday.">
+          <button class="db-chip" onclick="weeklyPull()"
+                  title="Build the week from the data this app already holds. No files needed."><i class="ti ti-refresh"></i> Build from connected account</button>
+          <button class="db-chip" onclick="weeklyUploadOpen('business')"
+                  title="Seller Central → Reports → Business Reports → Detail Page Sales and Traffic by Child Item"><i class="ti ti-file-upload"></i> Upload Business Report</button>
+          <button class="db-chip" onclick="weeklyUploadOpen('campaign')"
+                  title="Campaign Manager → the campaign table → Export"><i class="ti ti-file-upload"></i> Upload Campaign export</button>
+          <input type="file" id="wk_file" accept=".csv,.tsv,.txt,.xlsx" style="display:none" onchange="weeklyUploadFile(this)">
+          <!-- WHICH ASINs THE FOUR PRODUCT SECTIONS LIST. The reference sheet
+               lists parent ASINs, which is the useful view for a weekly pack --
+               a shoe in 14 sizes is one product. "Each child" is there for the
+               per-variation read. -->
+          <span class="cc" style="font-size:11px">rows</span>
+          <select class="db-chip" id="wk_group" aria-label="Rows" style="width:auto">
+            <option value="parent">By parent ASIN</option>
+            <option value="child">Each child ASIN</option>
+          </select>
+          <button class="db-chip" onclick="weeklyExport()"
+                  title="Every saved week as a column, newest on the left — the layout of the KPI sheet"><i class="ti ti-download"></i> Export CSV</button>
+          <!-- THE WAY BACK OUT. Weeks could be uploaded and re-uploaded but never
+               removed, so a week loaded against the wrong account or from the
+               wrong export stayed in the pack for good and every comparison
+               after it read against a week that should not have been there.
+               Asked for as "delete or clear all data which is already UPLOADED
+               ... to avoid any confusion". Red, because it cannot be undone. -->
+          <button class="db-chip wkwipe" onclick="weeklyClearAll()"
+                  title="Delete the stored weeks for this account and marketplace so you can upload fresh reports. Asks first, and says how many."><i class="ti ti-eraser"></i> Clear stored weeks</button>
+          <button class="db-chip" onclick="weeklySheetSync()"
+                  title="Write the same grid into this account's weekly Google Sheet. Shows you what it would do before it does it."><i class="ti ti-brand-google-drive"></i> Sync to Google Sheet</button>
+        </div>
+      </div>
+      <div id="wk_sheetmsg"></div>
+      <div id="wk_body" style="padding:4px 0"></div>
+    </div>

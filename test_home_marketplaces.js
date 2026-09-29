@@ -33,7 +33,7 @@ function truthy(label, got){ check(label, !!got, true); }
 
 const sandbox = {console};
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync("D:/AltaScraper/static/js/marketplaces.js", "utf8"), sandbox);
+vm.runInContext(fs.readFileSync((__dirname + "/static/js/marketplaces.js"), "utf8"), sandbox);
 
 console.log("=== every marketplace has a flag, a name and a currency ===");
 check("UK", [sandbox.mktFlag("UK"), sandbox.mktShort("UK"), sandbox.mktSymbol("UK")],
@@ -60,7 +60,7 @@ truthy("and so is the code, because flags alone are guesswork at 12px",
        chip.indexOf("FR") >= 0);
 
 console.log("\n=== the home cards and the switcher both use it ===");
-const shell = fs.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8");
+const shell = fs.readFileSync((__dirname + "/static/js/shell.js"), "utf8");
 truthy("the home card draws flags", shell.indexOf("mktflag") >= 0);
 truthy("clicking one opens the account at that marketplace",
        shell.indexOf("enterAccountAt(") >= 0);
@@ -73,7 +73,7 @@ check("no inline currency ternary is left",
 truthy("both places ask the one table", (shell.match(/mktSymbol\(/g) || []).length >= 2);
 
 console.log("\n=== it is loaded before the code that uses it ===");
-const html = fs.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
+const html = fs.readFileSync((__dirname + "/templates/dashboard.html"), "utf8");
 const iM = html.indexOf("js/marketplaces.js");
 const iS = html.indexOf("js/shell.js");
 truthy("marketplaces.js is on the page", iM > 0);

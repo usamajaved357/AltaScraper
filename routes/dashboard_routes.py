@@ -17,28 +17,8 @@ from listing.restricted import check_restricted_type
 from listing.sourcing_viability import check_sourcing_viability
 
 
-def _row_image(attrs_json):
-    """Best-effort main-image URL from a row's Attributes JSON (locators vary in shape)."""
-    try:
-        a = _json.loads(attrs_json or "{}")
-        if not isinstance(a, dict):
-            return ""
-        def _url(v):
-            if isinstance(v, list) and v and isinstance(v[0], dict):
-                return v[0].get("value") or v[0].get("media_location") or ""
-            return v if isinstance(v, str) else ""
-        for k in ("main_product_image_locator", "main_image_url"):
-            u = _url(a.get(k))
-            if u:
-                return u
-        for k, v in a.items():
-            if "image" in str(k).lower():
-                u = _url(v)
-                if u:
-                    return u
-    except Exception:
-        pass
-    return ""
+# One reader of a row's main image, shared with /submit/precheck (Rule 12).
+from domain.row_image import main_image as _row_image  # noqa: E402
 try:
     from listing import sync as _sync
 except Exception:

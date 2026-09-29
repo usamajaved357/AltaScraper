@@ -34,6 +34,9 @@
 //                     (prior-year's is fainter, 0.15, because context should
 //                      not compete with the subject)
 const SC_GOLD      = "#fbbf24";
+// The order bars, and the key's swatch for them, from ONE value each: the key
+// used to show var(--warn-bg), a colour no bar was ever drawn in.
+const SC_BAR_OPACITY = 0.3;
 const SC_COMPARE   = "#6b7280";
 const SC_PRIORYEAR = "#6366f1";
 const SC_DASH      = "5 5";     // the period before
@@ -657,12 +660,12 @@ function salesChart(points, opts){
   [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
     const v = lo + span * f, yy = y(v);
     grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
-                   stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"/>`
+                   class="sc-grid" stroke-width="1" stroke-dasharray="3 3"/>`
          +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
-                fill="rgb(156,163,175)">${_scEsc(_scAxis(v, o.kind, o.currency, span))}</text>`;
+                class="sc-tick">${_scEsc(_scAxis(v, o.kind, o.currency, span))}</text>`;
   });
   grid += `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}"
-                 stroke="rgb(55,65,81)" stroke-width="1"/>`;
+                 class="sc-grid" stroke-width="1"/>`;
 
   // The line, BROKEN wherever a day has no data. Each run of real values is its
   // own path, so nothing is drawn across the gap and nothing implies a zero.
@@ -791,11 +794,11 @@ function salesChart(points, opts){
     hits += `<rect x="${_hb.x}" y="${padT}"
                    width="${_hb.w}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
-                   onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},${
+                   onmousemove="_scHover(${jsArg(cid)},${i},${x(i).toFixed(1)},${
                        v === null ? -1 : y(v).toFixed(1)},'${_scAttr(p.label)}','${_scAttr(shown)}')"
-                   onmouseleave="_scLeave('${cid}')"
-                   onmousedown="_scDragStart('${cid}',${i},event)"
-                   onmouseup="_scDragEnd('${cid}',${i})"></rect>`;
+                   onmouseleave="_scLeave(${jsArg(cid)})"
+                   onmousedown="_scDragStart(${jsArg(cid)},${i},event)"
+                   onmouseup="_scDragEnd(${jsArg(cid)},${i})"></rect>`;
   });
   // The marker: a vertical line and a dot, moved by the handler rather than
   // redrawn, so hovering costs nothing.
@@ -854,7 +857,7 @@ function salesChart(points, opts){
   points.forEach(function(p, i){
     if(i % step) return;
     xl += `<text x="${x(i)}" y="${padT + ih + 8}" text-anchor="middle" font-size="11"
-                 fill="rgb(156,163,175)">${_scEsc(_scXLabel(p.label, o.xLabel))}</text>`;
+                 class="sc-tick">${_scEsc(_scXLabel(p.label, o.xLabel))}</text>`;
   });
 
   const missing = points.filter(p => _scNum(p.value) === null).length;
@@ -958,7 +961,7 @@ function salesChartKey(o){
   };
   const item = function(col, w, dash, text, dim, tip){
     return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px'
-         + (dim ? ';color:rgb(156,163,175)' : '') + '"'
+         + (dim ? ';color:var(--as-lit-9ca3af-fg)' : '') + '"'
          + (tip ? ' title="' + _scEsc(tip) + '"' : "") + '>'
          + mark(col, w, dash) + _scEsc(text) + '</span>';
   };
@@ -1154,6 +1157,17 @@ function scRearm(cid){
   altaChartsInView(wrap);
 }
 
+// A LINE MAY NAME ITS OWN COLOUR. SC_SERIES colours a series by its metric
+// key, which is right when the key IS the metric. A chart whose lines are
+// categories -- the match types on Campaign Analytics -- used to borrow metric
+// keys by position, so the 1st and 5th lines both came out ad_spend red and
+// Exact could not be told from Auto. The caller's `color` wins; everything
+// else (width, dash, fill) still comes from the key or the default.
+function _scSpec(l, dflt){
+  const base = SC_SERIES[l.key] || dflt;
+  return l.color ? Object.assign({}, base, {color: l.color}) : base;
+}
+
 function salesCombo(o){
   const cols  = o.columns || [];
   const bars  = o.bars || null;              // {key,label,values[]}
@@ -1239,18 +1253,18 @@ function salesCombo(o){
   [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
     const yy = padT + ih - f * ih;
     grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
-                   stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"/>`
+                   class="sc-grid" stroke-width="1" stroke-dasharray="3 3"/>`
          // The left axis is not always money. The Traffic screen puts sessions
          // and page views on it, and conversion and buy box as percentages --
          // labelling a session count "£522" is a plain lie, and it is the kind
          // that goes unnoticed because the shape of the line still looks right.
          +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
-                  fill="rgb(156,163,175)">${_scEsc(_scAxis(mLo + mSpan * f, o.kind || "money", o.currency, mSpan))}</text>`;
+                  class="sc-tick">${_scEsc(_scAxis(mLo + mSpan * f, o.kind || "money", o.currency, mSpan))}</text>`;
     // The right-hand count axis is only drawn when something is counted on it.
     // An axis labelled 0-1-2-3-4 beside a chart with no bars is furniture.
     if(barsOn){
       grid += `<text x="${W - padR + 8}" y="${yy + 4}" text-anchor="start" font-size="11"
-                  fill="rgb(156,163,175)">${_scEsc(String(Math.round(bHi * f)))}</text>`;
+                  class="sc-tick">${_scEsc(String(Math.round(bHi * f)))}</text>`;
     }
   });
 
@@ -1265,7 +1279,7 @@ function salesCombo(o){
       if(n === null || n <= 0) return;
       const top = yB(n), h = (padT + ih) - top;
       barsSvg += `<path class="bar" d="${_scBarPath(x(i) - bw / 2, top, bw, Math.max(0, h), 4)}"
-                        fill="#fbbf24" opacity="0.3"/>`;
+                        fill="${SC_GOLD}" opacity="${SC_BAR_OPACITY}"/>`;
     });
   }
 
@@ -1277,7 +1291,7 @@ function salesCombo(o){
   // legend swatch.
   const shape = {};
   lines.forEach(function(l){
-    const spec = SC_SERIES[l.key] || {color: "#8fd694", width: 2, dash: ""};
+    const spec = _scSpec(l, {color: "#8fd694", width: 2, dash: ""});
     let run = [], runs = [];
     (l.values || []).forEach(function(v, i){
       const n = _scNum(v);
@@ -1373,7 +1387,7 @@ function salesCombo(o){
   cols.forEach(function(c, i){
     if(i % step) return;
     xl += `<text x="${x(i)}" y="${padT + ih + 16}" text-anchor="middle" font-size="11"
-                 fill="rgb(156,163,175)">${_scEsc(_scXLabel(c, o.xLabel))}</text>`;
+                 class="sc-tick">${_scEsc(_scXLabel(c, o.xLabel))}</text>`;
   });
 
   // Hover: one readout for every series at that column, which is the whole
@@ -1381,7 +1395,7 @@ function salesCombo(o){
   // One gradient per series, since each fills in its own colour. Stops measured
   // off Orbit's: 0.30 at 5%, fading to 0 at 95%.
   const defs = "<defs>" + lines.map(function(l){
-    const spec = SC_SERIES[l.key] || {color: "#8fd694", fill: 0.30};
+    const spec = _scSpec(l, {color: "#8fd694", fill: 0.30});
     return `<linearGradient id="${cid0}_g_${l.key}" x1="0" y1="0" x2="0" y2="1">`
          + `<stop offset="5%" stop-color="${spec.color}" stop-opacity="${spec.fill}"/>`
          + `<stop offset="95%" stop-color="${spec.color}" stop-opacity="${
@@ -1409,7 +1423,7 @@ function salesCombo(o){
                  value: (bv === null ? "—" : String(Math.round(bv))), y: null});
     }
     lines.forEach(function(l){
-      const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694"};
+      const spec = _scSpec(l, {label: l.key, color: "#8fd694"});
       const v = _scNum((l.values || [])[i]);
       // THE CALLER'S OWN LABEL WINS. SC_SERIES names a series generically --
       // `cpc` is "CPC", `roas` is "ROAS" -- which is right on the Sales page
@@ -1429,11 +1443,11 @@ function salesCombo(o){
     hits += `<rect x="${_hb.x}" y="${padT}"
                    width="${_hb.w}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
-                   onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},-1,
+                   onmousemove="_scHover(${jsArg(cid)},${i},${x(i).toFixed(1)},-1,
                        '${_scAttr(c)}','${_scAttr(_scRows(rows))}')"
-                   onmouseleave="_scLeave('${cid}')"
-                   onmousedown="_scDragStart('${cid}',${i},event)"
-                   onmouseup="_scDragEnd('${cid}',${i})"></rect>`;
+                   onmouseleave="_scLeave(${jsArg(cid)})"
+                   onmousedown="_scDragStart(${jsArg(cid)},${i},event)"
+                   onmouseup="_scDragEnd(${jsArg(cid)},${i})"></rect>`;
   });
   // The shaded band that shows the range while it is being chosen, and the
   // readout the drag writes into.
@@ -1452,14 +1466,14 @@ function salesCombo(o){
   // because "this one is dimmed" is not information a screen reader has.
   const item = function(mark, label, k, on){
     return '<button type="button" class="sc-key' + (on ? '' : ' off') + '"'
-         + ' onclick="scToggleSeries(\'' + cid + '\',\'' + k + '\')"'
+         + ' onclick="scToggleSeries(' + jsArg(cid) + ',' + jsArg(k) + ')"'
          + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
          + ' title="' + (on ? 'Hide ' : 'Show ') + _scAttr(label) + ' on the chart">'
          + mark + '<span>' + _scEsc(label) + '</span></button>';
   };
   let key = '<div class="sc-keys">';
   if(bars){
-    key += item('<span class="sc-key-sq" style="background:var(--warn-bg)"></span>',
+    key += item('<span class="sc-key-sq" style="background-color:' + SC_GOLD + ';opacity:' + SC_BAR_OPACITY + '"></span>',
                 bars.label || "Orders", "__bars", !!barsOn);
   }
   // THE SWATCH SHOWS WHAT WAS DRAWN, not what the series is supposed to look
@@ -1480,7 +1494,7 @@ function salesCombo(o){
   // days it was actually known. That number is the useful one: "Profit, 5 of
   // 30 days" answers the question the faint line raises.
   drawable.forEach(function(l){
-    const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694", width: 2, dash: ""};
+    const spec = _scSpec(l, {label: l.key, color: "#8fd694", width: 2, dash: ""});
     const sh = (shape || {})[l.key] || {};
     const sparse = sh.points > 0 && !sh.solid;
     const mark = sparse

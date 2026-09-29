@@ -146,11 +146,14 @@ def all_overrides(config_path=None):
 def save(config_path):
     """Write the dict out. Never raises: a failed save must not lose the edit."""
     p = path_for(config_path)
+    # ATOMICALLY (Milestone 4). open(p, "w") empties the file before writing a
+    # byte; a crash between the two left it empty or half-written -- and load()
+    # reads a corrupt file as {}, so the NEXT save then wrote {} over every cost
+    # the owner had set by hand, with nothing to restore from.
     try:
+        from domain import jsonstore as _js
         with _LOCK:
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump(_OVERRIDES, f, indent=2)
-        return True
+            return bool(_js.write_json_atomic(p, _OVERRIDES, indent=2))
     except Exception:
         return False
 

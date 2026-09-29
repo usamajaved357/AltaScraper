@@ -1,0 +1,12 @@
+    <!-- HOME: the screen the app opens on (owner, 29 Sep 2026). Filled by
+         static/js/home.js: the queues, today's sales so far, the daily round. -->
+    <div id="sec_home" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-home"></i> Home</h2>
+        <div class="sub"><span id="home_sub" class="pii"></span> &mdash; what needs you today. Press a card to open exactly those.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="homeRefresh()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+      </div>
+      <div id="home_body" style="padding:4px 0"></div>
+    </div>

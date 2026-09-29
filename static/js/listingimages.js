@@ -405,7 +405,7 @@ function ilDownloadAll(sku){
   const s = sku || IMGLIB.openFolder || IMGLIB.sku;
   if(!s){ toast("No folder to download."); return; }
   toast("Preparing the zip…");
-  window.location.href = "/media/zip?sku=" + encodeURIComponent(s);
+  window.location.href = acctUrl("/media/zip?sku=" + encodeURIComponent(s));   // the tab's account (reqscope.js)
 }
 
 function closeImageLibrary(){
@@ -476,6 +476,9 @@ async function _ilElsewhere(){
  * will move and asks first: this is a file move on the server, and the whole
  * point of the screen is that the owner has already been frightened once. */
 async function ilBringHere(fromId){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   const here = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT) ? String(CUR_ACCOUNT.id || "") : "";
   if(!here){ toast("Open an account workspace first."); return; }
   let dry = null;
@@ -494,6 +497,10 @@ async function ilBringHere(fromId){
 
   let res = null;
   try{
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+      if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+      return;
+    }
     res = await (await fetch("/media/recover/move", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({from: fromId, to: here, dry_run: false})})).json();

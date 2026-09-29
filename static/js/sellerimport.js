@@ -88,11 +88,11 @@ async function sellerFind(){
 function _siCount(){ return SIMP.rows.filter(r => r.selected).length; }
 
 const _SI_VERDICT = {
-  blocked: {c:"#e88a8a", t:"Amazon will not let you list this"},
-  docs:    {c:"#e8c66a", t:"listable, but paperwork will be demanded"},
-  caution: {c:"#e8c66a", t:"worth a look before you spend on it"},
-  unknown: {c:"#8b949e", t:"could not be checked — not the same as fine"},
-  clear:   {c:"#8fd694", t:"nothing against it"},
+  blocked: {c:"var(--red)", t:"Amazon will not let you list this"},
+  docs:    {c:"var(--warn)", t:"listable, but paperwork will be demanded"},
+  caution: {c:"var(--warn)", t:"worth a look before you spend on it"},
+  unknown: {c:"var(--ink3)", t:"could not be checked — not the same as fine"},
+  clear:   {c:"var(--ok)", t:"nothing against it"},
 };
 
 function sellerImportResults(){
@@ -112,14 +112,14 @@ function sellerImportResults(){
   if(_ss){
     const c = _ss.counts || {};
     const bits = [
-      {k:"blocked", t:"blocked by Amazon", col:"#e88a8a"},
-      {k:"docs",    t:"need documents",    col:"#e8c66a"},
-      {k:"caution", t:"worth a look",      col:"#e8c66a"},
-      {k:"unknown", t:"could not be checked", col:"#8b949e"},
-      {k:"clear",   t:"nothing against them", col:"#8fd694"},
+      {k:"blocked", t:"blocked by Amazon", col:"var(--red)"},
+      {k:"docs",    t:"need documents",    col:"var(--warn)"},
+      {k:"caution", t:"worth a look",      col:"var(--warn)"},
+      {k:"unknown", t:"could not be checked", col:"var(--ink3)"},
+      {k:"clear",   t:"nothing against them", col:"var(--ok)"},
     ].filter(x => c[x.k]);
     h += '<div style="border:1px solid var(--line2);border-radius:8px;padding:10px 12px;'
-      +  'margin-bottom:10px;background:var(--panel2,rgba(255,255,255,.02))">'
+      +  'margin-bottom:10px;background:var(--panel2,color-mix(in srgb, var(--as-lit-ffffff-ov) 2%, transparent))">'
       +  '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'
       +  '<b style="font-size:12.5px"><i class="ti ti-shield-check"></i> '
       +  'Checked ' + _ss.checked + ' of ' + _ss.of + '</b>'

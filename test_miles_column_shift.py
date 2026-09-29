@@ -181,11 +181,35 @@ import dashboard as D
 # resolver and carries the step the old chain was missing -- the ACCOUNT'S OWN
 # default. _state["active_marketplace"] is written only when somebody chooses a
 # marketplace, and Listings is not that screen, so it is "" on a normal load.
-for aid, want in (("jack_uk", "UK"), ("nestwell_goods", "UK"), ("sheelady_us", "US")):
-    D._state["active_account_id"] = aid
+# A FIXTURE, not the owner's config.json (Milestone 10): the three account
+# SHAPES this is about -- two UK sellers and a US seller whose marketplaces do
+# not include the UK -- with no credentials. It used to read the real file, so
+# anywhere else it returned "" for all three and failed.
+import json as _json, tempfile as _tempfile
+_fx = os.path.join(_tempfile.mkdtemp(prefix="mcs_"), "config.json")
+with open(_fx, "w", encoding="utf-8") as _fh:
+    _json.dump({"anthropic_api_key": "test-placeholder-not-a-real-key",
+                "google_spreadsheet_id": "test-placeholder-sheet",
+                "google_service_account_json": "test-placeholder.json",
+                "accounts": [
+                    {"id": "jack_uk", "name": "Jack", "default_marketplace": "UK",
+                     "marketplaces": ["UK", "DE", "IE"]},
+                    {"id": "nestwell_goods", "name": "Nestwell",
+                     "default_marketplace": "UK", "marketplaces": ["UK"]},
+                    {"id": "sheelady_us", "name": "Sheelady",
+                     "default_marketplace": "US",
+                     "marketplaces": ["MX", "CA", "BR", "US"]}]}, _fh)
+_real_cfg_path = D.CONFIG_PATH
+D.CONFIG_PATH = _fx
+try:
+    for aid, want in (("jack_uk", "UK"), ("nestwell_goods", "UK"), ("sheelady_us", "US")):
+        D._state["active_account_id"] = aid
+        D._state["cfg"] = None
+        D._state["active_marketplace"] = ""
+        check("  %-16s is judged by its own country" % aid, D._card_marketplace({}), want)
+finally:
+    D.CONFIG_PATH = _real_cfg_path
     D._state["cfg"] = None
-    D._state["active_marketplace"] = ""
-    check("  %-16s is judged by its own country" % aid, D._card_marketplace({}), want)
 
 # NOT the row's own listing_marketplace column, however tempting. It is 'UK' on
 # every row of every workspace -- sheelady_us included -- because it is the

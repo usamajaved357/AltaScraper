@@ -143,8 +143,10 @@ truthy("and falls back to the drawer when pdp.js has not loaded",
 // want this symbol at all, i already have 3 symbols for restricted compliance
 // and claims risk"). The point of the count is unchanged -- a NEW caller still
 // has to be a deliberate act -- and it moves down as well as up.
+// 9 -> 10: the draft card's "Review" button (design package: every row and card
+// offers Review + "···"), which goes through openListing like the rest.
 check("every way into a listing goes through it",
-      (LISTINGS.match(/openListing(At)?\('/g) || []).length, 9);
+      (LISTINGS.match(/openListing(At)?\(('|\$\{jsArg\()/g) || []).length, 10);
 // AND ONLY THREE THINGS CALL pdpOpen ITSELF: openListing, openLiveListing, and
 // the drawer's own expand button -- which is deliberate, because the drawer is
 // already showing this listing and is asking for the same one full screen
@@ -162,12 +164,12 @@ check("only openListing, openDrawer's redirect and the expand button call it",
 truthy("  and the drawer's is the expand button",
        /dw2-ib" onclick="pdpOpen\(/.test(LISTINGS));
 truthy("the drawer keeps its own way back to full screen",
-       /pdpOpen\('\$\{esc\(r\.sku\)\}'\)/.test(LISTINGS));
+       /pdpOpen\((?:'\$\{esc\(r\.sku\)\}'|\$\{jsArg\(r\.sku\)\})\)/.test(LISTINGS));
 // WAS: "and the drawer is still reachable from the grid's badges / tile menu".
 // It is not, deliberately. The three tile chips and the tile menu were the
 // last four routes to it and all four now go through openListing.
 check("nothing in the grid opens the drawer any more",
-      /openDrawer\('\$\{esc\(/.test(LISTINGS), false);
+      /openDrawer\((?:'\$\{esc\(|\$\{jsArg\()/.test(LISTINGS), false);
 
 // ---------------------------------------------------------------------------
 console.log("\nthe overlay sits UNDER everything that must float over it");
@@ -238,6 +240,8 @@ globalThis.document = {
 globalThis.requestAnimationFrame = fn => fn();
 globalThis.scrollY = 0;
 globalThis.scrollTo = (x, y) => { globalThis.__scrolledTo = y; globalThis.scrollY = y; };
+// The page's own jsArg (users.js); handlers use it since Milestone 2.
+globalThis.jsArg = require("./test_helpers.js").jsArg;
 globalThis.esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
                                                 .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 globalThis.sid = s => String(s).replace(/[^a-zA-Z0-9]/g, "_");
@@ -558,19 +562,19 @@ console.log("\na LIVE listing opens the product page, not the old modal");
 truthy("openLiveListing decides where a live row goes",
        /function openLiveListing\(asin, sku\)/.test(LISTINGS));
 truthy("  and both live row builders call it",
-       /openLiveListing\('\$\{esc\(it\.asin/.test(LISTINGS));
+       /openLiveListing\((?:'\$\{esc\(|\$\{jsArg\()it\.asin/.test(LISTINGS));
 const MILES = fs.readFileSync("static/js/miles_template.js", "utf8");
 check("  including the live TILE, in miles_template.js",
-      (MILES.match(/openLiveListing\('/g) || []).length, 2);
+      (MILES.match(/openLiveListing\(('|\$\{jsArg\()/g) || []).length, 2);
 // No ROW handler may still go straight to the modal. Row handlers are the ones
 // built from a live catalogue item (`it.`); the BUTTONS that offer the modal on
 // purpose -- the drawer's "Optimize live copy" and the product page's sidebar --
 // are built from `r`/ownAsin and must survive, because the brief keeps them:
 // "The old modal can stay as an option inside the PDP".
 check("no live ROW opens optimizeLive directly",
-      /onclick="optimizeLive\('\$\{esc\(it\./.test(LISTINGS + MILES), false);
+      /onclick="optimizeLive\((?:'\$\{esc\(|\$\{jsArg\()it\./.test(LISTINGS + MILES), false);
 truthy("but the deliberate button still does",
-       /onclick="optimizeLive\('\$\{esc\(ownAsin\)/.test(LISTINGS));
+       /onclick="optimizeLive\((?:'\$\{esc\(|\$\{jsArg\()ownAsin\)/.test(LISTINGS));
 // The decision moved OUT of openLiveListing and INTO openListing, so that the
 // detailed view's rows -- which called openListing straight -- get the same
 // answer as the live tiles. openLiveListing is now a two-line wrapper.

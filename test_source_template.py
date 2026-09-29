@@ -9,9 +9,14 @@ means typing forty SKUs by hand, and a hand-typed SKU is the NO-SUCH-SKU-123
 this module already had to grow a check for -- the real fix for which is not
 making anyone type them.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -165,16 +170,16 @@ check("  a sheet with neither is refused, not half-read",
       B.url_columns(["sku", "asin", "product"]), [])
 
 print("\n=== nothing here reaches Amazon or enrolls anything ===")
-S = open(r"D:\AltaScraper\domain\source_bulk.py", encoding="utf-8").read()
+S = open(_os_repo.path.join(_REPO, r"domain\source_bulk.py"), encoding="utf-8").read()
 truthy("the module says so", "Nothing here enrolls anything into LIVE pricing" in S)
-R = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
+R = open(_os_repo.path.join(_REPO, r"routes\sourcing_routes.py"), encoding="utf-8").read()
 truthy("the route only reads", "/sourcing/template.csv" in R)
 truthy("  and sends it as a download",
        "Content-Disposition" in R and "attachment" in R)
 truthy("  named for the account it belongs to", "supplier-links-%s-%s.csv" in R)
 
 print("\n=== the screen ===")
-J = open(r"D:\AltaScraper\static\js\sourcing.js", encoding="utf-8").read()
+J = open(_os_repo.path.join(_REPO, r"static\js\sourcing.js"), encoding="utf-8").read()
 truthy("there is a button to get the template", "/sourcing/template.csv" in J)
 truthy("  next to the one that uploads it back", "sourcingUpload(this)" in J)
 # Now the title on the menu row rather than on a toolbar button -- the
@@ -211,9 +216,9 @@ check("an unknown code gives an empty record with the marker present",
       CAT.look({}, "nope"),
       {"img": "", "img_source": "", "title": "", "asin": "", "sku": ""})
 truthy("the index can be asked to include drafts",
-       "include_drafts" in open(r"D:\AltaScraper\domain\catalogue.py",
+       "include_drafts" in open(_os_repo.path.join(_REPO, r"domain\catalogue.py"),
                                 encoding="utf-8").read())
-CATSRC = open(r"D:\AltaScraper\domain\catalogue.py", encoding="utf-8").read()
+CATSRC = open(_os_repo.path.join(_REPO, r"domain\catalogue.py"), encoding="utf-8").read()
 truthy("  off by default, so live-listing screens are unaffected",
        "include_drafts=False" in CATSRC)
 truthy("  and an Amazon picture is never overwritten by a supplier one",
@@ -222,7 +227,7 @@ truthy("  each is labelled for what it is",
        '"amazon"' in CATSRC and '"supplier"' in CATSRC)
 truthy("  and the two are said never to be conflated",
        "THEY ARE NEVER CONFLATED" in CATSRC)
-_R2 = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
+_R2 = open(_os_repo.path.join(_REPO, r"routes\sourcing_routes.py"), encoding="utf-8").read()
 truthy("the repricer asks for drafts", "include_drafts=True" in _R2)
 truthy("the row marks a supplier picture",
        "SRC" in J and 'it.img_source === "supplier"' in J)
@@ -248,7 +253,7 @@ truthy("  with the SKU still reachable from the row",
        '(it.title || "") + "\\n" + r.sku' in J)
 truthy("    and printed in full once the row is open",
        "<code>' + _sesc(r.sku) + '</code>" in J)
-R2 = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
+R2 = open(_os_repo.path.join(_REPO, r"routes\sourcing_routes.py"), encoding="utf-8").read()
 truthy("the server attaches it", '"item": _cat.look(idx, d["sku"])' in R2)
 truthy("  building the index once for the whole list, not per row",
        "idx = _cat.index(CONFIG_PATH, wsid, mkt, include_drafts=True)" in R2)

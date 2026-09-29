@@ -36,8 +36,12 @@ def load(config_path):
 
 
 def _save(config_path, data):
-    with open(_store_path(config_path), "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    # Atomically, through the one writer (domain/jsonstore): open(..., "w")
+    # emptied the file before writing it, so a crash mid-save lost every
+    # watched ASIN. Still raises on failure, as before.
+    from domain import jsonstore
+    if not jsonstore.write_json_atomic(_store_path(config_path), data, indent=2):
+        raise OSError("could not write asin_monitor.json")
 
 
 def list_asins(config_path):

@@ -61,10 +61,11 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "lane rules belong to one advertiser in one marketplace.")}), 400
 
     def _who():
+        # Was guard.current_user(), which does not exist: the except hid the
+        # AttributeError, so every plan, rule and event was stored with who="".
         try:
-            from auth import guard as _g
-            u = _g.current_user() or {}
-            return str(u.get("email") or u.get("name") or "")
+            from domain import job_owner as _jo
+            return _jo.label(CONFIG_PATH)
         except Exception:
             return ""
 

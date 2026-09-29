@@ -19,7 +19,7 @@ function milesTemplatePanel(sku, sidv){
         <span class="cc">Title:</span>
         <input class="ed geninput" id="mtitle_${sidv}" style="flex:1" placeholder="VOLTAGE II">
       </div>
-      <div class="cc" style="margin:6px 0 2px">Subtitle lines <button class="genimgbtn" style="padding:2px 8px" onclick="milesAddLine('${sidv}')">+ add line</button></div>
+      <div class="cc" style="margin:6px 0 2px">Subtitle lines <button class="genimgbtn" style="padding:2px 8px" onclick="milesAddLine(${jsArg(sidv)})">+ add line</button></div>
       <div id="msubs_${sidv}"></div>
       <div class="cc" style="margin:8px 0 2px;opacity:.7">CHOICE OF MECHANICS — fixed (always shown)</div>
       <div class="genrow">
@@ -28,8 +28,8 @@ function milesTemplatePanel(sku, sidv){
         <label class="cc" style="white-space:nowrap"><input type="checkbox" id="mappL_${sidv}" checked> 2 lines</label>
       </div>
       <div class="genrow" style="margin-top:8px">
-        <button class="genimgbtn apply" id="mbtn_${sidv}" onclick="milesRender('${esc(sku)}','${sidv}')">Generate template image</button>
-        <button class="genimgbtn" id="maibtn_${sidv}" onclick="milesAiFill('${esc(sku)}','${sidv}')" title="Let AI fill the title, grade and application from the listing"><i class="ti ti-sparkles"></i> AI fill text</button>
+        <button class="genimgbtn apply" id="mbtn_${sidv}" onclick="milesRender(${jsArg(sku)},${jsArg(sidv)})">Generate template image</button>
+        <button class="genimgbtn" id="maibtn_${sidv}" onclick="milesAiFill(${jsArg(sku)},${jsArg(sidv)})" title="Let AI fill the title, grade and application from the listing"><i class="ti ti-sparkles"></i> AI fill text</button>
         <span class="cc" id="mstatus_${sidv}"></span>
       </div>
       <div id="mresult_${sidv}"></div>
@@ -107,8 +107,8 @@ async function milesRender(sku, sidv){
       out.dataset.savedurl=j.url||'';
       out.dataset.dataurl=j.data_url||'';
       out.innerHTML='<div class="genpreview"><img src="'+(j.data_url||j.url)+'" style="max-width:320px">'+
-        '<div class="genrow"><button class="genimgbtn apply" onclick="milesApply(\''+esc(sku)+'\',\''+sidv+'\')">Use as main image</button>'+
-        '<button class="genimgbtn" onclick="milesDownload(\''+esc(sku)+'\',\''+sidv+'\')"><i class="ti ti-download"></i> Download</button>'+
+        '<div class="genrow"><button class="genimgbtn apply" onclick="milesApply(' + jsArg(sku) + ',' + jsArg(sidv) + ')">Use as main image</button>'+
+        '<button class="genimgbtn" onclick="milesDownload(' + jsArg(sku) + ',' + jsArg(sidv) + ')"><i class="ti ti-download"></i> Download</button>'+
         '<button class="genimgbtn" onclick="document.getElementById(\'mresult_'+sidv+'\').innerHTML=\'\'">Discard</button></div></div>';
     }
   }catch(e){ if(btn){btn.disabled=false;} if(st) st.innerHTML='<span style="color:var(--red)">✗ '+esc(String(e))+'</span>'; }
@@ -304,7 +304,7 @@ function zeRenderSide(){
     <div class="genrow" style="margin-top:6px"><span class="cc">Max size:</span>
       <input type="range" min="0.3" max="1" step="0.05" value="${z.size||1}" oninput="zeSet('size',parseFloat(this.value))" style="flex:1">
     </div>
-    ${z.builtin?'':`<button class="del" style="margin-top:8px" onclick="zeDelZone('${z.key}')">Remove this box</button>`}
+    ${z.builtin?'':`<button class="del" style="margin-top:8px" onclick="zeDelZone(${jsArg(z.key)})">Remove this box</button>`}
     <div class="cc" style="margin-top:10px;font-size:11px">Tip: drag the box on the left to move; drag its corner to resize.</div>`;
 }
 function zeSet(prop,val){
@@ -345,8 +345,8 @@ async function openMilesTplManager(){
   var list=(tpls.templates||[]).map(t=>`<tr><td><img src="/miles_template/preview/${esc(t.id)}" style="height:48px"></td>`+
     `<td>${esc(t.label)}</td><td>${esc(t.container)}</td>`+
     `<td>${t.zones?'<span style="color:var(--ok)">✓ zones set</span>':'<span class="cc">no zones</span>'}</td>`+
-    `<td><button class="primary" style="padding:3px 8px" onclick="openZoneEditor('${esc(t.id)}')">Edit zones</button> `+
-    `<button class="del" onclick="milesTplDelete('${esc(t.id)}')">Delete</button></td></tr>`).join("")
+    `<td><button class="primary" style="padding:3px 8px" onclick="openZoneEditor(${jsArg(t.id)})">Edit zones</button> `+
+    `<button class="del" onclick="milesTplDelete(${jsArg(t.id)})">Delete</button></td></tr>`).join("")
     || '<tr><td colspan="5" class="cc">No templates yet.</td></tr>';
   var html=`<div style="font-weight:600;margin-bottom:8px">Miles blank templates</div>
     <table class="kv"><tr><td class="k">Label</td><td class="v"><input class="ed" id="mtm_label" placeholder="e.g. Drum 55gal"></td></tr>
@@ -397,17 +397,19 @@ function askAbout(sku){
   setTimeout(function(){var i=document.getElementById("chatinput"); if(i) i.focus();},60);
 }
 async function submitLive(){
-  // PRECHECK: catch local /media images Amazon can't fetch, before submitting.
+  // PRECHECK: main images the submit cannot use, and WHY -- the server applies
+  // the submit's own rule (domain/image_urls), and only to what is being sent.
   try{
-    const pc=await (await fetch('/submit/precheck')).json();
+    const _pcSel = (typeof selectedSkus === "function") ? selectedSkus() : [];
+    const _pcUrl = "/submit/precheck" + (_pcSel.length ? "?skus=" + encodeURIComponent(_pcSel.join(",")) : "");
+    const pc=await (await fetch(_pcUrl)).json();
     if(pc && pc.ok && pc.count>0){
-      const skus=pc.local_image_rows.map(x=>x.sku).join(", ");
-      await uiAlert("⚠ "+pc.count+" listing(s) have a LOCAL image that Amazon cannot fetch:\n\n  "+skus+"\n\n"
-        +"AI images saved to your media library live on your PC (127.0.0.1), so Amazon's servers can't reach them. "
-        +"These rows will FAIL with 'Unable to Retrieve Media Content'.\n\n"
-        +"Fix: use a publicly-hosted image URL for the main image (e.g. upload to a host, or use the source image URL), "
-        +"then submit again. The other rows can still go through.");
-      if(!await uiConfirm("Submit anyway? (the local-image rows above will error)")) return;
+      const lines=pc.local_image_rows.slice(0, 12).map(x=>"  "+x.sku+" \u2014 "+(x.why||"main image problem")).join("\n");
+      await uiAlert("\u26a0 "+pc.count+" listing(s) have a main image problem:\n\n"+lines
+        +(pc.count>12 ? "\n  \u2026and "+(pc.count-12)+" more" : "")+"\n\n"
+        +"Fix: set one of your own images, reachable by Amazon, as the main image, then submit again. "
+        +"The other rows can still go through.");
+      if(!await uiConfirm("Submit anyway? (the listings above will go up without their main image, or fail)")) return;
     }
   }catch(e){}
   // SAFETY: confirm WHICH Amazon account this will publish to, by name.
@@ -862,6 +864,9 @@ function _delWarning(sku){
 }
 
 async function delRow(sku, row, btn){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   let _warn = "";
   try{ _warn = _delWarning(sku); }catch(e){ _warn = ""; }
   if(!await uiConfirm("Delete " + sku + "?" + _warn
@@ -873,6 +878,10 @@ async function delRow(sku, row, btn){
     // multi-tab: /delete removes BY ROW on the active tab — sync to this card's tab first
     // so we never delete the same row number on the wrong tab.
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+        if(typeof toast === "function") toast("The account changed while this was open, so nothing was done."); if(btn) btn.disabled=false;
+        return;
+      }
     const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(acctBody({sku:sku,row:row}))});
     const j=await res.json();
     if(j.ok){
@@ -918,20 +927,33 @@ async function bulkStatus(status){
          +`one in as a draft.`);
     return;
   }
+  // THE ACCOUNT THESE WERE TICKED IN, fixed BEFORE the question and named on
+  // every request -- /approve used to name none (master audit S1). acctBodyFor.
+  const pin=acctId();
   if(!await uiConfirm(label+" "+skus.length+" selected listing(s)?"
               +_draftOnlyNote(_s.amazonOnly, label.toLowerCase()))) return;
   let ok=0, fail=0;
   toast(label+"ing "+skus.length+"…");
+  let stopped=0;
   for(const sku of skus){
+    if(acctId()!==pin){ stopped = skus.length - ok - fail; break; }
     try{
       if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }   // multi-tab: target each card's own tab
       const res=await fetch("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
-                  body:JSON.stringify({sku:sku, status:status})});
+                  body:JSON.stringify(acctBodyFor({sku:sku, status:status}, pin))});
       const j=await res.json();
       if(j.ok) ok++; else fail++;
     }catch(e){ fail++; }
   }
-  toast(label+"d "+ok+(fail?(" / "+fail+" failed"):""));
+  // THE STOP IS PART OF THE ANSWER, not a toast the next one overwrites (UI
+  // review, Milestone 6).
+  if(stopped){
+    await uiAlert(label+"d "+ok+(fail?(", "+fail+" failed"):"")+".\n\nStopped: the account "
+      +"was changed part-way, so the other "+stopped+" were not "+label.toLowerCase()
+      +"d. Open that account again to finish them.");
+  }else{
+    toast(label+"d "+ok+(fail?(" / "+fail+" failed"):""));
+  }
   clearSelection(); loadRows();
 }
 async function bulkDelete(){
@@ -983,6 +1005,10 @@ async function bulkDelete(){
   // listing is deleted from Amazon as well.
   const _scope = (typeof selectionScopeNote === "function")
     ? selectionScopeNote("deleting anything") : "";
+  // FIXED BEFORE THE QUESTION. Reading the account per request meant a switch
+  // part-way -- or while this dialog was open -- deleted the NEW account's
+  // same-SKU listings, on Amazon too (master audit S1). See acctBodyFor.
+  const pin=acctId();
   if(!await uiConfirm(_msg + "\n\n" + _scope + "This cannot be undone.")) return;
   let ok=0, fail=0, amzOk=0;
   const why=[];
@@ -991,12 +1017,16 @@ async function bulkDelete(){
   const items=skus.map(s=>{const r=ROWS.find(x=>String(x.sku)===String(s)); return {sku:s, row:(r&&r.row)||null};})
                   .sort((a,b)=>(b.row||0)-(a.row||0));
   for(const it of items){
+    if(acctId()!==pin){
+      why.push("stopped — the account was changed part-way; the rest were not deleted");
+      break;
+    }
     try{
       // multi-tab: /delete targets the active tab BY ROW NUMBER, so the active tab MUST
       // match this card's tab or a row on the wrong tab would be deleted. Sync first.
       if(typeof ensureCardTab==="function"){ await ensureCardTab(it.sku); }
       const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-                  body:JSON.stringify(acctBody({sku:it.sku, row:it.row}))});
+                  body:JSON.stringify(acctBodyFor({sku:it.sku, row:it.row}, pin))});
       const j=await res.json();
       if(j.ok){ ok++; if(j.amazon && j.amazon.ok) amzOk++; }
       else { fail++; if(j.error) why.push(it.sku + ": " + String(j.error).slice(0,90)); }
@@ -1026,11 +1056,17 @@ async function clearMainImage(sku){
         if(!/^https?:\/\//i.test(v)) toClear.push(k);   // only drop local ones
       }
     });
+    // Every clear names the account it started in (see drawer_attributes.js
+    // lvFillEmpty): a switch part-way must not clear the new account's images.
+    const pinAcct = (typeof acctId === "function") ? acctId() : "";
     for(const k of toClear){
       await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(acctBody({sku:sku, target:"attr", key:k, value:""}))});
+        body:JSON.stringify(pinAcct && typeof acctBodyFor === "function"
+          ? acctBodyFor({sku:sku, target:"attr", key:k, value:""}, pinAcct)
+          : acctBody({sku:sku, target:"attr", key:k, value:""}))});
     }
     toast("Main image removed — listing can be created without it");
+    if(pinAcct && typeof acctId === "function" && acctId() !== pinAcct) return;
     // refresh this row so the panel updates
     try{
       const j=await (await fetch(acctUrl("/row?sku="+encodeURIComponent(sku)))).json();
@@ -1169,6 +1205,9 @@ async function removeDeletedRows(){
   // This is irreversible and it throws away every field of a listing that once
   // sold. Asking afterwards would be asking too late, and putting the two
   // buttons side by side leaves the order to chance.
+  // THE ACCOUNT THESE ROWS ARE IN, fixed before either question is asked:
+  // the answers agree to deleting THESE, here. Stop if it changes (audit S1).
+  const pin=acctId();
   if(await uiConfirm("Save these " + gone.length + " listing(s) to a CSV first?\n\n"
            + "Removal cannot be undone, and this keeps every field — the copy, "
            + "the bullets, the attributes, the cost.\n\nOK to download the "
@@ -1179,14 +1218,22 @@ async function removeDeletedRows(){
               gone.map(r=>"  • "+r.sku).join("\n")+
               "\n\nThese listings no longer exist on Amazon. This cannot be undone.")) return;
   let done=0, failed=0;
+  let stopped=0;
   for(const r of gone){
+    if(acctId()!==pin){ stopped = gone.length - done - failed; break; }
     try{
       const res = await (await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(acctBody({sku:r.sku, row:r.row}))})).json();
+        body:JSON.stringify(acctBodyFor({sku:r.sku, row:r.row}, pin))})).json();
       if(res && res.ok){ done++; delete AMZ_STATE[String(r.sku)]; } else failed++;
     }catch(e){ failed++; }
   }
-  toast("Removed "+done+" row(s)"+(failed?(" · "+failed+" failed"):""));
+  if(stopped){
+    await uiAlert("Removed "+done+" row(s)"+(failed?(", "+failed+" failed"):"")+".\n\n"
+      +"Stopped: the account was changed part-way, so the other "+stopped
+      +" were not removed. Open that account again to finish them.");
+  }else{
+    toast("Removed "+done+" row(s)"+(failed?(" · "+failed+" failed"):""));
+  }
   loadRows();
 }
 let LIVE_SYNC_TIMER = null;   // auto-sync interval handle
@@ -1542,7 +1589,8 @@ function _reverifyLiveStatus(){
   return new Promise((resolve)=>{
     if(typeof ES!=="undefined" && ES){ resolve(); return; }   // a run is already streaming -- skip
     let flipped=0, es;
-    try{ es=new EventSource("/run/api_verify"); }catch(e){ resolve(); return; }
+    // Names the account (known-issues #4).
+    try{ es=new EventSource(acctUrl("/run/api_verify")); }catch(e){ resolve(); return; }
     ES=es;                                                     // hold the run lock while verifying
     es.onmessage=(e)=>{ if(/now LIVE/i.test(e.data||"")) flipped++; };
     const finish=()=>{ try{es.close();}catch(_){} if(ES===es) ES=null;
@@ -1742,7 +1790,7 @@ function liveComplianceChip(it){
   const names = (c.risks||[]).map(x=>x.label).join(", ");
   return `<span class="profchip ${tone}" style="cursor:pointer"
     title="${esc(names)} — ${c.doc_count} document(s) Amazon can request for this live listing. Click for the list."
-    onclick="event.stopPropagation();showLiveCompliance('${esc(it.sku||'')}')"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`;
+    onclick="event.stopPropagation();showLiveCompliance(${jsArg(it.sku||'')})"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`;
 }
 window.showLiveCompliance = function(sku){
   const it = (LIVE_ITEMS||[]).find(x=>String(x.sku)===String(sku));
@@ -1809,7 +1857,7 @@ function liveTile(it){
     profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}
 Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale price you keep">margin ${it.profit.margin}%</span>${roiHtml} · ${CUR_SYMBOL}${it.profit.net}</span>`;
   } else {
-    profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs('${esc(it.sku||'')}','${esc(String(it.price||''))}')">+ COGS</span>`;
+    profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs(${jsArg(it.sku||'')},${jsArg(String(it.price||''))},${jsArg(it.asin||'')})">+ COGS</span>`;
   }
   // fulfillment (FBA/FBM) + handling time + delivery estimate
   var fch = it.fulfillment||"";
@@ -1873,9 +1921,9 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
          never made here and have nothing local to open. Same gesture, whichever
          kind of card is under the cursor. -->
     <div class="tileimg ${it.asin?'':'noimg'}" style="cursor:pointer"
-         onclick="openLiveListing('${esc(it.asin||'')}','${esc(it.sku||'')}')">${imgHtml}</div>
+         onclick="openLiveListing(${jsArg(it.asin||'')},${jsArg(it.sku||'')})">${imgHtml}</div>
     <div class="tilebody" style="cursor:pointer"
-         onclick="openLiveListing('${esc(it.asin||'')}','${esc(it.sku||'')}')">
+         onclick="openLiveListing(${jsArg(it.asin||'')},${jsArg(it.sku||'')})">
       <div class="tiletitle">${esc(it.title)||'<span class="cc">(no title in report)</span>'}</div>
       <div class="tilemeta">${_priceCell(
           {sku: it.sku, title: it.title,
@@ -2017,12 +2065,15 @@ async function fetchLiveImages(){
   }
   _imgFetchBusy=false;
 }
-async function setCogs(sku, price){
-  const cur=await uiPrompt("Enter your cost (COGS) for SKU "+sku+"\n\nThis is your total cost including shipping. Margin = (price − COGS − ~15% Amazon referral) / price.","");
+async function setCogs(sku, price, asin){
+  const cur=await uiPrompt("Enter your cost (COGS) for SKU "+sku+"\n\nThis is your total cost including shipping. Margin = (price − VAT − Amazon's fee − COGS) / (price − VAT), with Amazon's fee from what it actually charges this product.","");
   if(cur===null) return;
   try{
     const j=await (await fetch("/cogs/set",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({id:CUR_ACCOUNT.id,sku:sku,cost:cur,price:price})})).json();
+      // asin + mkt so the server can find Amazon's fee for THIS product in THIS
+      // marketplace (domain/unit_profit.py), the same answer a Live sync gives.
+      body:JSON.stringify({id:CUR_ACCOUNT.id,sku:sku,cost:cur,price:price,
+                           asin:asin||"", mkt:WS_MARKET||""})})).json();
     if(!j.ok){ toast("Could not set COGS: "+(j.error||"")); return; }
     // update the cached item and re-render
     const key=_liveKey();

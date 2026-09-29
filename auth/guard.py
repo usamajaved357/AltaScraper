@@ -62,6 +62,11 @@ RULES = [
     #    it is exempted before the broader /users rule.
     ("/users/me",                       None),
     ("/users",                          "manage_users"),
+    # -- Employee Performance: what EVERY team member did. Reads, but reads of
+    #    other people's work, so they need their own permission (owner and
+    #    manager presets). domain/activity.py also limits the rows to the
+    #    accounts the viewer may open.
+    ("/activity",                       "view_activity"),
 
     # -- credentials and settings. /accounts/list and /accounts/select are the
     #    two everyone needs just to open a workspace, so they are exempted here
@@ -87,6 +92,12 @@ RULES = [
     # and the tail of recent server tracebacks. That is operator information --
     # useful to whoever runs the deployment, and no business of a VA's.
     ("/diag",                           "manage_accounts"),
+    # Runs a scheduled job NOW -- including sourcing_apply, which pushes the
+    # repricer's prices live -- and with no workspace_id it runs it for EVERY
+    # account. It fell through to "edit" (master audit A3). No screen calls it;
+    # it is an operator's lever, so it needs the operator's permission.
+    ("/jobs/status",                    None),
+    ("/jobs/run",                       "manage_accounts"),
 
     # -- the source repricer. Reading the dry run is how anyone finds out what
     #    the app is about to do to live listings, so it is open to any signed-in
@@ -218,6 +229,10 @@ RULES = [
     # one -- is a separate permission, so "may generate, may not add or remove
     # files" is expressible. Pushing an image to Amazon stays "publish", which is
     # the strongest of the three and already correct.
+    # Moves whole folders of pictures from one ACCOUNT to another, named by
+    # `from`/`to` -- fields the account check does not read. An operator's
+    # repair tool, not image work (master audit, 28 Sep 2026).
+    ("/media/recover/move",             "manage_accounts"),
     ("/genimage/save_to_media",         "upload_images"),
     ("/media/upload",                   "upload_images"),
     ("/media/delete",                   "upload_images"),
@@ -249,6 +264,16 @@ RULES = [
     #    sales, which is where someone who may not see money must not see it.
     ("/orders/list",                    None),
     ("/orders/detail",                  None),
+    # "I bought this from the supplier" -- a note in this app's own table. It
+    # buys nothing, sends nothing to Amazon or a supplier, and removing one
+    # forgets only that note, so both are ordinary editing (29 Sep 2026).
+    ("/orders/purchase/remove",         "edit"),
+    ("/orders/purchase",                "edit"),
+    # Telling Amazon an order shipped is a real, buyer-visible change that
+    # Amazon's dispatch metrics count: publishing. The preview only READS the
+    # order's lines and sends nothing, so it needs what editing needs.
+    ("/orders/ship/confirm",            "publish"),
+    ("/orders/ship/preview",            "edit"),
 
     # -- returns. Reading is read-only; uploading a file only parses it and
     #    stores nothing, so it needs no more than seeing the figures does.
@@ -296,7 +321,15 @@ RULES = [
     # -- work that happens over GET, so the default read rule would let it
     #    through. Listed explicitly so it needs "edit" like any other mutation.
     ("/run/health",                     None),          # diagnostics only
-    ("/run/stack",                      None),
+    # Starts a py-spy process (up to 60 s) against a run: work, not a read
+    # (security review, 29 Sep 2026). Still exempt from WORK_OVER_GET below.
+    ("/run/stack",                      "edit"),
+    # SUBMITTING IS PUBLISHING, whichever door it goes through. /run/api_submit
+    # (and /preview/enqueue with mode api_submit, BODY_RULES below) needed only
+    # "edit", so a Lister could create listings on Amazon: _require_publish()
+    # asks whether the WORKSPACE may publish, never whether the PERSON may
+    # (known-issues #1, proved in the master audit, 28 Sep 2026).
+    ("/run/api_submit",                 "publish"),
     ("/run",                            "edit"),
     ("/miles/run_log",                  None),
     ("/miles/run_csv",                  None),
@@ -308,7 +341,44 @@ RULES = [
     ("/miles/generate",                 "edit"),
     ("/miles/optimize",                 "edit"),
     ("/rescan/apply",                   "edit"),
+    # The brand run starts paid AI generation over a GET stream; it had no
+    # rule, so any signed-in user could start one (4G review, 29 Sep 2026).
+    ("/brand/run",                      "edit"),
 ]
+
+# Paths whose GET DOES WORK -- a streamed run is a GET, because EventSource can
+# only send GETs. The feature check below lets any read through on "view" level
+# before RULES are consulted, which was right for reads and meant a view-only
+# user could start GET /run/api_submit (master audit C4). These count as writes.
+WORK_OVER_GET = ("/run/",
+                 # The brand run and the three Miles streams are GETs that start
+                 # paid AI work and write drafts (EventSource). Not listed, a
+                 # view-only user could start one, and a link on another site
+                 # could (4G account-scope review, 29 Sep 2026).
+                 "/brand/run/", "/miles/run", "/miles/generate", "/miles/optimize")
+# ...except the ones under them that only report.
+# /run/stack is NOT here (29 Sep 2026): it starts a py-spy process, so it is
+# work -- and while it was listed, its RULES "edit" was never consulted (the
+# read shortcut returned first; found by the security fix re-check).
+WORK_OVER_GET_EXCEPT = ("/run/health",
+                        "/run/plan",     # a plan: spends and writes nothing
+                        "/miles/run_log", "/miles/run_csv", "/miles/runs",
+                        "/miles/run_active", "/miles/run_tail")
+
+# One action, two powers, told apart by a BODY field rather than the path.
+# (path, field, value, permission). Checked after the path's own rule.
+BODY_RULES = [
+    ("/preview/enqueue", "mode", "api_submit", "publish"),
+]
+
+
+def _work_over_get(path):
+    p = str(path or "")
+    if any(p == x or p.startswith(x + "/") or p.startswith(x + "?")
+           for x in WORK_OVER_GET_EXCEPT):
+        return False
+    return any(p.startswith(x) for x in WORK_OVER_GET)
+
 
 # Requests that name a workspace. Enforcing scope HERE is what makes per-user
 # workspace access real: every data route reads whichever account is currently
@@ -368,79 +438,199 @@ WORKSPACE_PARAMS = ("id", "account_id", "workspace_id", "workspace", "ws",
 # would show an error for something nobody chose.
 WORKSPACE_SENTINELS = ("__all__", "_no_account", "")
 
-# Paths where an `id` means something else entirely. Checking these against the
-# workspace list would refuse ordinary work -- deleting a media file by id,
-# editing a user by id -- so they are named rather than guessed at.
-WORKSPACE_PARAM_EXEMPT = (
+# Paths where an `id` means something else entirely -- a user, a media file, a
+# job, a channel. ONLY `id` is skipped on these, never `account`, `account_id`
+# or the rest: this list used to skip EVERY field on its paths, and was matched
+# by prefix, so "/listing/" let the live price and image writes name any
+# account, and "/notify/channel" also covered "/notify/channels" (master audit,
+# 28 Sep 2026). Named rather than guessed at.
+ID_NOT_AN_ACCOUNT = (
     "/users",            # user ids
     "/media",            # media/file ids
-    "/notify/channel",   # channel ids
-    "/trackers/watch",   # asin + metric, no workspace
     "/input/",           # input row ids
-    "/listing/",         # sku-scoped
-    "/row",              # row ids
-    "/genimage",         # job ids
+    "/genimage",         # job ids -- except the one below
     "/aplus",            # module ids
     "/drive",            # drive file ids
+    # Found by sweeping every caller (Milestone 2, 28 Sep 2026). Each sends a
+    # RECORD id as `id`, which the guard already read as an account -- so a
+    # user limited to one account was refused these ordinary actions outright:
+    "/notify/test",                  # channel id
+    "/monitor/remove",               # monitored-ASIN record id
+    "/miles/run_tail",               # Miles run id
+    "/miles/run_log",
+    "/miles/run_csv",
+    "/miles_template/save_zones",    # template id
+    "/miles_template/delete",
+    "/drppc/console/rule/delete",    # rule id (the account is ?account=)
+    "/expenses/delete",              # expense id (the account is `account`)
+    "/expenses/update",
+    "/charges/",                     # per-ASIN charge id
+    "/recipes",                      # recipe id
+    # "/trackers/watch" WAS HERE ("asin + metric") AND IS GONE: its _scope()
+    # reads `id` AS the account (routes/tracker_routes.py), so the exemption
+    # let a request write into any account's watch list.
+    # "/row" WAS HERE ("row ids") AND IS GONE (27 Sep 2026). No caller sends a
+    # row id to /row -- every one sends sku= and account= -- and because this
+    # list is matched with startswith, "/row" also exempted /rows and
+    # /rows_all: a user limited to one account could read another's listings
+    # by naming it. (test_row_account_guard.py)
+    # "/listing/" WAS HERE ("sku-scoped") AND IS GONE (Milestone 2): its routes
+    # read `id` AS the account (routes/listing_routes.py, price_routes.py).
+)
+# Matched EXACTLY, because a prefix would take in its neighbours.
+ID_NOT_AN_ACCOUNT_EXACT = (
+    "/notify/channel",   # a channel id; /notify/channels is not this
+)
+# Under an exempt prefix, but `id` IS the account here.
+ID_NOT_AN_ACCOUNT_EXCEPT = (
+    "/genimage/instructions",
 )
 
 
-def named_workspace(path, args, json_body):
-    """The account this request names, if it names one. "" when it does not.
-
-    Read from the query string first and the body second, because that is the
-    order the routes themselves read them in -- and a check that looked
-    somewhere else from the code it protects would be a check in name only.
-    """
+def _id_is_not_an_account(path):
+    """Is `id` on this path something other than an account? (Only `id`.)"""
     p = str(path or "")
-    for ex in WORKSPACE_PARAM_EXEMPT:
-        if p.startswith(ex):
-            return ""
-    for field in WORKSPACE_PARAMS:
-        try:
-            v = (args or {}).get(field)
-        except Exception:
-            v = None
-        if v and str(v).strip() not in WORKSPACE_SENTINELS:
-            return str(v).strip()
-    for field in WORKSPACE_PARAMS:
-        try:
-            v = (json_body or {}).get(field)
-        except Exception:
-            v = None
-        if v and str(v).strip() not in WORKSPACE_SENTINELS:
-            return str(v).strip()
-    # AND ONE LEVEL INTO A LIST OF ROWS.
-    #
-    # This read TOP-LEVEL fields only, so a request that names its account
-    # per-row named nothing as far as this was concerned and no workspace check
-    # ran at all. Found by reading the routes rather than by a report:
-    #
-    #     POST /orders/items {"orders": [{"order_id": ..,
-    #                                     "account_id": "jack_uk"}, ...]}
-    #
-    # A batch shape like that is the natural way to ask about sixty orders at
-    # once, and it walked straight past the doorman -- a user restricted to
-    # nestwell_goods could read jack_uk's order contents, product titles and
-    # profit by posting that.
-    #
-    # The FIRST account named anywhere in the batch is what is checked. Every
-    # row in a batch should belong to one account; if they do not, checking the
-    # first is what makes the rest refuse, which is the outcome wanted.
+    for ex in ID_NOT_AN_ACCOUNT_EXCEPT:
+        if p == ex or p.startswith(ex + "/"):
+            return False
+    for ex in ID_NOT_AN_ACCOUNT_EXACT:
+        if p == ex:
+            return True
+    # ON A PATH BOUNDARY: "/media" covers /media and /media/..., never
+    # "/mediaX" (account-scope review, Milestone 2).
+    for ex in ID_NOT_AN_ACCOUNT:
+        base = ex.rstrip("/")
+        if p == base or p.startswith(base + "/"):
+            return True
+    return False
+
+
+def _values(container, field):
+    """Every value `field` has in a dict or a MultiDict -- as plain strings."""
+    out = []
     try:
-        for _v in (json_body or {}).values():
-            if not isinstance(_v, list):
-                continue
-            for _row in _v[:200]:
-                if not isinstance(_row, dict):
-                    continue
-                for field in WORKSPACE_PARAMS:
-                    _rv = _row.get(field)
-                    if _rv:
-                        return str(_rv).strip()
+        if hasattr(container, "getlist"):
+            raw = container.getlist(field)
+        else:
+            raw = [(container or {}).get(field)]
     except Exception:
-        pass
-    return ""
+        return out
+    for v in raw:
+        if isinstance(v, (list, tuple)):
+            out.extend(v)
+        else:
+            out.append(v)
+    return [str(v).strip() for v in out
+            if isinstance(v, (str, int)) and str(v).strip() not in WORKSPACE_SENTINELS]
+
+
+def named_workspaces(path, args, json_body):
+    """EVERY account this request names, wherever it names it. [] when none.
+
+    THE HOLES THIS CLOSES (master audit, 28 Sep 2026 -- each proved by calling
+    check() with a user restricted to one account):
+
+      * named_workspace() below returns the FIRST field it finds, in its own
+        order; several routes read `account` first. ?id=<mine>&account=<theirs>
+        passed this check and the route acted on theirs.
+      * In a batch only the first row was looked at.
+      * The exemption list skipped EVERY field on its paths, and was matched by
+        prefix: "/listing/" covered the live price and image writes,
+        "/notify/channel" also matched "/notify/channels".
+
+    So every value of every field is returned, from the query string, the body
+    and every row of every list in the body, and only the ambiguous `id` is ever
+    left out -- on the paths where it means something else.
+    """
+    fields = [f for f in WORKSPACE_PARAMS
+              if not (f == "id" and _id_is_not_an_account(path))]
+    found = []
+    for field in fields:
+        found += _values(args, field)
+        found += _values(json_body, field)
+    try:
+        lists = [v for v in (json_body or {}).values() if isinstance(v, list)]
+    except Exception:
+        lists = []
+    for lst in lists:
+        for row in lst:
+            if isinstance(row, dict):
+                for field in fields:
+                    found += _values(row, field)
+    seen, out = set(), []
+    for v in found:
+        if v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
+def body_for_check(content_type, raw_bytes, form):
+    """The request body as the doorman should see it, WHATEVER IT CLAIMS TO BE.
+
+    The doorman used request.get_json(silent=True), which is None unless the
+    request says it is JSON -- but about a hundred routes parse with
+    force=True, and a fetch() with no Content-Type header sends text/plain. So a
+    body the route happily read was, to the check, no body at all. Form fields
+    (the upload routes) were never read either.
+
+    A form body is read from `form` only: its raw bytes are never touched,
+    because reading a multipart stream before Flask parses it empties
+    request.files for the route.
+    """
+    ct = str(content_type or "").lower()
+    out = {}
+    if ct.startswith("multipart/form-data") or \
+            ct.startswith("application/x-www-form-urlencoded"):
+        try:
+            for k in (form.keys() if form is not None else []):
+                vals = form.getlist(k) if hasattr(form, "getlist") else [form.get(k)]
+                out[k] = vals[0] if len(vals) == 1 else list(vals)
+        except Exception:
+            pass
+        return out
+    if not raw_bytes:
+        return out
+    try:
+        import json as _json
+        # BYTES, NOT A UTF-8 DECODE. json.loads(bytes) detects UTF-8 with a BOM
+        # and UTF-16/32 exactly as Flask's get_json(force=True) does; decoding
+        # as UTF-8 first turned those bodies into {} here while the route still
+        # read them -- a way past both the account check and the publish gate
+        # (account-scope review, Milestone 2). Same parser, same answer.
+        parsed = _json.loads(raw_bytes if isinstance(raw_bytes, (bytes, bytearray))
+                             else str(raw_bytes))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def request_body_for_check(req):
+    """body_for_check() for a live Flask request. None for GET/HEAD/OPTIONS.
+
+    A form's raw stream is never read (that would empty request.files for the
+    route); anything else is read with cache=True, so the route's own
+    get_json()/get_data() still sees every byte.
+    """
+    if req.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    ct = req.content_type or ""
+    is_form = ct.lower().startswith(("multipart/form-data",
+                                     "application/x-www-form-urlencoded"))
+    return body_for_check(ct, b"" if is_form else req.get_data(cache=True),
+                          req.form if is_form else None)
+
+
+def named_workspace(path, args, json_body):
+    """The FIRST account this request names, or "" -- kept for its callers.
+
+    The check itself uses named_workspaces(), which returns every one: this
+    used to be a second, separate reading of the same fields (first field
+    found, first row of a batch, every field skipped on an exempt path), and
+    the difference between the two readings was the hole. One reading now.
+    """
+    found = named_workspaces(path, args, json_body)
+    return found[0] if found else ""
 
 
 # Which FEATURE AREA a path belongs to. First match wins, most specific first.
@@ -565,9 +755,27 @@ def feature_for(path):
     return None
 
 
+# Paths whose READ everyone needs but whose WRITE changes the app for everyone.
+# (prefix, permission), consulted for writes only, before RULES. The model
+# pickers on four screens GET /ai/settings; POSTing it picks which paid model
+# every account uses, and /admin/logic_settings hides or shows the "how it
+# works" panels for all users -- both fell through to "edit" (master audit).
+WRITE_RULES = [
+    ("/ai/settings",                    "manage_accounts"),
+    ("/admin/logic_settings",           "manage_accounts"),
+    # The brand panel's Google connection (service-account path, Drive URL) is
+    # app-wide config; saving it needed only "edit" (4G review, 29 Sep 2026).
+    ("/brand/connection",               "manage_accounts"),
+]
+
+
 def required_permission(path, method):
     """The permission this request needs, or None if any signed-in user may do it."""
     p = str(path or "")
+    if str(method or "GET").upper() not in ("GET", "HEAD", "OPTIONS"):
+        for prefix, perm in WRITE_RULES:
+            if p == prefix or p.startswith(prefix + "/") or p.startswith(prefix + "?"):
+                return perm
     for prefix, perm in RULES:
         if p == prefix or p.startswith(prefix + "/") or p.startswith(prefix + "?"):
             return perm
@@ -616,9 +824,10 @@ def check(path, method, user, json_body=None, args=None):
     # Checked HERE, before features and permissions, for the same reason the
     # switch is: no amount of feature access makes another company's turnover
     # your business.
-    named = named_workspace(p, args, json_body)
-    if named and not users.can_access_workspace(user, named):
-        return False, "You do not have access to that workspace."
+    # EVERY account named, not the first: see named_workspaces().
+    for named in named_workspaces(p, args, json_body):
+        if not users.can_access_workspace(user, named):
+            return False, "You do not have access to that workspace."
 
     # 2. FEATURE ACCESS -- "may they see this area at all?"
     #
@@ -626,7 +835,8 @@ def check(path, method, user, json_body=None, args=None):
     # refused outright rather than producing "you need the ppc permission" for
     # a screen the person is not supposed to know exists.
     feat = feature_for(p)
-    is_read = str(method or "GET").upper() in ("GET", "HEAD", "OPTIONS")
+    is_read = (str(method or "GET").upper() in ("GET", "HEAD", "OPTIONS")
+               and not _work_over_get(p))
     if feat:
         lvl = users.feature_level(user, feat)
         if lvl == "none":
@@ -645,13 +855,23 @@ def check(path, method, user, json_body=None, args=None):
             # seeing costs view, doing costs the permission.
             return True, ""
 
-    # 3. Ordinary permission check.
-    perm = required_permission(p, method)
-    if perm is None:
-        return True, ""
-    if users.has_permission(user, perm):
-        return True, ""
-    return False, _denial_message(perm)
+    # 3. Ordinary permission check -- a streamed run over GET is work, so it
+    #    is asked the question a POST would be.
+    perm = required_permission(p, "POST" if _work_over_get(p) else method)
+    if perm is not None and not users.has_permission(user, perm):
+        return False, _denial_message(perm)
+
+    # 4. The same path asking for more, by what the body says it is for.
+    for bpath, field, value, bperm in BODY_RULES:
+        if p != bpath:
+            continue
+        try:
+            said = str((json_body or {}).get(field) or "").strip()
+        except Exception:
+            said = ""
+        if said == value and not users.has_permission(user, bperm):
+            return False, _denial_message(bperm)
+    return True, ""
 
 
 def _denial_message(perm):
@@ -704,6 +924,92 @@ def wants_json():
 _wants_json = wants_json
 
 
+# ---- CROSS-SITE REQUESTS (CSRF) --------------------------------------------
+#
+# The master audit (28 Sep 2026) found no protection at all: no token, no
+# Origin check, no SameSite on the session cookie. So a page on ANY site, opened
+# by a signed-in user, could POST to this app with their cookie attached --
+# /delete, /listing/price/apply, /sourcing/arm -- and the app could not tell it
+# from a click. Two layers, neither of which needs every fetch() rewritten:
+#
+#   1. The session cookie is SameSite=Lax: a browser does not attach it to a
+#      POST that another site starts. (Top-level GET navigations still carry
+#      it, which the Amazon OAuth return needs.) Secure when hosted, where the
+#      app is always behind https.
+#   2. A write whose Origin (or, failing that, Referer) names ANOTHER site is
+#      refused outright. The app's own fetch() calls send its own origin; a
+#      request with neither header (a script, curl, an old browser) is not a
+#      browser acting for a victim and is left to the sign-in check.
+
+def harden_session(app):
+    """Set the session cookie's cross-site rules. Called once at start-up."""
+    from config import hosting as _hosting
+    # NOT setdefault: Flask ships these keys already present (SAMESITE as None),
+    # so setdefault silently changed nothing. Set unless something set them.
+    if not app.config.get("SESSION_COOKIE_SAMESITE"):
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    if _hosting.is_hosted():
+        app.config["SESSION_COOKIE_SECURE"] = True
+
+
+def cross_site_refusal(method, host, origin, referer, fetch_site="", path=""):
+    """"" when this request may proceed; otherwise why it was refused.
+
+    WRITES are judged, and so is a GET that does work (WORK_OVER_GET: a
+    streamed run is a GET, and a link from another site carries a Lax cookie).
+    `host` is the Host the request was sent to; `origin`/`referer` are the
+    browser's own headers and `fetch_site` its Sec-Fetch-Site; any may be empty.
+    """
+    is_read = str(method or "GET").upper() in ("GET", "HEAD", "OPTIONS")
+    if is_read and not _work_over_get(path):
+        return ""
+    # THE BROWSER'S OWN VERDICT, when it gives one: every current browser sends
+    # Sec-Fetch-Site, and only a page on another site makes it "cross-site".
+    if str(fetch_site or "").strip().lower() == "cross-site":
+        return ("Refused: this request came from another website. If you did "
+                "this from the app itself, reload the page and try again.")
+    from urllib.parse import urlsplit
+    src = str(origin or "").strip()
+    # "null" IS AN ANSWER, not an absence: a sandboxed frame or a no-referrer
+    # form sends it precisely to hide where it came from. A page of this app
+    # never does. (The change review, Milestone 2.)
+    if src == "null":
+        return ("Refused: this request did not say which site it came from. If "
+                "you did this from the app itself, reload the page and try again.")
+    if not src:
+        src = str(referer or "").strip()
+    if not src:
+        return ""
+    def _bare(h):
+        # "host:443" and "host" are the same site; a proxy may add either.
+        h = str(h or "").strip().lower()
+        for port in (":443", ":80"):
+            if h.endswith(port):
+                h = h[:-len(port)]
+        return h
+    try:
+        came_from = _bare(urlsplit(src).netloc)
+    except Exception:
+        came_from = ""
+    if came_from and came_from == _bare(host):
+        return ""
+    return ("Refused: this request came from another website (%s). If you did "
+            "this from the app itself, reload the page and try again."
+            % (came_from or "unknown"))
+
+
+def open_gate_allowed(environ=None):
+    """May the app run with no sign-in at all? Off a server, yes; on one, only
+    when ALTASCRAPER_ALLOW_OPEN=1 says so deliberately."""
+    import os as _os
+    from config import hosting as _hosting
+    env = _os.environ if environ is None else environ
+    if not _hosting.is_hosted(env):
+        return True
+    return str(env.get("ALTASCRAPER_ALLOW_OPEN") or "").strip() == "1"
+
+
 def make_doorman(config_path, app_password, login_endpoint="_login"):
     """Build the before_request handler that runs on EVERY request.
 
@@ -712,6 +1018,17 @@ def make_doorman(config_path, app_password, login_endpoint="_login"):
     which a function defined inside dashboard.py's __main__ block cannot be.
     """
     def _require_login():
+        # A WRITE STARTED BY ANOTHER WEBSITE, refused before anything else --
+        # including the public endpoints, so the sign-in form cannot be posted
+        # from elsewhere either. See cross_site_refusal().
+        _xs = cross_site_refusal(request.method, request.host,
+                                 request.headers.get("Origin"),
+                                 request.headers.get("Referer"),
+                                 request.headers.get("Sec-Fetch-Site"),
+                                 request.path)
+        if _xs:
+            return jsonify({"ok": False, "error": _xs, "forbidden": True}), 403
+
         # _pubimg is intentionally public: it serves a single image whose URL
         # already embeds a valid HMAC token, so Amazon (and only holders of the
         # token) can fetch it.
@@ -722,8 +1039,22 @@ def make_doorman(config_path, app_password, login_endpoint="_login"):
 
         # Local dev with no shared password AND no accounts: the gate no-ops,
         # exactly as it did before any of this existed.
+        #
+        # BUT NOT ON A SERVER. The same two blanks on Render meant the app --
+        # every account's credentials, prices and customers -- was open to
+        # anyone who found the address, and /login answered "not configured"
+        # rather than locking the door (master audit, 28 Sep 2026). Hosted, it
+        # now FAILS CLOSED until a password is set. Open on a server is still
+        # possible, but only by saying so: ALTASCRAPER_ALLOW_OPEN=1.
         if not app_password and users.is_bootstrap(config_path) and not uid:
-            return
+            if open_gate_allowed():
+                return
+            msg = ("This app has no sign-in configured. Set APP_PASSWORD on the "
+                   "server (or ALTASCRAPER_ALLOW_OPEN=1 to run it open on "
+                   "purpose).")
+            if _wants_json():
+                return jsonify({"ok": False, "authed": False, "error": msg}), 503
+            return msg, 503
 
         if not session.get("authed"):
             # AN API CALL MUST NOT BE REDIRECTED TO AN HTML PAGE.
@@ -779,7 +1110,10 @@ def make_doorman(config_path, app_password, login_endpoint="_login"):
                 return redirect(url_for(login_endpoint))
             user = users.bootstrap_user()
 
-        body = request.get_json(silent=True) if request.method == "POST" else None
+        # THE BODY AS THE ROUTE WILL READ IT, whatever it claims to be, on every
+        # method that carries one -- see body_for_check(). A form's raw stream
+        # is never read here (that would empty request.files for the route).
+        body = request_body_for_check(request)
         # THE QUERY STRING GOES IN TOO. Without it, a request naming another
         # account (?id=jack_uk) is invisible to the check -- which is how a user
         # restricted to one workspace could read every other one.

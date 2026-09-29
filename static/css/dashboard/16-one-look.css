@@ -1,0 +1,35 @@
+/* static/css/dashboard/16-one-look.css -- one look for every screen (panel cards). Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+/* ===================================================================
+   ONE LOOK FOR EVERY SCREEN
+   ===================================================================
+   Sales, Hourly Sales, Traffic, AI spend and Returns Intelligence were
+   built to one pattern:
+
+       .wspanel  >  .wstoolbar.bleed  >  h2 + .ti icon + .sub
+                 >  a card, a title, a sub-line, chips for the controls
+
+   The older screens -- Generate & submit, ASIN Monitor, Import seller,
+   Repricer, Image Studio, Image Library -- predate it and were each
+   dressed by hand: bare <button>s, borders and radii typed inline, a
+   heading with no icon. They work identically and look like six
+   different products.
+
+   Nothing new is invented here. These are the names those five screens
+   already use, plus the two pieces they were missing: a card name that
+   is not called "sales", and chips that can carry an intent.
+   =================================================================== */
+
+/* THE CARD. `.salespanel` is the same rule under its historical name --
+   Traffic already borrows it, which is the tell that the name is wrong
+   rather than the style. One definition, two names, so nothing has to
+   be renamed across five working screens to stop the sixth looking odd. */
+.panelcard,
+.salespanel{
+  background:var(--as-surface-1);
+  border:1px solid var(--as-border);
+  border-radius:var(--as-radius-lg);
+  padding:12px;
+}
+/* A card that is a section in its own right rather than a tile in a row. */
+.panelcard.roomy{ padding:16px 16px 14px; }
+.panelcard + .panelcard{ margin-top:12px; }

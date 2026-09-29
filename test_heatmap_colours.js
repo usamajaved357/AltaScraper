@@ -38,7 +38,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const src = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
+const src = fs.readFileSync((__dirname + "/static/js/sales.js"), "utf8");
 const body = src.slice(src.indexOf("const _S_SIGNED"), src.indexOf("/* ---- actions"));
 const tint = new Function("V", "P", "K", "G", body + " return _sTint(V,P,K,G);");
 const delta = new Function("V", "P", body + " return _sDeltaPct(V,P);");
@@ -118,7 +118,7 @@ console.log("\n=== the direction comes from the metric, not from this file ===")
 // a new cost row cannot be added and be shaded as though it were income.
 truthy("the tint is told which way is good", /_sTint\(shown, prev, m\.key, m\.good\)/.test(src));
 truthy("the server sends it", /"good": good/.test(
-       fs.readFileSync("D:/AltaScraper/routes/sales_routes.py", "utf8")));
+       fs.readFileSync((__dirname + "/routes/sales_routes.py"), "utf8")));
 ["profit", "margin_pct"].forEach(function(k){
   truthy("  " + k + " is known to be signed", src.indexOf('"' + k + '"') >= 0);
 });

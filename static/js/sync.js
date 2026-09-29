@@ -38,7 +38,7 @@ async function syncRenderMatrix(){
   el.innerHTML='<span class="genspin"></span> Loading capabilities…';
   try{
     var j=await (await fetch('/sync/capabilities')).json();
-    if(!j.ok){ el.innerHTML='<div class="cc" style="color:var(--red)">could not load</div>'; return; }
+    if(!j.ok){ el.innerHTML=uiError("Sync status could not be loaded", j.error||"", "syncRenderMatrix", "sync"); return; }
     var h='<table class="ishtable" style="width:100%"><thead><tr><th>Account</th><th>Status</th><th>Pull</th><th>Push</th></tr></thead><tbody>';
     (j.accounts||[]).forEach(function(a){
       h+='<tr><td><b>'+esc(a.label)+'</b></td>'
@@ -52,7 +52,7 @@ async function syncRenderMatrix(){
       +'<button class="btn" onclick="syncRecheck()">Re-check active account (read-test)</button>'
       +'<button class="btn" onclick="syncMarkCause()">Mark cause…</button></div>';
     el.innerHTML=h;
-  }catch(e){ el.innerHTML='<div class="cc" style="color:var(--red)">error loading capabilities</div>'; }
+  }catch(e){ el.innerHTML=uiError("Sync status could not be loaded", String(e), "syncRenderMatrix", "sync"); }
 }
 
 function _syncSku(){ var e=document.getElementById('sync_sku'); return e?(e.value||'').trim():''; }
@@ -128,7 +128,7 @@ function syncOpenModal(mode, sku, stored, amazon, meta){
     var src=(mode==='pull'?amazon:stored)[f]||'';
     var tgt=(mode==='pull'?stored:amazon)[f]||'';
     var diff=(src!==tgt);
-    h+='<tr style="'+(diff?'background:rgba(110,168,254,.06)':'')+'">';
+    h+='<tr style="'+(diff?'background:color-mix(in srgb, var(--as-lit-6ea8fe-bg) 6%, transparent)':'')+'">';
     if(mode==='pull') h+='<td>'+(diff?'<input type="checkbox" class="sync_apply" data-f="'+f+'">':'')+'</td>';
     h+='<td class="cc" style="font-size:11px">'+esc(lbl)+(diff?' <span style="color:var(--accent)">●</span>':'')+'</td>'
       +'<td style="font-size:11px;word-break:break-word">'+esc(String(src).slice(0,300))+'</td>'

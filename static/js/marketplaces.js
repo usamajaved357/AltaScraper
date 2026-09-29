@@ -11,30 +11,30 @@
 // does not control.
 
 const MARKETPLACES = {
-  UK: {flag: "🇬🇧", name: "United Kingdom", short: "UK", symbol: "£"},
-  US: {flag: "🇺🇸", name: "United States",  short: "USA", symbol: "$"},
-  CA: {flag: "🇨🇦", name: "Canada",         short: "CA", symbol: "$"},
-  MX: {flag: "🇲🇽", name: "Mexico",         short: "MX", symbol: "$"},
-  BR: {flag: "🇧🇷", name: "Brazil",         short: "BR", symbol: "R$"},
-  DE: {flag: "🇩🇪", name: "Germany",        short: "DE", symbol: "€"},
-  FR: {flag: "🇫🇷", name: "France",         short: "FR", symbol: "€"},
-  IT: {flag: "🇮🇹", name: "Italy",          short: "IT", symbol: "€"},
-  ES: {flag: "🇪🇸", name: "Spain",          short: "ES", symbol: "€"},
-  NL: {flag: "🇳🇱", name: "Netherlands",    short: "NL", symbol: "€"},
-  BE: {flag: "🇧🇪", name: "Belgium",        short: "BE", symbol: "€"},
-  IE: {flag: "🇮🇪", name: "Ireland",        short: "IE", symbol: "€"},
-  SE: {flag: "🇸🇪", name: "Sweden",         short: "SE", symbol: "kr"},
-  PL: {flag: "🇵🇱", name: "Poland",         short: "PL", symbol: "zł"},
-  TR: {flag: "🇹🇷", name: "Türkiye",        short: "TR", symbol: "₺"},
-  AE: {flag: "🇦🇪", name: "United Arab Emirates", short: "AE", symbol: "AED"},
-  SA: {flag: "🇸🇦", name: "Saudi Arabia",   short: "SA", symbol: "SAR"},
-  EG: {flag: "🇪🇬", name: "Egypt",          short: "EG", symbol: "EGP"},
-  IN: {flag: "🇮🇳", name: "India",          short: "IN", symbol: "₹"},
-  JP: {flag: "🇯🇵", name: "Japan",          short: "JP", symbol: "¥"},
-  SG: {flag: "🇸🇬", name: "Singapore",      short: "SG", symbol: "$"},
-  AU: {flag: "🇦🇺", name: "Australia",      short: "AU", symbol: "$"},
+  UK: {flag: "🇬🇧", name: "United Kingdom", short: "UK", symbol: "£", ccy: "GBP"},
+  US: {flag: "🇺🇸", name: "United States",  short: "USA", symbol: "$", ccy: "USD"},
+  CA: {flag: "🇨🇦", name: "Canada",         short: "CA", symbol: "$", ccy: "CAD"},
+  MX: {flag: "🇲🇽", name: "Mexico",         short: "MX", symbol: "$", ccy: "MXN"},
+  BR: {flag: "🇧🇷", name: "Brazil",         short: "BR", symbol: "R$", ccy: "BRL"},
+  DE: {flag: "🇩🇪", name: "Germany",        short: "DE", symbol: "€", ccy: "EUR"},
+  FR: {flag: "🇫🇷", name: "France",         short: "FR", symbol: "€", ccy: "EUR"},
+  IT: {flag: "🇮🇹", name: "Italy",          short: "IT", symbol: "€", ccy: "EUR"},
+  ES: {flag: "🇪🇸", name: "Spain",          short: "ES", symbol: "€", ccy: "EUR"},
+  NL: {flag: "🇳🇱", name: "Netherlands",    short: "NL", symbol: "€", ccy: "EUR"},
+  BE: {flag: "🇧🇪", name: "Belgium",        short: "BE", symbol: "€", ccy: "EUR"},
+  IE: {flag: "🇮🇪", name: "Ireland",        short: "IE", symbol: "€", ccy: "EUR"},
+  SE: {flag: "🇸🇪", name: "Sweden",         short: "SE", symbol: "kr", ccy: "SEK"},
+  PL: {flag: "🇵🇱", name: "Poland",         short: "PL", symbol: "zł", ccy: "PLN"},
+  TR: {flag: "🇹🇷", name: "Türkiye",        short: "TR", symbol: "₺", ccy: "TRY"},
+  AE: {flag: "🇦🇪", name: "United Arab Emirates", short: "AE", symbol: "AED", ccy: "AED"},
+  SA: {flag: "🇸🇦", name: "Saudi Arabia",   short: "SA", symbol: "SAR", ccy: "SAR"},
+  EG: {flag: "🇪🇬", name: "Egypt",          short: "EG", symbol: "EGP", ccy: "EGP"},
+  IN: {flag: "🇮🇳", name: "India",          short: "IN", symbol: "₹", ccy: "INR"},
+  JP: {flag: "🇯🇵", name: "Japan",          short: "JP", symbol: "¥", ccy: "JPY"},
+  SG: {flag: "🇸🇬", name: "Singapore",      short: "SG", symbol: "$", ccy: "SGD"},
+  AU: {flag: "🇦🇺", name: "Australia",      short: "AU", symbol: "$", ccy: "AUD"},
   // Not a country: the app's own name for "every marketplace at once".
-  __all__: {flag: "🌐", name: "All marketplaces", short: "All", symbol: ""},
+  __all__: {flag: "🌐", name: "All marketplaces", short: "All", symbol: "", ccy: ""},
 };
 
 // An unknown code is shown as itself with a neutral globe rather than dropped.
@@ -50,6 +50,9 @@ function mktFlag(code){ return mktInfo(code).flag; }
 function mktName(code){ return mktInfo(code).name; }
 function mktShort(code){ return mktInfo(code).short; }
 function mktSymbol(code){ return mktInfo(code).symbol; }
+// The ISO currency code ("GBP"), for the top bar's account context (design
+// system: account + marketplace + currency always visible). "" when unknown.
+function mktCcy(code){ return mktInfo(code).ccy || ""; }
 
 // "🇬🇧 UK" — the pair used on buttons and chips, where the flag alone is too
 // small to identify at a glance and the code alone is what we had before.

@@ -64,7 +64,7 @@ function trkTabs() {
   Object.keys(ms).forEach(function (k) {
     const m = ms[k];
     const on = (TRK.metric === k) ? " on" : "";
-    html += '<div class="stk-tab' + on + '" onclick="trkTab(\'' + k + '\')">' +
+    html += '<div class="stk-tab' + on + '" onclick="trkTab(' + jsArg(k) + ')">' +
             esc(m.tracker || k) + "</div>";
   });
   box.innerHTML = html;
@@ -145,8 +145,8 @@ function trkRender() {
       "<td>" + trkStatus(r.status) + "</td>" +
       '<td class="cc" style="font-size:11px">' + esc(r.last_at || "never") +
       (r.points ? ' <span class="cc">(' + r.points + ")</span>" : "") + "</td>" +
-      '<td><button class="ib" title="Stop tracking this" onclick="trkStop(\'' +
-      r.asin + "','" + r.metric + "')\"><i class=\"ti ti-x\"></i></button></td>" +
+      '<td><button class="ib" title="Stop tracking this" onclick="trkStop(' +
+      jsArg(r.asin) + "," + jsArg(r.metric) + ")\"><i class=\"ti ti-x\"></i></button></td>" +
       "</tr>";
   });
   html += "</tbody></table></div></div>";
@@ -167,7 +167,7 @@ function trkAddForm() {
   return uiToolbar(
     '<span class="ui-lbl">Watch a number</span>' +
     '<input id="trk_asin" class="ed" style="width:140px" placeholder="B0XXXXXXXX">' +
-    '<select id="trk_metric" class="ed" style="width:160px">' + opts + "</select>" +
+    '<select id="trk_metric" aria-label="Number to watch" class="ed" style="width:160px">' + opts + "</select>" +
     '<input id="trk_target" class="ed" style="width:110px" placeholder="target (optional)">' +
     '<button class="primary" onclick="trkAdd()"><i class="ti ti-plus"></i> Track it</button>',
     '<span class="cc" style="font-size:11px;max-width:330px;text-align:right">' +
@@ -179,7 +179,9 @@ async function trkLoad() {
   const box = document.getElementById("trk_body");
   if (box && !TRK.rows.length) box.innerHTML = '<div class="cc" style="padding:14px">Loading…</div>';
   try {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/trackers" + _trkQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if (!j.ok) { if (box) box.innerHTML = '<div class="sresfail">' + esc(j.error || "failed") + "</div>"; return; }
     TRK.metrics = j.metrics || {};
     TRK.rows = j.rows || [];
@@ -258,12 +260,18 @@ async function alertsLoad() {
   const box = document.getElementById("alr_body");
   if (box) box.innerHTML = '<div class="cc" style="padding:14px">Loading…</div>';
   let j;
+  // The account this is for (Milestone 3 review: a late reply painted account
+  // A's alerts into B's panel and badge).
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  const _gone = () => _sc && !screenStillIn(_sc);
   try {
     j = await (await fetch("/trackers/alerts" + _trkQs())).json();
   } catch (e) {
+    if (_gone()) return;
     if (box) box.innerHTML = '<div class="sresfail">' + esc(String(e)) + "</div>";
     return;
   }
+  if (_gone()) return;
   if (!j.ok) { if (box) box.innerHTML = '<div class="sresfail">' + esc(j.error || "failed") + "</div>"; return; }
   const cur = trkCur();
   if (!j.rows.length) {
@@ -314,8 +322,10 @@ async function trkBadge(known) {
   if (!el) return;
   let n = known;
   if (n === undefined || n === null) {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;
     try {
       const j = await (await fetch("/trackers/alerts" + _trkQs())).json();
+      if (_sc && !screenStillIn(_sc)) return;   // another account's count
       n = j && j.ok ? j.count : 0;
     } catch (e) { n = 0; }
   }

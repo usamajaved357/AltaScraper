@@ -5,8 +5,13 @@ set, the generator read ALTA_DATA_BACKEND, and /diag + /users/me reported the
 environment variable. So the two halves of the app could read different stores
 while the diagnostics confidently reported the wrong one.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 from data import choice
 from data import db as ddb
 
@@ -135,11 +140,11 @@ check("  ...and once that file exists, unchanged", choice.resolve({}, CFG), "db"
 
 print("\n=== the generator now asks the same question ===")
 clean_env()
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 import importlib.util
 spec = importlib.util.spec_from_file_location(
-    "_alg_probe", r"D:\AltaScraper\amazon_listing_generator.py")
-src = open(r"D:\AltaScraper\amazon_listing_generator.py", encoding="utf-8").read()
+    "_alg_probe", _os_repo.path.join(_REPO, r"amazon_listing_generator.py"))
+src = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
 check("the generator delegates to data/choice",
       "_choice.resolve(config" in src, True)
 check("  and no longer reads the variable itself",
@@ -147,11 +152,11 @@ check("  and no longer reads the variable itself",
 
 print("\n=== every reporter reads the RESULT, not the request ===")
 for f, needle, gone in (
-    (r"D:\AltaScraper\routes\users_routes.py",
+    (_os_repo.path.join(_REPO, r"routes\users_routes.py"),
      'current_app.config.get("DATA_BACKEND")', 'os.environ.get("ALTA_DATA_BACKEND")'),
-    (r"D:\AltaScraper\domain\deploy_check.py",
+    (_os_repo.path.join(_REPO, r"domain\deploy_check.py"),
      "_choice.decide", 'os.environ.get("ALTA_DATA_BACKEND")'),
-    (r"D:\AltaScraper\dashboard.py",
+    (_os_repo.path.join(_REPO, r"dashboard.py"),
      'app.config["DATA_BACKEND"]', None),
 ):
     s = open(f, encoding="utf-8").read()

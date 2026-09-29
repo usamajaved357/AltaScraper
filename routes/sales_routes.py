@@ -76,21 +76,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         One resolver now (rule 12): routes/scope.py, which is the file that
         exists for this and already holds the order.
         """
-        aid, acc = _req_acct.for_read(request, _state, get_account=_account_by_id)
-        if acc is None:
-            # No account named by the page (an older screen, or a background job
-            # with no page behind it) -- fall back to the global, as before.
-            try:
-                acc = _active_account()
-            except Exception:
-                acc = None
-        wsid = str(aid or (acc or {}).get("id")
-                   or _state.get("active_account_id", "") or "") or "_no_account"
-        mkt = _scope_mod.marketplace(
-            state=_state, account=(acc or {}),
-            asked=(request.args.get("marketplace")
-                   or (request.get_json(silent=True) or {}).get("marketplace")))
-        return acc, wsid, mkt
+        # The one copy: routes/scope.page_account (shared with ads_routes).
+        return _scope_mod.page_account(request, state=_state, active_account=_active_account,
+                                       get_account=_account_by_id, req_acct=_req_acct)
 
     def _cogs_overrides():
         """The manual COGS overrides, from the store that owns them.
@@ -347,7 +335,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                  ads_connected=bool(avail["ads"]["connected"]),
                                  ad_spend=cur.get("spend") or 0.0,
                                  revenue=cur.get("ordered_sales"),
-                                 units=cur.get("units"))
+                                 units=cur.get("units"),
+                                 # THE PRODUCT FILTER, when one is on: `cur`
+                                 # is then that product's figures, spend
+                                 # included, so the profit must be its too.
+                                 asin=(asin or None))
             est["cogs_mode"] = _mode
             # Profit is now built from the SAME revenue and unit count as the
             # cards, so there is no longer a period-coverage question to answer:
@@ -431,32 +423,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         a zero -- there is no ACOS for zero sales, and saying 0% would read as
         perfect efficiency for money that bought nothing.
         """
-        from data import db as _db
+        from domain import sales_queries as _sq   # its SQL (architecture batch A6)
         _acc, wsid, mkt = _scope()
         if not mkt:
             return jsonify({"ok": False, "error": "no marketplace selected"}), 400
         start, end, _preset = _range()
-        conn = _db.get_db(CONFIG_PATH)
 
         rows = []
-        for r in conn.execute(
-                "SELECT campaign_id, "
-                "       MAX(campaign_name) AS campaign_name, "
-                "       MAX(status)        AS status, "
-                "       MAX(budget)        AS budget, "
-                "       MAX(ad_product)    AS ad_product, "
-                "       SUM(impressions)   AS impressions, "
-                "       SUM(clicks)        AS clicks, "
-                "       SUM(spend)         AS spend, "
-                "       SUM(ad_orders)     AS ad_orders, "
-                "       SUM(ad_sales)      AS ad_sales, "
-                "       COUNT(DISTINCT date) AS days, "
-                "       MAX(fetched_at)    AS fetched_at "
-                "FROM ads_campaign_daily "
-                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
-                "GROUP BY campaign_id ORDER BY spend DESC",
-                (wsid, mkt, start, end)):
-            d = dict(r)
+        for d in _sq.campaign_rows(CONFIG_PATH, wsid, mkt, start, end):
             spend = d.get("spend")
             sales = d.get("ad_sales")
             clicks = d.get("clicks")
@@ -494,12 +468,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         the range starts before the account's first sale.
         """
         try:
-            from data import db as _db
             from domain import sales_data as _sd
-            rows = [dict(r) for r in _db.get_db(CONFIG_PATH).execute(
-                "SELECT currency FROM sales_daily WHERE workspace_id=? AND "
-                "marketplace=? AND COALESCE(currency,'')<>'' LIMIT 1",
-                (wsid, mkt))]
+            from domain import sales_queries as _sq   # its SQL (batch A6)
+            rows = _sq.currency_rows(CONFIG_PATH, wsid, mkt)
             return _sd.currency_of(rows)
         except Exception:
             return ""

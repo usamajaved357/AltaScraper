@@ -31,12 +31,17 @@ The live audit against the real database is probe_finance_page.py. This is the
 same arithmetic on figures made up here, so it runs anywhere and cannot pass by
 accident on an account that happens to have no coupons.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 
@@ -236,10 +241,18 @@ put("2026-08-07", "B0SVN", principal=30, referral_fees=3, units=1)   # no cost
 rows, tot = C.by_product(CFG, WS, MKT, "2026-08-07", "2026-08-07", vat_rate=0)
 by = {r["asin"]: r for r in rows}
 check("the costed product reports its own figure", by["B0SIX"]["contribution"], 34.0)
-check("the uncosted one reports nothing", by["B0SVN"]["contribution"], None)
-check("and the period total is withheld, not 34.00", tot["contribution"], None)
-truthy("  with the reason on screen",
-       any("no known cost" in n["text"] for n in C.notes(rows, tot)))
+# RE-PINNED 28 Sep 2026. This pinned "withheld". The owner's rule -- "if no cogs
+# are added show profit as wrong ... the user should know he needs to add cogs"
+# -- already governed the Sales card and the P&L, and Finance now follows it:
+# the figure is SHOWN, counting the uncosted stock as free, and the screen says
+# it is too high.
+check("the uncosted one is shown (30 - 3, stock counted as nothing)",
+      by["B0SVN"]["contribution"], 27.0)
+check("  and flagged by its uncosted units", by["B0SVN"]["uncosted_units"], 1)
+check("and the period total is shown, 34.00 + 27.00", tot["contribution"], 61.0)
+truthy("  with the reason on screen: the figure is too high",
+       any("no cost recorded" in n["text"] and "HIGHER" in n["text"]
+           for n in C.notes(rows, tot)))
 
 print("\n" + ("FAILURES: %s" % ", ".join(fails) if fails else "FAILURES: 0"))
 sys.exit(1 if fails else 0)

@@ -198,9 +198,9 @@ def sync(config_path, workspace_id, marketplace, marketplace_id, creds,
     """
     try:
         from sp_api.api import Reports
-        from sp_api.base import Marketplaces
-        mkt_enum = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.US
-        rc = Reports(credentials=creds, marketplace=mkt_enum)
+        from api import sp_client as _sp
+        # 4E: the "upper_or_us" rule -- unknown codes fall back to US here, not UK.
+        rc = _sp.client(Reports, creds, marketplace, rule=_sp.UPPER_OR_US)
     except Exception as e:
         return {"ok": False, "error": "could not open SP-API Reports: %s" % str(e)[:160]}
 

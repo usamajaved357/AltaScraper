@@ -3,6 +3,7 @@
 Auto-extracted @app.route("paths:/suggest,/ask,/input_sheet,/row,/rows,/approve,/schema/<path:pt>,/edit,/delete,/clear_empty,/listing/push_image,/run/<mode>...") funcs; shared helpers injected. Verified with
 verify_free_vars.py.
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 from flask import request, jsonify, Response, send_from_directory
 import json
 import os
@@ -25,6 +26,7 @@ from listing import run_status          # honest run state, independent of the l
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
 from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
 from listing.sourcing_viability import check_sourcing_viability  # document-demand risk (WARN only)
+from domain import request_account as _rqa
 
 # Map the screener's field name -> the sheet column header to WRITE a rewrite into.
 # Standard 48-col layout first, then the Miles 12-col layout, so the one-click "Apply
@@ -229,7 +231,7 @@ def _attach_brand_send(c, brands, cfg):
     """
     out = {"send": "", "typed": str(c.get("brand") or ""), "swapped": False, "note": ""}
     try:
-        from amazon_listing_generator import resolve_account_brand
+        from listing.flat_row import resolve_account_brand  # its home since Milestone 4; the engine re-exports this same function
         # The same two keys build_api_attributes is handed, so this asks the
         # resolver the same question the submit will.
         probe = {"_account_brands": brands,
@@ -666,8 +668,21 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         sku = (b.get("sku", "") or "").strip()
         if not sku:
             return jsonify({"ok": False, "error": "missing sku"}), 400
-        aid = b.get("id", "") or _state.get("active_account_id", "")
-        mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
+        aid = b.get("id", "") or _rqa.current(_state)
+        # THE ROWS AND THE PUSH MUST BE ONE ACCOUNT. The image is read from the
+        # rows _ws() opens (the account the request names, else the open one)
+        # and pushed with `aid`'s credentials -- with two tabs and a SKU used on
+        # both accounts, B's live listing could get A's main image (two-tab
+        # review). Refuse rather than guess.
+        if str(aid) != str(_rqa.current(_state)):
+            return jsonify({"ok": False, "error":
+                            "This page is showing %s but %s is open in another tab, so "
+                            "no image was pushed. Open %s again in this tab and retry."
+                            % (aid, _rqa.current(_state) or "no account", aid)}), 409
+        from routes import scope as _scope_mod
+        mkt = (b.get("marketplace", "") or request.args.get("marketplace")
+               or _scope_mod.marketplace(state=_state, account=_active_account() or {})
+               or "").upper()
         ptype = b.get("product_type", "") or ""
 
         # 1) find the row's current main image (what the user saved via "use as main")
@@ -790,10 +805,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         res = _al.patch(creds, mkt, seller, sku, mid, ptype or "PRODUCT", patches,
                         issue_locale=("en_US" if mkt == "US" else "en_GB"))
         if res["status"] != _al.OK:
-            why = res["error"] or "Amazon rejected it"
-            if res["issues"]:
-                why += " -- " + "; ".join(str(i.get("message") or "")[:140]
-                                          for i in res["issues"][:3])
+            why = _al.refusal_text(res, "Amazon rejected it")   # the one wording
             return jsonify({"ok": False, "error": why,
                             "status": res["amazon_status"], "issues": res["issues"],
                             "public_url": public_url}), 502
@@ -1033,7 +1045,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         except ImportError:
             return jsonify({"ok": False, "error": "anthropic not installed (pip install anthropic)"}), 500
         try:
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             system = (
                 "You are a practical assistant embedded in an Amazon UK listing tool. You help the seller "
                 "choose values for listing attributes (size, is_assembly_required, material, dimensions, "
@@ -1837,8 +1849,14 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             return jsonify({"ok": False, "error": "invalid status"}), 400
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
+        # THE NAMED ACCOUNT, as /delete and /edit do. This read the server's
+        # open account only, so a bulk Approve that ran across an account
+        # switch approved the new account's same-SKU drafts (master audit S1).
+        _bad = _wrong_account(body.get("account"))
+        if _bad:
+            return _bad
         try:
-            ws    = _ws()
+            ws    = _store_for(body.get("account")) or _ws()
             found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
             if not found.ok:
                 return jsonify({"ok": False, "error": found.error}), 404
@@ -1920,6 +1938,14 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         Compliance Risk and IP Risk are, because those three are this app's own
         verdict about its own copy, and a listing that is live on Amazon has as
         much right to a correct badge as one that is not."""
+        # A BULK REWRITE NAMES ITS ACCOUNT (4G, 29 Sep 2026): with none named,
+        # _ws() fell back to the server's open account -- another tab's, with
+        # two open. The page names it now (reqscope.js); an unnamed call refuses.
+        import domain.request_account as _rqa_rs
+        if not _rqa_rs.named_now():
+            return jsonify({"ok": False, "error": (
+                "Which account? Reload the page and try again -- a rescan is "
+                "applied only to the account the page names.")}), 400
         try:
             ws, _rows, changes = _rescan_compute()
             if not changes:
@@ -1975,45 +2001,41 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             # right schema+creds are used regardless of the global active_marketplace.
             # This fixes US-account listings loading an empty UK schema (wrong creds).
             _mkt_param = (request.args.get("mkt") or "").strip().upper()
-            _prev_mkt = _state.get("active_marketplace", "")
-            if _mkt_param:
-                _state["active_marketplace"] = _mkt_param
-            try:
-                # ?refresh=1 clears the cached schema for this product type so the new
-                # (unenforced-merged) enums are re-fetched without a server restart.
-                if request.args.get("refresh"):
-                    _mkt = str(_state.get("active_marketplace", "") or "UK").upper()
-                    _state["schemas"].pop(f"{pt}::{_mkt}", None)
-                    # THE STORED COPY TOO. Schemas are now kept on disk between
-                    # restarts, so clearing only the in-memory one would leave
-                    # "Reload Amazon values now" returning the very copy the
-                    # person pressed it because they did not believe -- a button
-                    # that looks like it worked and changed nothing.
-                    try:
-                        from domain import schema_cache as _sc
-                        _sc.forget(CONFIG_PATH, pt, _mkt)
-                    except Exception:
-                        pass
-                _sch = _load_schema(pt)
-                payload = {"ok": True, "enums": _options_for(pt), "required": _schema_required(pt),
-                           "attrs": _schema_attrs(pt), "subfields": _schema_subfields(pt),
-                           "titles": _sch.get("titles", {}),
-                           # Amazon's own words for what a field means, how many
-                           # values it takes, and whether it can be set at all.
-                           # The product page needs all three and had none of
-                           # them -- see the note in dashboard._load_schema.
-                           "help": _sch.get("help", {}),
-                           "maxitems": _sch.get("maxitems", {}),
-                           "readonly": _sch.get("readonly", []),
-                           "marketplace": str(_state.get("active_marketplace", "") or "UK").upper(),
-                           "enum_count": len(_options_for(pt)),
-                           "schema_error": _load_schema(pt).get("_error", "")}
-                return jsonify(payload)
-            finally:
-                # restore global state so a one-off schema fetch doesn't change the
-                # user's active workspace marketplace
-                if _mkt_param:
-                    _state["active_marketplace"] = _prev_mkt
+            # HANDED TO THE LOADER, NOT BORROWED (architecture batch A4). This
+            # used to set _state["active_marketplace"] for the request and put it
+            # back after, and every request running meanwhile read the borrowed
+            # marketplace. The same marketplace as before -- the one asked for,
+            # else the active one, else UK -- without touching shared state.
+            _mkt = str(_mkt_param or _state.get("active_marketplace", "") or "UK").upper()
+            # ?refresh=1 clears the cached schema for this product type so the new
+            # (unenforced-merged) enums are re-fetched without a server restart.
+            if request.args.get("refresh"):
+                _state["schemas"].pop(f"{pt}::{_mkt}", None)
+                # THE STORED COPY TOO. Schemas are now kept on disk between
+                # restarts, so clearing only the in-memory one would leave
+                # "Reload Amazon values now" returning the very copy the
+                # person pressed it because they did not believe -- a button
+                # that looks like it worked and changed nothing.
+                try:
+                    from domain import schema_cache as _sc
+                    _sc.forget(CONFIG_PATH, pt, _mkt)
+                except Exception:
+                    pass
+            _sch = _load_schema(pt, _mkt)
+            payload = {"ok": True, "enums": _options_for(pt, _mkt), "required": _schema_required(pt, _mkt),
+                       "attrs": _schema_attrs(pt, _mkt), "subfields": _schema_subfields(pt, _mkt),
+                       "titles": _sch.get("titles", {}),
+                       # Amazon's own words for what a field means, how many
+                       # values it takes, and whether it can be set at all.
+                       # The product page needs all three and had none of
+                       # them -- see the note in dashboard._load_schema.
+                       "help": _sch.get("help", {}),
+                       "maxitems": _sch.get("maxitems", {}),
+                       "readonly": _sch.get("readonly", []),
+                       "marketplace": _mkt,
+                       "enum_count": len(_options_for(pt, _mkt)),
+                       "schema_error": _load_schema(pt, _mkt).get("_error", "")}
+            return jsonify(payload)
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -2076,10 +2098,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     "no listing with this SKU in this workspace":
                 try:
                     from listing import adopt as _adopt
-                    _aid = str(b.get("account")
-                               or _state.get("active_account_id") or "")
-                    _mkt = str(b.get("marketplace")
-                               or _state.get("active_marketplace") or "").upper()
+                    # The account the request names however it names it, and
+                    # ITS marketplace -- not the open account's selection
+                    # (low item from the two-tab review).
+                    from routes import scope as _scope_mod
+                    _aid = str(b.get("account") or _rqa.current(_state) or "")
+                    _mkt = str(b.get("marketplace") or request.args.get("marketplace")
+                               or _scope_mod.marketplace(state=_state,
+                                                         account=_active_account() or {})
+                               or "").upper()
                     _ok, _why = _adopt.adopt(CONFIG_PATH, ws, _aid, _mkt, sku)
                     if _ok:
                         _adopted = True
@@ -2101,8 +2128,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # rather than a fact about the listing.
                 #
                 # no_row lets the caller say that plainly instead of guessing.
-                _wsid = str(b.get("account") or
-                            _state.get("active_account_id") or "") or "this workspace"
+                _wsid = str(b.get("account") or _rqa.current(_state) or "") or "this workspace"
                 return jsonify({"ok": False, "error": found.error,
                                 "no_row": True, "sku": sku,
                                 "workspace": _wsid}), 404
@@ -2114,14 +2140,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             elif target == "attr":
                 if "Attributes JSON" not in headers:
                     return jsonify({"ok": False, "error": "no attributes column"}), 400
-                acol = headers.index("Attributes JSON") + 1
-                cur  = _repo.cell_value(ws, trow, acol) or "{}"
-                try:
-                    obj = json.loads(cur)
-                except Exception:
-                    obj = {}
-                if not isinstance(obj, dict):
-                    obj = {}
+                obj = _repo.attributes_of(ws, trow, headers)   # the one reader
                 if str(value).strip() == "":
                     obj.pop(key, None)
                 else:
@@ -2185,21 +2204,16 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     _wsid2 = _ws_id_of(ws) or str(b.get("account") or "") \
                              or _state.get("active_account_id", "")
                     if _wsid2:
-                        from listing import warnings as _warn2
-                        from data import db as _db2
-                        _c2 = _db2.get_db(CONFIG_PATH)
-                        _before = {r["sku"]: (r["warnings"] or "") for r in _c2.execute(
-                            "SELECT sku, warnings FROM listings WHERE workspace_id=?",
-                            (_wsid2,))}
+                        from listing import warnings as _warn2   # its SQL (batch A6)
+                        _before = {r["sku"]: (r["warnings"] or "") for r in
+                                   _warn2.warnings_by_sku(CONFIG_PATH, _wsid2)}
                         _warn2.recompute_workspace(CONFIG_PATH, _wsid2)
                         # ONLY WHAT MOVED. Handing back every row's warnings on
                         # a keystroke would be a large reply for a small fact,
                         # and the screen only needs the rows whose verdict is
                         # now different -- including the ones that went EMPTY,
                         # which are exactly the ones being cleared.
-                        for r in _c2.execute(
-                                "SELECT sku, warnings FROM listings WHERE workspace_id=?",
-                                (_wsid2,)):
+                        for r in _warn2.warnings_by_sku(CONFIG_PATH, _wsid2):
                             if (r["warnings"] or "") != _before.get(r["sku"], ""):
                                 try:
                                     _wchanged[r["sku"]] = json.loads(r["warnings"] or "[]")
@@ -2543,6 +2557,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
     @app.route("/clear_empty", methods=["POST"])
     def clear_empty():
         """Delete every data row whose SKU, Title, Competitor ASIN and Product Type are all blank."""
+        # A DELETE NAMES ITS ACCOUNT (4G, 29 Sep 2026) -- see rescan_apply.
+        import domain.request_account as _rqa_ce
+        if not _rqa_ce.named_now():
+            return jsonify({"ok": False, "error": (
+                "Which account? Reload the page and try again -- empty rows are "
+                "cleared only in the account the page names.")}), 400
         try:
             ws   = _ws()
             vals = _repo.read_grid(ws)
@@ -2650,7 +2670,19 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             _scope_acc = _active_account()
         except Exception:
             _scope_acc = None
-        _scope_acct_id = str((_scope_acc or {}).get("id") or "") or _state_account
+        # NO FALLBACK TO THE SHARED VALUE. This read `or _state_account`, a name
+        # defined nowhere, so a request with no account open raised NameError
+        # (known-issues #2; found again by the undefined-name check, Milestone 1,
+        # 28 Sep 2026). Falling back to _state instead would bring back exactly
+        # the bug described above. With no account open the run is REFUSED:
+        # running it as "no account" would still reach the generator, whose
+        # credential fallback is the global block (jack_uk's).
+        _scope_acct_id = str((_scope_acc or {}).get("id") or "")
+        if not _scope_acct_id:
+            return Response("data: [error] No account is open. Open the account "
+                            "this run is for, then try again.\n\n"
+                            "event: end\ndata: end\n\n",
+                            mimetype="text/event-stream")
         _scope_sheet = _state.get("active_sheet_id")
         _scope_tab = _state.get("active_tab")
         _scope_mkt = str(_state.get("active_marketplace") or "")
@@ -2782,40 +2814,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # _active_account() from in here read the SHARED account, not
                 # this user's -- which is exactly how a Jack Reacherd run
                 # executed as Nestwell Goods.
+                # One builder for both runners (architecture batch A9): the
+                # preview queue (routes/preview_job_routes.py) uses the same one.
+                from listing import run_command as _rc
                 _acc = _scope_acc
                 if _acc:
-                    _acc_id = _acc.get("id") or ""
-                    if _acc_id and "--account-id" not in extra:
-                        extra += ["--account-id", _acc_id]
-                    _acc_sheet = _acc.get("output_spreadsheet_id") or ""
-                    _acc_tab = _acc.get("output_tab") or _acc.get("output_worksheet") or ""
-                    _acc_out_gid = str(_acc.get("output_tab_gid") or "")
-                    _acc_in_sheet = _acc.get("input_spreadsheet_id") or ""
-                    _acc_in_gid = str(_acc.get("input_tab_gid") or "")
-                    if _acc_sheet and "--sheet" not in extra:
-                        extra += ["--sheet", _acc_sheet]
-                    if _acc_tab and "--tab" not in extra:
-                        extra += ["--tab", _acc_tab]
-                    if _acc_out_gid and "--tab-gid" not in extra:
-                        extra += ["--tab-gid", _acc_out_gid]
-                    if _acc_in_sheet and "--input-sheet" not in extra:
-                        extra += ["--input-sheet", _acc_in_sheet]
-                    if _acc_in_gid and "--input-tab-gid" not in extra:
-                        extra += ["--input-tab-gid", _acc_in_gid]
-                    # marketplace (US/UK) for this account -- so pricing, fees, SP-API
-                    # and the flat-file route match the account, not the UK default.
-                    _acc_mkt = (_acc.get("default_marketplace") or "").strip().upper()
-                    if _acc_mkt not in ("US", "UK", "GB") and _acc.get("marketplaces"):
-                        # pick the first US/UK/GB entry, not blindly [0] (which can be
-                        # MX/CA/BR -> generator would fall through to the UK default
-                        # and deny a US token on catalog/pricing/fees).
-                        for _mm in _acc["marketplaces"]:
-                            _mmu = str(_mm).strip().upper()
-                            if _mmu in ("US", "UK", "GB"):
-                                _acc_mkt = _mmu
-                                break
-                    if _acc_mkt and "--marketplace" not in extra:
-                        extra += ["--marketplace", _acc_mkt]
+                    extra = _rc.account_args(extra, _acc)
                 # NO ACTIVE ACCOUNT. This branch used to add the Dropshipping
                 # workspace's own sheet overrides. That workspace has been
                 # removed -- it described itself as "eBay -> Amazon arbitrage",
@@ -2829,37 +2833,16 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # at once (which would waste credits), and validates against the
                 # correct catalogue (US for US brands).
                 if mode in ("api", "api_submit", "api_verify"):
-                    # per-listing Preview/Submit/Verify: a ?skus= filter limits to those SKUs
-                    _api_skus = _req_skus
-                    if _api_skus and "--skus" not in extra:
-                        extra += ["--skus", _api_skus]
-                    if _req_minimal and "--minimal" not in extra:
-                        extra += ["--minimal"]
-                    # All captured in the request context above. Read here they
+                    # per-listing Preview/Submit/Verify: ?skus=, ?minimal=1, the
+                    # open sheet/tab and the brand view's marketplace. All
+                    # captured in the request context above. Read here they
                     # would come from the SHARED bag -- another user's sheet and
                     # another user's brand view, on a path that submits to
                     # Amazon.
-                    _sid = _scope_sheet
-                    _tab = _scope_tab
-                    _mkt = ""
-                    # resolve marketplace from the active brand profile, if any
-                    _vk = _scope_view
-                    if _vk:
-                        try:
-                            import glob as _glob, os as _os
-                            for _pf in _glob.glob(_os.path.join(_os.path.dirname(CONFIG_PATH), "brands", "*", "profile.json")):
-                                _p = json.load(open(_pf, encoding="utf-8"))
-                                if (_p.get("brand_name") or "") == _vk:
-                                    _mkt = _p.get("marketplace", "") or ""
-                                    break
-                        except Exception:
-                            pass
-                    if _sid:
-                        extra += ["--sheet", _sid]
-                    if _tab:
-                        extra += ["--tab", _tab]
-                    if _mkt:
-                        extra += ["--marketplace", _mkt]
+                    extra = _rc.api_scope_args(
+                        extra, skus=_req_skus, minimal=_req_minimal,
+                        sheet=_scope_sheet, tab=_scope_tab, view=_scope_view,
+                        config_path=CONFIG_PATH)
                 # ROW SELECTION (generate only): limit the run to chosen input rows.
                 # Empty -> generator processes all rows (unchanged).
                 if mode == "generate" and _req_select:
@@ -3001,7 +2984,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             _who = _jo.current()
         except Exception:
             _who = ""
-        _acct = str(_state.get("active_account_id", "") or "")
+        _acct = _rqa.current(_state)
         _all = _SLOTS.active()
         mine = [s for s in _all
                 if str(s.get("account") or "") == _acct
@@ -3015,12 +2998,16 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                             "stream_attached": False, "mine": 0,
                             "elsewhere": len(_all) - len(mine)})
 
+        # THIS ACCOUNT'S heartbeat (one file per account, listing/run_status),
+        # and the process handle only if it is that run's process: the last
+        # process started may be another account's.
+        _app_dir = os.path.dirname(os.path.abspath(CONFIG_PATH))
+        _hb_pid = (run_status.read(_app_dir, account=_acct) or {}).get("pid")
         proc = _running.get("proc")
         alive = None
-        if proc is not None:
+        if proc is not None and _hb_pid and proc.pid == _hb_pid:
             alive = (proc.poll() is None)   # the real handle beats a PID lookup
-        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)),
-                                   proc_alive=alive)
+        info = run_status.classify(app_dir=_app_dir, proc_alive=alive, account=_acct)
         info["stream_attached"] = bool(_running.get("on"))
         info["mine"] = len(mine)
         info["elsewhere"] = len(_all) - len(mine)
@@ -3036,13 +3023,26 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         This is exactly how both freezes were diagnosed. Read-only: py-spy
         samples the process from outside and never modifies or resumes it.
         """
-        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)))
-        pid = info.get("pid")
+        # ONLY THE RUN OF THE ACCOUNT ASKING. A stack dump carries SKUs; the
+        # last process started may be another account's, so the pid comes from
+        # this account's own heartbeat and nothing else (account-scope review,
+        # 29 Sep 2026).
+        # The account must be NAMED -- the server's open one belongs to whichever
+        # tab switched last (security review, 29 Sep 2026); reqscope.js names it.
+        _acct = _rqa.named_now()
+        if not _acct:
+            return jsonify({"ok": False, "error": (
+                "Which account? The request did not name one, so no process was "
+                "inspected.")}), 400
+        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)),
+                                   account=_acct)
+        pid = info.get("pid") if info.get("state") in ("RUNNING", "STALLED") else None
+        # And only a process this app can PROVE is that run: the handle it
+        # started, when its pid is the heartbeat's. A pid read from a file alone
+        # may since have been reused by an unrelated process.
         proc = _running.get("proc")
-        if proc is not None and proc.poll() is None:
-            pid = proc.pid
-        if not pid:
-            return jsonify({"ok": False, "error": "no run process to inspect"})
+        if not (pid and proc is not None and proc.pid == pid and proc.poll() is None):
+            return jsonify({"ok": False, "error": "no run process of this account to inspect"})
 
         exe = os.path.join(os.path.dirname(sys.executable), "Scripts", "py-spy.exe")
         if not os.path.exists(exe):

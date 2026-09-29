@@ -123,7 +123,10 @@ def read(url, timeout=20):
             "Accept": "text/html,application/xhtml+xml",
             "Accept-Language": "en-GB,en;q=0.9",
         })
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        # A supplier link is typed by a user: through the URL policy, which
+        # refuses file:// and addresses inside the server (master audit P2).
+        from domain import url_policy as _urlp
+        with _urlp.urlopen(req, timeout=timeout) as r:
             raw = r.read(3_000_000)        # a supplier page that big is not a page
             html = raw.decode(r.headers.get_content_charset() or "utf-8", "replace")
     except Exception as e:

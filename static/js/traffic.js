@@ -1,4 +1,4 @@
-﻿// ===================== TRAFFIC & CONVERSIONS =====================
+// ===================== TRAFFIC & CONVERSIONS =====================
 //
 // Built to Orbit's page, scanned panel by panel on 15 Aug 2026, and drawn with
 // the SAME chart functions the Sales screen uses -- salesChart and salesCombo
@@ -45,7 +45,8 @@ function _tNum(v, kind, cur){
   return String(v);
 }
 
-function trafficOnOpen(){ if(!TRAF.data) trafficLoad(); else trafficRender(); }
+// An error reply is not data: coming back retries it (audit S9, batch 1 review).
+function trafficOnOpen(){ if(!TRAF.data || TRAF.data.error) trafficLoad(); else trafficRender(); }
 
 function trafficSetPreset(p){
   // Picking a preset ENDS a zoom. Left set, the "Zoomed to…" banner would keep
@@ -70,6 +71,10 @@ function _tQuery(){
   }
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
     q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+  // AND THE ACCOUNT (audit S8): this sent the marketplace alone, so the
+  // server answered for whichever account it had open.
+  if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+    q.push("account=" + encodeURIComponent(CUR_ACCOUNT.id));
   return q.join("&");
 }
 
@@ -113,16 +118,19 @@ async function trafficLoad(){
   if(host && host.innerHTML.trim()) host.style.opacity = ".45";
   else if(host) host.innerHTML = '<div class="cc" style="padding:18px">'
     + '<span class="genspin"></span> Loading traffic…</div>';
+  const sc = (typeof screenScope === "function") ? screenScope() : null;         // the account this reply is for (audit S5)
   try{
     const j = await (await fetch("/traffic/summary?" + _tQuery())).json();
+    if(sc && !screenStillIn(sc)) return;
     TRAF.data = j;
     trafficRender();
   }catch(e){
-    if(host) host.innerHTML = '<div class="empty">Could not load traffic: '
-      + _tEsc(String(e)) + '</div>';
+    if(sc && !screenStillIn(sc)) return;
+    if(host) host.innerHTML = uiError("Traffic could not be loaded", String(e), "trafficLoad", "traffic");
   }finally{
-    TRAF.busy = false;
-    if(host) host.style.opacity = "";
+    // Only THIS request's own state: after a switch the new account's request
+    // owns the busy flag and the panel (Milestone 3 review, known-issues #5).
+    if(!sc || screenStillIn(sc)){ TRAF.busy = false; if(host) host.style.opacity = ""; }
   }
 }
 
@@ -139,8 +147,9 @@ function trafficRender(){
   if(!host) return;
   const d = TRAF.data;
   if(!d || !d.ok){
-    host.innerHTML = '<div class="empty">' + _tEsc((d && d.error) || "No traffic data")
-      + '</div>';
+    host.innerHTML = (d && d.error)
+      ? uiError("Traffic could not be loaded", d.error, "trafficLoad", "traffic")
+      : '<div class="empty">No traffic data</div>';
     return;
   }
   const cur = d.currency || "";
@@ -315,6 +324,10 @@ function trafficRender(){
 /* The five trend colours, and the two channel ones. Orbit's own, measured:
    gold, blue, red, green, purple for the ASIN lines; blue and orange for
    browser and mobile. */
+// The channel donut's two colours. The ring AND its legend read these, so the
+// dots can no longer show colours the ring is not drawn in (they used the
+// --accent-bg / --warn-bg tints before).
+const TRAF_RING = {browser: "#3b82f6", mobile: "#f97316"};
 const TRAF_COLOURS = ["#fbbf24", "#3b82f6", "#ef4444", "#22c55e", "#8b5cf6"];
 
 /* A donut, drawn rather than pulled in: two numbers do not justify a charting
@@ -329,17 +342,17 @@ function _tDonut(ch){
     + '<svg viewBox="0 0 140 140" width="140" height="140">'
     // Mobile fills the ring; browser is drawn over it for its share, so the two
     // always add to the whole and can never leave a gap from rounding.
-    + '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#f97316" stroke-width="18"/>'
-    + '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#3b82f6" stroke-width="18"'
+    + '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="' + TRAF_RING.mobile + '" stroke-width="18"/>'
+    + '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="' + TRAF_RING.browser + '" stroke-width="18"'
     + ' stroke-dasharray="' + bLen.toFixed(1) + ' ' + (C - bLen).toFixed(1) + '"'
     + ' transform="rotate(-90 70 70)"/>'
     + '</svg>'
     + '<div class="ri-legend" style="margin-top:8px">'
-    + '<div class="ri-leg"><span class="ri-dot" style="background:var(--accent-bg)"></span>'
+    + '<div class="ri-leg"><span class="ri-dot" style="background-color:' + TRAF_RING.browser + '"></span>'
     + '<span class="ri-leg-label">Browser</span>'
     + '<span class="ri-leg-pct">' + (ch.browser_pct == null ? "—" : ch.browser_pct + "%")
     + '</span></div>'
-    + '<div class="ri-leg"><span class="ri-dot" style="background:var(--warn-bg)"></span>'
+    + '<div class="ri-leg"><span class="ri-dot" style="background-color:' + TRAF_RING.mobile + '"></span>'
     + '<span class="ri-leg-label">Mobile</span>'
     + '<span class="ri-leg-pct">' + (ch.mobile_pct == null ? "—" : ch.mobile_pct + "%")
     + '</span></div></div></div>';
@@ -391,7 +404,9 @@ function _tTable(d, cur){
     h += '<th style="cursor:pointer;white-space:nowrap;text-align:'
       + (c[2] === "text" ? "left" : "right") + '" onclick="trafficSort('
       + jsArg(c[0]) + ')">' + _tEsc(c[1])
-      + (key === c[0] ? (asc ? " â–´" : " â–¾") : "") + '</th>';
+      // Escapes, not the characters: the file was once saved in the wrong
+      // encoding and these two arrows came out as "â–´" / "â–¾" on screen.
+      + (key === c[0] ? (asc ? " \u25b4" : " \u25be") : "") + '</th>';
   });
   h += '</tr></thead><tbody>';
   rows.forEach(function(r){

@@ -50,6 +50,9 @@ def nojs_comments(s):
 PDP = nojs_comments(read("static", "js", "pdp.js"))
 AF = nojs_comments(read("static", "js", "autofix.js"))
 GEN = read("amazon_listing_generator.py")
+# Plan B3 (29 Sep 2026): the builder's brand lines moved verbatim to
+# listing/attributes_phases.py, which build_api_attributes calls.
+GEN += read("listing", "attributes_phases.py")
 
 print("== 1. THE EDIT REACHES THE DATABASE ==")
 # MEASURED IN CHROME on draft 7.96_3Days_B0841BD4JY (nestwell_goods): each of
@@ -62,7 +65,7 @@ print("== 1. THE EDIT REACHES THE DATABASE ==")
 #
 # So "the edit didn't save to the database" is not what happened.
 yes("there is one save path and it posts to /edit",
-    "async function editField(sku, target, key, value)" in AF
+    "async function editField(sku, target, key, value" in AF   # (+ optional pinned account)
     and AF.count('fetch("/edit"') == 1)
 yes("  a column typed empty is saved as empty, an attribute is deleted",
     'if(target === "attr")' in AF and "delete r.attributes[key]" in AF)
@@ -100,8 +103,10 @@ print("\n== 2b. AND THE LIST UNDERNEATH, which is the same bug one screen out ==
 # It was. Measured: edit the title on the product page, close it, and the row in
 # the table still read the OLD title -- nothing after a save re-drew the grid.
 # The row object was already correct, so this is a redraw, not a re-read.
+# Re-pinned 27 Sep 2026: pdpClose gained an optional `opts` ({keepUrl}) for
+# account/marketplace switches; the redraw-on-close is unchanged.
 yes("closing the page redraws the grid when something was edited",
-    re.search(r"function pdpClose\(\)\{(?:(?!\n\}).)*const _edited = PDP_DIRTY",
+    re.search(r"function pdpClose\((?:opts)?\)\{(?:(?!\n\}).)*const _edited = PDP_DIRTY",
               PDP, re.S) is not None)
 yes("  and only then", "if(_edited && typeof render === \"function\")" in PDP)
 # ON CLOSE, NOT ON EVERY SAVE: a blur-save fires as you tab between fields and
@@ -165,7 +170,8 @@ print("\n== 3b. AND WHEN IT SENDS SOMETHING ELSE, IT SAYS SO ==")
 R = read("routes", "listing_routes.py")
 yes("the server works out what will be sent", "def _attach_brand_send(" in R)
 yes("  by asking the ONE resolver, not by repeating its rule",
-    "from amazon_listing_generator import resolve_account_brand" in R
+    ("from amazon_listing_generator import resolve_account_brand" in R
+        or "from listing.flat_row import resolve_account_brand" in R)
     and "resolve_account_brand(out[\"typed\"], probe)" in R)
 yes("  and attaches it to the rows the editor reads",
     "_attach_brand_send(c, _brands, _cfg())" in R)

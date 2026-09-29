@@ -59,7 +59,9 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
         except Exception:
             backend = "sheets"
         out = []
-        for a in _accounts():
+        # Only the accounts the caller may open (master audit, 28 Sep 2026).
+        from auth import users as _users
+        for a in _users.visible_accounts(CONFIG_PATH, _accounts()):
             aid = str(a.get("id") or "").strip()
             if not aid:
                 continue

@@ -28,6 +28,7 @@ from flask import request, jsonify
 import domain.request_account as _req_acct
 from domain import marketplace_health as _mh
 from domain import orders_view as _ov
+from domain import orders_live as _ol   # the one Orders-marketplace rule
 
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
@@ -313,11 +314,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             # like success, and the screen showed a column of dashes with a note
             # saying the profit had been worked out. Silence about a total
             # failure is the one thing this file is otherwise careful about.
-            unread = 0
+            unread, mkt_problems = 0, set()
             for r in rows:
                 if done >= cap:
                     break
-                items = _items_for(r["order_id"], r["account_id"], r.get("purchased") or "")
+                try:
+                    items = _items_for(r["order_id"], r["account_id"], r.get("purchased") or "")
+                except _ol.NoMarketplace as _nm:
+                    mkt_problems.add(str(_nm))
+                    continue
                 if items is None:
                     unread += 1
                     continue
@@ -340,7 +345,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                    r.get("purchase_date") or r.get("date") or "",
                                    r.get("order_id") or "")
                 d = _ov.profit_detail(items, r.get("total"), _cf,
-                                      fees=_ff(r["order_id"], r.get("total")))
+                                      fees=_ff(r["order_id"], r.get("total")),
+                                      vat_rate=_vat_of(r["account_id"]))
                 r["profit"] = d["profit"]
                 r["margin_pct"] = d["margin_pct"]
                 r["roi_pct"] = d["roi_pct"]
@@ -364,6 +370,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 profit_note += (" %d order%s could not be read from Amazon — "
                                 "usually rate limiting; try again shortly."
                                 % (unread, "" if unread == 1 else "s"))
+            for _p in sorted(mkt_problems):
+                profit_note += " " + _p
 
         # WHERE THE PARCEL IS, on every row and not only the profited ones.
         #
@@ -377,6 +385,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         except Exception:
             # A tracking table that cannot be read must not empty the orders
             # screen: the rows are exactly what they were before this existed.
+            pass
+        # WHETHER SOMEONE RECORDED BUYING IT -- what the "To buy" tab reads.
+        # Same free, per-account read as tracking; purchases stays None on a
+        # row whose record could not be read, and the board then claims nothing.
+        try:
+            from domain import order_purchases as _opur
+            _opur.attach(CONFIG_PATH, rows)
+        except Exception:
             pass
 
         return jsonify({"ok": True, "rows": rows, "days": days,
@@ -479,6 +495,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             # are the ones it finds.
             default_order_id=str(order_id or ""))
 
+    def _vat_of(account_id):
+        """The account's own VAT rate (None when nobody has said) -- the same
+        reader the per-listing profit uses (domain/unit_profit.account_vat_rate),
+        so an order and a listing cannot disagree about whether VAT comes out.
+        Read each time, not remembered: a rate changed on the account form must
+        apply to the next order drawn, not the next restart."""
+        from domain import unit_profit as _up
+        return _up.account_vat_rate(CONFIG_PATH, str(account_id or ""))
+
     def _fees_fn(account_id, marketplace):
         """(order_id, gross) -> what Amazon took. Real figure where it exists.
 
@@ -513,12 +538,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         reason. This just uses it.
         """
         try:
-            from data import db as _db
-            rows = _db.get_db(CONFIG_PATH).execute(
-                "SELECT asin, sku, title, units FROM order_lines "
-                "WHERE workspace_id=? AND marketplace=? AND order_id=?",
-                (str(account_id or ""), str(marketplace or ""),
-                 str(order_id or ""))).fetchall()
+            from domain import hourly_week as _hw   # owns order_lines (batch A6)
+            rows = _hw.stored_items(CONFIG_PATH, account_id, marketplace, order_id)
         except Exception:
             return None
         if not rows:
@@ -563,14 +584,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         cached = _items_from_store(account_id, mkt, order_id)
         if cached:
             return cached
+        # The account's own marketplace or nothing -- the rule the Sales screen's
+        # reader uses too (domain/orders_live.orders_marketplace). It used to
+        # fall back to the UK here and to the US there. RAISED, not swallowed:
+        # the callers say it in its own words instead of "rate limiting".
+        enum = _ol.orders_marketplace(mkt, acc.get("label") or account_id)
         try:
-            from sp_api.api import Orders
-            from sp_api.base import Marketplaces
-            enum = getattr(Marketplaces, mkt.upper(), Marketplaces.UK)
-            oc = Orders(credentials=_acc_mod.account_creds(acc), marketplace=enum)
-            r = oc.get_order_items(order_id)
-            pay = r.payload if hasattr(r, "payload") else r
-            got = [_ov.to_item(x) for x in ((pay or {}).get("OrderItems") or [])]
+            # The one read (api/amazon_orders), every page.
+            from api import amazon_orders as _ao
+            got = [_ov.to_item(x) for x in
+                   _ao.order_items_raw(_acc_mod.account_creds(acc), enum, order_id)]
         except Exception:
             return None
         # Kept, so the next visit to this screen does not pay for it again.
@@ -608,7 +631,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         cost_of = _cost_fn()
         pics = _pictures()
         _fee_fns = {}
-        out, unread = {}, 0
+        out, unread, mkt_problems = {}, 0, set()
         # EVERY order in the batch must belong to the account on screen. One
         # foreign id in a list of sixty is enough to leak that account's
         # products and profit, and the batch shape is what made it easy to
@@ -622,7 +645,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             aid = str(w.get("account_id") or "").strip()
             if not oid:
                 continue
-            items = _items_for(oid, aid, str(w.get("purchased") or ""))
+            try:
+                items = _items_for(oid, aid, str(w.get("purchased") or ""))
+            except _ol.NoMarketplace as _nm:
+                mkt_problems.add(str(_nm))
+                continue
             if items is None:
                 unread += 1
                 continue
@@ -639,7 +666,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                or w.get("date") or "",
                                oid)
             d = _ov.profit_detail(items, w.get("total"), _cf,
-                                  fees=_ff(oid, w.get("total")))
+                                  fees=_ff(oid, w.get("total")),
+                                  vat_rate=_vat_of(aid))
             it = _ov.item_summary(items)
             it["img"] = _cat_look(pics, it).get("img") or ""
             out[oid] = {"item": it, "lines": len(items),
@@ -652,6 +680,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             note = ("%d of %d could not be read from Amazon — usually rate "
                     "limiting; press Refresh to try those again."
                     % (unread, len(want)))
+        # A MISSING MARKETPLACE IS NOT RATE LIMITING: said in its own words
+        # (owner decision, 29 Sep 2026 -- "fail clearly").
+        for _p in sorted(mkt_problems):
+            note = (note + " " + _p).strip()
         return jsonify({"ok": True, "items": out, "asked": len(want),
                         "read": len(out), "unread": unread, "note": note})
 
@@ -681,14 +713,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": False, "error": (
                 "That order's account is not configured here.")}), 404
         mkt = _marketplace(acc)
+        # The account's own marketplace or a clear refusal -- never a guessed
+        # country (owner decision, 29 Sep 2026; domain/orders_live).
         try:
-            from sp_api.api import Orders
-            from sp_api.base import Marketplaces
-            enum = getattr(Marketplaces, mkt.upper(), Marketplaces.UK)
-            oc = Orders(credentials=_acc_mod.account_creds(acc), marketplace=enum)
-            r = oc.get_order_items(oid)
-            pay = r.payload if hasattr(r, "payload") else r
-            items = [_ov.to_item(x) for x in ((pay or {}).get("OrderItems") or [])]
+            enum = _ol.orders_marketplace(mkt, acc.get("label") or aid)
+        except _ol.NoMarketplace as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        try:
+            # The one read (api/amazon_orders), every page, on this route's client.
+            from api import amazon_orders as _ao
+            oc = _ao.client(_acc_mod.account_creds(acc), enum)
+            items = [_ov.to_item(x) for x in
+                     _ao.order_items_raw(None, enum, oid, oc=oc)]
             r2 = oc.get_order(oid)
             head = r2.payload if hasattr(r2, "payload") else r2
         except Exception as e:
@@ -715,7 +751,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         _cf = _cost_fn_for(aid, mkt,
                            row.get("purchase_date") or row.get("date") or "",
                            row.get("order_id") or oid)
-        bd = _ov.line_breakdown(items, row.get("total"), _cf, fees=fees)
+        bd = _ov.line_breakdown(items, row.get("total"), _cf, fees=fees,
+                                vat_rate=_vat_of(aid))
         row["profit"] = bd["totals"]["profit"]
         row["margin_pct"] = bd["totals"]["margin_pct"]
         row["profit_note"] = bd["totals"]["note"]
@@ -725,6 +762,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         try:
             from domain import tracking as _trk
             _trk.attach(CONFIG_PATH, [row])
+        except Exception:
+            pass
+        try:
+            from domain import order_purchases as _opur
+            _opur.attach(CONFIG_PATH, [row])
         except Exception:
             pass
         return jsonify({"ok": True, "order_id": oid, "order": row,

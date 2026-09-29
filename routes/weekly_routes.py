@@ -36,8 +36,17 @@ from domain import report_reader as _rr
 from domain import weekly_kpi as _wk
 
 
-def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
-    """Attach /weekly/* to the app."""
+def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
+             _client=None):
+    """Attach /weekly/* to the app.
+
+    _client is the app's Google Sheets client (dashboard._client), handed in
+    like every other dependency (architecture batch A2). It used to be fetched
+    with `import dashboard` inside the request -- which, when the app is run as
+    `python dashboard.py`, loads a SECOND copy of the app module with its own
+    state. The import stays only as the fallback for a caller that registers
+    these routes without handing it in.
+    """
 
     def _scope():
         aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id")
@@ -59,15 +68,11 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         return aid, mkt
 
     def _brand_terms(wsid):
-        """The seller's own words, from the list the PPC screen already uses."""
-        try:
-            from data import db as _db
-            rows = _db.get_db(CONFIG_PATH).execute(
-                "SELECT term FROM ppc_brand_terms WHERE workspace_id=?",
-                (wsid,)).fetchall()
-            return [r["term"] for r in rows]
-        except Exception:
-            return []
+        """The seller's own words -- read by the SAME function the PPC screen
+        uses (domain/ppc_view.brand_terms; this was a second copy of its SQL,
+        Rule 12). Terms are stored lower-cased, so the words are the same."""
+        from domain import ppc_view as _pv
+        return _pv.brand_terms(CONFIG_PATH, wsid)
 
     # The half-built pack, per account+marketplace, while both reports are being
     # uploaded. In memory on purpose: it is the two minutes between dropping the
@@ -347,10 +352,13 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
             return jsonify(plan)
 
         try:
-            import dashboard as _dash
             from domain import weekly_grid as _wg
             from listing import repo as _repo
-            gc = _dash._client()
+            if _client is not None:
+                gc = _client()
+            else:
+                import dashboard as _dash
+                gc = _dash._client()
             book = gc.open_by_key(sid)
             # ensure_tab returns (worksheet, created) -- unpacked, because
             # calling .clear() on the tuple is a TypeError at the one moment

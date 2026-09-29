@@ -171,14 +171,32 @@ function rqEnqueue(sku, mode, minimal){
   else if(typeof rqTogglePanel === "function" && !RQ._panelOpen){
     try{ rqTogglePanel(); }catch(e){}
   }
+  // What it was before: a refusal puts it BACK, rather than switching off the
+  // protection another SKU's watched run may be relying on (UI review).
+  const _wasStreaming = !!window.RUN_STREAMING;
   window.RUN_STREAMING=true;
   fetch("/preview/enqueue",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({sku:sku, mode:mode, minimal:!!minimal})})
+    // Names the account (known-issues #4).
+    body:JSON.stringify(acctBody({sku:sku, mode:mode, minimal:!!minimal}))})
     .then(r=>r.json()).then(r=>{
-      if(!r||!r.ok){ if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc((r&&r.error)||"unknown")+'</span>'; return; }
+      // SAID SOMEWHERE THAT EXISTS. The verdict panel lives in the old drawer;
+      // from the product page there is none, so a refusal -- no publish
+      // permission, the account changed, nothing to submit -- vanished without
+      // a word (master audit, UX #6). Now it is a toast when there is no panel.
+      if(!r||!r.ok){
+        const why = (r&&r.error)||"unknown";
+        if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc(why)+'</span>';
+        else if(typeof toast==="function") toast("Could not queue "+sku+": "+why);
+        window.RUN_STREAMING=_wasStreaming;
+        return;
+      }
       rqGlobalPollNow();
       rqWatch(sku, r.job);
-    }).catch(e=>{ if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc(String(e))+'</span>'; });
+    }).catch(e=>{
+      if(P) P.verdict.innerHTML='<span class="rbad">✗ Couldn’t queue: '+esc(String(e))+'</span>';
+      else if(typeof toast==="function") toast("Could not queue "+sku+": "+e);
+      window.RUN_STREAMING=_wasStreaming;
+    });
 }
 
 // Watch a sku's job in the OPEN drawer: render its current log, poll until terminal.
@@ -325,7 +343,11 @@ function rqAttach(sku){ rqWatch(sku, null); }
 // ---- global "Runs" badge + panel -------------------------------------------
 function rqBadgeEl(){
   let el=document.getElementById("rqbadge");
-  if(!el){ el=document.createElement("div"); el.id="rqbadge"; el.className="rqbadge"; el.title="Preview/Submit runs"; el.onclick=rqTogglePanel; document.body.appendChild(el); }
+  if(!el){ el=document.createElement("div"); el.id="rqbadge"; el.className="rqbadge"; el.title="Preview/Submit runs"; el.onclick=rqTogglePanel;
+    // Reachable from the keyboard: it is the one way back to a finished run's log.
+    el.setAttribute("role","button"); el.tabIndex=0;
+    el.onkeydown=function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); rqTogglePanel(); } };
+    document.body.appendChild(el); }
   return el;
 }
 /* THE BADGE OUTLIVES THE RUN, for a couple of minutes.
@@ -430,11 +452,11 @@ function rqRenderPanel(){
     + (jobs.length? jobs.map(j=>{
         const st=j.status, cls=(st==="running")?"run":(st==="queued")?"q":(st==="done")?"ok":(st==="cancelled")?"c":"err";
         const active=(st==="queued"||st==="running");
-        return '<div class="rqrow" onclick="rqOpenJob(\''+esc(String(j.sku))+'\')">'
+        return '<div class="rqrow" onclick="rqOpenJob(' + jsArg(String(j.sku)) + ')">'
           +'<span class="rqst '+cls+'">'+esc(st)+'</span>'
           +'<span class="rqsku">'+esc(String(j.label||j.sku))+'</span>'
           +'<span class="rqmode">'+esc(j.mode==="api_submit"?"submit":"preview")+'</span>'
-          +(active?'<button class="rqstop" title="Cancel" onclick="event.stopPropagation();rqStopJob(\''+esc(String(j.id))+'\')">✕</button>':'')
+          +(active?'<button class="rqstop" title="Cancel" onclick="event.stopPropagation();rqStopJob(' + jsArg(String(j.id)) + ')">✕</button>':'')
           +'</div>';
       }).join("") : '<div class="rqempty">No recent runs.</div>');
 }

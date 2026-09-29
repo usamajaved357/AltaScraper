@@ -1,4 +1,4 @@
-﻿// ===================== ORDERS, ACROSS EVERY ACCOUNT =====================
+// ===================== ORDERS, ACROSS EVERY ACCOUNT =====================
 // One list, newest first, with the account each order belongs to — so seeing
 // what sold does not mean opening each Amazon account in turn. Click an order
 // number to open its lines.
@@ -79,27 +79,27 @@ function _oWhen(iso){
  *   d     what to do about it, when there is something to do
  */
 const _ORD_STATUS = {
-  Shipped: {c:"#8fd694", t:"Shipped", tone:"ok",
+  Shipped: {c:"var(--ok)", t:"Shipped", tone:"ok",
     m:"You have dispatched it and told Amazon. Nothing further is needed."},
-  Unshipped: {c:"#e8c66a", t:"Not shipped yet", tone:"warn",
+  Unshipped: {c:"var(--warn)", t:"Not shipped yet", tone:"warn",
     m:"The buyer has paid and it is waiting for you to send it.",
     d:"Post it before the ship-by date below, or Amazon counts it late."},
-  PartiallyShipped: {c:"#e8c66a", t:"Partly shipped", tone:"warn",
+  PartiallyShipped: {c:"var(--warn)", t:"Partly shipped", tone:"warn",
     m:"Some of the items have gone and some have not.",
     d:"Send the rest before the ship-by date below."},
-  Pending: {c:"#8b949e", t:"Payment not cleared", tone:"",
+  Pending: {c:"var(--ink3)", t:"Payment not cleared", tone:"",
     m:"Amazon is still taking the buyer's payment. The address and the items "
      + "are not final yet, and the order can still disappear.",
     d:"Do not buy stock for it or post it until it turns to Unshipped."},
-  Canceled: {c:"#e88a8a", t:"Cancelled", tone:"bad",
+  Canceled: {c:"var(--red)", t:"Cancelled", tone:"bad",
     m:"The order is off. No money will arrive for it.",
     d:"If you have already posted it, claim it back through Amazon."},
-  Cancelled: {c:"#e88a8a", t:"Cancelled", tone:"bad",
+  Cancelled: {c:"var(--red)", t:"Cancelled", tone:"bad",
     m:"The order is off. No money will arrive for it.",
     d:"If you have already posted it, claim it back through Amazon."},
-  InvoiceUnconfirmed: {c:"#8b949e", t:"Awaiting invoice", tone:"",
+  InvoiceUnconfirmed: {c:"var(--ink3)", t:"Awaiting invoice", tone:"",
     m:"Shipped, but Amazon is waiting for the invoice for a business buyer."},
-  Unfulfillable: {c:"#e88a8a", t:"Cannot be fulfilled", tone:"bad",
+  Unfulfillable: {c:"var(--red)", t:"Cannot be fulfilled", tone:"bad",
     m:"Amazon cannot fulfil it from your stock — usually there is none in the "
      + "warehouse, or the item is not sellable."},
 };
@@ -115,24 +115,24 @@ const _ORD_STATUS = {
  * The server owns the words (domain/tracking.STATUS_LABEL); this owns only how
  * they look, so the two can never drift into naming a status differently. */
 const _ORD_PARCEL = {
-  pre_transit:        {c:"#8b949e", i:"ti-tag",
+  pre_transit:        {c:"var(--ink3)", i:"ti-tag",
     m:"A label exists. The carrier has not had the parcel yet."},
-  collected:          {c:"#7fb4e0", i:"ti-package",
+  collected:          {c:"var(--as-info)", i:"ti-package",
     m:"The carrier has it."},
-  in_transit:         {c:"#7fb4e0", i:"ti-truck",
+  in_transit:         {c:"var(--as-info)", i:"ti-truck",
     m:"On its way."},
-  out_for_delivery:   {c:"#e8c66a", i:"ti-truck-delivery",
+  out_for_delivery:   {c:"var(--warn)", i:"ti-truck-delivery",
     m:"Out with the driver today."},
-  awaiting_collection:{c:"#e8c66a", i:"ti-building-store",
+  awaiting_collection:{c:"var(--warn)", i:"ti-building-store",
     m:"At a pickup point, waiting for the buyer to collect it."},
-  delivered:          {c:"#8fd694", i:"ti-circle-check",
+  delivered:          {c:"var(--ok)", i:"ti-circle-check",
     m:"The carrier says it has been delivered."},
-  exception:          {c:"#e88a8a", i:"ti-alert-triangle",
+  exception:          {c:"var(--red)", i:"ti-alert-triangle",
     m:"Something went wrong — a failed delivery, a hold, or a return."},
-  not_found:          {c:"#e88a8a", i:"ti-help-circle",
+  not_found:          {c:"var(--red)", i:"ti-help-circle",
     m:"The carrier was asked and has no record of this number. It is usually "
      + "mistyped, or belongs to a different order."},
-  unknown:            {c:"#8b949e", i:"ti-clock",
+  unknown:            {c:"var(--ink3)", i:"ti-clock",
     m:"Nobody has asked the carrier about this one yet."},
 };
 
@@ -265,6 +265,7 @@ function ordersOnOpen(){
     ORD.rows = [];
     ORD.details = {};        // per-order panels belong to those rows too
     ORD.open = "";
+    ORD.sel = new Set();     // ticked orders belong to those rows too
     ORD.rowsFor = _ws;
   }
   if(!ORD.rows.length) ordersLoad(); else ordersRender();
@@ -285,6 +286,7 @@ async function ordersLoad(){
   // one the person is actually looking at.
   const mine = ORD.loadId = (ORD.loadId || 0) + 1;
   ORD.busy = true;
+  ORD.err = "";
   body.innerHTML = '<div class="cc" style="padding:18px"><span class="genspin"></span> '
     + 'Asking every account for its orders…</div>';
   // Built once, OUTSIDE the try, because the second pass below is handed this
@@ -319,22 +321,34 @@ async function ordersLoad(){
       ? String(ACTIVE_WS.key) : "";
     if(askedFor && nowWs && askedFor !== nowWs) return;
     if(j && j.account_mismatch){
+      ORD.err = j.error || "That is not the account that is open.";
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _oEsc(j.error || "That is not the account that is open.") + '</div>';
       return;
     }
     if(!j || !j.ok){
+      // Remembered, so Home can say the orders could not be read rather than
+      // count an empty list as zero orders.
+      ORD.err = (j&&j.error)||"Could not load orders";
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _oEsc((j&&j.error)||"Could not load orders") + '</div>';
       return;
     }
     ORD.rows = j.rows || []; ORD.summary = j.summary || {}; ORD.meta = j;
+    // Ticks only for orders still in the list (days or search changed).
+    if(ORD.sel){
+      const _ids = new Set(ORD.rows.map(function(r){ return String(r.order_id); }));
+      ORD.sel = new Set([...ORD.sel].filter(function(id){ return _ids.has(id); }));
+    }
     // Stamped with WHOSE rows these are, so ordersOnOpen can tell a redraw of
     // the right list from a redraw of the last one.
     ORD.rowsFor = nowWs || askedFor;
+    ORD.loadedFor = ORD.rowsFor;   // read successfully, for this account (Home)
+    ORD.err = "";
     ordersRender();
   }catch(e){
     if(mine === ORD.loadId){
+      ORD.err = String(e);
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _oEsc(String(e)) + '</div>';
     }
@@ -693,90 +707,114 @@ function ordersRender(){
     Total: "buyer paid", Profit: "after fees and cost",
     Margin: "of the price", ROI: "on the cost",
   };
-  const cols = ['Item', 'Order'].concat(_multi ? ['Account'] : [])
-               .concat(['Placed', 'Status', 'Parcel', 'Total', 'Profit',
-                        'Margin', 'ROI']);
-  // The Item column gets the room. The money columns need four characters each
-  // and were taking a ninth of the screen apiece, which is why the product name
-  // -- the thing the column exists for -- was cut to nothing.
-  const _narrow = {'Total':1, 'Profit':1, 'Margin':1, 'ROI':1, 'Status':1};
-  // IN A PANEL, LIKE EVERY OTHER SCREEN. This table sat bare on the page
-  // background, at 6px row padding, with two lines of text in most cells and no
-  // line between rows -- so one order's small print ran straight into the next
-  // order's title. "i see text written into one another, no proper spacing and
-  // good visuals like other pages".
+  // THE PLAN'S LAYOUT (design package Direction A, "Orders"; owner, 29 Sep 2026:
+  // "Layout first"). Tabs by what each order needs, the next ship-by as a
+  // countdown, a channel filter, ticking rows, and the plan's columns. Read
+  // only: every "Next step" opens the order -- see static/js/orders_board.js.
   //
-  // .panelcard and .ordtable are the shared vocabulary; the numbers live in
-  // dashboard.css beside every other table's, not in this string.
+  // NOTHING THE OWNER ASKED TO SEE ON THE ROW IS LOST ("i want to see the item
+  // picture and name of the item and profit and roi and margin of each order
+  // without opening the order details"): picture and name in Item, margin and
+  // ROI under Profit, and the total the buyer paid under the order number.
+  _COLSUB.Order = "ID, placed, paid";
+  _COLSUB.Item = "product, ASIN";
+  _COLSUB.Channel = "who ships it";
+  _COLSUB.State = "Amazon's word";
+  _COLSUB["Due / next"] = "ship-by, or the parcel";
+  _COLSUB.Cost = "stock";
+  _COLSUB.Profit = "margin · ROI";
+  _COLSUB["Next step"] = "opens the order";
+  const cols = ['sel', 'Order', 'Item'].concat(_multi ? ['Account'] : [])
+               .concat(['Channel', 'State', 'Due / next', 'Cost', 'Profit', 'Next step']);
+  const _shown = _ordVisible(ORD.rows);
+  h += '<div class="ord-board">' + _ordCountdownHtml(ORD.rows) + _ordTabsHtml(ORD.rows)
+    +  _ordFiltersHtml(_shown.length, ORD.rows.length) + _ordBulkBar() + '</div>';
+  const _allTicked = _shown.length > 0 && _shown.every(function(r){ return _ordSel().has(String(r.order_id)); });
+  // THE ORDER BESIDE THE TABLE, on a laptop or wider (owner decision, 28 Sep
+  // 2026: "keep the Orders table as the main view; selecting an order may open
+  // the side detail panel; the panel must not replace the table workflow").
+  // A second column, not an overlay: every row stays visible and clickable, and
+  // clicking another row swaps the panel. Narrower than 1100px there is no room
+  // for two columns, so the order opens under its row as it always has.
+  const _side = _ordSideMode();
+  const _openRow = _side && ORD.open
+    ? ORD.rows.filter(function(r){ return r.order_id === ORD.open; })[0] : null;
+  if(_openRow) h += '<div class="ord-split"><div class="ord-main">';
   h += '<div class="panelcard" style="padding:0;overflow:hidden">'
-    +  '<div style="overflow-x:auto"><table class="kv ordtable" '
+    +  '<div style="overflow-x:auto"><table class="kv ordtable ord-board-table" '
     +  'style="width:100%;min-width:760px">'
     +  '<thead><tr>'
     +  cols.map(function(t){
-         return '<th'
-              + (t === 'Item' ? ' style="width:34%"' : (_narrow[t] ? ' style="width:9%"' : ''))
-              + '>' + t
+         if(t === 'sel'){
+           return '<th class="ord-selcell"><input type="checkbox" data-fk="selall" aria-label="Select every order shown"'
+                + (_allTicked ? ' checked' : '') + ' onchange="ordersSelAllShown(this.checked)"></th>';
+         }
+         return '<th' + (t === 'Item' ? ' style="width:26%"' : '') + '>' + t
               + (_COLSUB[t] ? '<span class="th-sub">' + _oEsc(_COLSUB[t]) + '</span>' : '')
               + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
 
-  ORD.rows.forEach(function(r){
-    const st = _ORD_STATUS[r.status] || {c:"var(--ink2)"};
+  // "To buy" with the purchase records unreadable is UNKNOWN, not empty: saying
+  // "Nothing in this tab" would read as "nothing left to buy" (change review).
+  const _buyUnknown = (typeof _ordTab === "function" && _ordTab() === "tobuy"
+                       && typeof _ordBuyKnown === "function" && !_ordBuyKnown(ORD.rows));
+  if(!_shown.length && _buyUnknown){
+    h += '<tr><td colspan="' + cols.length + '" class="cc" style="padding:16px">'
+      +  'Could not read which orders were marked as bought, so this tab cannot '
+      +  'say what is still to buy. Reload the page to try again.'
+      +  '</td></tr>';
+  }else if(!_shown.length){
+    h += '<tr><td colspan="' + cols.length + '" class="cc" style="padding:16px">'
+      +  'Nothing in this tab' + (ORD.channel ? ' for this channel' : '') + '. '
+      +  (ORD.rows.length ? 'The other tabs hold the rest of the ' + ORD.rows.length + ' orders.' : '')
+      +  '</td></tr>';
+  }
+  _shown.forEach(function(r){
     const isOpen = (ORD.open === r.order_id);
-    h += '<tr class="ordrow' + (isOpen ? ' isopen' : '') + '" onclick="ordersToggle('
+    const ticked = _ordSel().has(String(r.order_id));
+    // Reachable from the keyboard: Tab to a row, Enter or Space opens it.
+    h += '<tr class="ordrow' + (isOpen ? ' isopen' : '') + (ticked ? ' rowon' : '') + '" tabindex="0"'
+      +  ' aria-expanded="' + (isOpen ? 'true' : 'false') + '"'
+      +  ' data-oid="' + _oEsc(r.order_id) + '"'
+      +  ' onkeydown="ordersRowKey(event,' + jsArg(r.order_id) + ',' + jsArg(r.account_id) + ')"'
+      +  ' onclick="ordersToggle('
       +  jsArg(r.order_id) + ',' + jsArg(r.account_id) + ')">'
-      // WHAT WAS SOLD, which is the first thing anyone wants from a list of
-      // orders and was not on it at all. The picture comes from the live
-      // catalogue this app already holds -- no extra call -- and falls back to
-      // an icon rather than a broken image.
-      +  '<td style="min-width:230px">' + _ordItemCell(r) + '</td>'
-      +  '<td style="white-space:nowrap">'
+      +  '<td class="ord-selcell" onclick="event.stopPropagation()"><input type="checkbox"'
+      +  ' data-fk="sel:' + _oEsc(r.order_id) + '"'
+      +  ' aria-label="Select order ' + _oEsc(r.order_id) + '"' + (ticked ? ' checked' : '')
+      +  ' onchange="ordersSelToggle(' + jsArg(r.order_id) + ', this.checked)"></td>'
+      +  '<td data-label="Order" style="white-space:nowrap">'
       +  '<code style="font-size:11px;color:var(--accent2)">' + _oEsc(r.order_id)
-      +  '</code>' + (isOpen ? ' <i class="ti ti-chevron-down"></i>'
-                             : ' <i class="ti ti-chevron-right" style="opacity:.4"></i>')
-      +  '<div class="cc" style="font-size:10px">' + (r.units||0) + ' unit'
-      +  ((r.units||0) === 1 ? '' : 's') + '</div>'
+      +  '</code>' + (isOpen ? ' <i class="ti ti-chevron-down ord-chev"></i>'
+                             : ' <i class="ti ti-chevron-right ord-chev" style="opacity:.4"></i>')
+      +  '<div class="cc" style="font-size:10.5px;white-space:normal">' + _ordWhenCell(r.purchased) + '</div>'
+      +  '<div class="cc" style="font-size:10.5px">' + _oEsc(_oMoney(r.total, r.currency))
+      +  ' · ' + (r.units||0) + ' unit' + ((r.units||0) === 1 ? '' : 's') + '</div>'
       +  '</td>'
-      +  (_multi ? ('<td style="font-size:11.5px">'
-                    + _oEsc(r.account) + '</td>') : '')
-      // NOT nowrap on the whole cell. It was, and the small print underneath --
-      // "MFN · SMETHWICK, West Midlands, B67 7LW, GB" -- could not wrap, so it
-      // ran straight out of its column and printed over the Status beside it.
-      // That is the "text written into one another" on this screen. The DATE
-      // keeps its nowrap, because a date broken across two lines is worse than
-      // a wide column; the address wraps.
-      +  '<td style="font-size:11.5px;max-width:210px">'
-      +  '<span style="white-space:nowrap">' + _oEsc(_oWhen(r.purchased)) + '</span>'
-      // The two columns that used to sit on the right, as small print here.
-      +  '<div class="cc" style="font-size:10px;white-space:normal;'
-      +  'overflow-wrap:anywhere">'
-      +  _oEsc(r.fulfilment || '') + (r.prime ? ' · Prime' : '')
-      +  (r.business ? ' · Business' : '')
-      +  (r.region ? ' · ' + _oEsc(r.region) : '') + '</div>'
+      +  '<td data-label="Item" style="min-width:200px">' + _ordItemCell(r) + '</td>'
+      +  (_multi ? ('<td data-label="Account" style="font-size:11.5px">' + _oEsc(r.account) + '</td>') : '')
+      +  '<td data-label="Channel">' + _ordChannelCell(r)
+      +  ((r.prime || r.business) ? '<div class="cc" style="font-size:10px">'
+          + (r.prime ? 'Prime' : '') + (r.prime && r.business ? ' · ' : '') + (r.business ? 'Business' : '') + '</div>' : '')
       +  '</td>'
-      // AMAZON'S WORD, WITH WHAT IT MEANS ON HOVER. "Pending" and "Unshipped"
-      // are the two that cost money to misread, and the raw word said nothing.
-      // Same table the panel uses, so the list and the panel cannot describe
+      // AMAZON'S WORD, WITH WHAT IT MEANS ON HOVER -- the same chip the order
+      // panel uses (_ordStateChip), so the list and the panel cannot describe
       // one status two ways (Rule 12).
-      +  '<td style="font-size:11.5px;color:' + st.c + '" title="'
-      +  _oEsc([st.m, st.d].filter(Boolean).join(" ")) + '">'
-      +  '<span style="white-space:nowrap">' + _oEsc(st.t || r.status) + '</span>'
-      // On its own line rather than trailing the status: "Unshipped (1 to ship)"
-      // is too wide for a 9% column and wrapped into the cell above it.
+      +  '<td data-label="State" style="font-size:11.5px">'
+      +  _ordStateChip(r.status, r.item && r.item.cancel_requested)
       +  (r.unshipped ? '<div class="cc" style="font-size:10px;white-space:nowrap">'
                         + r.unshipped + ' to ship</div>' : '')
       +  '</td>'
-      // WHERE THE PARCEL IS. Amazon's status beside it answers a different
-      // question -- "have I marked this shipped" is about us, "out for
-      // delivery" is about the parcel -- so they are two columns, not one.
-      +  '<td style="font-size:11.5px">' + _ordParcelCell(r) + '</td>'
-      +  '<td style="font-size:11.5px;white-space:nowrap">'
-      +  _oEsc(_oMoney(r.total, r.currency)) + '</td>'
+      +  '<td data-label="Due / next" style="font-size:11.5px">' + _ordDueCell(r) + '</td>'
+      +  '<td data-label="Cost" style="font-size:11.5px;white-space:nowrap">'
+      +  (r.cogs != null ? _oEsc(_oMoney(r.cogs, r.currency))
+                         : '<span class="cc" style="opacity:.5" title="No cost recorded for what sold">—</span>')
+      +  '</td>'
       // WHAT IT EARNED. Blank rather than zero when a cost is unknown -- a
       // partial cost only ever makes an order look better than it was, and the
       // order whose cost is missing is exactly the one someone would use to
       // justify buying more.
-      +  '<td style="font-size:11.5px;white-space:nowrap"'
+      +  '<td data-label="Profit" style="font-size:11.5px;white-space:nowrap"'
       +  (r.profit_note ? ' title="' + _oEsc(r.profit_note) + '"' : '') + '>'
       +  (r.profit === undefined
           ? '<span class="cc" style="opacity:.5">—</span>'
@@ -785,22 +823,16 @@ function ordersRender(){
               + '">not known</span>'
             : '<span style="color:' + (r.profit > 0 ? "var(--ok,#8fd694)" : "var(--red)")
               + '">' + _oEsc(_oMoney(r.profit, r.currency)) + '</span>')
+      // MARGIN AND ROI answer different questions -- margin says whether the
+      // PRICE is any good, ROI whether the stock was worth BUYING -- so each
+      // keeps its own threshold, and neither is invented when the cost is not.
+      +  '<div style="font-size:10.5px">'
+      +  _ordPct(r.margin_pct, 20, 8, 'Profit as a share of what the buyer paid, after VAT')
+      +  ' · ROI ' + _ordPct(r.roi_pct, 30, 12, 'Profit as a share of what the stock cost') + '</div>'
       +  '</td>'
-      // MARGIN AND ROI, in their own columns. They answer different questions --
-      // margin says whether the PRICE is any good, ROI says whether the stock
-      // was worth BUYING -- so they are coloured against different thresholds
-      // rather than one shared rule of thumb, and neither is invented when the
-      // cost behind it is unknown.
-      +  '<td style="font-size:11.5px;white-space:nowrap">'
-      +  _ordPct(r.margin_pct, 20, 8,
-                'Profit as a share of what the buyer paid') + '</td>'
-      +  '<td style="font-size:11.5px;white-space:nowrap"'
-      +  (r.cogs != null ? ' title="on ' + _oEsc(_oMoney(r.cogs, r.currency))
-                           + ' of stock"' : '') + '>'
-      +  _ordPct(r.roi_pct, 30, 12,
-                'Profit as a share of what the stock cost') + '</td>'
+      +  '<td data-label="Next step">' + _ordNextBtn(r) + '</td>'
       +  '</tr>';
-    if(isOpen){
+    if(isOpen && !_openRow){
       h += '<tr class="orddetail"><td colspan="' + cols.length + '">'
         +  '<div id="orddet_' + _oEsc(r.order_id) + '">'
         +  (ORD.details[r.order_id] ? _ordDetailHtml(r) :
@@ -810,13 +842,28 @@ function ordersRender(){
     }
   });
   h += '</tbody></table></div></div>';
+  if(_openRow){
+    h += '</div><aside class="ord-side" aria-label="Order ' + _oEsc(_openRow.order_id) + '">'
+      +  '<div class="ord-side-h"><code>' + _oEsc(_openRow.order_id) + '</code>'
+      +  '<button class="ord-side-x" data-oid="' + _oEsc(_openRow.order_id) + '" onclick="ordersToggle(' + jsArg(_openRow.order_id)
+      +  ',' + jsArg(_openRow.account_id) + ')" aria-label="Close this order" title="Close">'
+      +  '<i class="ti ti-x"></i></button></div>'
+      +  '<div id="orddet_' + _oEsc(_openRow.order_id) + '">'
+      +  (ORD.details[_openRow.order_id] ? _ordDetailHtml(_openRow) :
+          '<div class="cc" style="padding:10px"><span class="genspin"></span> '
+          + 'Reading the order…</div>')
+      +  '</div></aside></div>';
+  }
 
   // WHAT AMAZON WITHHOLDS, said once at the bottom rather than as an empty
   // column with no explanation.
   h += '<div class="cc" style="font-size:11.5px;margin-top:12px;padding:9px 11px;'
     +  'border:1px solid var(--line2);border-radius:6px;line-height:1.6">'
     +  '<i class="ti ti-info-circle"></i> ' + _oEsc(m.pii_note || "") + '</div>';
+  // The redraw replaces the focused row with a new element; see _ordRefocus.
+  const _hadRow = _ordFocusedOid();
   body.innerHTML = h;
+  if(_hadRow) _ordRefocus(_hadRow);
 }
 
 /* WHERE TO BUY THIS ONE FROM.
@@ -1014,7 +1061,7 @@ function _ordSourcesHtml(block, forTitle, view){
       +  (o.cheapest ? 'best' : (dead ? '—' : (unknown ? '?' : rank)))
       +  '</div>'
       +  '<div class="' + cls.trim() + '"><a class="odp-link" target="_blank" '
-      +  'rel="noopener" href="' + _oEsc(o.url) + '">'
+      +  'rel="noopener noreferrer" href="' + _oEsc(o.url) + '">'
       +  _oEsc(o.label || o.url) + '</a></div>'
       // LANDED COST -- the item plus its postage, which is what leaves the bank.
       // data-lbl carries the column heading down onto the cell. On a phone the
@@ -1224,6 +1271,16 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
       + 'than counting them as free. Set a cost for THIS order below, or set '
       + 'the product\'s cost on the Costs sheet to fix it everywhere.');
   }
+  // VAT, taken out of each line's profit at the account's own setting -- the
+  // columns above are what the buyer paid, so without this the row would not
+  // add up to the profit beside it.
+  if(Number(t.vat) > 0){
+    notes.push('VAT of ' + _oMoney(t.vat, currency)
+      + (t.vat_rate ? ' (this account’s ' + Math.round(Number(t.vat_rate) * 1000) / 10
+                      + '%)' : '')
+      + ' is inside what the buyer paid and has been taken out of the profit — '
+      + 'it is collected for HMRC, not earned.');
+  }
   if(t.order_total !== null && t.order_total !== undefined
      && Math.abs((t.revenue || 0) - t.order_total) > 0.02){
     notes.push('The buyer was charged ' + _oMoney(t.order_total, currency)
@@ -1411,9 +1468,95 @@ function ordParcelPanel(r){
       +  'press <b>Check parcels</b>, and only once a tracking service is set '
       +  'up in Settings. Until then it reads “Not checked” rather than showing '
       +  'a status nobody asked anyone about.</div>'
+      +  _ordShipBox(r)
       +  '</div>';
   }
   return h;
+}
+
+/* TELL AMAZON IT IS DISPATCHED -- previewed here, sent only when switched on.
+ *
+ * One Amazon call does both "mark dispatched" and "upload tracking" (its
+ * schema requires the tracking), so this uses the tracking number and carrier
+ * typed in the boxes just above. Preview reads the order's lines from Amazon
+ * and sends nothing; the server says whether sending is switched on, and only
+ * then is a Send button drawn (domain/ship_confirm.py). FBM orders still to
+ * post only. */
+function _ordShipBox(r){
+  if(!r || !r.order_id) return "";
+  if(String(r.fulfilment || "").toUpperCase() === "AFN") return "";
+  if(typeof _ordUnshipped === "function" && !_ordUnshipped(r)) return "";
+  return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 3px">'
+    + '<button class="ghost" onclick="ordShipPreview(' + jsArg(r.order_id) + ','
+    + jsArg(r.account_id || "") + ',' + jsArg(r.marketplace || "") + ',this)"'
+    + ' title="Shows what Amazon would be told. Sends nothing.">'
+    + '<i class="ti ti-eye"></i> Preview dispatch to Amazon</button>'
+    + '</div><div id="ordship_out" class="cc"></div>';
+}
+
+function _ordShipBody(orderId, accountId, marketplace){
+  const v = function(id){ return ((document.getElementById(id) || {}).value || "").trim(); };
+  return {account: accountId || "", marketplace: marketplace || "", order_id: orderId,
+          tracking_number: v("ordtrk_num"), carrier: v("ordtrk_car")};
+}
+
+async function ordShipPreview(orderId, accountId, marketplace, btn){
+  const out = document.getElementById("ordship_out");
+  if(btn){ if(btn.disabled) return; btn.disabled = true; }
+  if(out) out.textContent = "Asking Amazon for this order's lines…";
+  try{
+    const j = await (await fetch("/orders/ship/preview", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(_ordShipBody(orderId, accountId, marketplace))})).json();
+    if(!out) return;
+    if(!j || !j.ok){
+      ORD.shipPreview = null;
+      out.textContent = "Not ready to send: " + ((j && j.error) || "unknown");
+      return;
+    }
+    // WHAT WAS PREVIEWED IS WHAT IS SENT: kept here, and Send refuses if the
+    // boxes have changed since (review finding).
+    ORD.shipPreview = {order_id: orderId, body: _ordShipBody(orderId, accountId, marketplace),
+                       summary: j.summary || ""};
+    let h = _oEsc(j.summary || "");
+    if(j.switched_on){
+      h += ' <button class="ghost" onclick="ordShipConfirm(' + jsArg(orderId) + ','
+        + jsArg(accountId) + ',' + jsArg(marketplace) + ',this)">'
+        + '<i class="ti ti-truck-delivery"></i> Send to Amazon</button>';
+    }else{
+      h += '<br>' + _oEsc(j.why_off || "Sending is switched off.");
+    }
+    out.innerHTML = h;
+  }catch(e){
+    if(out) out.textContent = "Could not preview that: " + e;
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function ordShipConfirm(orderId, accountId, marketplace, btn){
+  if(btn){ if(btn.disabled) return; btn.disabled = true; }
+  const pv = ORD.shipPreview;
+  const now = _ordShipBody(orderId, accountId, marketplace);
+  if(!pv || pv.order_id !== orderId || JSON.stringify(pv.body) !== JSON.stringify(now)){
+    const out = document.getElementById("ordship_out");
+    if(out) out.textContent = "The tracking or carrier changed since the preview. "
+                            + "Press Preview again so what is sent is what you saw.";
+    return;
+  }
+  const msg = pv.summary + " The buyer is told it is on its way, and it cannot "
+            + "be taken back from here. Send it?";
+  const yes = (typeof uiConfirm === "function")
+    ? await uiConfirm(msg, {title: "Send to Amazon?", ok: "Send to Amazon",
+                            cancel: "Don't send", danger: true})
+    : false;
+  if(!yes){ if(btn) btn.disabled = false; return; }
+  const res = await _ordWriteThenReload("/orders/ship/confirm", pv.body, orderId, accountId,
+    "Sent.", "Not sent to Amazon: ");
+  ORD.shipPreview = null;
+  // Free the button ONLY after a clear refusal. After no reply, or an answer
+  // that says the result is not known, it stays off: it may have been sent.
+  if(btn && res && !res.ok && !res.uncertain) btn.disabled = false;
 }
 
 /* Record or forget ONE order's tracking number.
@@ -1445,27 +1588,144 @@ async function ordRemoveTracking(orderId, number, accountId, marketplace){
 }
 
 async function _ordTrackWrite(body, orderId, accountId, okMsg){
+  // WHETHER IT WILL EVER BE CHECKED, said at the moment the number is stored
+  // (the server's `note`) rather than left to be discovered as a column of
+  // "Not checked".
+  await _ordWriteThenReload("/tracking/set", body, orderId, accountId, okMsg);
+}
+
+/* POST one order's own record, then redraw that order from the server.
+ *
+ * Shared by the tracking box and the "bought it" record (Rule 12). Not
+ * optimistic: the row and panel are rebuilt from what the server now holds, so
+ * a refused save cannot look like a successful one. The reply's `note`, if
+ * any, is added to the message. */
+async function _ordWriteThenReload(url, body, orderId, accountId, okMsg, failWord){
+  // -> the server's reply ({ok, ...}), or null when no reply could be read.
+  const fail = failWord || "Could not save that: ";
   try{
-    const j = await (await fetch("/tracking/set", {
+    const j = await (await fetch(url, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)})).json();
     if(!j || !j.ok){
+      // An answer that says the result is NOT KNOWN is not a failure: the
+      // "not saved / not sent" prefix would contradict it (seen in the
+      // browser check), so it is shown in its own words.
       if(typeof toast === "function")
-        toast("Could not save that: " + ((j && j.error) || "unknown"));
-      return;
+        toast((j && j.uncertain ? "" : fail) + ((j && j.error) || "unknown"));
+      return j || null;
     }
-    // WHETHER IT WILL EVER BE CHECKED, said at the moment the number is stored
-    // rather than left to be discovered as a column of "Not checked".
     if(typeof toast === "function")
       toast(okMsg + (j.note ? " " + j.note : ""));
     delete ORD.details[orderId];
     ORD.open = "";
     ordersRender();
     if(typeof ordersLoad === "function") await ordersLoad();
-    ordersToggle(orderId, accountId || "");
+    // Reopen only if this tab is still on the order's account: switched while
+    // the save was in flight, the old account's order is not reopened here.
+    const nowWs = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && ACTIVE_WS.key)
+      ? String(ACTIVE_WS.key) : "";
+    if(!accountId || !nowWs || nowWs === String(accountId))
+      ordersToggle(orderId, accountId || "");
+    return j;
   }catch(e){
-    if(typeof toast === "function") toast("Could not save that: " + e);
+    if(typeof toast === "function") toast(fail + e);
+    return null;
   }
+}
+
+/* "I BOUGHT THIS FROM THE SUPPLIER" -- recorded, never done.
+ *
+ * The app buys nothing: "Buy from supplier" only opens the supplier's page.
+ * Once the person has bought it there, this records that they did, so the
+ * board's "To buy" tab can tell a bought order from one still to buy. What it
+ * COST goes in the Cost box on the same panel -- the one place an order's cost
+ * lives -- so no amount is asked for here (Rule 12).
+ *
+ * Only for orders the seller posts (FBM). `best` is the cheapest supplier the
+ * sources block already marked, used to fill the supplier box in.
+ *
+ * ONE FUNCTION, called by both panel layouts (Rule 12). */
+function ordPurchasePanel(r, best, fresh){
+  const orderId = (r && r.order_id) || "";
+  if(!orderId) return "";
+  if(String((r && r.fulfilment) || "").toUpperCase() === "AFN") return "";
+  const accountId = (r && r.account_id) || "";
+  const marketplace = (r && r.marketplace) || "";
+  // `fresh` is the opened order's own list (/orders/detail), read after the
+  // list: preferred, so a list reload that failed after a save cannot show
+  // the order as not yet bought and invite a second record (change review).
+  const recs = Array.isArray(fresh) ? fresh : (r ? r.purchases : null);
+  // A CANCELLED order lists what was recorded (it may have been bought before
+  // the cancel) but offers no new record.
+  const closed = (typeof _ordState === "function") && _ordState(r) === "closed";
+  let h = '<div class="odp-note">'
+    + '<div style="margin-bottom:4px"><b>Bought from the supplier?</b> '
+    + 'Record it here once you have bought it on the supplier\'s site. '
+    + 'Nothing is ordered or paid for by this app; what it cost goes in the '
+    + 'Cost box.</div>';
+  if(recs === null || recs === undefined){
+    h += '<div class="cc">Could not read whether this order was already '
+      + 'recorded as bought.</div>';
+  }
+  (recs || []).forEach(function(p){
+    const who = p.bought_by ? " by " + p.bought_by : "";
+    const sup = p.supplier_url
+      ? '<a class="link" target="_blank" rel="noopener noreferrer" href="' + _oEsc(p.supplier_url)
+        + '">' + _oEsc(p.supplier || "supplier") + '</a>'
+      : _oEsc(p.supplier || "supplier not named");
+    h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0">'
+      + '<span style="color:var(--green)"><i class="ti ti-circle-check"></i> Bought</span>'
+      + '<span>' + sup + '</span>'
+      + (p.supplier_ref ? '<code style="font-size:10.5px" title="The supplier\'s order number">'
+                          + _oEsc(p.supplier_ref) + '</code>' : '')
+      + '<span class="cc" style="font-size:10.5px">' + _oEsc(_oWhen(p.bought_at) + who) + '</span>'
+      + (p.note ? '<span class="cc" style="font-size:10.5px">“' + _oEsc(p.note) + '”</span>' : '')
+      + '<button class="ghost" onclick="ordRemovePurchase(' + jsArg(orderId) + ','
+      + jsArg(p.id) + ',' + jsArg(accountId) + ',' + jsArg(marketplace)
+      + ')" title="Forget this record. Nothing at the supplier changes.">Remove</button>'
+      + '</div>';
+  });
+  if(closed) return h + '<div class="cc">This order was cancelled.</div></div>';
+  const sup = (best && best.label) ? String(best.label) : "";
+  const url = (best && best.url) ? String(best.url) : "";
+  h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0">'
+    + '<input id="ordbuy_sup" class="ed" style="width:130px" placeholder="supplier"'
+    + ' value="' + _oEsc(sup) + '">'
+    + '<input id="ordbuy_ref" class="ed" style="width:140px" placeholder="supplier order no.">'
+    + '<input id="ordbuy_note" class="ed" style="width:150px" placeholder="note (optional)">'
+    + '<button class="ghost" onclick="ordRecordPurchase(' + jsArg(orderId) + ','
+    + jsArg(accountId) + ',' + jsArg(marketplace) + ',' + jsArg(url) + ',this)">'
+    + 'Mark as bought</button>'
+    + '</div></div>';
+  return h;
+}
+
+async function ordRecordPurchase(orderId, accountId, marketplace, url, btn){
+  // ONE PRESS, ONE RECORD. An order may carry several records (two suppliers),
+  // so a double click would really record it twice; the button waits instead.
+  if(btn){ if(btn.disabled) return; btn.disabled = true; }
+  const v = function(id){ return ((document.getElementById(id) || {}).value || "").trim(); };
+  const supplier = v("ordbuy_sup");
+  // The supplier's link is kept only when the box still names the supplier it
+  // came with -- a changed name with the old link would point at the wrong shop.
+  const keepUrl = url && supplier && document.getElementById("ordbuy_sup")
+    && supplier === String(document.getElementById("ordbuy_sup").defaultValue || "");
+  const res = await _ordWriteThenReload("/orders/purchase",
+    {account: accountId || "", marketplace: marketplace || "", order_id: orderId,
+     supplier: supplier, supplier_url: keepUrl ? url : "",
+     supplier_ref: v("ordbuy_ref"), note: v("ordbuy_note")},
+    orderId, accountId, "Recorded as bought.");
+  // Refused: the panel was not redrawn, so the same button is pressable again.
+  if(!(res && res.ok) && btn) btn.disabled = false;
+}
+
+async function ordRemovePurchase(orderId, id, accountId, marketplace){
+  await _ordWriteThenReload("/orders/purchase/remove",
+    // purchase_id, not id: the guard reads a body `id` as an ACCOUNT name, so a
+    // person limited to some accounts was refused (account-scope review).
+    {account: accountId || "", marketplace: marketplace || "", order_id: orderId, purchase_id: id},
+    orderId, accountId, "That record has been removed.");
 }
 
 /* Write one order line's cost, then redraw from the server's answer.
@@ -1487,6 +1747,15 @@ async function ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace){
   if(raw !== "" && !isFinite(Number(raw))){
     if(typeof toast === "function") toast("That cost is not a number.");
     return;
+  }
+  // AN EMPTY BOX IS NOT ALWAYS "CLEAR IT". The saved cost is shown only as the
+  // box's placeholder, so pressing Save without typing sent cost:null and wiped
+  // it (master audit, UX #1). Clearing stays possible -- it is now a question.
+  if(raw === "" && el && el.dataset && el.dataset.has === "1"){
+    const _msg = "Clear the cost on this order? This line goes back to "
+               + "“not known”. (To change it, type the new cost instead.)";
+    const _ok = (typeof uiConfirm === "function") ? await uiConfirm(_msg) : false;
+    if(!_ok) return;
   }
   try{
     const j = await (await fetch("/cogs/order", {
@@ -1614,6 +1883,10 @@ function _ordDetailHtml(r){
                          r.account_id, r.marketplace);
 
   // ---- where the parcel is ---------------------------------------------
+  // Bought, then posted, then tracked -- the order the work happens in.
+  h += ordPurchasePanel(r, (typeof _opBestSource === "function")
+                             ? _opBestSource(d, d.items || []) : null,
+                        (d.order || {}).purchases);
   h += ordParcelPanel(r);
 
   // ---- delivery --------------------------------------------------------
@@ -1663,17 +1936,94 @@ function _ordWhyText(status, cancelRequested, cancelReason){
   return bits.join("<br>");
 }
 
+function _ordWhenCell(iso){
+  const w = String(_oWhen(iso) || "");
+  const k = w.lastIndexOf(", ");
+  if(k < 0) return '<span style="white-space:nowrap">' + _oEsc(w) + '</span>';
+  return '<span style="white-space:nowrap">' + _oEsc(w.slice(0, k)) + ',</span> '
+       + '<span style="white-space:nowrap">' + _oEsc(w.slice(k + 2)) + '</span>';
+}
+
+/* THE ONE SHIP-BY RULE for the Orders screen (Rule 12): milliseconds until
+ * Amazon's LatestShipDate, negative once it has passed -- which is when Amazon
+ * counts the order late. null when Amazon gave no date. The board's tabs and
+ * countdown and the order panel's "Post by" all read it. */
+function _ordShipMs(shipBy){
+  const t = Date.parse(shipBy || "");
+  return isNaN(t) ? null : t - Date.now();
+}
+
+/* Two columns (table + order panel) only where there is ROOM for both: a
+ * laptop-or-wider window AND an Orders area wide enough that the table keeps
+ * its 760px beside a 380px panel. The window alone was not enough -- with the
+ * sidebar open on a 1366 laptop the table lost Profit, Margin and ROI behind a
+ * sideways scroll, which is the panel replacing the table after all. */
+const ORD_SIDE_MIN = 760 + 380 + 16;
+function _ordSideMode(){
+  try{
+    if(!(window.matchMedia && window.matchMedia("(min-width: 1100px)").matches)) return false;
+    const b = document.getElementById("ordbody");
+    return !!(b && b.clientWidth >= ORD_SIDE_MIN);
+  }catch(e){ return false; }
+}
+
 async function ordersToggle(orderId, accountId){
   if(ORD.open === orderId){ ORD.open = ""; ordersRender(); return; }
   ORD.open = orderId;
   ordersRender();
   if(ORD.details[orderId]){ return; }
+  // PINNED TO THE CACHE THIS REQUEST BELONGS TO. Switching account replaces
+  // ORD.details with a fresh object; a reply landing after that must go into
+  // the old one, not be filed under the new account.
+  const cache = ORD.details;
   try{
     const j = await (await fetch("/orders/detail?order_id="
       + encodeURIComponent(orderId) + "&account=" + encodeURIComponent(accountId))).json();
-    ORD.details[orderId] = j && j.ok ? j : {error: (j && j.error) || "could not read it"};
+    cache[orderId] = j && j.ok ? j : {error: (j && j.error) || "could not read it"};
   }catch(e){
-    ORD.details[orderId] = {error: String(e)};
+    cache[orderId] = {error: String(e)};
   }
-  if(ORD.open === orderId) ordersRender();
+  if(ORD.details === cache && ORD.open === orderId) ordersRender();
 }
+
+/* Enter or Space on a focused row opens it, as a click does. */
+function ordersRowKey(e, orderId, accountId){
+  if(e.target !== e.currentTarget) return;           // a control inside the row
+  if(e.key === "Enter" || e.key === " "){ e.preventDefault(); ordersToggle(orderId, accountId); }
+}
+
+/* The table is redrawn on every toggle AND when the order's details arrive, so
+ * the row that had focus becomes a new element. Only when focus was on a row
+ * (or the panel's close button) is it put back -- never stolen from a field. */
+function _ordFocusedOid(){
+  const a = document.activeElement;
+  if(!a || !a.closest) return "";
+  // Any Orders control that names itself (tab, channel, checkbox, next step,
+  // bulk button): restored by that name after the redraw.
+  if(a.getAttribute && a.getAttribute("data-fk")) return "fk:" + a.getAttribute("data-fk");
+  if(a.classList.contains("ordrow")) return a.getAttribute("data-oid") || "";
+  if(a.classList.contains("ord-side-x")) return a.getAttribute("data-oid") || "";
+  return "";
+}
+function _ordRefocus(orderId){
+  const k = String(orderId);
+  const el = k.indexOf("fk:") === 0
+    ? document.querySelector('[data-fk="' + k.slice(3).replace(/["\\]/g, "") + '"]')
+    : document.querySelector('tr.ordrow[data-oid="' + k.replace(/["\\]/g, "") + '"]');
+  if(el) el.focus({preventScroll: true});
+}
+
+// When the room changes (window resized, sidebar opened or closed) an open
+// order moves between the side panel and its row. Only redrawn when the answer
+// actually flips, so resizing does not redraw the table on every pixel.
+try{
+  let _ordWasSide = null, _ordT = 0;
+  window.addEventListener("resize", function(){
+    clearTimeout(_ordT);
+    _ordT = setTimeout(function(){
+      const now = _ordSideMode();
+      if(ORD.open && now !== _ordWasSide && typeof ordersRender === "function") ordersRender();
+      _ordWasSide = now;
+    }, 150);
+  });
+}catch(e){ /* no window: inline only */ }

@@ -27,8 +27,13 @@ async function ppLoad(force) {
   if (PPICK.loading) return;
   if (PPICK.loaded && !force) return;
   PPICK.loading = true; PPICK.error = "";
+  // Whose list this is: a reply for the previous account is dropped, and its
+  // loading flag is the new request's to clear (screenstate.js).
+  const sc = (typeof screenScope === "function") ? screenScope() : null;
+  const gone = function () { return !!sc && !screenStillIn(sc); };
   try {
     const j = await (await fetch("/catalog/products" + _ppQs())).json();
+    if (gone()) return;
     if (j && j.ok) {
       PPICK.items = (j.rows || []).map(function (r) {
         return { sku: r.sku || r.asin, asin: r.asin || "", title: r.title || "",
@@ -39,6 +44,7 @@ async function ppLoad(force) {
       PPICK.error = (j && j.error) || "Could not read the product list.";
     }
   } catch (e) {
+    if (gone()) return;
     PPICK.error = "Could not read the product list: " + e;
   }
   PPICK.loading = false;

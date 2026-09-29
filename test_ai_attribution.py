@@ -31,10 +31,33 @@ Verified live, generating a real image for 10.99_3Days_B0GGSCK998:
     after    50 rows, 2 images, feature "image: generate",
              sku 10.99_3Days_B0GGSCK998, cost 0.04 from OpenRouter itself
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
+import json
 import os
 import sys
+import tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
+
+# A FIXTURE OF ITS OWN (28 Sep 2026). The last section used to read the owner's
+# live ledger, so it passed only on his machine. It now drives one fake image
+# call through the real recorder into a database in a temp dir, and reads THAT.
+# Set before any app import, so nothing can resolve the real config or database.
+_FIX = tempfile.mkdtemp(prefix="fixt_ai_attribution_")
+_CFG = os.path.join(_FIX, "config.json")
+_DBP = os.path.join(_FIX, "altascraper.db")
+with open(_CFG, "w", encoding="utf-8") as _fh:
+    json.dump({"anthropic_api_key": "test-placeholder-not-a-key",
+               "openrouter_api_key": "test-placeholder-not-a-key",
+               "accounts": [{"id": "jack_uk", "name": "Test", "marketplace": "UK"}]},
+              _fh)
+os.environ["CONFIG_PATH"] = _CFG
+os.environ["ALTASCRAPER_DB"] = _DBP
+assert os.path.dirname(os.path.abspath(_DBP)) == os.path.abspath(_FIX)
 
 fails = []
 def check(l, g, w):
@@ -46,9 +69,9 @@ def falsy(l, g): check(l, bool(g), False)
 
 from domain import ai_usage as U
 
-P = open(r"D:\AltaScraper\domain\ai_providers.py", encoding="utf-8").read()
-A = open(r"D:\AltaScraper\domain\ai_usage.py", encoding="utf-8").read()
-D = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+P = open(_os_repo.path.join(_REPO, r"domain\ai_providers.py"), encoding="utf-8").read()
+A = open(_os_repo.path.join(_REPO, r"domain\ai_usage.py"), encoding="utf-8").read()
+D = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8").read()
 
 print("=== every call is recorded, whichever endpoint it used ===")
 falsy("the chat-only condition is gone from the recorder",
@@ -95,11 +118,34 @@ truthy("and it is called a safety net, not a substitute",
        "not a substitute for _feature()" in A)
 
 print("\n=== what the ledger actually holds now ===")
-# Read the real table, since this was verified against it.
+# THE SAME CHECKS, ON A FIXTURE LEDGER. One image generation is pushed through
+# the real _post() -> recorder path with the network replaced by a canned
+# OpenRouter /images reply (the shape and cost measured live above), so the
+# ledger holds exactly what the recorder wrote -- nothing seeded by hand.
 try:
-    import dashboard as d
+    import io
+    import urllib.request as _ur
+    from domain import ai_providers as AP
     from data import db as _db
-    conn = _db.get_db(d.CONFIG_PATH)
+
+    class _Reply(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    _canned = {"data": [{"b64_json": "aGVsbG8="}], "usage": {"cost": 0.04}}
+    _real_open = _ur.urlopen
+    _ur.urlopen = lambda req, timeout=None: _Reply(json.dumps(_canned).encode("utf-8"))
+    try:
+        AP.set_usage_context(feature="image: generate", workspace_id="jack_uk",
+                             sku="10.99_3Days_B0GGSCK998", config_path=_CFG)
+        AP._post("https://openrouter.invalid/api/v1/images",
+                 {"openrouter_api_key": "test-placeholder-not-a-key"},
+                 {"model": "bytedance-seed/seedream-4.5", "prompt": "x"})
+    finally:
+        _ur.urlopen = _real_open
+    conn = _db.get_db(_CFG)
+    check("  the ledger read is the fixture, not the real one",
+          os.path.abspath(_db.db_path(_CFG)), os.path.abspath(_DBP))
     n = conn.execute("SELECT COUNT(*) c FROM ai_usage").fetchone()["c"]
     img = conn.execute("SELECT COALESCE(SUM(images),0) i FROM ai_usage").fetchone()["i"]
     gen = conn.execute("SELECT COUNT(*) c FROM ai_usage WHERE feature='image: generate'"
@@ -114,7 +160,9 @@ try:
     truthy("some rows now name a product", withsku > 0)
     truthy("and at least one image carries a real cost", priced > 0)
 except Exception as e:
-    print("  (could not read the live ledger: %s)" % str(e)[:70])
+    # A fixture that cannot be built is a failure, not a skip -- the old
+    # "could not read the live ledger" skip is what let this pass silently.
+    check("the fixture ledger could be written and read", str(e)[:70], "")
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails:

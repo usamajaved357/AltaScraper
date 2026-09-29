@@ -58,15 +58,19 @@ async function setGtinExemption(sku, on){
   }catch(e){ toast(String(e)); }
 }
 
-/* The write itself, shared by both routes. Returns the parsed reply. */
-async function _gtinWrite(sku, on){
+/* The write itself, shared by both routes. Returns the parsed reply.
+ *
+ * `account` is the account the click was made in. The bulk loop passes the one
+ * it captured BEFORE the loop: reading it afresh per SKU meant switching
+ * account mid-loop sent the rest of the declarations to the new account's
+ * same-SKU drafts (master audit S1, 28 Sep 2026). */
+async function _gtinWrite(sku, on, account){
   const res = await fetch("/edit", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({sku: sku, target: "col", key: "GTIN Exemption",
                           value: on ? "yes" : "",
-                          account: _gtinAccount()})
-  });
+                          account: (account !== undefined ? account : _gtinAccount())})  });
   return res.json();
 }
 
@@ -85,6 +89,9 @@ async function bulkGtinExemption(on){
   const claim = (on !== false);
   const sel = (typeof selectedSkus === "function") ? selectedSkus() : [];
   if(!sel.length){ toast("Select some listings first"); return; }
+  // THE ACCOUNT THESE WERE SELECTED IN, fixed now. See _gtinWrite.
+  const acct = _gtinAccount();
+  if(!acct){ toast("Open an account first"); return; }
 
   const split = (typeof splitByDraft === "function")
     ? splitByDraft(sel) : {drafts: sel, live: []};
@@ -121,8 +128,15 @@ async function bulkGtinExemption(on){
     // a cell, and firing fifty at one store at once is how two of them read the
     // same row and one write is lost.
     for(const sku of skus){
+      // SWITCHED ACCOUNT PART-WAY: stop, rather than finish in the wrong one
+      // or carry on in one the screen no longer shows.
+      if(_gtinAccount() !== acct){
+        failed.push("stopped — the account was changed part-way; "
+                    + (skus.length - ok - failed.length) + " not saved");
+        break;
+      }
       try{
-        const j = await _gtinWrite(sku, claim);
+        const j = await _gtinWrite(sku, claim, acct);
         if(j && j.ok) ok++;
         else failed.push(sku + ": " + ((j && j.error) || "failed"));
       }catch(e){ failed.push(sku + ": " + e); }

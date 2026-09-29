@@ -10,12 +10,14 @@ Routes: POST /miles_template/ai_fill, GET /miles_template/list,
         GET /miles_template/preview/<rid>, POST /miles_template/save_zones,
         POST /miles_template/render
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import os
 import re
 import base64 as _b64
 
 from flask import request, jsonify, send_from_directory
+from domain.request_account import current as _rqa_current
 
 
 def register(app, *, _cfg, _state, _load_miles_templates, _save_miles_templates,
@@ -56,7 +58,7 @@ def register(app, *, _cfg, _state, _load_miles_templates, _save_miles_templates,
         )
         try:
             import anthropic as _ant
-            client = _ant.Anthropic(api_key=key)
+            client = _ai_client(key)
             msg = client.messages.create(
                 model="claude-sonnet-4-6", max_tokens=300,
                 messages=[{"role": "user", "content": prompt}])
@@ -201,7 +203,7 @@ def register(app, *, _cfg, _state, _load_miles_templates, _save_miles_templates,
             d = _sku_dir(sku)
             with open(os.path.join(d, fname), "wb") as f:
                 f.write(png)
-            aid = _state.get("active_account_id", "") or ""
+            aid = _rqa_current(_state)
             pfx = f"/media/_acct/{_safe_sku(aid)}" if aid else "/media"
             url = f"{pfx}/{_safe_sku(sku)}/{fname}"
             # Return a SMALL thumbnail for instant preview (not the full 2616px image

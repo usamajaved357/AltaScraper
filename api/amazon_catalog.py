@@ -68,14 +68,6 @@ def _is_throttled(e):
     return code_n == 429 or "throttl" in low or "quotaexceeded" in low
 
 
-def _enum(marketplace):
-    from sp_api.base import Marketplaces
-    code = str(marketplace or "UK").upper()
-    if code == "US":
-        return Marketplaces.US
-    return getattr(Marketplaces, code, Marketplaces.UK)
-
-
 # Amazon's own name for each kind of code. normalize_gtin gives us "ean"/"upc";
 # the catalogue search wants them upper case, and only accepts these four.
 _TYPES = {"EAN": "EAN", "UPC": "UPC", "ISBN": "ISBN", "GTIN": "EAN",
@@ -105,9 +97,9 @@ def owners_of_barcode(creds, marketplace, marketplace_id, barcode,
         # the older 2020-12-01 shape; 2022-04-01 is the one that takes
         # identifiers/identifiersType and returns summaries with a brand.
         from sp_api.api import CatalogItemsV20220401
-        cl = CatalogItemsV20220401(credentials=creds,
-                                   marketplace=_enum(marketplace),
-                                   timeout=timeout)
+        from api import sp_client as _sp
+        cl = _sp.client(CatalogItemsV20220401, creds, marketplace, rule=_sp.API,
+                        timeout=timeout)
         res = cl.search_catalog_items(
             identifiers=[code], identifiersType=kind,
             marketplaceIds=[marketplace_id],
@@ -177,9 +169,9 @@ def product_type_of(creds, marketplace, marketplace_id, asin, timeout=30):
     for attempt in (1, 2):
         try:
             from sp_api.api import CatalogItemsV20220401
-            cl = CatalogItemsV20220401(credentials=creds,
-                                       marketplace=_enum(marketplace),
-                                       timeout=timeout)
+            from api import sp_client as _sp
+            cl = _sp.client(CatalogItemsV20220401, creds, marketplace, rule=_sp.API,
+                            timeout=timeout)
             res = cl.get_catalog_item(asin, marketplaceIds=[marketplace_id],
                                       includedData=["productTypes"])
             data = res.payload if hasattr(res, "payload") else (res or {})
@@ -234,9 +226,9 @@ def search_product_types(creds, marketplace, marketplace_id, item_name="",
     kw = {"itemName": item_name[:200]} if item_name else {"keywords": ",".join(words[:10])}
     try:
         from sp_api.api import ProductTypeDefinitions
-        cl = ProductTypeDefinitions(credentials=creds,
-                                    marketplace=_enum(marketplace),
-                                    timeout=timeout)
+        from api import sp_client as _sp
+        cl = _sp.client(ProductTypeDefinitions, creds, marketplace, rule=_sp.API,
+                        timeout=timeout)
         res = cl.search_definitions_product_types(marketplaceIds=[marketplace_id], **kw)
         data = res.payload if hasattr(res, "payload") else (res or {})
     except Exception as e:

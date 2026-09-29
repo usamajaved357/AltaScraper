@@ -594,7 +594,7 @@ def _live_one(app, config_path, aid, mkt):
         import accounts as _acc_mod
         from domain import live_reconcile as _lr
         import domain.hourly_week as _hw
-        acc = _acc_mod.get_account(_cfg_of(app), aid, config_path)
+        acc = _acc_mod.get_account(_cfg_of(app, config_path), aid, config_path)
         if not acc or not _acc_mod.seller_scope_allowed(acc):
             return "no Amazon account of its own"
         mid = (_acc_mod.marketplace_id(mkt)
@@ -625,10 +625,19 @@ def _live_one(app, config_path, aid, mkt):
         return "error: %s" % str(e)[:80]
 
 
-def _cfg_of(app):
+def _cfg_of(app, config_path=None):
+    """The config as it is NOW, read from the file this app runs on.
+
+    This did `import dashboard; dashboard._cfg()`. dashboard.py is the file that
+    is RUN, so it is "__main__" and `import dashboard` loads a SECOND copy of it
+    -- another Flask app built at import, with its own config cache that
+    nothing ever clears. So an account added after the refresher's first read
+    stayed invisible to live catch-up until a restart (master audit A2,
+    Milestone 5). The file is small and read once per rotation.
+    """
     try:
-        import dashboard as _d
-        return _d._cfg()
+        from config import settings as _settings
+        return _settings.read_raw(config_path) if config_path else _settings.read_raw()
     except Exception:
         return {}
 
@@ -796,6 +805,11 @@ def _supervisor(app, cfg_fn, config_path, log=None):
 
 def start(app, cfg_fn, config_path, log=None):
     """Start the refresher. Safe to call twice; the second call does nothing."""
+    from config import background as _bg
+    if not _bg.enabled():
+        if log:
+            log(_bg.refusal("live refresher"))
+        return {"ok": False, "error": _bg.refusal("live refresher")}
     with _LOCK:
         if _STATE["running"]:
             return {"ok": True, "already_running": True}

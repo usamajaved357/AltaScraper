@@ -27,10 +27,15 @@ A fourth thing, found while fixing it: the report was only ever chased 30 days
 back, so a longer period could not fill in even for an account that HAS older
 history. That is now bounded by trade instead -- see first_trade().
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
 import datetime as dt
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from data import db as _db
 from domain import sales_data as _sd
@@ -135,7 +140,7 @@ check_true("  and that cap is genuinely shorter than the long one",
            _sf.UNTRADED_DAYS_BACK < 95)
 
 print("\n== and the screen says it, rather than drawing blanks ==")
-js = open(r"D:\AltaScraper\static\js\sales.js", encoding="utf-8").read()
+js = open(_os_repo.path.join(_REPO, r"static\js\sales.js"), encoding="utf-8").read()
 check_true("the screen keeps what is available, so any part can say so",
            "SALES.avail = av" in js)
 check_true("the range line says where the data starts",
@@ -152,7 +157,7 @@ check_true("  and the explanation is on a hover, not printed on the page",
            'class="infodot" title=' in _after)
 check_true("  with the sentence inside it",
            "This account has nothing before" in _after)
-css = open(r"D:\AltaScraper\static\css\dashboard.css", encoding="utf-8").read()
+css = open(_os_repo.path.join(_REPO, r"static\css\dashboard.css"), encoding="utf-8").read()
 check_true("the note has a style of its own", ".gnodata" in css)
 
 print("\n== a day that took no orders shows 0, not a dash ==")

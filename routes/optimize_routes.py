@@ -9,10 +9,12 @@ dashboard.py for now).
 Routes: POST /optimize/fetch, POST /optimize/diagnose_fill, POST /optimize/push,
         POST /optimize/from_source
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import re
 
 from flask import request, jsonify
+from domain.request_account import id_or_open as _id_or_open   # arch A5
 
 
 def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish=lambda acc=None: acc):
@@ -57,7 +59,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -133,7 +135,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -199,7 +201,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
                             "note": "No anthropic_api_key set — showing the flagged fields without AI suggestions."})
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             # give the AI the product context + the current attribute values for reference
             ctx_attrs = {k: attrs.get(k) for k in list(attrs.keys())[:60]}
             sys = (
@@ -280,7 +282,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             _require_publish()
         except Exception as _e:
             return jsonify({"ok": False, "read_only": True, "error": str(_e)}), 403
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -371,7 +373,11 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                               "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
                 "Accept-Language": "en-US,en;q=0.9"})
-            raw = urllib.request.urlopen(req, timeout=20).read()
+            # A page address from the request: through the URL policy, and
+            # capped (master audit, 28 Sep 2026 -- domain/url_policy.py).
+            from domain import url_policy as _urlp
+            with _urlp.urlopen(req, timeout=20) as _r:
+                raw = _r.read(5_000_000)
             if raw[:2] == b"\x1f\x8b":
                 raw = gzip.decompress(raw)
             html = raw.decode("utf-8", "replace")
@@ -395,7 +401,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
         current = b.get("current", {}) or {}        # current title/bullets/description
         product_type = b.get("product_type", "")
         instruction = (b.get("instruction", "") or "").strip()   # user's custom request to the AI
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         _bad = _wrong_account(b.get("id"))
         if _bad:
             return _bad
@@ -474,7 +480,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             "Now produce the JSON copy following all rules and the seller's instruction."
         )
         try:
-            client = anthropic.Anthropic(api_key=key)
+            client = _ai_client(key)
             resp = client.messages.create(
                 model="claude-sonnet-4-5", max_tokens=1500,
                 system=system, messages=[{"role": "user", "content": user_msg}])

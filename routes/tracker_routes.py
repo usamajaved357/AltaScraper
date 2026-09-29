@@ -30,29 +30,12 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     """Attach /trackers/* to the app."""
 
     def _scope():
-        """(workspace_id, marketplace) for this request.
-
-        Same resolution as the weekly and daily screens: an explicit id wins, and
-        the active account fills in what was not sent. Kept identical so a
-        screen cannot be looking at one account while its trackers look at
-        another -- the exact fault that put another account's orders on the
-        Orders tab.
-        """
-        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id") or "").strip()
-        mkt = (request.args.get("marketplace") or "").strip().upper()
-        body = request.get_json(silent=True) or {}
-        aid = aid or str(body.get("id") or body.get("account_id") or "").strip()
-        mkt = mkt or str(body.get("marketplace") or "").strip().upper()
-        if not aid or not mkt:
-            acc = {}
-            try:
-                acc = (_active_account() or {}) if callable(_active_account) else {}
-            except Exception:
-                acc = {}
-            aid = aid or str(acc.get("id") or (_state or {}).get("active_account_id") or "")
-            mkt = mkt or str(acc.get("default_marketplace")
-                             or (_state or {}).get("active_marketplace") or "").upper()
-        return aid, (mkt or "UK")
+        # The shared resolver (routes/scope.pair): the marketplace follows the
+        # account the PAGE named, not the server's open one (Rule 12).
+        from routes import scope as _scope_mod
+        return _scope_mod.pair(request, state=_state,
+                               active_account=_active_account, cfg=_cfg,
+                               config_path=CONFIG_PATH, last_resort="UK")
 
     def _names(wsid, mkt):
         """{asin: product name}, from the catalogue the rest of the app uses.

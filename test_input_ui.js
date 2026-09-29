@@ -7,15 +7,15 @@ function check(label, got, want) {
   console.log("  %s %s", label.padEnd(60),
               ok ? "OK" : `FAIL got=${JSON.stringify(got)} want=${JSON.stringify(want)}`);
 }
-const shell = fs.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8");
-const routes = fs.readFileSync("D:/AltaScraper/routes/input_routes.py", "utf8");
+const shell = fs.readFileSync((__dirname + "/static/js/shell.js"), "utf8");
+const routes = fs.readFileSync((__dirname + "/routes/input_routes.py"), "utf8");
 // WHERE THE SHEET-FINDING LIVES NOW. It was written out inside the import route,
 // and then Generate needed exactly the same thing -- open the account's sheet,
 // resolve the tab by gid, read it with the generator's own reader. Two copies
 // would be two opinions about which sheet an account's products come from, and
 // that kind of disagreement is invisible until listings appear in the wrong
 // place. It moved to data/input_import.py and both callers use it (Rule 12).
-const impl = fs.readFileSync("D:/AltaScraper/data/input_import.py", "utf8");
+const impl = fs.readFileSync((__dirname + "/data/input_import.py"), "utf8");
 
 // ONE EDITOR NOW, not two. The Dropshipping sheet editor has gone with the
 // workspace it belonged to -- it described itself as "eBay -> Amazon
@@ -101,7 +101,7 @@ check("  but it is kept, commented, so it can be restored",
 check("  and it says what replaced it",
       /REPLACED BY \/input\/upload/.test(routes), true);
 
-const listing = fs.readFileSync("D:/AltaScraper/routes/listing_routes.py", "utf8");
+const listing = fs.readFileSync((__dirname + "/routes/listing_routes.py"), "utf8");
 // The one that actually mattered: with the button gone, this was the last way
 // a spreadsheet could put products into a run, and nothing on screen would
 // have said so.
@@ -113,7 +113,7 @@ check("  that block is kept, commented, too",
 
 // The queue itself is untouched: it is the same table, written through the
 // same functions, whichever of the two ways in put the row there.
-const upload = fs.readFileSync("D:/AltaScraper/routes/input_upload_routes.py", "utf8");
+const upload = fs.readFileSync((__dirname + "/routes/input_upload_routes.py"), "utf8");
 // THE QUEUE TABLE IS GONE TOO. A product waiting to be generated is a row in
 // the LISTINGS store with status=QUEUED, so both ways in write to one table and
 // the generator reads from the same place it writes back to.
@@ -123,7 +123,7 @@ check("  and so does the hand-add form",
       /add_queued\(/.test(routes), true);
 check("  the row is written as QUEUED",
       /"Status": "QUEUED"/.test(
-        fs.readFileSync("D:/AltaScraper/data/input_row.py", "utf8")), true);
+        fs.readFileSync((__dirname + "/data/input_row.py"), "utf8")), true);
 check("the hand-add route is untouched and still live",
       /^[ \t]*@app\.route\("\/input\/add", methods=\["POST"\]\)/m.test(routes), true);
 check("  as are status and rows",

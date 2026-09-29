@@ -66,7 +66,7 @@ function makeSandbox(){
   return s;
 }
 
-const src = fs.readFileSync("D:/AltaScraper/static/js/variations.js", "utf8");
+const src = fs.readFileSync((__dirname + "/static/js/variations.js"), "utf8");
 
 // A top-level `let` in a vm script does NOT become a property of the sandbox,
 // so VARS and the functions have to be reached by evaluating inside the

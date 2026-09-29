@@ -162,6 +162,10 @@ class Nightly(object):
         if self.running:
             return
         said = log or (lambda m: None)
+        from config import background as _bg
+        if not _bg.enabled():
+            said(_bg.refusal("nightly backup"))
+            return
 
         def _loop():
             # A pause before the first run so a restart loop cannot turn into a

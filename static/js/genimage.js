@@ -500,7 +500,7 @@ function refPickerHTML(){
   // auto-pick the first as default reference if not chosen yet
   if(!STUDIO.chosenRef || imgs.indexOf(STUDIO.chosenRef)<0){ STUDIO.chosenRef = imgs[0]; }
   const thumbs = imgs.map((u,i)=>`
-    <div class="refthumb${u===STUDIO.chosenRef?' on':''}" onclick="pickRef('${esc(u)}')" title="Use this image as the AI reference">
+    <div class="refthumb${u===STUDIO.chosenRef?' on':''}" onclick="pickRef(${jsArg(u)})" title="Use this image as the AI reference">
       <img src="${esc(u)}" loading="lazy">
       ${u===STUDIO.chosenRef?'<span class="refbadge">reference</span>':''}
     </div>`).join("");
@@ -869,13 +869,13 @@ function _aplusAddResult(job, j, grid){
   }
   let inner;
   if(j&&j.ok&&j.data_url){
-    inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
+    inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
       <div class="srescap">${esc(job.sku)} · ${esc(job.modName)} <span class="apdim">${dim}</span>${scr}</div>
       ${copyHtml}
       <div class="sresacts">
-        <button class="ib" onclick="studioSave('${cardId}','${esc(job.sku)}')"><i class="ti ti-device-floppy"></i> Save</button>
-        <button class="ib" onclick="studioDownload('${cardId}','${esc(job.sku)}')"><i class="ti ti-download"></i></button>
-        <button class="ib" onclick="studioToDrive('${cardId}','${esc(job.sku)}')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+        <button class="ib" onclick="studioSave(${jsArg(cardId)},${jsArg(job.sku)})"><i class="ti ti-device-floppy"></i> Save</button>
+        <button class="ib" onclick="studioDownload(${jsArg(cardId)},${jsArg(job.sku)})"><i class="ti ti-download"></i></button>
+        <button class="ib" onclick="studioToDrive(${jsArg(cardId)},${jsArg(job.sku)})" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
       </div>`;
     // The purpose is carried on the result so Save files it correctly. The
     // viewport on the RESPONSE is the truth about which one this is: a premium
@@ -984,7 +984,18 @@ async function studioRunBackground(kind, jobs, total){
     if(polling) return;          // the last tick has not answered yet
     polling=true;
     try{
-      const st=await (await fetch("/genimage/job_status?job="+encodeURIComponent(jobId))).json();
+      const _r=await fetch("/genimage/job_status?job="+encodeURIComponent(jobId));
+      // 404 IS FINAL, checked before the body is read (a 404 page need not be
+      // JSON): the server no longer has this job for you -- a restart empties
+      // the job list -- so asking every 2s forever changes nothing. Any other
+      // failure may be passing, and is retried as before.
+      if(_r.status===404){
+        clearInterval(STUDIO_POLL); STUDIO_POLL=null;
+        prog.innerHTML='<span style="color:var(--red)">This batch can no longer be followed (the app may have restarted). '
+          + 'Images that finished were saved to the media library; start the rest again.</span>';
+        return;
+      }
+      const st=await _r.json();
       if(!st.ok){ return; }
       // render any new results
       for(let i=0;i<st.results.length;i++){

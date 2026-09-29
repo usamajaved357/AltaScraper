@@ -1,0 +1,20 @@
+    <div id="sec_team" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-users"></i> Team</h2>
+        <div class="sub">Everyone who can sign in: their role, what they may do, which accounts they can open, and whether they are active. The same page-by-page access is also laid out as a grid on <a href="#" onclick="return navGo(event,'permissions')">User permissions</a>.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input class="rc-in" id="team_q" type="search" placeholder="Search name or email" aria-label="Search the team" oninput="teamFilter()" style="margin:0;width:200px">
+          <select class="rc-in" id="team_state" aria-label="Filter by status" onchange="teamFilter()" style="margin:0;width:auto">
+            <option value="">Everyone</option>
+            <option value="active">Active</option>
+            <option value="invited">Invite not accepted</option>
+            <option value="expired">Invite expired</option>
+            <option value="disabled">Disabled</option>
+          </select>
+          <button class="db-chip" onclick="renderUsers()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="team_summary" class="cc" style="font-size:12px;margin:2px 0 8px" aria-live="polite"></div>
+      <div id="team_nomatch" class="cc" style="font-size:12px;padding:10px 6px" hidden>Nobody matches this search and status.</div>
+      <div id="teambody" style="padding:4px 0"></div>
+    </div>

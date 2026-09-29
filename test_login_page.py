@@ -18,10 +18,15 @@ ever rendered. Editing it changes nothing anybody can see. This test pins WHICH
 template the app actually serves, so the next person does not spend an hour
 improving the wrong file -- which is exactly what happened here.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 
@@ -37,14 +42,14 @@ def truthy(label, got):
     check(label, bool(got), True)
 
 
-HTML = open(r"D:\AltaScraper\templates\dash_login.html", encoding="utf-8").read()
-CSS = open(r"D:\AltaScraper\static\css\dash_login.css", encoding="utf-8").read()
+HTML = open(_os_repo.path.join(_REPO, r"templates\dash_login.html"), encoding="utf-8").read()
+CSS = open(_os_repo.path.join(_REPO, r"static\css\dash_login.css"), encoding="utf-8").read()
 
 print("\n== the app serves THIS template ==")
-route = open(r"D:\AltaScraper\routes\dash_auth_routes.py", encoding="utf-8").read()
+route = open(_os_repo.path.join(_REPO, r"routes\dash_auth_routes.py"), encoding="utf-8").read()
 truthy("dash_auth_routes renders dash_login.html",
        'render_template("dash_login.html"' in route)
-dash = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8-sig").read()
+dash = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8-sig").read()
 truthy("and dashboard.py registers that module", "_dash_auth_routes.register(" in dash)
 
 print("\n== it renders with nothing but itself ==")

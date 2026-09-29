@@ -41,7 +41,9 @@ function _wkQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; }
 async function weeklyLoad(){
   WK.loading = true; weeklyRender();
   try{
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/weekly/list" + _wkQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if(j && j.ok){
       WK.weeks = j.weeks || [];
       WK.change = j.change || {};
@@ -522,7 +524,7 @@ function _wkTrendCard(){
   let chips = "";
   WK_TREND.forEach(function(t){
     chips += '<button class="db-chip wk-tchip' + (t.key === m.key ? " on" : "")
-      + '" onclick="weeklyTrendPick(\'' + t.key + '\')">' + _wkEsc(t.label)
+      + '" onclick="weeklyTrendPick(' + jsArg(t.key) + ')">' + _wkEsc(t.label)
       + '</button>';
   });
   const missing = WK_TREND_N - built;
@@ -676,7 +678,7 @@ function _wkWeeksTable(){
   ws.forEach(function(w){
     const k = w.kpis || {};
     const on = WK.week && w.week_start === WK.week.week_start;
-    h += '<tr' + (on ? ' style="background:rgba(45,212,168,.06)"' : '') + '>'
+    h += '<tr' + (on ? ' style="background:color-mix(in srgb, var(--as-action) 6%, transparent)"' : '') + '>'
       + '<td>' + _wkEsc(_wkDate(w.week_start)) + '</td>'
       + '<td class="r stk-num">' + _wkMoney(k.total_sales) + '</td>'
       + '<td class="r stk-num">' + _wkNum(k.sessions) + '</td>'

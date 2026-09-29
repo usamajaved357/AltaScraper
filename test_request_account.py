@@ -15,9 +15,14 @@ which was fixed for listings only, per screen, which is why it came back on Sale
 The rule being tested: the account travels WITH the request. A read resolves to
 the account the page named; a write refuses when page and server disagree.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from flask import Flask, request, jsonify
 import domain.request_account as ra
@@ -109,7 +114,7 @@ check("the global never moved during either request",
       _state["active_account_id"], "jack_uk")
 
 print("\n== the browser half: named on the way out, dropped on the way back ==")
-js = open(os.path.join(r"D:\AltaScraper", "static", "js", "sales.js"),
+js = open(os.path.join(_REPO, "static", "js", "sales.js"),
           encoding="utf-8").read()
 # `account` is the one name the browser sends now; the routes still
 # accept the older spellings so a missed call site cannot silently
@@ -128,7 +133,7 @@ raw = [m for m in re.findall(r'await fetch\((.{0,40})', js)
 check("no raw fetch left on any /sales/ call site", raw, [])
 
 check_true("the generator's write guard uses the shared module",
-           "request_account" in open(os.path.join(r"D:\AltaScraper", "routes",
+           "request_account" in open(os.path.join(_REPO, "routes",
                                                   "listing_routes.py"),
                                      encoding="utf-8").read())
 

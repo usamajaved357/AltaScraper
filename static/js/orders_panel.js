@@ -238,7 +238,11 @@ function _opDaysLeft(shipBy){
   const when = (typeof _oWhen === "function") ? _oWhen(shipBy) : String(shipBy);
   out.title = "Amazon counts this order late if it is not dispatched by "
             + when + ".";
-  if(days < 0){ out.text = "overdue"; out.tone = "bad"; out.label = "Post by"; }
+  // PASSED IS OVERDUE, even later the same day: Amazon counts it late from
+  // the ship-by moment, and the board beside this reads the same rule
+  // (_ordShipMs in orders.js).
+  const ms = (typeof _ordShipMs === "function") ? _ordShipMs(shipBy) : null;
+  if(days < 0 || (ms !== null && ms < 0)){ out.text = "overdue"; out.tone = "bad"; out.label = "Post by"; }
   else if(days === 0){ out.text = "today"; out.tone = "bad"; }
   else if(days === 1){ out.text = "1 day"; out.tone = "good"; }
   else { out.text = days + " days"; out.tone = "good"; }
@@ -274,7 +278,7 @@ function _opActions(r, d, items){
   const best = _opBestSource(d, items);
   if(best && best.url){
     btns.push('<a class="o-btn" href="' + _oEsc(best.url) + '" target="_blank"'
-      + ' rel="noopener" onclick="event.stopPropagation()"'
+      + ' rel="noopener noreferrer" onclick="event.stopPropagation()"'
       + ' title="Buy this from ' + _oEsc(best.label || "the cheapest supplier")
       + '"><i class="ti ti-shopping-cart"></i> Buy from supplier</a>');
   }
@@ -488,6 +492,11 @@ function ordPanelHtml(r, d){
     h += _opFlow(t, cur, _opCostBox(bd, r));
   }
 
+  // WHETHER IT WAS BOUGHT, before the delivery and the parcel: bought, then
+  // posted, then tracked -- the order the work happens in. Same function as the
+  // long fallback panel (Rule 12).
+  h += (typeof ordPurchasePanel === "function")
+         ? ordPurchasePanel(r, _opBestSource(d, items), o.purchases) : "";
   h += _opDelivery(o);
   // WHERE THE PARCEL IS, right under where it is going.
   //
@@ -523,7 +532,11 @@ function _opCostBox(bd, r){
     + 'the product\'s own cost is left alone. Empty it and Save to put this line '
     + 'back to &quot;not known&quot;.">'
     + '<label for="' + id + '">Cost</label>'
-    + '<input id="' + id + '" class="ed" placeholder="'
+    + '<input id="' + id + '" class="ed"'
+    // data-has: a cost EXISTS and is only shown as the placeholder, so Save on
+    // an untouched box must not quietly clear it (ordSetOrderCogs asks first).
+    + (unit === null ? '' : ' data-has="1"')
+    + ' placeholder="'
     + (unit === null ? "e.g. 15.10" : _oEsc(Number(unit).toFixed(2))) + '">'
     + '<button class="o-save" onclick="ordSetOrderCogs('
     + jsArg(r.order_id) + ',' + jsArg(l.sku || "") + ',' + jsArg(id) + ','

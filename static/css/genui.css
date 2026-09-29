@@ -25,8 +25,8 @@
 /* Pure CSS, no image: one element, one keyframe. 48px, 3px, accent top. */
 .gu-spin{
   display:inline-block; width:48px; height:48px;
-  border:3px solid var(--panel2,#252930);
-  border-top-color:var(--accent,#6ea8fe);
+  border:3px solid var(--panel2,var(--as-lit-252930-bd));
+  border-top-color:var(--accent,var(--as-lit-6ea8fe-bd));
   border-radius:50%; animation:gu-sp .8s linear infinite;
   margin:0 0 12px;
 }
@@ -35,90 +35,90 @@
    panel still reads as "this ran" once the run is over. */
 .gu.is-done .gu-spin{
   animation:none;
-  border-color:var(--ok-line,#1a4a28); border-top-color:var(--ok,#4ade80);
+  border-color:var(--ok-line,var(--as-lit-1a4a28-bd)); border-top-color:var(--ok,var(--as-lit-4ade80-bd));
 }
 
-.gu-count{ font-size:24px; font-weight:500; margin:0 0 4px; color:var(--ink,#e8eaed); }
-.gu-sub{ font-size:14px; color:var(--ink2,#9aa3b2); }
+.gu-count{ font-size:24px; font-weight:500; margin:0 0 4px; color:var(--ink,var(--as-text-primary)); }
+.gu-sub{ font-size:14px; color:var(--ink2,var(--as-lit-9aa3b2-fg)); }
 
 .gu-pills{ display:flex; gap:12px; justify-content:center; margin:12px 0 0; flex-wrap:wrap; }
 .gu-pill{
   font-size:13px; padding:4px 12px; border-radius:6px;
-  background:var(--panel2,#252930); color:var(--ink2,#9aa3b2);
+  background:var(--panel2,var(--as-lit-252930-bg)); color:var(--ink2,var(--as-lit-9aa3b2-fg));
 }
 .gu-pill b{ font-weight:600; }
-.gu-pill.ok   b{ color:var(--ok,#4ade80); }
-.gu-pill.warn b{ color:var(--warn,#f59e0b); }
-.gu-pill.run  b{ color:var(--accent,#6ea8fe); }
+.gu-pill.ok   b{ color:var(--ok,var(--as-lit-4ade80-fg)); }
+.gu-pill.warn b{ color:var(--warn,var(--as-lit-f59e0b-fg)); }
+.gu-pill.run  b{ color:var(--accent,var(--as-lit-6ea8fe-fg)); }
 
 /* ---- the toggle, standing on its own ----------------------------------- */
 
 .gu-toggle{
   display:block; margin:1.5rem auto 0;
-  background:none; border:1px solid var(--line,#2a2e36); border-radius:6px;
+  background:none; border:1px solid var(--line,var(--as-lit-2a2e36-bd)); border-radius:6px;
   padding:8px 20px; font:inherit; font-size:13px;
-  color:var(--ink2,#9aa3b2); cursor:pointer;
+  color:var(--ink2,var(--as-lit-9aa3b2-fg)); cursor:pointer;
 }
-.gu-toggle:hover{ color:var(--ink,#e8eaed); border-color:var(--line2,#363b45); }
+.gu-toggle:hover{ color:var(--ink,var(--as-text-primary)); border-color:var(--line2,var(--as-lit-363b45-bd)); }
 
 /* The finished-run action. Same shape as the toggle so the pair reads as one
    row of controls rather than two unrelated buttons. */
 .gu-go{
   display:block; margin:10px auto 0;
-  border:1px solid var(--ok-line,#1a4a28); border-radius:6px;
-  background:var(--ok-bg,#0f1f14); color:var(--ok,#4ade80);
+  border:1px solid var(--ok-line,var(--as-lit-1a4a28-bd)); border-radius:6px;
+  background:var(--ok-bg,var(--as-lit-0f1f14-bg)); color:var(--ok,var(--as-lit-4ade80-fg));
   padding:8px 20px; font:inherit; font-size:13px; cursor:pointer;
 }
 
 /* ---- layer 2: one panel, two sections ---------------------------------- */
 
 .gu-details{
-  margin:1rem 0 0; border:1px solid var(--line,#2a2e36); border-radius:12px;
-  overflow:hidden; background:var(--panel,#1e2128);
+  margin:1rem 0 0; border:1px solid var(--line,var(--as-lit-2a2e36-bd)); border-radius:12px;
+  overflow:hidden; background:var(--panel,var(--as-bg-canvas));
 }
 .gu-details[hidden]{ display:none; }
 
 /* Section A -- now processing */
 .gu-now{
-  padding:14px 16px; border-bottom:1px solid var(--line,#2a2e36);
-  background:var(--panel3,#2c3038);
+  padding:14px 16px; border-bottom:1px solid var(--line,var(--as-lit-2a2e36-bd));
+  background:var(--panel3,var(--as-lit-2c3038-bg));
 }
 .gu-nowlbl{
-  font-size:11px; color:var(--ink3,#949aa5);
+  font-size:11px; color:var(--ink3,var(--as-lit-949aa5-fg));
   text-transform:uppercase; letter-spacing:.5px; margin:0 0 8px;
 }
-.gu-nowname{ font-size:14px; font-weight:500; margin:0 0 6px; color:var(--ink,#e8eaed); }
+.gu-nowname{ font-size:14px; font-weight:500; margin:0 0 6px; color:var(--ink,var(--as-text-primary)); }
 .gu-steps{ display:flex; gap:6px; flex-wrap:wrap; }
 .gu-step{
   font-size:12px; padding:2px 8px; border-radius:6px;
-  background:var(--panel2,#252930); color:var(--ink3,#949aa5); white-space:nowrap;
+  background:var(--panel2,var(--as-lit-252930-bg)); color:var(--ink3,var(--as-lit-949aa5-fg)); white-space:nowrap;
 }
-.gu-step.done  { background:var(--ok-bg,#0f1f14);   color:var(--ok,#4ade80); }
-.gu-step.active{ background:rgba(110,168,254,.12);  color:var(--accent,#6ea8fe); }
+.gu-step.done  { background:var(--ok-bg,var(--as-lit-0f1f14-bg));   color:var(--ok,var(--as-lit-4ade80-fg)); }
+.gu-step.active{ background:color-mix(in srgb, var(--as-lit-6ea8fe-bg) 12%, transparent);  color:var(--accent,var(--as-lit-6ea8fe-fg)); }
 
 /* Section B -- what has finished, newest first */
 .gu-list{ max-height:260px; overflow-y:auto; }
 .gu-row{
   display:flex; align-items:center; gap:10px;
-  padding:8px 16px; border-bottom:1px solid var(--line,#2a2e36); font-size:13px;
+  padding:8px 16px; border-bottom:1px solid var(--line,var(--as-lit-2a2e36-bd)); font-size:13px;
 }
 .gu-row:last-child{ border-bottom:0; }
 .gu-n{
-  color:var(--ink3,#949aa5); font-size:12px; width:28px;
+  color:var(--ink3,var(--as-lit-949aa5-fg)); font-size:12px; width:28px;
   font-family:ui-monospace,Menlo,Consolas,monospace;
 }
 .gu-name{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-          color:var(--ink,#e8eaed); }
+          color:var(--ink,var(--as-text-primary)); }
 .gu-badge{
   font-size:11px; padding:2px 8px; border-radius:6px; font-weight:500;
-  background:var(--ok-bg,#0f1f14); color:var(--ok,#4ade80); white-space:nowrap;
+  background:var(--ok-bg,var(--as-lit-0f1f14-bg)); color:var(--ok,var(--as-lit-4ade80-fg)); white-space:nowrap;
 }
-.gu-badge.warn{ background:var(--warn-bg,#241a05); color:var(--warn,#f59e0b); }
-.gu-badge.bad { background:var(--red-bg,#2a0f0f);  color:var(--red,#f27272); }
-.gu-badge.skip{ background:var(--panel2,#252930);  color:var(--ink3,#949aa5); }
-.gu-time{ font-size:12px; color:var(--ink3,#949aa5); width:32px; text-align:right; }
+.gu-badge.warn{ background:var(--warn-bg,var(--as-lit-241a05-bg)); color:var(--warn,var(--as-lit-f59e0b-fg)); }
+.gu-badge.bad { background:var(--red-bg,var(--as-lit-2a0f0f-bg));  color:var(--red,var(--as-danger)); }
+.gu-badge.skip{ background:var(--panel2,var(--as-lit-252930-bg));  color:var(--ink3,var(--as-lit-949aa5-fg)); }
+.gu-time{ font-size:12px; color:var(--ink3,var(--as-lit-949aa5-fg)); width:32px; text-align:right; }
 
-.gu-empty{ padding:14px 16px; font-size:12px; color:var(--ink3,#949aa5); }
+.gu-empty{ padding:14px 16px; font-size:12px; color:var(--ink3,var(--as-lit-949aa5-fg)); }
 
 /* ---- the raw log, folded away ------------------------------------------ */
 /*
@@ -132,13 +132,13 @@
  * Monospace lives here and nowhere else.
  */
 .gu-raw{ margin-top:9px; }
-.gu-raw summary{ cursor:pointer; font-size:12px; color:var(--ink3,#949aa5); }
+.gu-raw summary{ cursor:pointer; font-size:12px; color:var(--ink3,var(--as-lit-949aa5-fg)); }
 .gu-rawbody{
   margin-top:6px; max-height:220px; overflow:auto;
   padding:8px 10px; border-radius:8px;
-  background:rgba(0,0,0,.22); border:1px solid var(--line,#2a2e36);
+  background:rgba(0,0,0,.22); border:1px solid var(--line,var(--as-lit-2a2e36-bd));
   font-family:ui-monospace,Menlo,Consolas,monospace;
-  font-size:11px; line-height:1.5; color:var(--ink2,#9aa3b2); white-space:pre-wrap;
+  font-size:11px; line-height:1.5; color:var(--ink2,var(--as-lit-9aa3b2-fg)); white-space:pre-wrap;
 }
-.gu-rawbody .e{ color:var(--red,#f27272); }
-.gu-rawbody .w{ color:var(--warn,#f59e0b); }
+.gu-rawbody .e{ color:var(--red,var(--as-danger)); }
+.gu-rawbody .w{ color:var(--warn,var(--as-lit-f59e0b-fg)); }

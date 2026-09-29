@@ -39,23 +39,57 @@ def truthy(label, got):
     check(label, bool(got), True)
 
 
+# ---------------------------------------------------------------------------
+# A FIXTURE OF ITS OWN (28 Sep 2026). This used to build the app on the
+# owner's real config.json and database. It now builds it on a stand-in config
+# naming three accounts (no credentials) and a temp database seeded through the
+# app's own store: different listing counts per account, so a screen that read
+# the wrong account -- or the wrong store -- cannot land on the right number by
+# accident. Environment set BEFORE any app import.
+# ---------------------------------------------------------------------------
+import json
+import tempfile as _tmpf
+
+_FIX = _tmpf.mkdtemp(prefix="fixt_listings_store_")
+CFG = os.path.join(_FIX, "config.json")
+_DBP = os.path.join(_FIX, "altascraper.db")
+_ACCTS = {"jack_uk": 3, "nestwell_goods": 2, "selvora_limited": 1}
+with open(CFG, "w", encoding="utf-8") as _fh:
+    json.dump({"anthropic_api_key": "test-placeholder-not-a-key",
+               "google_spreadsheet_id": "test-placeholder-sheet",
+               "google_service_account_json": "test-placeholder-sa.json",
+               "accounts": [{"id": a, "name": "Test " + a, "marketplace": "UK"}
+                            for a in _ACCTS],
+               "repricer_enabled": False, "asin_monitor_enabled": False}, _fh)
+os.environ["CONFIG_PATH"] = CFG
+os.environ["ALTASCRAPER_DB"] = _DBP
+
 from data import choice as _choice
 from data import db as _db
+from data.store import ListingStore
+
+assert os.path.abspath(_db.db_path(CFG)) == os.path.abspath(_DBP)
+assert os.path.dirname(os.path.abspath(_DBP)) == os.path.abspath(_FIX)
+for _a, _n in _ACCTS.items():
+    for _i in range(_n):
+        ListingStore(_a, config_path=CFG).upsert_row(
+            {"SKU": "9.99_3Days_B000FIX%s%02d" % (_a[:2].upper(), _i),
+             "Status": ("LIVE" if _i == 0 else "GENERATED"),
+             "Title": "Fixture listing %d of %s" % (_i, _a)})
 
 cfg = None
 try:
-    import json
-    cfg = json.load(open("config.json", encoding="utf-8"))
+    cfg = json.load(open(CFG, encoding="utf-8"))
 except Exception:
     pass
-backend = _choice.resolve(cfg or {}, "config.json")
+backend = _choice.resolve(cfg or {}, CFG)
 print("=== the store in use: %s ===" % backend)
 
 if backend != "db":
     print("  (this install is on sheets -- the split this guards cannot occur)")
     sys.exit(0)
 
-conn = _db.get_db("config.json")
+conn = _db.get_db(CFG)
 counts = {r["workspace_id"]: r["n"] for r in conn.execute(
     "SELECT workspace_id, COUNT(*) n FROM listings GROUP BY workspace_id")}
 print("  workspaces with listings: %d" % len(counts))

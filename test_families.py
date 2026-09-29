@@ -27,10 +27,15 @@ WHAT THIS FILE PINS
   3. the variation fields survive a Sync, which is the bug the thumbnails had
   4. a zero has a denominator
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import families as _fam          # noqa: E402
 from domain import live_snapshots as _snap    # noqa: E402
@@ -147,13 +152,13 @@ check("  and the theme", merged[0].get("variation_theme"), "COLOR")
 check("  while the fresh quantity still wins", merged[0].get("qty"), "5")
 
 print("\n== it is collected on the pass that already visits every SKU ==")
-LR = open(r"D:\AltaScraper\routes\live_routes.py", encoding="utf-8-sig").read()
+LR = open(_os_repo.path.join(_REPO, r"routes\live_routes.py"), encoding="utf-8-sig").read()
 truthy("the per-SKU call asks Amazon for relationships",
        re.search(r'includedData="summaries,issues,fulfillmentAvailability,'
                  r'attributes,relationships"', LR))
 truthy("  read through the one helper that understands the block",
        re.search(r"_var = _mirror_variations\(", LR))
-RF = open(r"D:\AltaScraper\domain\live_refresher.py", encoding="utf-8-sig").read()
+RF = open(_os_repo.path.join(_REPO, r"domain\live_refresher.py"), encoding="utf-8-sig").read()
 for f in ("parent_skus", "child_skus", "variation_theme"):
     truthy("the refresher stores %s" % f, ('fields["%s"]' % f) in RF)
 # A stand-alone listing must not get an empty parent written against it, or
@@ -162,10 +167,10 @@ truthy("  only when the SKU is really in a family",
        re.search(r'if m\.get\("parent_skus"\):', RF))
 
 print("\n== a zero has a denominator ==")
-SRC = open(r"D:\AltaScraper\domain\families.py", encoding="utf-8-sig").read()
+SRC = open(_os_repo.path.join(_REPO, r"domain\families.py"), encoding="utf-8-sig").read()
 truthy("for_account reports how much of the catalogue has been asked",
        "relationships_known_for" in SRC)
-JS = open(r"D:\AltaScraper\static\js\variations.js", encoding="utf-8-sig").read()
+JS = open(_os_repo.path.join(_REPO, r"static\js\variations.js"), encoding="utf-8-sig").read()
 truthy("and the screen tells the two apart",
        "No variation families found" in JS
        and "Nothing has been read yet" in JS)
@@ -186,7 +191,7 @@ truthy("  and redrawn after the wizard repaints over it",
 # The three-step wizard is what CREATES families and must be untouched.
 truthy("the creation wizard is still there",
        'VAR_STEPS = ["Pick the products"' in JS)
-VR = open(r"D:\AltaScraper\routes\variations_routes.py", encoding="utf-8-sig").read()
+VR = open(_os_repo.path.join(_REPO, r"routes\variations_routes.py"), encoding="utf-8-sig").read()
 truthy("the families route is read-only",
        re.search(r'@app\.route\("/variations/families"\)\s*\n\s*def', VR))
 # The "already in a family" chip read parent_sku -- singular -- which nothing

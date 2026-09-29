@@ -134,7 +134,9 @@ function leadRender() {
 async function leadLoad() {
   LEAD.loading = true; LEAD.note = ""; leadRender();
   try {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/leading" + _leadQs())).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if (j && j.ok) { LEAD.data = j; }
     else { LEAD.note = (j && j.error) || "Could not read the indicators."; }
   } catch (e) {

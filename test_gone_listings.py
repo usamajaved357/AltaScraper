@@ -30,6 +30,11 @@ WHAT THIS GUARDS
 Nothing here touches the network: api/amazon_listings.get_item is stubbed and
 the stub decides what Amazon "answers" per SKU.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import datetime as dt
 import json
 import os
@@ -37,7 +42,7 @@ import shutil
 import sys
 import tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 
@@ -148,9 +153,9 @@ truthy("no seller id -> an error, not a purge", bad["error"])
 check("  and nothing was removed", bad["removed"], [])
 
 print("\n=== one implementation, two callers ===")
-SR = open(os.path.join(r"D:\AltaScraper", "routes", "sourcing_routes.py"),
+SR = open(os.path.join(_REPO, "routes", "sourcing_routes.py"),
           encoding="utf-8").read()
-SCH = open(os.path.join(r"D:\AltaScraper", "data", "scheduler.py"),
+SCH = open(os.path.join(_REPO, "data", "scheduler.py"),
            encoding="utf-8").read()
 truthy("the button calls the shared checker", "_run.check_listings(" in SR)
 falsy("  and no longer has its own copy of the loop",
@@ -177,18 +182,18 @@ truthy("  and only when it removed something",
        'if got["removed"]:' in _job)
 truthy("  without letting a failed notification undo the removal",
        "never let saying so undo the doing" in _job)
-NT = open(os.path.join(r"D:\AltaScraper", "domain", "notify.py"),
+NT = open(os.path.join(_REPO, "domain", "notify.py"),
           encoding="utf-8").read()
 truthy("the kind exists", 'LISTING_GONE = "listing_gone"' in NT)
 falsy("  and stays in the app rather than pinging Slack",
       "LISTING_GONE" in NT.split("OUTBOUND_KINDS = (")[1].split(")")[0])
-JS = open(os.path.join(r"D:\AltaScraper", "static", "js", "notify.js"),
+JS = open(os.path.join(_REPO, "static", "js", "notify.js"),
           encoding="utf-8").read()
 truthy("  with an icon of its own in the bell",
        'k === "listing_gone"' in JS)
 
 print("\n=== the evidence standard is written down where it is applied ===")
-FN = open(os.path.join(r"D:\AltaScraper", "domain", "source_run.py"),
+FN = open(os.path.join(_REPO, "domain", "source_run.py"),
           encoding="utf-8").read().split("def check_listings(")[1] \
     .split("\ndef ")[0]
 truthy("only a 404 counts as deleted", "_al.GONE" in FN)

@@ -204,6 +204,67 @@ function pdpIsCatalogueOnly(r){ return !!(r && r.catalogue_only); }
 
 function pdpIsOpen(){ return !!PDP_SKU; }
 
+/* WHICH PRODUCT CONTEXT IS OPEN: the account AND the marketplace.
+ *
+ * SKUs are not unique across accounts -- the owner lists the same product on
+ * two of his companies and may reuse the SKU -- and the same SKU on another
+ * marketplace is a different Amazon listing. So "which listing is this" is
+ * never the SKU alone. Measured 27 Sep 2026 (test_pdp_account_switch.js):
+ * switching account left this page open on the old account's listing, a save
+ * from it went to the NEW account, and replies sent for the old account were
+ * painted over the new one, because every check here compared SKUs only.
+ *
+ * The product page's one definition of the context: anything that caches or
+ * waits for data about the open listing stamps it with this and compares it
+ * again when the answer lands. (miles_template.js _liveKey builds a similar
+ * account::marketplace key for the live catalogue -- noted in known-issues as a
+ * Rule 12 follow-up; it was outside this change.) The workspace key is part of
+ * it too: a brand workspace can share an account and marketplace. */
+function pdpContext(){
+  const a = (typeof acctId === "function") ? acctId() : "";
+  const w = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS) ? String(ACTIVE_WS.key || "") : "";
+  const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? String(WS_MARKET) : "";
+  return a + "::" + w + "::" + m;
+}
+
+/* LEAVING A PRODUCT CONTEXT. Called by shell.js BEFORE the account or the
+ * marketplace changes -- before, so a field that saves as it loses focus still
+ * saves to the account it was typed in.
+ *
+ * The page is closed, not carried across: the owner's decision (27 Sep 2026)
+ * is that an account or marketplace change is a change of product context and
+ * the listing is reopened explicitly for the new one. Everything this page
+ * keeps about a listing goes with it. */
+function pdpLeaveContext(){
+  // A FIELD STILL BEING TYPED IN SAVES FIRST, to the account it belongs to.
+  // Fields save as they lose focus, and that save names the account open at
+  // that moment (acctBody). A click on the switcher or Ctrl+K moves focus
+  // first anyway; Back/Forward does not, so the page would be emptied under the
+  // caret and the edit lost. Blurring here, before CUR_ACCOUNT moves, sends it
+  // to the right account. (Same as pdpSaveAndFinish.)
+  try{
+    const host = document.getElementById("pdp");
+    const el = document.activeElement;
+    if(PDP_SKU && el && host && host.contains(el) && typeof el.blur === "function") el.blur();
+  }catch(e){}
+  // A barcode check that has not been sent yet would be sent for the NEW
+  // account, about a code typed on the old one.
+  if(typeof _PDP_BC_T !== "undefined" && _PDP_BC_T){ clearTimeout(_PDP_BC_T); _PDP_BC_T = null; }
+  // ...and one already sent is made stale, so its answer is not painted onto
+  // the same SKU reopened in the new context.
+  if(typeof _PDP_BC_SEQ !== "undefined") _PDP_BC_SEQ++;
+  // Closed WITHOUT touching the address bar: the switch that called this sets
+  // the URL for where it is going. Syncing here added a history entry for the
+  // old account's grid, and during Back/Forward wrote it over the new one.
+  if(PDP_SKU){ try{ pdpClose({keepUrl: true}); }catch(e){} }
+  PDP_SKU = "";
+  PDP_DIRTY = false;
+  PDP_TAB = "details";
+  PDP_EDITED_FIELDS = new Set();
+  if(typeof lvForgetAll === "function"){ try{ lvForgetAll(); }catch(e){} }
+  if(typeof pdpImagesForget === "function"){ try{ pdpImagesForget(); }catch(e){} }
+}
+
 /* ---- open / close ------------------------------------------------------ */
 
 function pdpOpen(sku){
@@ -250,6 +311,9 @@ function pdpOpen(sku){
   }
   if(!PDP_SKU){                                  // entering from the grid, not
     try{ PDP_BACK_SCROLL = window.scrollY || 0; }catch(e){ PDP_BACK_SCROLL = 0; }
+    // ...and WHAT OPENED IT, to give focus back on close (design system,
+    // accessibility: "focus returns to the Review button on that row").
+    try{ PDP_OPENER = document.activeElement; }catch(e){ PDP_OPENER = null; }
   }                                              // moving between listings
   const changed = PDP_SKU !== sku;
   PDP_SKU = sku;
@@ -282,9 +346,17 @@ function pdpOpen(sku){
     // its own padding, does nothing. Assigned rather than added, so re-opening
     // cannot stack a second listener.
     host.onclick = function(ev){ if(ev.target === host) pdpClose(); };
+    // A MODAL DIALOG, said so (design system: the PDP is the Dialog xl over
+    // the dimmed Listings page -- the concept is unchanged, this names it).
+    if(typeof host.setAttribute === "function"){
+      host.setAttribute("role", "dialog");
+      host.setAttribute("aria-modal", "true");
+      host.setAttribute("aria-label", "Product page: " + sku);
+    }
   }
   document.body.classList.add("pdp-on");
   pdpRender();
+  _pdpFocusIn();
   // The slide-in is a class added on the next frame, so the browser has a
   // painted "off screen" state to animate FROM. Setting it in the same frame
   // as display:block would show the panel already in place.
@@ -340,10 +412,13 @@ function pdpOpen(sku){
   if(typeof altaSyncUrl === "function") altaSyncUrl();
 }
 
-/* Back to the grid, which is still underneath exactly as it was. */
-function pdpClose(){
+/* Back to the grid, which is still underneath exactly as it was.
+ * opts.keepUrl: leave the address bar alone -- only pdpLeaveContext passes it,
+ * because the account/marketplace switch that called it sets the URL itself. */
+function pdpClose(opts){
   if(!PDP_SKU) return;
   PDP_SKU = "";
+  const _opener = PDP_OPENER; PDP_OPENER = null;
   // THE LIST UNDERNEATH IS ANOTHER COPY OF THE ROW, and it goes stale the same
   // way the hero did.
   //
@@ -374,11 +449,38 @@ function pdpClose(){
     host.onclick = null;
   }
   document.body.classList.remove("pdp-on");
-  if(typeof altaSyncUrl === "function") altaSyncUrl();
+  if(!(opts && opts.keepUrl) && typeof altaSyncUrl === "function") altaSyncUrl();
   // After the grid is on screen again, not before -- scrolling a hidden
   // element sets nothing.
   try{ window.scrollTo(0, PDP_BACK_SCROLL || 0); }catch(e){}
+  // FOCUS BACK TO WHAT OPENED IT (usually the row's Review button), if the
+  // grid did not replace it; otherwise to the screen itself, never lost.
+  try{
+    if(_opener && _opener.focus && document.contains(_opener)) _opener.focus({preventScroll: true});
+    else { const m = document.getElementById("wsmain"); if(m && m.focus) m.focus({preventScroll: true}); }
+  }catch(e){}
 }
+
+/* KEYBOARD INSIDE THE PRODUCT PAGE (design system, accessibility): focus goes
+ * to "Back to listings" on open and Tab stays inside while it is open. The trap
+ * is the shared one (dialog.js uiTrapTab); it stands aside while a confirmation
+ * dialog is open on top, which traps its own. */
+let PDP_OPENER = null;
+function _pdpFocusIn(){
+  try{
+    const back = document.querySelector("#pdp .pdp-back");
+    if(back && back.focus) back.focus({preventScroll: true});
+  }catch(e){}
+}
+document.addEventListener("keydown", function(e){
+  if(e.key !== "Tab" || !PDP_SKU || e.defaultPrevented) return;
+  if(document.querySelector(".uidlg-wrap")) return;
+  const host = document.getElementById("pdp");
+  // A layer opened ON TOP of this page (a modal, the chat, a menu) keeps its
+  // own keyboard: the trap only acts for focus in the page or behind it.
+  if(typeof uiFocusInLayer === "function" && uiFocusInLayer(host)) return;
+  if(host && typeof uiTrapTab === "function") uiTrapTab(e, host);
+});
 
 /* ESCAPE CLOSES IT, unless you are in the middle of typing.
  *
@@ -493,10 +595,10 @@ function pdpHero(r){
     +       '<input class="pdp-barcode" id="pdp_barcode" '
     +       'value="' + esc(r.barcode || "") + '" placeholder="none" '
     +       'inputmode="numeric" autocomplete="off" spellcheck="false" '
-    // esc() with explicit quotes, which is this file's convention -- jsArg is
-    // declared in shell.js and is not in scope here.
-    +       'oninput="pdpBarcodeTyped(\'' + esc(r.sku) + '\', this.value)" '
-    +       'onchange="pdpBarcodeSave(\'' + esc(r.sku) + '\', this.value)">'
+    // jsArg (users.js, one global scope) -- the one escaper for a value
+    // inside an inline handler (Milestone 2).
+    +       'oninput="pdpBarcodeTyped(' + jsArg(r.sku) + ', this.value)" '
+    +       'onchange="pdpBarcodeSave(' + jsArg(r.sku) + ', this.value)">'
     // THE STARTING VERDICT, from what the row already knows (r.identifier,
     // routes/listing_routes._attach_identifier) -- the mockup's "✓ unique".
     // Typing replaces it with /barcode/check's live answer, as before.
@@ -579,7 +681,7 @@ function pdpTabBar(r){
   if(!tabs.some(function(t){ return t.key === PDP_TAB; })) PDP_TAB = "details";
   return '<div class="pdp-tabs">' + tabs.map(function(t){
     return '<div class="pdp-tab' + (PDP_TAB === t.key ? " active" : "") + '"'
-         + ' onclick="pdpTab(\'' + t.key + '\')">' + esc(t.label) + '</div>';
+         + ' onclick="pdpTab(' + jsArg(t.key) + ')">' + esc(t.label) + '</div>';
   }).join("") + '</div>';
 }
 
@@ -590,7 +692,7 @@ function pdpSidebar(r){
   const live = (typeof isAmazonLive === "function") ? isAmazonLive(r) : false;
   const ownAsin = (typeof ownLiveAsin === "function") ? ownLiveAsin(r) : "";
   const chk = function(cls, icon, label, tab){
-    return '<div class="pdp-ck ' + cls + '" onclick="pdpTab(\'' + tab + '\')">'
+    return '<div class="pdp-ck ' + cls + '" onclick="pdpTab(' + jsArg(tab) + ')">'
          + '<i class="ti ' + icon + '"></i> ' + esc(label) + '</div>';
   };
 
@@ -633,7 +735,7 @@ function pdpSidebar(r){
   };
   return '<div class="pdp-side">'
     + (live && ownAsin
-        ? '<button class="pdp-sbbtn" onclick="optimizeLive(\'' + esc(ownAsin) + '\',\'' + esc(sku) + '\')">'
+        ? '<button class="pdp-sbbtn" onclick="optimizeLive(' + jsArg(ownAsin) + ',' + jsArg(sku) + ')">'
           + '<i class="ti ti-sparkles"></i> Optimize live copy</button>'
         : "")
     + '<div class="pdp-sbsec"><div class="pdp-sblabel">Quick actions</div>'
@@ -643,7 +745,7 @@ function pdpSidebar(r){
     // Images tab already carries the same generator (pdpGenSection), so the
     // rail takes you there instead.
     +   '<div class="pdp-sbitem" onclick="pdpOpenGenerator()"><i class="ti ti-photo-edit"></i> Image studio</div>'
-    +   '<div class="pdp-sbitem" onclick="askAbout(\'' + esc(sku) + '\')"><i class="ti ti-message-circle"></i> Ask Claude</div>'
+    +   '<div class="pdp-sbitem" onclick="askAbout(' + jsArg(sku) + ')"><i class="ti ti-message-circle"></i> Ask Claude</div>'
     // RAW DATA OPENS THE SUBMISSION DATA, not just the tab it is on.
     +   '<div class="pdp-sbitem" onclick="pdpOpenRaw()"><i class="ti ti-code"></i> Raw data</div>'
     + '</div>'
@@ -904,8 +1006,8 @@ function pdpAttrRows(m){
               + (multi ? ' <span class="pdp-dim">(' + multi + ' values)</span>' : '')
               + (canUse ? ' <button class="pdp-ause" title="Copy Amazon’s value '
                  + 'into this listing. Saves to the app only — nothing is sent '
-                 + 'to Amazon until you press Submit." onclick="lvUse(\''
-                 + esc(sku) + '\',\'' + esc(k) + '\')">use</button>' : "")
+                 + 'to Amazon until you press Submit." onclick="lvUse('
+                 + jsArg(sku) + ',' + jsArg(k) + ')">use</button>' : "")
               + '</div>'
             : "")
       +   ctrl + said
@@ -914,7 +1016,7 @@ function pdpAttrRows(m){
 
   const fbtn = (key, label, n) =>
     '<button class="pdp-af' + (PDP_ATTR_FILTER === key ? " active" : "") + '"'
-    + ' onclick="pdpAttrFilter(\'' + key + '\')">' + esc(label)
+    + ' onclick="pdpAttrFilter(' + jsArg(key) + ')">' + esc(label)
     + (n == null ? "" : ' <b>' + n + '</b>') + '</button>';
 
   const noLive = !L || L.state !== "ok";
@@ -938,10 +1040,9 @@ function pdpAttrRows(m){
     +   fbtn("differs", "Differs", nDiff) + fbtn("amazon", "Only Amazon", nOnlyAmz)
     +   fbtn("empty", "Empty") + '</div>'
     + '<div class="pdp-attrs">' + rows + empty + '</div>'
-    + (nOnlyAmz ? '<div class="pdp-more" onclick="lvFillEmpty(\'' + esc(sku) + '\')">'
+    + (nOnlyAmz ? '<div class="pdp-more" onclick="lvFillEmpty(' + jsArg(sku) + ')">'
         + '<i class="ti ti-arrow-down"></i> Fill ' + nOnlyAmz + ' empty field(s) from Amazon</div>' : "")
-    + (m.productType ? '<div class="pdp-more amber" onclick="saveDefault(\'' + esc(sku) + '\',\''
-        + esc(m.productType) + '\',this)"><i class="ti ti-star"></i> Remember these as defaults for all '
+    + (m.productType ? '<div class="pdp-more amber" onclick="saveDefault(' + jsArg(sku) + ',' + jsArg(m.productType) + ',this)"><i class="ti ti-star"></i> Remember these as defaults for all '
         + esc(m.productType) + ' listings</div>' : "");
 }
 
@@ -1037,18 +1138,18 @@ function pdpMvCell(sku, key, val, max){
       // class "ed" is the app's own input, styled once in the shared sheet --
       // a second class here would be a second look for the same control.
       '<input class="ed pdp-mv" value="' + esc(p) + '"'
-    + ' onchange="pdpMvSave(\'' + esc(id) + '\',\'' + esc(sku) + '\',\'' + esc(key) + '\')">'
+    + ' onchange="pdpMvSave(' + jsArg(id) + ',' + jsArg(sku) + ',' + jsArg(key) + ')">'
   ).join("");
 
   // "Add More" disappears at the ceiling; "Remove Last" only exists once there
   // is a second box to remove.
   const canAdd = (max === 0) || (parts.length < max);
   const links = '<div class="pdp-addmore">'
-    + (canAdd ? '<a onclick="pdpMvAdd(\'' + esc(id) + '\')">Add More</a>' : "")
+    + (canAdd ? '<a onclick="pdpMvAdd(' + jsArg(id) + ')">Add More</a>' : "")
     + (canAdd && parts.length > 1 ? '<span>|</span>' : "")
     + (parts.length > 1
-        ? '<a class="remove" onclick="pdpMvRemove(\'' + esc(id) + '\',\''
-          + esc(sku) + '\',\'' + esc(key) + '\')">Remove Last</a>' : "")
+        ? '<a class="remove" onclick="pdpMvRemove(' + jsArg(id) + ','
+          + jsArg(sku) + ',' + jsArg(key) + ')">Remove Last</a>' : "")
     + (max ? '<span class="pdp-mvcap">' + parts.length + '/' + max + '</span>'
            : '<span class="pdp-mvcap">' + parts.length + '</span>')
     + '</div>';
@@ -1297,7 +1398,7 @@ function pdpApiIssues(r){
   // Attributes tab and scrolls to that row.
   const chips = i => (i.fields || []).map(f =>
       '<button class="pdp-errfield" title="Go to this field"'
-      + ' onclick="pdpGoToField(\'' + esc(f) + '\')">' + esc(f) + '</button>').join("");
+      + ' onclick="pdpGoToField(' + jsArg(f) + ')">' + esc(f) + '</button>').join("");
 
   const line = (i, cls) => {
     const done = answered(i);
@@ -1358,11 +1459,14 @@ function pdpApiIssues(r){
  */
 function pdpRefreshChecks(sku){
   if(typeof acctUrl !== "function") return;
+  // The reply is about the account AND marketplace open when it was asked for;
+  // after a switch the same SKU can be another company's row (pdpContext).
+  const ctx = pdpContext();
   fetch(acctUrl("/row?sku=" + encodeURIComponent(sku)))
     .then(function(res){ return res.json(); })
     .then(function(j){
       if(!j || !j.ok || !j.row) return;
-      if(PDP_SKU !== sku) return;
+      if(PDP_SKU !== sku || pdpContext() !== ctx) return;
       const i = (typeof ROWS !== "undefined")
         ? ROWS.findIndex(function(x){ return String(x.sku) === String(sku); })
         : -1;
@@ -1531,6 +1635,9 @@ async function pdpBarcodeSave(sku, val){
       toast("Save failed: " + ((j && j.error) || ""));
     return;
   }
+  // Saved to the account it was typed in, but the screen has since moved to
+  // another: its same-SKU row must not take this barcode (editField, stale).
+  if(j.stale) return;
   const i = (typeof ROWS !== "undefined")
     ? ROWS.findIndex(function(x){ return String(x.sku) === String(sku); }) : -1;
   if(i >= 0) ROWS[i].barcode = v;
@@ -1650,7 +1757,7 @@ function pdpCatalogueNote(r){
       + '. The empty fields mean <b>nobody could look</b>, not that the listing '
       + 'has none. If it keeps happening, run the diagnostics.'
       + '</div>'
-      + '<button class="pdp-tb" onclick="lvRefresh(\'' + esc(r.sku) + '\')">'
+      + '<button class="pdp-tb" onclick="lvRefresh(' + jsArg(r.sku) + ')">'
       + '<i class="ti ti-refresh"></i> Try again</button>'
       // Here, not "on the listings page" -- that button is behind this overlay
       // (and in the ⋯ menu now). Its dialog opens above the page.
@@ -1675,7 +1782,7 @@ function pdpCatalogueNote(r){
     + '. Editing needs a draft to save into: press Sync to pull this listing in, '
     + 'and it then behaves like any other.'
     + '</div>'
-    + '<button class="pdp-tb" onclick="pdpSyncThis(\'' + esc(r.sku) + '\')">'
+    + '<button class="pdp-tb" onclick="pdpSyncThis(' + jsArg(r.sku) + ')">'
     + '<i class="ti ti-refresh"></i> Sync this listing</button>'
     + '</div>';
 }
@@ -1848,7 +1955,7 @@ function pdpRender(){
     p  = _fullDataParts(r);
   }catch(err){
     host.innerHTML = '<div class="pdp"><div class="pdp-top">'
-      + '<a class="pdp-back" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
+      + '<a class="pdp-back" role="button" tabindex="0" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
       + '</div><div class="pdp-body"><div class="pdp-err">'
       + '<b>This listing’s page hit an error while rendering.</b>'
       + '<div class="pdp-errmsg">' + esc(String((err && err.message) || err)) + '</div>'
@@ -1865,16 +1972,16 @@ function pdpRender(){
   // the far right is the overflow menu. They stay in the banner either way --
   // moving them under the title was asked for and then asked against.
   const top = '<div class="pdp-top">'
-    + '<a class="pdp-back" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
+    + '<a class="pdp-back" role="button" tabindex="0" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
     // THE SAME THREE ACTIONS THE DRAWER'S FOOTER RUNS, calling the same
     // functions. Nothing here is reimplemented.
-    + '<button class="pdp-tb" onclick="previewOne(\'' + esc(sku) + '\')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>'
-    + '<button class="pdp-tb accent" onclick="autoFixLoop(\'' + esc(sku) + '\')" title="Suggest, apply, preview — repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>'
+    + '<button class="pdp-tb" onclick="previewOne(' + jsArg(sku) + ')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>'
+    + '<button class="pdp-tb accent" onclick="autoFixLoop(' + jsArg(sku) + ')" title="Suggest, apply, preview — repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>'
     + (ro
       ? '<span class="pdp-rolock"><i class="ti ti-lock"></i> Read-only workspace</span>'
-      : '<button class="pdp-tb success" onclick="submitOne(\'' + esc(sku) + '\')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>')
+      : '<button class="pdp-tb success" onclick="submitOne(' + jsArg(sku) + ')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>')
     + '<span class="pdp-spacer"></span>'
-    + '<button class="pdp-tb" onclick="drawerMore(event,\'' + esc(sku) + '\',' + (r.row||0) + ','
+    + '<button class="pdp-tb" onclick="drawerMore(event,' + jsArg(sku) + ',' + (r.row||0) + ','
       + ((typeof isAmazonLive === "function" && isAmazonLive(r)) ? 'true' : 'false')
       + ')" title="Everything else"><i class="ti ti-dots"></i></button>'
     + '</div>';
@@ -1988,6 +2095,18 @@ function pdpRender(){
     // on this page: the Images tab has the four preset buttons instead
     // (pdp_imagegen.js), which read the configured model themselves.
   }, 40);
+  // A REDRAW REPLACES WHAT HAD FOCUS. If that left focus on the page behind
+  // (the body), bring it back inside -- to "Back to listings" -- so a keyboard
+  // user is never dropped outside an open product page. Focus already inside
+  // the page is left exactly where it is.
+  try{
+    const a = document.activeElement;
+    const host = document.getElementById("pdp");
+    // Only when focus fell to NOTHING (the body): focus in a layer on top of
+    // this page (a modal, the chat) is somebody typing there (D3 review).
+    if(PDP_SKU && host && !document.querySelector(".uidlg-wrap")
+       && (!a || a === document.body)) _pdpFocusIn();
+  }catch(e){}
 }
 
 /* THE SAFETY & COMPLIANCE TAB (the owner's PDP redesign, 26 Sep 2026).

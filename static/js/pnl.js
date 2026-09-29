@@ -15,11 +15,11 @@
  * And the two things the statement cannot know on its own are asked for here:
  * the costs Amazon never sees, and whether VAT applies.
  *
- * VAT IS SHOWN BOTH WAYS AND NEVER SUBTRACTED SILENTLY. Whether an account is
- * registered is a fact about the business that this app cannot measure. Taking
- * a fifth off somebody who is not registered is as wrong as leaving it in for
- * somebody who is, so both figures are on screen and the basis says which one
- * to use.
+ * VAT IS TAKEN OUT AT THE ACCOUNT'S OWN SETTING, on its own line, and the box
+ * below says how it was worked out. It used to be left in the profit and shown
+ * beside it; on 28 Sep 2026 the owner decided every profit figure follows the
+ * VAT rate set on the account, so this statement agrees with the Sales card.
+ * Where no rate is set the box says the VAT could not be worked out.
  */
 
 const PNL = {data: null, loading: false, expenses: null, adding: false};
@@ -34,7 +34,9 @@ async function pnlLoad(){
     // The Sales page owns the date range; this reads whatever it is showing so
     // the two screens cannot answer for different months.
     const qs = (typeof _sQuery === "function") ? _sQuery() : "";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/sales/pnl?" + qs)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     PNL.loading = false;
     if(!j || j.ok === false){
       host.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
@@ -49,8 +51,11 @@ async function pnlLoad(){
       if(j.marketplace) q2.push("marketplace=" + encodeURIComponent(j.marketplace));
       if(j.start) q2.push("start=" + encodeURIComponent(j.start));
       if(j.end) q2.push("end=" + encodeURIComponent(j.end));
-      PNL.expenses = await (await fetch("/expenses?" + q2.join("&"))).json();
+      const _ex = await (await fetch("/expenses?" + q2.join("&"))).json();
+      if(_sc && !screenStillIn(_sc)) return;   // switched meanwhile (audit S5)
+      PNL.expenses = _ex;
     }catch(e){ PNL.expenses = null; }
+    if(_sc && !screenStillIn(_sc)) return;
     pnlRender();
   }catch(e){
     PNL.loading = false;
@@ -82,13 +87,172 @@ const _PNL_BASIS = {
     ["estimated at this account's own measured rate", "var(--warn)"],
 };
 
+/* THE SAME STATEMENT, SAID PLAINLY (design package 05 section 8, owner-approved):
+ * You sold / Your costs / You kept, then "Where your costs went".
+ *
+ * NOTHING HERE IS A SECOND CALCULATION. Every figure is read off the lines the
+ * server already sent (domain/pnl.LINES): "You sold" is the Sales line, "You
+ * kept" is the Net profit line, and "Your costs" is the difference -- so the
+ * three tiles cannot disagree with the statement under them. The rows below
+ * only GROUP the statement's own deduction lines; a line this map does not
+ * know lands in "Other".
+ *
+ * THE ROWS ADD UP TO "YOUR COSTS". By construction the statement's deduction
+ * lines sum to sales minus profit (domain/pnl.LINES, measured against
+ * sales_data.period_money). Pennies of rounding go on the largest row; anything
+ * bigger is shown as its own row, "Difference from the statement", and logged
+ * -- it would be a bug, and a label that made it look normal would hide it.
+ */
+// Which group each statement line belongs to...
+const _PNL_GROUP_OF = {
+  cogs: "stock", ad_spend: "ads",
+  referral_fees: "fees", fba_fees: "fees", promo_fees: "fees", other_fees: "fees",
+  fees_estimated: "fees", account_charges: "fees", refund_fees_returned: "fees",
+  refunds: "refunds", vat_line: "vat", promos: "promos", charges: "charges",
+  manual_expenses: "own", reimbursements: "back",
+};
+// ...and how each group is named and coloured (foundations.css --as-viz-*).
+const _PNL_GROUP = {
+  stock:   ["Stock",               "what the goods cost you",                    "var(--as-viz-stock)"],
+  ads:     ["Advertising",         "Amazon ads",                                 "var(--as-viz-ads)"],
+  fees:    ["Amazon fees",         "referral, FBA, promotion and account fees",  "var(--as-viz-fees)"],
+  refunds: ["Refunds",             "given back, on the day the money went back", "var(--as-viz-refunds)"],
+  vat:     ["VAT",                 "collected for HMRC, not earned",             "var(--as-viz-compare)"],
+  promos:  ["Coupons and deals",   "discounts you funded",                       "var(--as-viz-postage)"],
+  charges: ["Per-product charges", "postage, packaging and the like",            "var(--as-viz-supplier)"],
+  own:     ["Your own costs",      "the ones Amazon never sees",                 "var(--as-viz-referral)"],
+  back:    ["Money back",          "reimbursements from Amazon",                 "var(--as-viz-profit)"],
+  other:   ["Other",               "lines not listed above",                     "var(--as-viz-other)"],
+  rest:    ["Difference from the statement", "should be nothing -- please report it", "var(--as-border-strong)"],
+};
+const _PNL_ROUGH = {"part-actual": 1, "not itemised": 1,
+                    "estimated at the account's measured rate": 1};
+
+function pnlSummary(lines){
+  const by = {};
+  (lines || []).forEach(function(l){ by[l.key] = l; });
+  const num = function(k){
+    const l = by[k];
+    return (l && l.value !== null && l.value !== undefined) ? Number(l.value) : null;
+  };
+  const sold = num("ordered_sales"), kept = num("profit");
+  if(sold === null || kept === null) return null;
+  const groups = {}, order = [];
+  let rough = false;
+  const missing = [];
+  (lines || []).forEach(function(l){
+    if(l.sign !== 1 && l.sign !== -1) return;          // subtotals
+    if(l.key === "ordered_sales") return;               // the sales themselves
+    if(l.value === null || l.value === undefined){ missing.push(l.label || l.key); return; }
+    if(_PNL_ROUGH[l.basis]) rough = true;
+    const id = _PNL_GROUP_OF[l.key] || "other";
+    const meta = _PNL_GROUP[id];
+    if(!groups[id]){
+      groups[id] = {id: id, label: meta[0], why: meta[1], colour: meta[2], amount: 0};
+      order.push(id);
+    }
+    // A cost is what LEFT the sales: a -1 line of 5 is 5; a +1 line (money
+    // back) reduces the costs. Math.abs because the server may sign the value.
+    // Values arrive positive (sales_data stores every money column so); used as
+    // sent, so a wrongly signed one shows up rather than being hidden by abs().
+    groups[id].amount += (l.sign === -1 ? 1 : -1) * Number(l.value);
+  });
+  const costs = Math.round((sold - kept) * 100) / 100;
+  let named = 0;
+  order.forEach(function(id){ named += groups[id].amount; });
+  const rest = Math.round((costs - named) * 100) / 100;
+  if(Math.abs(rest) >= 0.01 && Math.abs(rest) <= 0.05 && order.length){
+    // Rounding: each line was rounded on its own. Onto the largest row.
+    let big = order[0];
+    order.forEach(function(id){ if(groups[id].amount > groups[big].amount) big = id; });
+    groups[big].amount += rest;
+  }else if(Math.abs(rest) > 0.05){
+    if(typeof console !== "undefined") console.warn("P&L: cost rows differ from sales - profit by", rest);
+    const m = _PNL_GROUP.rest;
+    groups.rest = {id: "rest", label: m[0], why: m[1], colour: m[2], amount: rest};
+    order.push("rest");
+  }
+  const rows = order.map(function(id){
+    const g = groups[id];
+    g.amount = Math.round(g.amount * 100) / 100;
+    g.pct = sold ? (g.amount / sold * 100) : null;
+    return g;
+  }).filter(function(g){ return Math.abs(g.amount) >= 0.005; })
+    .sort(function(a, b){ return b.amount - a.amount; });   // largest first
+  return {sold: sold, kept: kept, costs: costs,
+          rows: rows, missing: missing, rough: rough};
+}
+
+function pnlPlainHtml(j, cur){
+  const s = pnlSummary(j.lines);
+  if(!s) return "";
+  const lost = s.kept < 0;
+  // THE STATEMENT'S OWN MARGIN (profit over sales after VAT, domain/pnl), not
+  // a second one worked out here over sales including VAT.
+  const per10 = (j.margin_pct === null || j.margin_pct === undefined)
+    ? null : Number(j.margin_pct) / 10;
+  const ten = _pnlMoney(10, cur).replace(/[.,]00$/, "");
+  const n = (j.fee_coverage || {}).orders;
+  const tile = function(cls, label, value, sub){
+    return '<div class="pnl-tile' + cls + '"><div class="pnl-tl">' + label + '</div>'
+      + '<div class="pnl-tv">' + value + '</div>'
+      + '<div class="pnl-ts">' + sub + '</div></div>';
+  };
+  let h = '<div class="pnl-plain">'
+    + '<div class="pnl-tiles">'
+    + tile("", "You sold", _pnlMoney(s.sold, cur),
+           n ? ("from " + n + " order" + (n === 1 ? "" : "s")) : "sales in this window")
+    + tile("", "Your costs", _pnlMoney(s.costs, cur),
+           "stock, ads, Amazon fees and more")
+    + tile(lost ? " lost" : " kept", lost ? "You lost" : "You kept (profit)",
+           _pnlMoney(Math.abs(s.kept), cur),
+           per10 === null ? "" : (lost
+             ? ("about " + _pnlMoney(Math.abs(per10), cur) + " lost on every "
+                + ten + " of sales after VAT")
+             : ("about " + _pnlMoney(per10, cur) + " from every "
+                + ten + " of sales after VAT")))
+    + '</div>';
+  if(s.rows.length){
+    h += '<div class="pnl-where"><div class="pnl-wh">Where your costs went</div>';
+    s.rows.forEach(function(r){
+      const w = (r.pct === null || r.amount <= 0) ? 0 : Math.min(100, r.pct);
+      h += '<div class="pnl-row">'
+        + '<span class="pnl-sw" style="background:' + r.colour + '"></span>'
+        + '<div class="pnl-rl"><b>' + esc(r.label) + '</b>'
+        +   '<span>' + esc(r.why) + '</span></div>'
+        + '<div class="pnl-ra">' + (r.amount < 0 ? "−" : "")
+        +   _pnlMoney(Math.abs(r.amount), cur) + '</div>'
+        + '<div class="pnl-bar" aria-hidden="true"><i style="width:' + w.toFixed(1)
+        +   '%;background:' + r.colour + '"></i></div>'
+        + '<div class="pnl-rp">' + (r.pct === null ? "" : (r.pct.toFixed(1) + "% of sales"))
+        + '</div></div>';
+    });
+    h += '</div>';
+  }
+  // THE GREEN TILE MUST NOT OVERSELL. Units with no cost recorded mean stock
+  // was subtracted for none of them -- the server counts them (uncosted_units)
+  // and the notes below say so; the tile's own alert says it too.
+  const unc = Number(j.uncosted_units) || 0;
+  // SAYS WHICH, rather than blaming Amazon for all of it: an advertising line
+  // that is not connected, or own costs nobody has entered, are not Amazon's.
+  if(s.missing.length || s.rough || unc){
+    h += '<div class="pnl-alert" role="note"><i class="ti ti-alert-triangle"></i> '
+      + (unc ? ('<b>' + unc + ' unit' + (unc === 1 ? ' has' : 's have') + ' no cost '
+                + 'recorded</b>, so this profit is higher than the truth. ') : '')
+      + (s.rough ? 'Amazon\'s fees are partly estimated until it settles. ' : '')
+      + (s.missing.length ? ('Not known yet: ' + esc(s.missing.join(", ")) + '. ') : '')
+      + 'The statement and notes below say more.</div>';
+  }
+  return h + '</div>';
+}
+
 function pnlRender(){
   const host = document.getElementById("pnl_body");
   const j = PNL.data;
   if(!host || !j) return;
   const cur = j.currency || "";
 
-  let h = "";
+  let h = pnlPlainHtml(j, cur);
 
   // ---- how much of this is measured -----------------------------------
   const cov = j.fee_coverage || {};
@@ -174,16 +338,11 @@ function pnlVat(j, cur){
     +   '<td style="text-align:right">' + _pnlMoney(v.amount, cur) + '</td></tr>'
     + '<tr><td style="padding:5px 0">Sales excluding VAT</td>'
     +   '<td style="text-align:right">' + _pnlMoney(v.sales_ex_vat, cur) + '</td></tr>'
-    + '<tr style="font-weight:600"><td style="padding:5px 0;'
-    +   'border-top:1px solid var(--line2)">Profit excluding VAT</td>'
-    +   '<td style="text-align:right;border-top:1px solid var(--line2)">'
-    +   _pnlMoney(v.profit_ex_vat, cur) + '</td></tr>'
     + '</tbody></table>'
     + '<div class="cc' + (risky ? " " : " ") + '" style="font-size:11px;'
     +   'margin-top:7px;line-height:1.6' + (risky ? ';color:var(--warn)' : '')
-    +   '">' + esc(v.explain || "") + ' Nothing is taken off automatically — '
-    + 'the profit line above includes VAT, and this is what it looks like '
-    + 'without.</div>'
+    +   '">' + esc(v.explain || "") + ' The VAT line in the statement above is '
+    + 'this figure — the profit is already after it.</div>'
     + '</div>';
 }
 

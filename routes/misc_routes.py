@@ -72,7 +72,11 @@ def register(app, *, CONFIG_PATH, _active_account, _state):
         except Exception as e:
             return jsonify({"ok": False, "error": f"creds error: {str(e)[:120]}"}), 500
         seller = acc.get("seller_id", "")
-        mkt = (_state.get("active_marketplace") or acc.get("default_marketplace") or "UK").upper()
+        # The marketplace the TAB sends first, and never another account's
+        # selection (routes/scope, Rule 12). "UK" stays the last resort.
+        from routes import scope as _scope_mod
+        mkt = (_scope_mod.marketplace(state=_state, account=acc,
+                                      asked=request.args.get("marketplace")) or "UK").upper()
         try:
             from sp_api.api import ListingsItemsV20210801 as LI
             from sp_api.base import Marketplaces

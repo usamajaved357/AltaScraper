@@ -16,9 +16,14 @@ This is not only a labelling matter. The Sales chart fills days the report has
 not delivered from the Orders API; with OrderTotal in those days and ItemPrice in
 the reported ones, two bars side by side were measuring different things.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 import domain.orders_live as ol
 import domain.orders_view as ov
@@ -98,14 +103,19 @@ check("the Orders screen still totals what buyers paid",
 check("but now says so", os_["revenue_basis"], "order_total")
 check_true("and the screen prints that beside the figure",
            "charged, incl. shipping" in open(
-               r"D:\AltaScraper\static\js\orders.js", encoding="utf-8").read())
+               _os_repo.path.join(_REPO, r"static\js\orders.js"), encoding="utf-8").read())
 
 print("\n== there is ONE reader of what an order contained ==")
-src = open(r"D:\AltaScraper\domain\hourly_week.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"domain\hourly_week.py"), encoding="utf-8").read()
 check_true("the hourly page uses the shared reader", "_ol.order_items(" in src)
 check("and no longer calls Amazon itself", "get_order_items" in src, False)
-ol_src = open(r"D:\AltaScraper\domain\orders_live.py", encoding="utf-8").read()
-check("orders_live is the single caller", ol_src.count("get_order_items("), 1)
+ol_src = open(_os_repo.path.join(_REPO, r"domain\orders_live.py"), encoding="utf-8").read()
+# Re-pinned 29 Sep 2026: the Amazon call itself moved to api/amazon_orders
+# (the one order-items reader); orders_live asks it once, and calls Amazon nowhere.
+check("orders_live asks the one reader once", ol_src.count("_ao.order_items_raw("), 1)
+check("  and never calls Amazon's getOrderItems itself", ol_src.count("get_order_items("), 0)
+ao_src = open(_os_repo.path.join(_REPO, r"api\amazon_orders.py"), encoding="utf-8").read()
+check("the one reader follows every page", "NextToken=token" in ao_src, True)
 
 print("\n== the shape the hourly page needs is the shape it gets ==")
 # order_items returns lines keyed the same way for both callers; asserted on the

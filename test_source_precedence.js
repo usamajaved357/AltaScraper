@@ -34,7 +34,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const GEN = fs.readFileSync("D:/AltaScraper/amazon_listing_generator.py", "utf8");
+const GEN = fs.readFileSync((__dirname + "/amazon_listing_generator.py"), "utf8");
 
 console.log("=== the prompt no longer ranks the competitor above the source ===");
 truthy("the old precedence sentence is gone",

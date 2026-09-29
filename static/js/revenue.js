@@ -193,6 +193,16 @@ function revRender(seedPrice){
     +   'total, not on the item price alone.">'
     +   '<span class="rev-k">Sales price</span>'
     +   '<span class="rev-v">' + _revMoney(d.gross, cur) + '</span></div>'
+    // VAT, AT THE ACCOUNT'S OWN SETTING. It is inside the sales price and it is
+    // HMRC's, so it comes off before anything is called yours -- the same rule
+    // as the Sales card, the P&L and Finance. Shown only where it applies.
+    + (Number(d.vat) > 0
+        ? '<div class="rev-row" title="Collected from the buyer for HMRC — '
+          + 'the VAT rate set on this account.">'
+          + '<span class="rev-k">VAT' + (d.vat_rate ? ' (' + esc(String(
+              Math.round(Number(d.vat_rate) * 1000) / 10)) + '%)' : '') + '</span>'
+          + '<span class="rev-v neg">' + _revMoney(d.vat, cur) + '</span></div>'
+        : "")
 
     // ---- what Amazon takes -------------------------------------------
     + '<div class="rev-sec">What Amazon takes'
@@ -217,7 +227,9 @@ function revRender(seedPrice){
     + '<div class="rev-row big' + (_revNeg(d.net) ? " neg" : "") + '">'
     +   '<span class="rev-k">Net proceeds</span>'
     +   '<span class="rev-v">' + _revMoney(d.net, cur) + '</span></div>'
-    + '<div class="rev-row' + (_revNeg(d.net) ? " neg" : "") + '">'
+    + '<div class="rev-row' + (_revNeg(d.net) ? " neg" : "") + '" title="Net '
+    +   'proceeds over the sales price after VAT — the same margin every profit '
+    +   'screen shows.">'
     +   '<span class="rev-k">Net margin</span>'
     +   '<span class="rev-v">'
     +   (d.margin_pct == null ? '<span class="dash">—</span>'

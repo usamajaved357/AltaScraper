@@ -99,11 +99,11 @@ async function loadMonitorOverview(){
   if(host) host.innerHTML = '<div class="cc" style="padding:14px;opacity:.7"><span class="genspin"></span> Loading…</div>';
   try{
     const j = await (await fetch("/monitor/overview")).json();
-    if(!j || !j.ok){ if(host) host.innerHTML='<div class="cc" style="color:var(--red);padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
+    if(!j || !j.ok){ if(host) host.innerHTML=uiError("The monitor overview could not be loaded", (j&&j.error)||"no reason given", "loadMonitorOverview", "monitor"); return; }
     MON_EU = j.eu_marketplaces || MON_EU;
     renderMonitorMarketPicker();
     renderMonitorOverview(j.rows||[], j.summary||{}, j.unknowns||[]);
-  }catch(e){ if(host) host.innerHTML='<div class="cc" style="color:var(--red);padding:14px">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ if(host) host.innerHTML=uiError("The monitor overview could not be loaded", String(e), "loadMonitorOverview", "monitor"); }
 }
 
 function monUnknownsSection(unknowns, s){
@@ -124,7 +124,7 @@ function monUnknownsSection(unknowns, s){
       <td>${price} <span class="cc">${u.fba?'FBA':'FBM'}</span></td>
       <td>${esc(fb)}</td>
       <td class="cc">${esc(u.first_seen||'—')}</td>
-      <td><button class="monlabelbtn" title="Name / classify this seller (applies to this ID everywhere)" onclick="monLabelSeller('${esc(u.seller_id)}','${esc(u.marketplace)}')"><i class="ti ti-tag"></i> Name</button></td></tr>`;
+      <td><button class="monlabelbtn" title="Name / classify this seller (applies to this ID everywhere)" onclick="monLabelSeller(${jsArg(u.seller_id)},${jsArg(u.marketplace)})"><i class="ti ti-tag"></i> Name</button></td></tr>`;
   }).join("");
   const hr = s.high_risk||0;
   return `<div class="monunk">
@@ -338,10 +338,10 @@ function monAsinBlock(r){
     <a href="${dp}" target="_blank" rel="noopener" class="monasin">${esc(r.asin)}</a>
     ${r.label?`<span class="cc monasin-label">${esc(r.label)}</span>`:''} ${badge}
     <span style="flex:1"></span>
-    <button class="db-chip monx" onclick="monToggle('${id}',this)" aria-expanded="${open}">
+    <button class="db-chip monx" onclick="monToggle(${jsArg(id)},this)" aria-expanded="${open}">
       <i class="ti ti-chevron-${open?'up':'down'}"></i> ${sm.total} market${sm.total!==1?'s':''}</button>
-    <button class="db-chip" title="Offer history" onclick="openMonHistory('${esc(r.asin)}','${esc((r.label||'').replace(/'/g,''))}')"><i class="ti ti-history"></i></button>
-    <button class="db-chip" title="Stop tracking" onclick="removeMonitorAsin('','${esc(r.asin)}')"><i class="ti ti-trash"></i></button>
+    <button class="db-chip" title="Offer history" onclick="openMonHistory(${jsArg(r.asin)},${jsArg((r.label||'').replace(/'/g,''))})"><i class="ti ti-history"></i></button>
+    <button class="db-chip" title="Stop tracking" onclick="removeMonitorAsin('',${jsArg(r.asin)})"><i class="ti ti-trash"></i></button>
   </div>`;
 
   // The one line that replaces ten. Ordered by what you would look for first.
@@ -642,7 +642,8 @@ async function refreshMonBadge(){
     if(j && j.ok) updateMonBadge(j.unread||0);
   }catch(e){}
 }
-setInterval(refreshMonBadge, 120000);
+// Not while the tab is hidden (poller.js altaEvery, Milestone 11).
+(typeof altaEvery === "function" ? altaEvery : setInterval)(refreshMonBadge, 120000);
 setTimeout(refreshMonBadge, 8000);
 
 async function loadMonitorList(){
@@ -650,12 +651,12 @@ async function loadMonitorList(){
   if(host) host.innerHTML = '<div class="cc" style="padding:14px;opacity:.7"><span class="genspin"></span> Loading tracked ASINs…</div>';
   try{
     const j = await (await fetch("/monitor/list")).json();
-    if(!j || !j.ok){ if(host) host.innerHTML = '<div class="cc" style="color:var(--red);padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
+    if(!j || !j.ok){ if(host) host.innerHTML = uiError("The monitored ASINs could not be loaded", (j&&j.error)||"no reason given", "loadMonitorList", "monitor"); return; }
     MON_EU = j.eu_marketplaces || MON_EU;
     MON_LIST = j.asins || [];
     renderMonitorMarketPicker();
     renderMonitorList();
-  }catch(e){ if(host) host.innerHTML = '<div class="cc" style="color:var(--red);padding:14px">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ if(host) host.innerHTML = uiError("The monitored ASINs could not be loaded", String(e), "loadMonitorList", "monitor"); }
 }
 
 /* ---- naming sellers from a file, instead of one at a time ----------------
@@ -825,8 +826,8 @@ function renderMonitorList(){
       + `<td>${esc(r.condition||"New")}</td>`
       + `<td class="cc">${esc(r.added_at||"")}</td>`
       + `<td style="white-space:nowrap">`
-      +   `<button class="monhist" title="View offer history for this ASIN" onclick="openMonHistory('${esc(r.asin)}','${esc((r.label||'').replace(/'/g,""))}')"><i class="ti ti-history"></i></button> `
-      +   `<button class="monrm" title="Stop tracking this ASIN" onclick="removeMonitorAsin('${esc(String(r.id))}','${esc(r.asin)}')"><i class="ti ti-trash"></i></button>`
+      +   `<button class="monhist" title="View offer history for this ASIN" onclick="openMonHistory(${jsArg(r.asin)},${jsArg((r.label||'').replace(/'/g,""))})"><i class="ti ti-history"></i></button> `
+      +   `<button class="monrm" title="Stop tracking this ASIN" onclick="removeMonitorAsin(${jsArg(String(r.id))},${jsArg(r.asin)})"><i class="ti ti-trash"></i></button>`
       + `</td>`
       + '</tr>';
   });

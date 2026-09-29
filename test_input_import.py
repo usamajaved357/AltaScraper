@@ -9,8 +9,13 @@ to what it would have read from the sheet. If those two disagree, listings get
 generated from subtly different data depending on which path ran, which is the
 worst kind of bug -- correct-looking output built from the wrong numbers.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(label, got, want):
@@ -106,7 +111,7 @@ check("green_haven has its own", ii.summary(CFG, "green_haven")["count"], 3)
 check("  selvora is still empty", ii.summary(CFG, WS)["count"], 0)
 
 print("\n=== the generator switches source by backend, not by guesswork ===")
-src = open(r"D:\AltaScraper\amazon_listing_generator.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
 check("it uses the imported queue on the db backend",
       "if _use_db:\n        from data.input_import import InputGrid" in src, True)
 check("  and read_input_sheet is UNCHANGED by it",

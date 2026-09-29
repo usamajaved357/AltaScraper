@@ -52,8 +52,8 @@ def _new_id(source_name):
 
 def _save_meta(entry):
     try:
-        with open(entry["metaf"], "w", encoding="utf-8") as f:
-            json.dump(entry["meta"], f, ensure_ascii=False, indent=0)
+        from domain import jsonstore as _js     # atomic (a crash cannot empty it)
+        _js.write_json_atomic(entry["metaf"], entry["meta"], indent=0)
     except Exception:
         pass
 

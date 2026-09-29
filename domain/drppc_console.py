@@ -393,7 +393,9 @@ def readiness(config_path, cfg, account, marketplace):
                              % (j.get("last_run") or "never", j.get("status")))
                 break
         if not st.get("scheduler_running"):
-            sched_why += " — the scheduler is not running"
+            from config import background as _bg
+            sched_why += (" — the scheduler is not running"
+                          + ("" if _bg.enabled() else " (%s=off)" % _bg.ENV))
             sched_ok = False
     except Exception as e:
         sched_why = str(e)[:120]

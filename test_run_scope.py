@@ -24,10 +24,15 @@ Three separate faults in five lines:
 Nothing was published and nothing was overwritten -- it stopped at the empty
 queue -- but the next fault of this shape would not stop there.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -36,9 +41,9 @@ def check(l, g, w):
     print("  %-64s %s" % (l, "OK" if ok else "FAIL got=%r want=%r" % (g, w)))
 def truthy(l, g): check(l, bool(g), True)
 
-GEN = open(r"D:\AltaScraper\amazon_listing_generator.py", encoding="utf-8").read()
-RUN = open(r"D:\AltaScraper\routes\listing_routes.py", encoding="utf-8").read()
-INV = open(r"D:\AltaScraper\static\js\inventory.js", encoding="utf-8").read()
+GEN = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
+RUN = open(_os_repo.path.join(_REPO, r"routes\listing_routes.py"), encoding="utf-8").read()
+INV = open(_os_repo.path.join(_REPO, r"static\js\inventory.js"), encoding="utf-8").read()
 
 print("=== the workspace comes from --account-id, for every mode ===")
 truthy("the CLI argument is written onto the config",
@@ -116,7 +121,12 @@ truthy("  through the account picker's own route, so the sheet follows",
 truthy("  retried exactly once per press", "runMode._retried" in INV)
 
 print("\n=== the account really is on the command line ===")
-truthy("the run passes --account-id", '"--account-id", _acc_id' in RUN)
+# Built by listing/run_command.account_args since architecture batch A9 (the
+# preview queue uses the same one); /run must still call it for every mode.
+_RC = open(_os_repo.path.join(_REPO, "listing", "run_command.py"), encoding="utf-8").read()
+truthy("the run passes --account-id", '"--account-id", _acc_id' in RUN or (
+    "_rc.account_args(extra, _acc)" in RUN
+    and '"--account-id", _acc_id' in _RC[_RC.index("def account_args"):_RC.index("def api_scope_args")]))
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)

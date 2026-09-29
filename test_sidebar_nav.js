@@ -25,7 +25,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const read = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 const HTML = read("templates/dashboard.html");
 const SHELL = read("static/js/shell.js");
 const SW = read("static/js/switcher.js");
@@ -243,7 +243,7 @@ const _panels = new Set();
       while((m = re.exec(t))) _panels.add(m[1]);
     }
   }
-})("D:/AltaScraper/templates");
+})((__dirname + "/templates"));
 truthy("the templates define panels at all", _panels.size > 10);
 check("every addressable section has a panel navTo can show",
       _addr.filter(s => s !== "listings" && !_panels.has(s)), []);

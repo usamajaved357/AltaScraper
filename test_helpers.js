@@ -151,4 +151,17 @@ function stripJsComments(src) {
   return out;
 }
 
-module.exports = { stripJsComments };
+// THE PAGE'S OWN jsArg, read out of static/js/users.js -- not a stand-in, so a
+// test that draws a handler exercises the escaper the browser really uses.
+// Every value inside an inline handler goes through it since Milestone 2 (the
+// esc()-in-a-handler XSS), so any test that renders HTML in a sandbox needs it.
+function _loadJsArg(){
+  const fs = require("fs"), path = require("path");
+  const U = fs.readFileSync(path.join(__dirname, "static", "js", "users.js"), "utf8");
+  const a = U.indexOf("function jsArg(");
+  if(a < 0) throw new Error("jsArg is not in users.js");
+  return new Function(U.slice(a, U.indexOf("\n}", a) + 2) + "\nreturn jsArg;")();
+}
+const jsArg = _loadJsArg();
+
+module.exports = { stripJsComments, jsArg };

@@ -196,14 +196,19 @@ truthy("  it pushes through the SAME patch builder the repricer uses",
        "_apply.build_patches(" in _mp)
 truthy("  sending ONLY the price, not stock or handling",
        '{"price": round(price, 2)}' in _mp)
+# The recording moved (29 Sep 2026) into domain/source_apply.record_manual_price,
+# the one recorder every manual price path now uses (the price editor's own call
+# had been failing silently). Same checks, where the code now lives.
+_rmp_src = open(os.path.join(HERE, "domain", "source_apply.py"), encoding="utf-8").read()
+_rmp = _rmp_src[_rmp_src.index("def record_manual_price("):_rmp_src.index("def _notify_push(")]
 truthy("  it records the change as a manual one",
-       '"manual": True' in _mp and "record_action" in _mp)
-truthy("    naming who did it", '"manual_by"' in _mp)
+       "record_manual_price(" in _mp and '"manual": True' in _rmp and "record_action" in _rmp)
+truthy("    naming who did it", '"manual_by"' in _rmp)
 # THE REPRICER MUST RESPECT IT. Without updating the snapshot, the next
 # decision compares the supplier against the OLD price -- so a hand RAISE would
 # immediately read as "too dear, cut it".
 truthy("  and it corrects what the app thinks the price is",
-       "_ls.set_price(" in _mp)
+       "_ls.set_price(" in _rmp)
 from domain import live_snapshots as LS
 truthy("    that writer exists", hasattr(LS, "set_price"))
 truthy("    and stamps the field as hand-set",

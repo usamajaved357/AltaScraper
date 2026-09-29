@@ -33,17 +33,22 @@ for containment, and checks that each one is genuinely scrollable: a height cap
 AND overflow auto or scroll. That is the actual rule, and it holds for boxes
 that do not exist yet.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-CSS_PATH = r"D:\AltaScraper\static\css\dashboard.css"
+CSS_PATH = _os_repo.path.join(_REPO, r"static\css\dashboard.css")
 # The phone drawer contains its scroll too, and for the right reason -- a flick
 # that reaches the end of the menu must not then drag the page behind it. It is
 # checked here rather than in test_mobile.py because the rule being enforced is
 # THIS one, and a rule that only holds in the file it was written in is not a
 # rule. Both stylesheets are read as one.
-MOBILE_CSS_PATH = r"D:\AltaScraper\static\css\mobile.css"
-JS_PATH = r"D:\AltaScraper\static\js\listings.js"
+MOBILE_CSS_PATH = _os_repo.path.join(_REPO, r"static\css\mobile.css")
+JS_PATH = _os_repo.path.join(_REPO, r"static\js\listings.js")
 
 fails = []
 

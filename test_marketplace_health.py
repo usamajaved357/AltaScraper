@@ -19,9 +19,14 @@ The rules being tested: a refusal about the REQUEST rests the pair, a refusal
 about Amazon being busy does not, the rest gets longer the more it happens, and
 one success clears the record completely.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, time, tempfile, shutil
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 import domain.marketplace_health as mh
 
@@ -116,7 +121,7 @@ k2, _s2 = mh.filter_targets(CFG, pairs)
 check("  and every pair is kept", len(k2), 3)
 
 print("\n== the refresher consults it ==")
-src = open(r"D:\AltaScraper\domain\live_refresher.py", encoding="utf-8").read()
+src = open(_os_repo.path.join(_REPO, r"domain\live_refresher.py"), encoding="utf-8").read()
 check_true("targets are filtered", "filter_targets" in src)
 check_true("and every outcome is recorded", "_mh.record(" in src)
 

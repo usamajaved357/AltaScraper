@@ -22,10 +22,15 @@ saved on every restart of that one account.
 Amazon is not called here. What is tested is the storing: what it keeps, what
 it refuses to keep, and when it goes back.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
 import datetime as dt
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from data import db as _db
 from domain import schema_cache as sc
@@ -135,12 +140,12 @@ check("with nothing to fall back on it says so", how, "failed")
 
 print("\n== the app actually reads and writes it ==")
 # Rule 12: one store, and the two places that touch it must be the two named.
-dash = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8-sig").read()
+dash = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8-sig").read()
 check_true("_load_schema reads the stored copy",
            "schema_cache as _sc" in dash and "_sc.read(CONFIG_PATH, pt, _mkt)" in dash)
 check_true("  and writes one after a successful fetch",
            "_sc.write(CONFIG_PATH, pt, _mkt, info)" in dash)
-routes = open(r"D:\AltaScraper\routes\listing_routes.py", encoding="utf-8-sig").read()
+routes = open(_os_repo.path.join(_REPO, r"routes\listing_routes.py"), encoding="utf-8-sig").read()
 # "Reload Amazon values now" must not be answered from the very cache the person
 # pressed it because they did not believe.
 check_true("?refresh=1 clears the stored copy as well as the in-memory one",
@@ -178,7 +183,7 @@ check_true("the current shape passes", sc.is_current_shape(REAL))
 # misses and no fallback, all 98 product types would have lost their dropdowns,
 # their required stars and their nested sub-fields -- not just the three new
 # decorations they were missing.
-dash = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8-sig").read()
+dash = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8-sig").read()
 _tail = dash[dash.index("def _load_schema"):]
 _tail = _tail[:_tail.index("\ndef _schema_subfields")]
 check_true("_load_schema falls back to an older stored shape when the fetch fails",

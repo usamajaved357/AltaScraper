@@ -29,17 +29,17 @@
 /* ---- 1. THE STRIP ABOVE THE GRID -------------------------------------- */
 .lv-bar{
   display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-  font-size:10px; color:#c8c7cc;
-  background:#232330; border:1px solid #3a3a45; border-radius:6px;
+  font-size:10px; color:var(--as-lit-c8c7cc-fg);
+  background:var(--as-surface-2); border:1px solid var(--as-lit-3a3a45-bd); border-radius:6px;
   padding:6px 9px; margin:0 0 8px;
 }
-.lv-bar b{ font-weight:600; color:#eeedf0; }
-.lv-bar.loading{ color:#6a6974; }
-.lv-bar.gone{ color:#7a7984; }
-.lv-bar.err{ color:#F09595; border-color:#5a2a2a; background:#2a1a1a; }
+.lv-bar b{ font-weight:600; color:var(--as-text-primary); }
+.lv-bar.loading{ color:var(--as-lit-6a6974-fg); }
+.lv-bar.gone{ color:var(--as-lit-7a7984-fg); }
+.lv-bar.err{ color:var(--as-lit-f09595-fg); border-color:var(--as-lit-5a2a2a-bd); background:var(--as-lit-2a1a1a-bg); }
 
 .lv-dot{
-  width:6px; height:6px; border-radius:50%; background:#5DCAA5;
+  width:6px; height:6px; border-radius:50%; background:var(--as-lit-5dcaa5-bg);
   flex:none; display:inline-block;
 }
 
@@ -47,45 +47,45 @@
    left spinning by a failed image load. */
 .lv-spin{
   width:10px; height:10px; flex:none; border-radius:50%;
-  border:1.5px solid #3a3a45; border-top-color:#85B7EB;
+  border:1.5px solid var(--as-lit-3a3a45-bd); border-top-color:var(--as-lit-85b7eb-bd);
   animation:lv-turn .8s linear infinite;
 }
 @keyframes lv-turn{ to{ transform:rotate(360deg); } }
 
 .lv-status{
-  font-size:9px; color:#5DCAA5; background:#16281f;
+  font-size:9px; color:var(--as-lit-5dcaa5-fg); background:var(--as-success-bg);
   border-radius:3px; padding:1px 5px;
 }
-.lv-cnt{ font-size:9px; color:#7a7984; }
-.lv-cnt.ok{ color:#5DCAA5; }
-.lv-cnt.diff{ color:#EF9F27; }
-.lv-cnt.live{ color:#85B7EB; }
+.lv-cnt{ font-size:9px; color:var(--as-lit-7a7984-fg); }
+.lv-cnt.ok{ color:var(--as-lit-5dcaa5-fg); }
+.lv-cnt.diff{ color:var(--as-warning); }
+.lv-cnt.live{ color:var(--as-lit-85b7eb-fg); }
 
 .lv-fill,.lv-push,.lv-refresh{
-  margin-left:auto; background:none; border:1px solid #3a3a45; border-radius:4px;
-  color:#c8c7cc; font-family:inherit; font-size:10px; padding:2px 7px;
+  margin-left:auto; background:none; border:1px solid var(--as-lit-3a3a45-bd); border-radius:4px;
+  color:var(--as-lit-c8c7cc-fg); font-family:inherit; font-size:10px; padding:2px 7px;
   cursor:pointer; line-height:1.5;
 }
-.lv-fill{ margin-left:auto; border-color:#2a6cb5; color:#85B7EB; }
+.lv-fill{ margin-left:auto; border-color:var(--as-lit-2a6cb5-bd); color:var(--as-lit-85b7eb-fg); }
 .lv-fill + .lv-refresh{ margin-left:0; }
-.lv-fill:hover{ background:#1b2a3d; }
+.lv-fill:hover{ background:var(--as-surface-1); }
 /* THE ONE BUTTON ON THIS BAR THAT CHANGES THE LIVE LISTING, and it is coloured
    like it. Everything else here reads Amazon or writes to the app; this patches
    the shopfront, so it does not look like its neighbours. */
-.lv-push{ margin-left:auto; border-color:#B5762A; color:#EF9F27; }
+.lv-push{ margin-left:auto; border-color:var(--as-lit-b5762a-bd); color:var(--as-warning); }
 .lv-push + .lv-refresh, .lv-fill + .lv-push{ margin-left:0; }
-.lv-push:hover{ background:#3d2f1b; }
-.lv-refresh:hover{ background:#2a2a35; color:#eeedf0; }
+.lv-push:hover{ background:var(--as-lit-3d2f1b-bg); }
+.lv-refresh:hover{ background:var(--as-lit-2a2a35-bg); color:var(--as-text-primary); }
 
 /* ---- 2. AMAZON'S OWN COMPLAINTS --------------------------------------- */
 .lv-issues{
-  font-size:10px; color:#F09595; background:#2a1a1a;
-  border:1px solid #5a2a2a; border-radius:6px; padding:6px 9px; margin:0 0 8px;
+  font-size:10px; color:var(--as-lit-f09595-fg); background:var(--as-lit-2a1a1a-bg);
+  border:1px solid var(--as-lit-5a2a2a-bd); border-radius:6px; padding:6px 9px; margin:0 0 8px;
 }
 .lv-issues b{ display:block; margin-bottom:3px; font-weight:600; }
 .lv-issue{ margin:2px 0; line-height:1.45; }
-.lv-issf{ color:#7a7984; }
-.lv-note{ font-size:10px; color:#6a6974; margin:0 0 8px; line-height:1.5; }
+.lv-issf{ color:var(--as-lit-7a7984-fg); }
+.lv-note{ font-size:10px; color:var(--as-lit-6a6974-fg); margin:0 0 8px; line-height:1.5; }
 
 /* ---- 3. THE TAG ON A CELL'S LABEL LINE --------------------------------
    Sized to sit in .dw2-cl, which is 9px and already a wrapping flex row, so
@@ -94,11 +94,11 @@
   font-size:8px; letter-spacing:.02em; border-radius:3px;
   padding:0 4px; line-height:1.6; white-space:nowrap; cursor:help;
 }
-.lv-tag.lv-ok{    color:#5DCAA5; background:#16281f; }
-.lv-tag.lv-diff{  color:#EF9F27; background:#2b2115; }
-.lv-tag.lv-live{  color:#85B7EB; background:#1b2635; }
-.lv-tag.lv-app{   color:#7a7984; background:#26262f; }
-.lv-tag.lv-multi{ color:#C9A3E8; background:#251d2e; }
+.lv-tag.lv-ok{    color:var(--as-lit-5dcaa5-fg); background:var(--as-success-bg); }
+.lv-tag.lv-diff{  color:var(--as-warning); background:var(--as-lit-2b2115-bg); }
+.lv-tag.lv-live{  color:var(--as-lit-85b7eb-fg); background:var(--as-surface-1); }
+.lv-tag.lv-app{   color:var(--as-lit-7a7984-fg); background:var(--as-lit-26262f-bg); }
+.lv-tag.lv-multi{ color:var(--as-lit-c9a3e8-fg); background:var(--as-lit-251d2e-bg); }
 
 /* ---- 4. THE APP'S OWN VALUE, UNDER THE CONTROL -------------------------
    THE TWO SWAPPED. This used to hold Amazon's value while the box held ours,
@@ -114,16 +114,16 @@
    Amazon's there. .lv-dot-app marks the common case -- ours. */
 .lv-below{
   display:flex; align-items:baseline; gap:5px;
-  margin-top:3px; padding-top:3px; border-top:1px dashed #3a3a45;
-  font-size:10px; color:#85B7EB; min-width:0;
+  margin-top:3px; padding-top:3px; border-top:1px dashed var(--as-lit-3a3a45-bd);
+  font-size:10px; color:var(--as-lit-85b7eb-fg); min-width:0;
 }
-.lv-below .lv-dot{ background:#85B7EB; align-self:center; }
+.lv-below .lv-dot{ background:var(--as-lit-85b7eb-bg); align-self:center; }
 /* OURS, not Amazon's: a different colour so the two strips cannot be misread
    for one another on a grid where both can appear. A modifier class on the row
    rather than :has(), which is not worth a rendering difference between two
    browsers for a line this small. */
-.lv-below.lv-mine{ color:#9a9aa6; }
-.lv-below .lv-dot-app{ background:#9a9aa6; }
+.lv-below.lv-mine{ color:var(--as-lit-9a9aa6-fg); }
+.lv-below .lv-dot-app{ background:var(--as-lit-9a9aa6-bg); }
 .lv-val-empty{ font-style:italic; opacity:.75; }
 .lv-note{
   flex:none; font-size:9px; opacity:.8; letter-spacing:.02em;
@@ -134,8 +134,8 @@
   min-width:0; flex:1 1 auto;
 }
 .lv-use{
-  flex:none; background:none; border:1px solid #2a6cb5; border-radius:3px;
-  color:#85B7EB; font-family:inherit; font-size:9px; padding:0 5px;
+  flex:none; background:none; border:1px solid var(--as-lit-2a6cb5-bd); border-radius:3px;
+  color:var(--as-lit-85b7eb-fg); font-family:inherit; font-size:9px; padding:0 5px;
   cursor:pointer; line-height:1.7;
 }
-.lv-use:hover{ background:#1b2a3d; color:#eeedf0; }
+.lv-use:hover{ background:var(--as-surface-1); color:var(--as-text-primary); }

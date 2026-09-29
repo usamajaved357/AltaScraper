@@ -97,7 +97,16 @@ owners = [str(a.get("id") or a.get("name") or "?") for a in accs
           and str(a.get("seller_id") or "").upper() == "A8YN8LJZAAYT4"]
 # If this ever fails the app really did grow a duplicate account and the label
 # was telling the truth. Fix the config, not this test.
-check("exactly one configured account carries that seller ID", len(owners), 1)
+#
+# A CHECK ON THE OWNER'S REAL CONFIG. Where there is none -- any other checkout,
+# or a safe test run, which has no credentials by design -- it is reported as
+# not checked rather than failed, and the code checks below still run
+# (Milestone 10, 28 Sep 2026).
+if any(isinstance(a, dict) and a.get("seller_id") for a in accs):
+    check("exactly one configured account carries that seller ID", len(owners), 1)
+else:
+    print("  (not checked: no config.json with real accounts here -- the "
+          "seller-ID check needs the owner's own config)")
 
 # The caption is written in two places -- the workspace card in the switcher and
 # the subtitle under the sidebar heading. Both said "Amazon account · <id>",

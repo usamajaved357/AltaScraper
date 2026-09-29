@@ -33,12 +33,17 @@ reads the stylesheet, finds EVERY word used as a compound modifier (`.x.word`),
 and asserts that no bare `.word` rule paints a background. That is the actual
 rule, and it holds for words nobody has invented yet.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os
 import re
 import sys
 
-CSS_PATHS = [r"D:\AltaScraper\static\css\dashboard.css",
-             r"D:\AltaScraper\static\css\mobile.css"]
+CSS_PATHS = [_os_repo.path.join(_REPO, r"static\css\dashboard.css"),
+             _os_repo.path.join(_REPO, r"static\css\mobile.css")]
 
 fails = []
 
@@ -138,7 +143,7 @@ check("no component sets a colour while inheriting a background", at_risk, 0)
 print("\n== the button that caused it is renamed, not deleted ==")
 check("  and no bare .ok rule paints anything any more",
       bool((bare.get("ok") or {}).get("background")), False)
-JS = open(r"D:\AltaScraper\static\js\listings.js", encoding="utf-8-sig").read()
+JS = open(_os_repo.path.join(_REPO, r"static\js\listings.js"), encoding="utf-8-sig").read()
 check("  and nothing still asks for the old one",
       bool(re.search(r'class="ok"', JS)), False)
 
@@ -157,9 +162,9 @@ truthy("  and held is amber, not the same colour as approved",
 truthy("the orphaned class was removed with its markup",
        ".okfill{" not in NO_COMMENTS)
 _ALLJS = "".join(
-    open(r"D:\AltaScraper\static\js\%s" % f, encoding="utf-8-sig").read()
-    for f in os.listdir(r"D:\AltaScraper\static\js") if f.endswith(".js"))
-_TPL = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8-sig").read()
+    open(_os_repo.path.join(_REPO, r"static\js\%s") % f, encoding="utf-8-sig").read()
+    for f in os.listdir(_os_repo.path.join(_REPO, r"static\js")) if f.endswith(".js"))
+_TPL = open(_os_repo.path.join(_REPO, r"templates\dashboard.html"), encoding="utf-8-sig").read()
 check("  and nothing anywhere still asks for it",
       ("okfill" in _ALLJS) or ("okfill" in _TPL), False)
 

@@ -181,7 +181,7 @@ falsy("the minimum that caused the gap is gone", ".col-product{ min-width" in LR
 for sel, w in ((".col-cb{", "28px"), (".col-status{", "100px"),
                (".col-perf{", "120px"), (".col-inv{", "110px"),
                (".col-price{", "145px"), (".col-fees{", "105px"),
-               (".col-actions{", "24px")):
+               (".col-actions{", "96px")):  # 96px since 29 Sep 2026: Review + dots (owner)
     truthy("%s is %s" % (sel.strip("{"), w), "width:" + w in rule(LR, sel))
 truthy("the data columns do not wrap", "white-space:nowrap" in rule(LR, ".col-perf{"))
 # Comments stripped: the file explains WHY it does not use table-layout:fixed,

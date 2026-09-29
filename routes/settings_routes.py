@@ -10,12 +10,25 @@ Routes: GET/POST /ai/settings, POST /admin/logic_settings, GET /ai/test,
 import json
 
 from flask import request, jsonify
+from domain.request_account import current as _rqa_current
 
 from config import settings as _settings
 
 
 def register(app, *, _cfg, CONFIG_PATH, _state, _client):
     """Attach the settings / ai / admin routes to the existing Flask app."""
+
+    def _write_config(raw):
+        """config.json, written ATOMICALLY through the one writer that owns it.
+
+        These three routes did `json.dump(raw, open(<the config>, "w"))`, which
+        truncates the file before writing a byte. Anything reading it in that
+        moment -- the repricer asking for an account's VAT rate, above all --
+        saw an empty file (Milestone 1, 28 Sep 2026; see
+        config/settings.write_raw for the rest of the reason).
+        """
+        if not _settings.write_raw(raw, CONFIG_PATH):
+            raise RuntimeError("config.json could not be written")
 
     @app.route("/ai/settings", methods=["GET", "POST"])
     def ai_settings():
@@ -57,7 +70,7 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
             if b.get("image_generate"):
                 sel["image_generate"] = b["image_generate"]
             raw["ai_select"] = sel
-            json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+            _write_config(raw)
             _state["cfg"] = None
             return jsonify({"ok": True, "select": sel})
         except Exception as e:
@@ -76,7 +89,7 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                 raw["show_logic"] = bool(b["show_logic"])
             if "preview_as_user" in b:
                 raw["preview_as_user"] = bool(b["preview_as_user"])
-            json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+            _write_config(raw)
             _state["cfg"] = None
             return jsonify({"ok": True,
                             "show_logic": bool(raw.get("show_logic", True)),
@@ -147,7 +160,7 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                    or (request.get_json(silent=True) or {}).get("account_id")
                    or "")).strip()
         if not aid:
-            aid = str((_state or {}).get("active_account_id", "") or "")
+            aid = _rqa_current(_state)
         return aid
 
     @app.route("/settings/ads", methods=["GET", "POST"])
@@ -424,7 +437,7 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
             _cert = str(b.get("ebay_cert_id", "") or "").strip()
             if _cert and not _cert.startswith(("•", "*", "PUT_", "ROTATE")):
                 raw["ebay_cert_id"] = _cert
-            json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+            _write_config(raw)
             _state["cfg"] = None
             return jsonify({"ok": True})
         except Exception as e:

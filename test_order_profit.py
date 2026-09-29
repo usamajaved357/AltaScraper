@@ -20,9 +20,14 @@ WHAT IS BEING PINNED HERE
 and the rule the owner asked for on missing costs: do not subtract anything,
 show the figure, and make it obvious it is too high.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os, sys, json, tempfile, shutil
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 import domain.order_profit as op
 import domain.order_cogs as oc
@@ -112,12 +117,20 @@ try:
                           vat_rate=0.2, revenue=102.21, units=3)
 finally:
     op.lines_between = _saved
-check("revenue is the figure that was handed in", r_cap["revenue"], 102.21)
-check_true("profit cannot exceed it", r_cap["profit"] <= r_cap["revenue"])
+# RE-PINNED 28 Sep 2026 (profit-accuracy work). The card's revenue is no longer
+# substituted into the sum: the money now comes from the same order rows the
+# card is built from (order_finance.complete_by_order_date), so the two agree by
+# construction -- and where the stores HAVE drifted, the reply SAYS so rather
+# than quietly re-basing the fees on a different set of trade.
+check_true("the drift between the stores is stated, naming the card's figure",
+           "102.21" in (r_cap.get("revenue_note") or ""))
+check_true("  and it is in the notes the screen shows",
+           any("102.21" in n for n in (r_cap.get("notes") or [])))
+check_true("profit cannot exceed the revenue behind it",
+           r_cap["profit"] <= r_cap["revenue"])
 check_true("  nor the revenue after VAT", r_cap["profit"] <= r_cap["net_revenue"])
-check("the unit count is the card's, not the store's", r_cap["units"], 3)
-check_true("and the uncosted units are counted against THAT",
-           r_cap["missing_units"] <= 3)
+check_true("the uncosted units are counted against the order rows' own units",
+           r_cap["missing_units"] <= r_cap["units"])
 
 print("\n== ad spend is subtracted only when it is known ==")
 ra = op.for_lines(LINES, rate=0.15, vat_rate=0.2)

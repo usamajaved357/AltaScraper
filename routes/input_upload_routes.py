@@ -33,6 +33,7 @@ import csv
 import io
 
 from flask import request, jsonify, Response
+from domain.request_account import current as _rqa_current
 
 
 # A file bigger than this is not a product list, and reading it into memory to
@@ -130,12 +131,14 @@ def register(app, *, CONFIG_PATH, _state):
     """Attach /input/upload* to the app."""
 
     def _wsid():
-        return str(_state.get("active_account_id", "") or "") or "_no_account"
+        return _rqa_current(_state) or "_no_account"
 
     def _keep(filename, data, **kw):
         """Record this upload in the Upload history (domain/upload_log.py)."""
         from domain import upload_log as _ul
-        _ul.record(CONFIG_PATH, _wsid(), _state.get("active_marketplace") or "",
+        # The tab's marketplace (reqscope.js names it on /input/), else the open one.
+        _ul.record(CONFIG_PATH, _wsid(),
+                   (request.args.get("marketplace") or _state.get("active_marketplace") or ""),
                    "product_template", filename, data, **kw)
 
     # ---- the upload ---------------------------------------------------------

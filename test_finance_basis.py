@@ -106,7 +106,12 @@ check("and its ad spend is reported", by["B0SETTLED"]["ad_spend"], 5.0)
 check("a product with no advertising row reports unknown, not 0.00",
       by["B0PENDING"]["ad_spend"], None)
 
-print("\nan uncosted unit still withholds the contribution")
+# RE-PINNED 28 Sep 2026 (profit-accuracy work). This used to pin "withheld".
+# The owner's rule, already governing the Sales Profit card and the P&L, is the
+# opposite: "if no cogs are added show profit as wrong ... the user should know
+# he needs to add cogs". Finance now follows it, so all three screens agree:
+# the figure is SHOWN, too high, and the uncosted units are counted and said.
+print("\nan uncosted unit is shown, flagged, not withheld")
 conn.execute("INSERT INTO order_lines (workspace_id, marketplace, order_id, "
              "purchase_date, asin, sku, units, revenue, currency) "
              "VALUES (?,?,?,?,?,?,?,?,?)",
@@ -115,9 +120,11 @@ conn.execute("INSERT INTO order_lines (workspace_id, marketplace, order_id, "
 conn.commit()
 o2, _t2 = _con.by_product_orders(None, WS, MKT, S, E)
 nc = {r["asin"]: r for r in o2}["B0NOCOST"]
-check("no cost recorded means no contribution stated", nc["contribution"], None)
-check("and no margin either", nc["margin_pct"], None)
-check("but its uncosted units are counted", nc["uncosted_units"], 1)
+check("no cost recorded: the contribution is still stated",
+      nc["contribution"] is not None, True)
+check("and so is its margin", nc["margin_pct"] is not None, True)
+check("and its uncosted units are counted, so the screen can say it is too high",
+      nc["uncosted_units"], 1)
 
 print("\nthe account-level charge is the SAME on both calendars")
 # It read 65.51 on settlement and 0.00 on orders, for one subscription, because

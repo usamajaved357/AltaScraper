@@ -100,7 +100,7 @@ function sqpRender() {
     const c = s[k];
     if (!c || !c.count) return;
     const on = SQP.filter === k ? " on" : "";
-    html += '<div class="ui-stat' + on + '" onclick="sqpFilter(\'' + k + '\')">' +
+    html += '<div class="ui-stat' + on + '" onclick="sqpFilter(' + jsArg(k) + ')">' +
       '<div class="ui-stat-v">' + c.count + "</div>" +
       '<div class="ui-stat-k">' + esc(c.label) + "</div>" +
       (c.missed ? '<div class="cc" style="font-size:11px">' + sqpNum(c.missed) +
@@ -163,8 +163,10 @@ function sqpFilter(k) {
 
 async function sqpLoad() {
   SQP.loading = true; SQP.note = ""; sqpRender();
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   try {
     const j = await (await fetch("/sqp" + _sqpQs())).json();
+    if (_sc && !screenStillIn(_sc)) return;   // another account's report (M3 review)
     if (j && j.ok) { SQP.data = j; }
     else if (j && (j.reason === "not_brand_registered" || j.reason === "fatal" ||
                    j.reason === "no_data")) {

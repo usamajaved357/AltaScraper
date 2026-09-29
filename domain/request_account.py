@@ -60,6 +60,26 @@ allowed it -- that is auth/guard.py's job and it still runs.
 ACCOUNT_KEYS = ("account", "account_id")
 
 
+def _json_body(request):
+    """The JSON body WHATEVER ITS Content-Type says -- the routes parse with
+    force=True, so a fetch() with no header (text/plain) is still read by the
+    route and must be read here too (the guard had the same blind spot;
+    Milestone 2). A form body is never touched: reading its raw stream here
+    would empty request.files for the route."""
+    # A GET HAS NO BODY WORTH READING. The guard (auth/guard.py) checks only
+    # the query string on a GET, so an account named in a GET body was chosen
+    # here and never checked -- a restricted login could read another
+    # account's data with curl (non-design batch 1 review). Browsers cannot
+    # send one, so nothing legitimate is lost.
+    if str(getattr(request, "method", "") or "").upper() in ("GET", "HEAD"):
+        return {}
+    ct = str(getattr(request, "content_type", "") or "").lower()
+    if ct.startswith(("multipart/form-data", "application/x-www-form-urlencoded")):
+        return {}
+    got = request.get_json(force=True, silent=True)
+    return got if isinstance(got, dict) else {}
+
+
 def named(request):
     """The account id the calling page says it is displaying, or "".
 
@@ -75,7 +95,7 @@ def named(request):
             return str(v).strip()
     for key in ACCOUNT_KEYS:
         try:
-            v = (request.get_json(silent=True) or {}).get(key)
+            v = _json_body(request).get(key)
         except Exception:
             v = None
         if v and str(v).strip():
@@ -104,10 +124,87 @@ def named_any(request):
         v = None
     if not v:
         try:
-            v = (request.get_json(silent=True) or {}).get("id")
+            v = _json_body(request).get("id")
         except Exception:
             v = None
     return str(v or "").strip()
+
+
+# Values the browser uses to mean "no particular account". Never an account,
+# and the guard skips them -- so they must never be answered as one.
+_NOT_AN_ACCOUNT = ("__all__", "_no_account")
+
+
+def named_now():
+    """The account the CURRENT request names, or "" -- outside a request, or
+    when it names none (or only a placeholder)."""
+    try:
+        from flask import has_request_context, request
+        if has_request_context():
+            got = named(request)
+            if got and got not in _NOT_AN_ACCOUNT:
+                return got
+    except Exception:
+        pass
+    return ""
+
+
+def current(state):
+    """The account THIS REQUEST is for: the one the page named, else the
+    server's open account. Outside a request (a worker thread), the open one.
+
+    The server keeps ONE open account for every tab; the last tab to switch
+    owns it. Image uploads, the image library, image generation and Variations
+    read only that, so with two tabs open an upload made while looking at one
+    account was filed under the other (found by tools/browser_smoke.py's
+    two-tab check, 28 Sep 2026). The page's own account is checked by the
+    guard (auth/guard.py) like any other named account.
+    """
+    return named_now() or str((state or {}).get("active_account_id", "") or "")
+
+
+def id_or_open(asked, state):
+    """The account id the ROUTE was handed (`asked`), else the server's open one.
+
+    EXACTLY the expression fifteen route sites wrote out by hand (architecture batch
+    A5, 29 Sep 2026):
+
+        aid = b.get("id", "") or _state.get("active_account_id", "")
+
+    -- same order, same "" default, no stripping or str() added, so no caller's
+    answer changes. It exists so the fallback to the open account has ONE name
+    that can be found, audited and later tightened in one place. It is not
+    current(): that one also reads the account the page names in ?account=,
+    which these routes have never done, and switching them to it would change
+    what they answer.
+    """
+    return asked or state.get("active_account_id", "")
+
+
+def sheet_mismatch(state):
+    """Why the SERVER'S sheet must not be used for this request, or "".
+
+    The Google Sheet settings (sheet id, tab) are one set for the whole server,
+    belonging to its open account. Once a request follows the account its page
+    names (current() above), a route that also opens that sheet would pair one
+    account with another's sheet -- read its rows, or write into them. So the
+    sheet is refused whenever the request is for a different account than the
+    one whose sheet is loaded, with the one thing to do about it.
+    """
+    try:
+        from flask import has_request_context, request
+        if not has_request_context():
+            return ""
+        asked = named(request)
+    except Exception:
+        return ""
+    open_id = str((state or {}).get("active_account_id", "") or "")
+    if asked and asked != open_id:
+        return ("This page is showing %s, but %s is open in another tab, and the "
+                "Google Sheet in use belongs to that one -- so nothing was read or "
+                "written. Open %s again in this tab and retry."
+                % (asked, open_id or "no account", asked))
+    return ""
 
 
 def for_read(request, state, get_account=None):

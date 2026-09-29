@@ -72,8 +72,15 @@ yes("  only for the barcode", 'if target == "col" and key == "UPC":' in _ed)
 check("  and not for every column", 'key in _EDITABLE_COLS and target == "col"' in _ed
       and "recompute_workspace" in _ed.split('key in _EDITABLE_COLS')[0], False)
 # THE WHOLE WORKSPACE, not the edited row -- see the measurement above.
+# The read moved to listing/warnings.warnings_by_sku (architecture batch A6);
+# it must still select by WORKSPACE, not by the edited row.
+_W = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "listing", "warnings.py"),
+          encoding="utf-8").read()
+_wbs = _W[_W.index("def warnings_by_sku"):_W.index("def recompute_workspace")]
 yes("  across the workspace, not just this row",
-    "_ws_id_of(ws)" in _ed and "workspace_id=?" in _ed)
+    "_ws_id_of(ws)" in _ed and ("workspace_id=?" in _ed or (
+        "warnings_by_sku(CONFIG_PATH, _wsid2)" in _ed
+        and "FROM listings WHERE workspace_id=?" in _wbs and "sku=" not in _wbs)))
 # ONLY WHAT MOVED comes back: a full map on a keystroke would be a large reply
 # for a small fact, and rows that went EMPTY are the ones being cleared.
 yes("it returns only the rows whose verdict changed",

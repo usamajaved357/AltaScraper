@@ -11,6 +11,7 @@ Routes: POST /miles/sheet_pref, GET /miles/sheet_pref, POST /miles/upload,
         GET /miles/optimize, GET /miles/run, GET /miles/results
 """
 import json
+from domain import jsonstore as _jsonstore
 import os
 import re
 import subprocess
@@ -193,7 +194,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
             if os.path.exists(_sp):
                 _sd = json.load(open(_sp, encoding="utf-8"))
                 store_n = len(_sd) if isinstance(_sd, dict) else 0
-                json.dump({}, open(_sp, "w", encoding="utf-8"))
+                _jsonstore.write_json_atomic(_sp, {})   # atomic (Milestone 4)
         except Exception:
             pass
         return jsonify({"ok": True, "cleared": n, "store_cleared": store_n})
@@ -313,8 +314,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                     _uploaded = [str(x).strip() for x in (_MILES_STATE.get("items") or [])
                                  if str(x).strip()]
                     if _uploaded:
-                        with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _itf:
-                            json.dump(_uploaded, _itf)
+                        from domain import jsonstore as _js   # atomic, as below
+                        if not _js.write_json_atomic(os.path.join(_base_g, "miles_items.json"), _uploaded):
+                            raise OSError("could not write miles_items.json")
                         yield (f"data: [items] {len(_uploaded)} uploaded item(s) in scope -- generating "
                                f"ONLY these (items in Drive but NOT in your list are ignored; existing "
                                f"rows are skipped)\n\n")
@@ -322,8 +324,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         _cfg_g = json.load(open(_cfg_path, encoding="utf-8"))
                         _drv_g, _derr_g = _MG.build_drive_rw(_cfg_g, _base_g)
                         _all_items = _MG.list_all_item_folders(_drv_g, log=lambda m: None) if _drv_g else []
-                        with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _itf:
-                            json.dump(_all_items, _itf)
+                        from domain import jsonstore as _js   # atomic
+                        if not _js.write_json_atomic(os.path.join(_base_g, "miles_items.json"), _all_items):
+                            raise OSError("could not write miles_items.json")
                         if _all_items:
                             yield (f"data: [items] no uploaded list this session -- {len(_all_items)} "
                                    f"item folder(s) in Drive; building the ones not already in the sheet\n\n")
@@ -519,8 +522,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                            f"these (items in Drive but NOT in your list are ignored; existing rows in "
                            f"the output tab are skipped)...\n\n")
                     try:
-                        with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _f:
-                            json.dump(_all, _f)
+                        from domain import jsonstore as _js   # atomic: a crash cannot empty it
+                        if not _js.write_json_atomic(os.path.join(_base_g, "miles_items.json"), _all):
+                            raise OSError("could not write miles_items.json")
                     except Exception as _we:
                         yield f"data: [error] could not write item list for generation: {_we}\n\n"
                         return
@@ -655,7 +659,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                                 if isinstance(_sd, dict):
                                     for _it in _revived:
                                         _sd.pop(_it, None)
-                                    json.dump(_sd, open(_sp, "w", encoding="utf-8"))
+                                    _jsonstore.write_json_atomic(_sp, _sd)   # atomic (Milestone 4)
                             except Exception:
                                 pass
                         if skipped:
@@ -778,10 +782,13 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         _key = _p.get("item_number") or _p.get("sku") or ""
                         if _key:
                             _store[_key] = _p
-                    json.dump(_store, open(_store_path, "w", encoding="utf-8"))
+                    # ATOMIC (Milestone 4): open(...,"w") emptied the store before writing,
+                    # and the handle was never closed -- a crash lost every
+                    # harvested bundle, which cannot be scraped back cheaply.
+                    _jsonstore.write_json_atomic(_store_path, _store)
                     # also write the latest-run file (back-compat)
                     _bundle_path = os.path.join(_app_dir, "miles_bundles.json")
-                    json.dump(results["products"], open(_bundle_path, "w", encoding="utf-8"))
+                    _jsonstore.write_json_atomic(_bundle_path, results["products"])
                 except Exception:
                     pass
                 yield (f"data: [done] harvested {len(results['products'])} | "

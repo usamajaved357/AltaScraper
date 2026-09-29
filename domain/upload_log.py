@@ -70,12 +70,7 @@ def uploader(config_path):
     """Who is uploading: the signed-in user's email or name, "" for the owner."""
     try:
         from domain import job_owner as _jo
-        uid = _jo.current()
-        if not uid:
-            return ""
-        from auth import users as _users
-        u = _users.get_user(config_path, uid)
-        return str((u or {}).get("email") or (u or {}).get("name") or uid)
+        return _jo.label(config_path)        # the one "who is this" wording
     except Exception:
         return ""
 

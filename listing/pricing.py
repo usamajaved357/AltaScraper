@@ -106,14 +106,63 @@ PRICING_RULE_MIN_PROFIT     = 0.00   # £ per unit -- see MIN_ROI_PCT below
 PRICING_RULE_MIN_ROI_PCT    = 0.0    # % of landed cost; 0 = break-even floor
 
 
+def usable_price(value, strip_symbols=False):
+    """(price, "") when `value` is a real selling price, else (None, why).
+
+    THE ONE ANSWER to "can this be sent to Amazon as a price?" for the price
+    editor (preview/apply), the percentage change and the repricer's manual
+    price. Each had its own check, and they disagreed: apply took any float,
+    the percentage route let infinity through, the manual price let NaN and
+    infinity through (price-write map F1, 29 Sep 2026). NOT YET used by
+    /optimize/push (listing/patches._build_patches), which invents its own
+    offer shape -- recorded in docs/known-issues.md (price-write map F5).
+
+    why: "not_a_number" (unparseable, NaN, infinite) or "not_positive" (<= 0).
+    strip_symbols: accept "£18.47", "$1,299.00" (the repricer's typed box)."""
+    raw = value
+    if strip_symbols and isinstance(raw, str):
+        raw = raw.replace("£", "").replace("$", "").replace(",", "").strip()
+    try:
+        p = float(raw)
+    except (TypeError, ValueError):
+        return None, "not_a_number"
+    if not math.isfinite(p):
+        return None, "not_a_number"
+    if p <= 0:
+        return None, "not_positive"
+    return p, ""
+
+
 def _round_up(v):
     """2dp, rounded UP -- a floor rounded DOWN is not a floor."""
     return math.ceil(round(v * 100, 6)) / 100.0
 
 
+def _kept(vat_rate):
+    """The share of a VAT-inclusive price the seller keeps: 1 / (1 + VAT).
+
+    1.0 when the account is not VAT-registered, or nobody has said -- so every
+    function below gives exactly the answer it always gave unless a caller
+    passes the account's rate.
+
+    WHY A PRICE HAS TO CARRY THE VAT. A shelf price on a VAT-registered account
+    includes VAT that goes to HMRC. A "break-even" that ignored it sold at a
+    loss of a sixth of the price; a margin worked out on the whole price counted
+    HMRC's money as profit. The owner decided on 28 Sep 2026 that every profit
+    figure follows the account's VAT setting.
+    """
+    try:
+        v = float(vat_rate)
+    except (TypeError, ValueError):
+        return 1.0
+    if not 0 < v < 1:
+        return 1.0
+    return 1.0 / (1.0 + v)
+
+
 def floor_from_target(source_cost, referral_rate, target_kind, target_pct,
                       shipping_label=PRICING_RULE_SHIPPING_LABEL,
-                      ads_margin=PRICING_RULE_ADS_MARGIN):
+                      ads_margin=PRICING_RULE_ADS_MARGIN, vat_rate=None):
     """The price at which profit reaches a PERCENTAGE target. None if impossible.
 
     The flat min_profit above is a fixed number of pounds, which is the right
@@ -138,6 +187,13 @@ def floor_from_target(source_cost, referral_rate, target_kind, target_pct,
 
     Returns None when the target cannot be met, rather than a number that only
     looks like a price.
+
+    WITH VAT (`vat_rate`, the account's own), the seller keeps k = 1/(1+VAT) of
+    the price, and margin is a share of THAT -- the same definition every profit
+    screen uses. The two solutions become
+        margin  p = (c+s+a) / (k(1 - t) - r)
+        roi     p = (c+s+a+c*t) / (k - r)
+    and with no VAT k is 1, which is exactly the two lines above.
     """
     try:
         c = float(source_cost)
@@ -149,12 +205,13 @@ def floor_from_target(source_cost, referral_rate, target_kind, target_pct,
     if c < 0 or r < 0 or t < 0 or kind not in ("margin", "roi"):
         return None
     extras = float(shipping_label) + float(ads_margin)
+    k = _kept(vat_rate)
     if kind == "roi":
-        denom = 1.0 - r
+        denom = k - r
         if denom <= 0.01:
             return None
         return _round_up((c + extras + c * t) / denom)
-    denom = 1.0 - r - t
+    denom = k * (1.0 - t) - r
     # Same guard as floor_from_rate: a denominator at or below zero flips the
     # sign and hands back a NEGATIVE price that still passes a "> 0" check.
     if denom <= 0.01:
@@ -165,7 +222,7 @@ def floor_from_target(source_cost, referral_rate, target_kind, target_pct,
 def achieved(price, source_cost, referral_rate,
              shipping_label=PRICING_RULE_SHIPPING_LABEL,
              ads_margin=PRICING_RULE_ADS_MARGIN,
-             other_fees=0.0, promos=0.0):
+             other_fees=0.0, promos=0.0, vat_rate=None):
     """What a given price actually returns: {profit, margin_pct, roi_pct, ...}.
 
     THE OWNER'S FORMULA, IN ONE LINE:
@@ -195,6 +252,13 @@ def achieved(price, source_cost, referral_rate,
 
     The returned dict also carries `fees`, `cost` and `deductions` so a screen
     can show the sum rather than only its answer.
+
+    VAT COMES OFF FIRST when `vat_rate` is the account's rate: the price the
+    buyer paid includes it and it is HMRC's. Margin is then profit over the
+    price AFTER VAT -- the same definition the Sales card, the P&L and Finance
+    use (owner's decision, 28 Sep 2026). Amazon's referral fee is still worked
+    out on the whole price, because that is the price Amazon charges it on.
+    With no rate passed nothing changes.
     """
     try:
         p = float(price)
@@ -202,22 +266,28 @@ def achieved(price, source_cost, referral_rate,
         r = float(referral_rate)
     except (TypeError, ValueError):
         return {"profit": None, "margin_pct": None, "roi_pct": None,
-                "fees": None, "cost": None, "deductions": None}
+                "fees": None, "cost": None, "deductions": None,
+                "vat": None, "net_price": None}
+    net_price = p * _kept(vat_rate)
+    vat = p - net_price
     referral = p * r
     extras = float(shipping_label or 0) + float(ads_margin or 0)
     fees = referral + float(other_fees or 0)
-    profit = p - fees - c - extras - float(promos or 0)
+    profit = net_price - fees - c - extras - float(promos or 0)
     return {"profit": round(profit, 2),
-            "margin_pct": (round(profit / p * 100.0, 1) if p > 0 else None),
+            "margin_pct": (round(profit / net_price * 100.0, 1)
+                           if net_price > 0 else None),
             "roi_pct": (round(profit / c * 100.0, 1) if c > 0 else None),
             # The parts, so a breakdown never has to re-derive them and get a
             # different answer to the total sitting beside it.
+            "vat": round(vat, 2),
+            "net_price": round(net_price, 2),
             "referral": round(referral, 2),
             "fees": round(fees, 2),
             "cost": round(c, 2),
             "seller_costs": round(extras, 2),
             "promos": round(float(promos or 0), 2),
-            "deductions": round(fees + c + extras + float(promos or 0), 2)}
+            "deductions": round(vat + fees + c + extras + float(promos or 0), 2)}
 
 
 def floor_from_fees(source_cost, amazon_fees,
@@ -235,11 +305,15 @@ def floor_from_fees(source_cost, amazon_fees,
 def floor_from_rate(source_cost, referral_rate,
                     shipping_label=PRICING_RULE_SHIPPING_LABEL,
                     ads_margin=PRICING_RULE_ADS_MARGIN,
-                    min_profit=PRICING_RULE_MIN_PROFIT):
+                    min_profit=PRICING_RULE_MIN_PROFIT, vat_rate=None):
     """The same floor, when the fee is only known as a rate. None if impossible.
 
     A rate at or above 1.0 would divide by zero or flip the sign and hand back a
     NEGATIVE floor that still passes a "> 0" check, so it is refused outright.
+
+    With the account's `vat_rate` the seller keeps k = 1/(1+VAT) of the price,
+    so break-even is (cost + extras) / (k - rate). Without it k is 1 and this is
+    the formula it always was.
     """
     try:
         cost = float(source_cost)
@@ -248,7 +322,7 @@ def floor_from_rate(source_cost, referral_rate,
         return None
     if cost < 0 or rate < 0:
         return None
-    denom = 1.0 - rate
+    denom = _kept(vat_rate) - rate
     if denom <= 0.01:
         return None
     return _round_up((cost + shipping_label + ads_margin + min_profit) / denom)

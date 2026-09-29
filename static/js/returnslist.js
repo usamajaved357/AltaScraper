@@ -68,7 +68,9 @@ async function returnsListLoad(){
     const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
     if(a) qs.push("account=" + encodeURIComponent(a));
     if(m && m !== "__all__") qs.push("marketplace=" + encodeURIComponent(m));
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const r = await fetch("/returns/list?" + qs.join("&"));
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     const j = await r.json();
     RETL.rows = (j && j.rows) || [];
     RETL.statuses = (j && j.statuses) || {};
@@ -244,7 +246,9 @@ async function returnsListOpen(identity){
     const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
     if(a) qs.push("account=" + encodeURIComponent(a));
     if(m && m !== "__all__") qs.push("marketplace=" + encodeURIComponent(m));
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const r = await fetch("/returns/detail?" + qs.join("&"));
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     RETL.detail = await r.json();
   }catch(e){
     RETL.detail = {ok: false, error: "Could not open that return."};

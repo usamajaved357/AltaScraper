@@ -82,6 +82,9 @@ globalThis._compCell    = () => "clear";
 globalThis.needsCopy    = () => false;
 globalThis.badgeClass   = () => "b-LIVE";
 
+// THE REAL jsArg, from users.js where the page gets it (Milestone 2).
+{ const U = fs.readFileSync("static/js/users.js", "utf8"), a = U.indexOf("function jsArg(");
+  globalThis.jsArg = new Function(U.slice(a, U.indexOf("\n}", a) + 2) + "\nreturn jsArg;")(); }
 const src = fs.readFileSync("static/js/listings.js", "utf8");
 const grab = function(name){
   const i = src.indexOf("function " + name + "(");

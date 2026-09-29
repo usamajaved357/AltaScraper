@@ -520,7 +520,8 @@ function ppcDateRange(j, onchange){
   // which is what "i am not able to select more than 2 days in past" was.
   PPCWIN.shown = {start: s, end: e};
   const box = function(which, val){
-    return '<input type="date" class="ppc-fctl ppc-date" value="'
+    return '<input type="date" class="ppc-fctl ppc-date" aria-label="'
+      + (which === "start" ? "Start date" : "End date") + '" value="'
       + _pEsc(val) + '" max="' + _pEsc(ppcToday()) + '"'
       + ' onchange="ppcSetDate(' + jsArg(which) + ', this.value, '
       + jsArg(onchange) + ')">';

@@ -111,9 +111,9 @@ function dwTitleParts(r, cid){
     editor:
         '<div class="dw2-h3" contenteditable="true" spellcheck="false"'
       + ' data-orig="' + esc(tval) + '"'
-      + ' oninput="dwCount(this,\'' + cid + '\',' + TITLE_OPTS.limit + ',0,' + TITLE_OPTS.warnAt + ')"'
+      + ' oninput="dwCount(this,' + jsArg(cid) + ',' + TITLE_OPTS.limit + ',0,' + TITLE_OPTS.warnAt + ')"'
       + ' onpaste="dwPastePlain(event)"'
-      + ' onblur="dwBlurSave(this,\'' + esc(r.sku) + '\',\'col\',\'Title\')"'
+      + ' onblur="dwBlurSave(this,' + jsArg(r.sku) + ',\'col\',\'Title\')"'
       + '>' + (claimMarkField(r, 'title', r.title) || '') + '</div>',
     count:
         '<span class="dw2-count' + (over ? ' over' : (warn ? ' warn' : '')) + '" id="' + cid + '">'
@@ -190,9 +190,9 @@ function dwEditBlock(o){
       '<div class="dw2-edit' + (o.sm ? " sm" : "") + ' empty" contenteditable="true" spellcheck="false"'
     + ' data-ph="' + esc(o.placeholder || "empty") + '"'
     + ' data-orig="' + esc(cur) + '"'
-    + ' oninput="dwCount(this,\'' + cid + '\',' + (o.limit || 0) + ',' + (o.bytes ? 1 : 0) + ',' + (o.warnAt || 0) + ')"'
+    + ' oninput="dwCount(this,' + jsArg(cid) + ',' + (o.limit || 0) + ',' + (o.bytes ? 1 : 0) + ',' + (o.warnAt || 0) + ')"'
     + ' onpaste="dwPastePlain(event)"'
-    + ' onblur="dwBlurSave(this,\'' + esc(o.sku) + '\',\'' + tgt + '\',\'' + esc(o.key) + '\')">'
+    + ' onblur="dwBlurSave(this,' + jsArg(o.sku) + ',' + jsArg(tgt) + ',' + jsArg(o.key) + ')">'
     + esc(cur) + '</div>'
     + (o.note ? '<div class="dw2-note">' + o.note + '</div>' : "");
   return dwSection(o.label, right, block);
@@ -228,18 +228,18 @@ function dwBulletCards(sku, bullets){
           // It showed characters here and bytes on the bar -- two numbers for
           // one bullet (the owner's PDP redesign, 26 Sep 2026).
       +   '<textarea data-bkt="bullet' + n + '" data-bytes="1" data-warn="0" data-lim="500"'
-      +   ' oninput="ccount(this,\'' + cid + '\',500);bulletMeter()"'
-      +   ' onchange="saveEdit(this,\'' + esc(sku) + '\',\'col\',\'Bullet ' + n + '\')">' + esc(val) + '</textarea>'
+      +   ' oninput="ccount(this,' + jsArg(cid) + ',500);bulletMeter()"'
+      +   ' onchange="saveEdit(this,' + jsArg(sku) + ',\'col\',\'Bullet ' + n + '\')">' + esc(val) + '</textarea>'
       +   '<div class="dw2-bfoot"><div class="dw2-bfl">'
-      +     '<button title="Move up"' + (i > 0 ? ' onclick="moveBullet(\'' + esc(sku) + '\',' + i + ',-1)"' : " disabled") + '><i class="ti ti-arrow-up"></i></button>'
-      +     '<button title="Move down"' + (i < total - 1 ? ' onclick="moveBullet(\'' + esc(sku) + '\',' + i + ',1)"' : " disabled") + '><i class="ti ti-arrow-down"></i></button>'
-      +     '<button class="del" title="Delete this bullet" onclick="removeBullet(\'' + esc(sku) + '\',' + i + ')"><i class="ti ti-x"></i></button>'
+      +     '<button title="Move up"' + (i > 0 ? ' onclick="moveBullet(' + jsArg(sku) + ',' + i + ',-1)"' : " disabled") + '><i class="ti ti-arrow-up"></i></button>'
+      +     '<button title="Move down"' + (i < total - 1 ? ' onclick="moveBullet(' + jsArg(sku) + ',' + i + ',1)"' : " disabled") + '><i class="ti ti-arrow-down"></i></button>'
+      +     '<button class="del" title="Delete this bullet" onclick="removeBullet(' + jsArg(sku) + ',' + i + ')"><i class="ti ti-x"></i></button>'
       +     '<span class="dw2-count" id="' + cid + '"></span>'
       +   '</div><span class="dw2-bstat"></span></div>'
       + '</div></div>';
   }).join("");
   const add = (total < MAX_BULLETS)
-    ? '<button class="dw2-addbul" onclick="addBullet(\'' + esc(sku) + '\')">+ Add bullet (' + total + '/' + MAX_BULLETS + ')</button>'
+    ? '<button class="dw2-addbul" onclick="addBullet(' + jsArg(sku) + ')">+ Add bullet (' + total + '/' + MAX_BULLETS + ')</button>'
     : "";
   return '<div class="dw2-bb" id="bulletIdxMeter"></div>' + cards + add;
 }

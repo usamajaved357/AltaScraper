@@ -39,7 +39,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const R = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const R = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 const DASH = R("dashboard.py");
 const AI = R("domain/ai_providers.py");
 const GJS = R("static/js/genimage.js");

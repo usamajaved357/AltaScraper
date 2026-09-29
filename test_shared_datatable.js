@@ -16,7 +16,7 @@
  * there is only ONE of it, which is the thing a future edit can quietly undo.
  */
 const fs = require("fs");
-const R = "D:/AltaScraper/";
+const R = (__dirname + "/");
 let fails = 0;
 function check(label, got, want) {
   const ok = got === want;

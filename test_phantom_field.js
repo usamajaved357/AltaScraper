@@ -25,7 +25,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
-const ROOT = "D:\\AltaScraper";
+const ROOT = __dirname;
 
 let fails = 0;
 function check(label, got, want){
@@ -96,7 +96,11 @@ truthy("  merged over the list row, not replacing it",
        /ROWS\[i\] = Object\.assign\(\{\}, ROWS\[i\], j\.row\)/.test(PDP));
 // Moving to another listing while the request is in flight must not paint the
 // previous listing's checks onto this one.
-truthy("  and a stale reply is dropped", /if\(PDP_SKU !== sku\) return;/.test(PDP));
+// Accepts the stronger guard the account-switch fix added (27 Sep 2026): same
+// listing AND same account/marketplace context. Behaviour pinned by
+// test_pdp_account_switch.js.
+truthy("  and a stale reply is dropped",
+       /if\(PDP_SKU !== sku( \|\| pdpContext\(\) !== ctx)?\) return;/.test(PDP));
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

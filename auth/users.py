@@ -53,14 +53,20 @@ PERMISSIONS = {
     "ppc":             "Change PPC campaigns, bids and budgets",
     "manage_accounts": "View and change Amazon credentials, accounts and settings",
     "manage_users":    "Add, change and remove users",
+    # Employee Performance (29 Sep 2026): "Only appropriate owner/admin/manager
+    # roles should see employee-wide performance." Seeing what EVERYONE did is
+    # its own permission, so it can be given to a manager without also letting
+    # them add or remove people.
+    "view_activity":   "See what each team member did (Employee Performance)",
 }
 
 # Roles are presets, not a separate mechanism -- picking a role fills in the
 # permission list, which remains individually editable afterwards.
 ROLES = {
     "owner":   ["edit", "upload_images", "approve_delete", "publish", "ppc",
-                "manage_accounts", "manage_users"],
-    "manager": ["edit", "upload_images", "approve_delete", "publish", "ppc"],
+                "manage_accounts", "manage_users", "view_activity"],
+    "manager": ["edit", "upload_images", "approve_delete", "publish", "ppc",
+                "view_activity"],
     # A lister keeps what they had: drafts and the image library. Take
     # upload_images away and they can still design images but not keep them;
     # take `edit` away and they can work on images without touching listings.
@@ -98,8 +104,11 @@ ROLES = {
 # stored list decides, exactly as before, so a deliberate removal still holds.
 # PERMS_VERSION stamps a record as soon as it is written by a version that
 # knows all of these, after which nothing is inferred at all.
-PERMS_VERSION = 2
-LATER_PERMISSIONS = {2: {"upload_images"}}
+PERMS_VERSION = 3
+LATER_PERMISSIONS = {2: {"upload_images"},
+                     # Every owner and manager written before Employee
+                     # Performance existed gets it from their role.
+                     3: {"view_activity"}}
 
 # ---- per-feature access, the way Amazon's child accounts work ------------
 # A permission answers "may they DO this?". It does not answer "may they SEE
@@ -554,20 +563,42 @@ def visible_accounts(config_path, accounts):
     shared-password owner who is the only user). That is the same rule
     auth/guard.py applies, not a shortcut.
     """
+    return [a for a in accounts
+            if caller_may_see(config_path, str(a.get("id") or ""))]
+
+
+def _caller(config_path):
+    """The signed-in user, or None when there is nobody to scope to."""
     try:
         from flask import session
         uid = session.get("uid")
-        if not uid:
-            return accounts
-        u = get_user(config_path, uid)
-        if not u:
-            return accounts
-        return [a for a in accounts
-                if can_access_workspace(u, str(a.get("id") or ""))]
+        return get_user(config_path, uid) if uid else None
+    except Exception:
+        return None
+
+
+def caller_may_see(config_path, workspace_id):
+    """May the CALLER see this workspace's data? The per-id form of
+    visible_accounts(), for lists keyed by workspace id rather than built from
+    account records (usage ledgers, backup checks). Same fall-open rule."""
+    u = _caller(config_path)
+    if u is None:
+        return True
+    try:
+        return can_access_workspace(u, str(workspace_id or ""))
     except Exception:
         # A permissions lookup that fails must not empty somebody's screen; the
         # doorman still refuses anything they may not open.
-        return accounts
+        return True
+
+
+def caller_sees_every_account(config_path):
+    """Is the caller allowed every account? (Only then may an all-accounts
+    TOTAL be shown to them: filtering its rows would leave the total wrong.)"""
+    u = _caller(config_path)
+    if u is None:
+        return True
+    return ALL_WORKSPACES in [str(a) for a in (u.get("workspaces") or [])]
 
 
 # ---- mutations -----------------------------------------------------------

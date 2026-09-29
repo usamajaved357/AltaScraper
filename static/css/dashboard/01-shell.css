@@ -1,0 +1,575 @@
+/* static/css/dashboard/01-shell.css -- the top bar, privacy mode, the accounts grid, the workspace frame and sidebar, the page header, wide tables, buttons, the toast. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+  /* ---- top bar (always visible) ---- */
+  /* The top bar takes the SIDEBAR colour, not the panel colour, so the bar and
+     the sidebar below it read as one continuous frame around the content. */
+  /* COMPACT. The bar stood 49px tall to hold a logo and a few chips. At 40px the
+   listings underneath get most of a row back, and every sticky offset below is
+   measured from this height -- they are changed with it, not left behind. */
+.appbar{position:sticky;top:0;z-index:20;background:var(--sidebar);
+          border-bottom:1px solid var(--line);padding:6px 12px;display:flex;
+          align-items:center;gap:8px}
+  .appbar .brandmark{display:flex;align-items:center;cursor:pointer;flex:0 0 auto}
+  /* THE MARK. The wordmark is gone -- it spent 110px of the top bar naming the
+     app on the only screen you cannot reach without already knowing which app
+     you opened. What was left had to earn its place, so it is drawn rather
+     than typed: a letterform in a rounded box goes soft at 22px, and two
+     strokes with round joins do not.
+     Dark glyph on the teal tile. White on #2dd4a8 is about 1.8:1 and genuinely
+     hard to read; the dark ink is roughly 9:1. Same rule as primary buttons. */
+  .appbar .brandmark .amark{width:26px;height:26px;display:block;
+        filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+  .appbar .brandmark .amark .tile{fill:url(#amk_g)}
+  .appbar .brandmark .amark .g0{stop-color:var(--accent)}
+  /* Falls back to the same colour where no second accent is themed, so the
+     tile is flat rather than broken. */
+  .appbar .brandmark .amark .g1{stop-color:var(--accent2,var(--accent))}
+  .appbar .brandmark .amark .glyph{stroke:var(--as-lit-0a1628-fg)}
+  /* A hair of lift on hover, so it reads as the app's own mark rather than a
+     button. It is deliberately not clickable. */
+  .appbar .brandmark:hover .amark{filter:drop-shadow(0 2px 5px rgba(0,0,0,.45))}
+  /* Kept: other screens (login, the print header) still use the lettered tile. */
+  .appbar .brandmark .dot{width:22px;height:22px;border-radius:var(--radius-sm);background:var(--accent);
+        display:flex;align-items:center;justify-content:center;color:var(--as-lit-0a1628-fg);
+        font-size:13px;font-weight:700}
+  .appbar .spacer{flex:1}
+  .appbar .barbtn{font-size:13px;color:var(--ink2);background:transparent;border:1px solid transparent;
+        padding:6px 10px;border-radius:8px;cursor:pointer}
+  /* Icon-only button: square, no label. Privacy uses this in the top bar. */
+  .appbar .iconbtn{padding:6px;width:30px;display:inline-flex;align-items:center;justify-content:center}
+  .appbar .iconbtn .ti{font-size:16px}
+  /* Health badge, right-aligned, matching the prototype's .hb. */
+  .appbar .hb{display:inline-flex;align-items:center;gap:5px;background:var(--ok-bg);
+        border:1px solid var(--ok-line);border-radius:16px;padding:3px 10px;
+        font-size:11px;color:var(--ok);white-space:nowrap}
+  .appbar .hb .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);
+        display:inline-block;flex:0 0 auto}
+  .appbar .hb.bad{background:var(--red-bg);border-color:var(--red-line);color:var(--red)}
+  .appbar .hb.bad .dot{background:var(--red)}
+  .appbar .barbtn:hover{background:var(--panel2);color:var(--ink)}
+  .barbtn.privon{color:var(--warn);border-color:var(--as-lit-5a4a1e-bd);background:var(--as-lit-2a2310-bg)}
+  /* visual zone editor boxes */
+  .zebox{position:absolute;border:2px dashed var(--accent);background:var(--accent-bg);cursor:move;box-sizing:border-box;display:flex;align-items:center;overflow:hidden}
+  .zebox.sel{border-style:solid;box-shadow:0 0 0 2px color-mix(in srgb, var(--as-lit-ffffff-ov) 30%, transparent)}
+  .zelbl{position:absolute;top:-16px;left:-2px;font-size:9px;font-weight:700;color:var(--as-lit-0a0e14-fg);padding:1px 5px;border-radius:3px;white-space:nowrap;z-index:2}
+  .zetext{color:var(--as-lit-ffffff-fg);font-size:13px;padding:0 6px;pointer-events:none;text-transform:uppercase;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+  .zegrip{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:var(--as-lit-ffffff-bg);border:2px solid var(--accent);border-radius:2px;cursor:nwse-resize;z-index:2}
+  .zeerase{position:absolute;background:rgba(0,0,0,.78);border:1px solid var(--as-lit-ff6b6b-bd);box-sizing:border-box}
+  .zeerase .zex{position:absolute;top:-9px;right:-6px;background:var(--as-lit-ff6b6b-bg);color:#fff;border-radius:50%;width:16px;height:16px;font-size:12px;line-height:16px;text-align:center;cursor:pointer}
+  .crumbs{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+  .dwhl{margin:2px 0 8px;font-size:13px;color:var(--ink);line-height:1.4}
+  .dwhl-lbl{display:inline-block;background:var(--as-lit-2a3a52-bg);color:var(--accent2);font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:6px;text-transform:uppercase;letter-spacing:.04em}
+  .crumbs .sep{opacity:.5}
+  .crumbs .here{color:var(--ink);font-weight:600}
+
+  /* ---- privacy mode: blur sensitive info for screen-sharing/demos ---- */
+  /* Any element tagged .pii gets blurred when body.privacy-on is set. */
+  body.privacy-on .pii{
+    filter:blur(7px);
+    -webkit-filter:blur(7px);
+    transition:filter .12s ease;
+    user-select:none;pointer-events:none;
+  }
+  /* Images blur a bit harder so the product isn't recognisable. */
+  body.privacy-on .pii-img img,
+  body.privacy-on .pii-img > i{
+    filter:blur(12px);
+    -webkit-filter:blur(12px);
+  }
+  /* A tile/card marked .unblurred (via its eye button) reveals everything
+     inside it, overriding the global blur. */
+  body.privacy-on .unblurred .pii,
+  body.privacy-on .unblurred.pii{filter:none;-webkit-filter:none;pointer-events:auto;user-select:auto}
+  body.privacy-on .unblurred .pii-img img,
+  body.privacy-on .unblurred .pii-img > i{filter:none;-webkit-filter:none}
+  /* The eye button sits in the corner of each tile image; only shown in privacy mode. */
+  .peek{display:none}
+  body.privacy-on .peek{
+    display:flex;position:absolute;top:6px;right:6px;z-index:6;
+    width:26px;height:26px;align-items:center;justify-content:center;
+    border-radius:7px;cursor:pointer;
+    background:color-mix(in srgb, var(--as-bg-shell) 82%, transparent);color:var(--warn);border:1px solid var(--as-lit-5a4a1e-bd);
+  }
+  body.privacy-on .peek:hover{background:color-mix(in srgb, var(--as-bg-canvas) 95%, transparent)}
+  body.privacy-on .peek .ti{font-size:15px;pointer-events:none}
+
+
+  /* ---- the accounts grid ----
+     #home, .homehd and .homebar went with the home page. The GRID stays: the
+     same cards, in a panel opened from the sidebar's account switcher, which is
+     where accounts are added and edited. */
+  .wsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+
+  /* The .newui-toggle pill lived here; it switched between the classic UI and the
+     navy #altui overlay. Both the toggle and the overlay are gone -- Orbit is the
+     only style now, so there is nothing to switch between. */
+  .db-warn-amber{color:var(--warn)} .db-warn-red{color:var(--red)} .db-ok{color:var(--ok)}
+  .db-greet{font-size:18px;font-weight:600;margin:0 0 4px}
+  .db-sub{font-size:13px;color:var(--muted);margin:0 0 16px}
+  .db-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+  .db-metric{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+             cursor:pointer;transition:border-color .12s}
+  .db-metric:hover{border-color:var(--accent)}
+  .db-metric .n{font-size:26px;font-weight:600;line-height:1.1;margin:0}
+  .db-metric .l{font-size:12px;color:var(--muted);margin:4px 0 0}
+  .db-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  @media (max-width:720px){ .db-grid2{grid-template-columns:1fr} }
+  .db-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .db-h{font-size:14px;font-weight:600;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .db-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
+  .db-item:last-child{border-bottom:none}
+  .db-item:hover .db-title{color:var(--accent)}
+  .db-title{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+  .db-reason{font-size:11px;margin:1px 0 0;color:var(--muted)}
+  .db-pill{font-size:11px;padding:2px 8px;border-radius:20px;flex-shrink:0;white-space:nowrap}
+  .db-pill.blocked{background:var(--redbg);color:var(--red)}
+  .db-pill.review{background:var(--amberbg);color:var(--warn)}
+  .db-kv{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);line-height:1.9}
+  .db-chip{font-size:12px;padding:7px 11px;border-radius:var(--as-radius-pill);border:1px solid var(--as-border);
+           background:var(--as-surface-3);color:var(--ink);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .db-chip:hover{border-color:var(--accent)}
+  .db-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:0 0 auto}
+  .db-note{font-size:11px;color:var(--muted);margin-top:8px;font-style:italic}
+  .db-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  /* Shape-1 restricted-check modal */
+  .rc-modal{position:fixed;inset:0;background:rgba(6,8,12,.72);z-index:200;display:none;
+            align-items:flex-start;justify-content:center;padding:60px 16px;overflow:auto}
+  .rc-modal.show{display:flex}
+  .rc-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;
+          width:min(560px,100%)}
+  .rc-box h3{margin:0 0 4px;font-size:16px}
+  .rc-box .cc{color:var(--muted);font-size:12px}
+  .rc-in{width:100%;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line);
+         color:var(--ink);border-radius:8px;padding:9px 11px;font:inherit;margin-top:8px}
+  .rc-res{margin-top:14px}
+  .rc-match{border-radius:10px;padding:11px 13px;margin-bottom:8px;border:1px solid var(--line)}
+  .rc-match.prohibited{background:var(--redbg);border-color:var(--red-line)}
+  .rc-match.gated,.rc-match.restricted{background:var(--amberbg);border-color:var(--warn-line)}
+  .rc-clear{background:var(--greenbg);border:1px solid var(--ok-line);color:var(--ok);border-radius:10px;padding:11px 13px}
+  .rc-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.03em}
+  .rc-badge.prohibited{background:var(--as-lit-c0392b-bg);color:#fff} .rc-badge.gated,.rc-badge.restricted{background:var(--as-lit-7a641f-bg);color:#fff}
+  .rc-src{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 5px;margin-left:6px}
+  /* Orbit cards are FLAT: the hover cue is a teal border, not a lift. The
+     translateY(-1px) is gone deliberately -- "no box-shadow, Orbit is flat, not
+     elevated" applies to the fake-shadow effect of nudging a card upward too. */
+  .wscard{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+          padding:14px 16px;cursor:pointer;
+          transition:border-color .12s;display:flex;flex-direction:column;gap:12px}
+  .wscard:hover{border-color:var(--accent)}
+  .wsedit{background:var(--panel2);border:1px solid var(--line);color:var(--ink2);border-radius:var(--radius-sm);width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .wsedit:hover{color:var(--ink);border-color:var(--accent)}
+  .wscard .ic{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+              font-size:15px;font-weight:700}
+  .wscard .nm{font-weight:600;font-size:14px}
+  .wscard .sub{color:var(--muted);font-size:12px;margin-top:1px}
+  .wscard .stats{display:flex;gap:14px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:10px}
+  .wscard.add{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);
+              flex-direction:row;gap:8px;min-height:118px}
+  .wscard.add:hover{color:var(--ink)}
+  /* reserve space for any icon so a missing CDN glyph never collapses layout */
+  .ti{display:inline-block;min-width:1em;min-height:1em;line-height:1}
+  .wscard .ic .ti{font-size:18px}
+
+  /* ---- workspace screen ---- */
+  #workspace{display:none}
+  #workspace.show{display:flex;min-height:calc(100vh - 40px)}
+  .sidebar{width:210px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--line);
+           padding:16px 12px;position:sticky;top:40px;height:calc(100vh - 40px);overflow:auto;
+           display:flex;flex-direction:column}
+  .backlink{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;cursor:pointer;margin-bottom:16px}
+  .backlink:hover{color:var(--ink)}
+  .wsident{display:flex;align-items:center;gap:9px;margin-bottom:18px}
+  .wsident .ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+  .wsident .nm{font-weight:600;font-size:13px}
+  /* Orbit's active state is a teal LEFT BORDER, not a filled background.
+     The 3px border is declared transparent on every item and only recoloured
+     when active -- declaring it solely on .active would widen the box by 3px at
+     the moment of clicking, so every nav item would twitch sideways as you moved
+     between them. Left padding is 8px rather than 11px for the same reason: 3px
+     of border plus 8px of padding keeps the label on exactly the vertical line
+     it sat on before, in step with the workspace name above it.
+     The radius is dropped on the left so the accent bar reads as a clean edge. */
+  /* Orbit nav sizing: 12px, 8px 14px padding, and the active item gets the teal
+     tint as well as the left border (stage 2 had the border alone). */
+  .navitem{display:flex;align-items:center;gap:9px;padding:8px 14px 8px 11px;font-size:12px;
+           font-weight:500;color:var(--ink2);cursor:pointer;margin-bottom:2px;
+           border-left:3px solid transparent;
+           border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+           transition:color .12s,background-color .12s,border-color .12s}
+  /* The nav items are <a> elements now, so that right-click offers "open in a
+     new tab". That brought the browser's default link styling with it and every
+     menu entry came out underlined. They are navigation, not prose. */
+  a.navitem, a.navitem:hover, a.navitem:visited{text-decoration:none}
+  .navitem:hover{background:var(--panel2);color:var(--ink)}
+  .navitem.active{background:var(--accent-bg);border-left-color:var(--accent);color:var(--accent)}
+  .navitem.active:hover{background:var(--accent-bg)}
+  .navitem .ti{font-size:16px;width:16px}
+  /* Sidebar section label. */
+  .slbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+        color:var(--ink4);padding:14px 11px 4px}
+  .navitem .ti{font-size:16px;width:18px;text-align:center}
+
+  /* ---- EXPANDING MASTER ITEMS, as Seller Central groups its menu ----
+     "manage inventory expands into manage all inventory, sell globally,
+      fulfillment by amazon etc etc"
+
+     The master row looks like a nav item because it IS one to click; what marks
+     it out is the chevron and the fact that the children indent under it. The
+     children are hidden with max-height rather than display:none so the reveal
+     can be animated, and are given overflow:hidden so a shut group cannot be
+     tabbed into. */
+  .navgroup .navkids{max-height:0;overflow:hidden;
+                     transition:max-height .18s ease}
+  /* Large enough for the longest group (Reports, seven children) with room to
+     spare. A fixed value is used rather than `none` because max-height cannot
+     animate to or from auto. */
+  .navgroup.open .navkids{max-height:520px}
+  .navmaster{font-weight:600;color:var(--ink)}
+  .navmaster .navchev{margin-left:auto;font-size:13px;opacity:.55;
+                      transition:transform .18s ease}
+  .navgroup.open .navmaster .navchev{transform:rotate(90deg)}
+  /* The indent is what says "these belong to the row above". The left rule
+     gives the eye a single line to follow down the group, which matters most
+     when several groups are open at once. */
+  .navgroup .navkids .navitem{padding-left:30px;font-size:12px;
+                              margin-left:11px;border-left:2px solid var(--line);
+                              border-radius:0}
+  .navgroup .navkids .navitem.active{border-left-color:var(--accent)}
+  /* A group holding the current screen stays marked even when the user shuts
+     it, so "where am I" survives collapsing the drawer you are standing in. */
+  .navgroup.hasactive .navmaster{color:var(--ink)}
+  .navgroup.hasactive:not(.open) .navmaster{background:var(--panel2)}
+  /* The badge a master wears on behalf of its shut children. Same red as the
+     child badges: a different colour would read as a different kind of problem.
+     .dotonly is the case where a child is flagged but has no number to show. */
+  .navmbadge{display:none;background:var(--red);color:#fff;padding:1px 6px;
+             border-radius:8px;font-size:10px;font-weight:600;margin-left:6px}
+  .navmbadge.dotonly{padding:0;width:7px;height:7px;border-radius:50%}
+
+  .wsmain{flex:1;min-width:0;display:flex;flex-direction:column}
+
+  /* ---- THE SIDEBAR FOLDS TO AN ICON RAIL ----
+     Asked for as "make the sidebar hideable like in amazon". A rail rather than
+     a full hide, for the same reason Seller Central keeps one: a menu that
+     vanishes entirely leaves nothing to switch WITH, so getting back means
+     hunting for the control that brings it back.
+
+     The labels are bare text nodes inside .navitem -- there is no element around
+     "Listings" to hide -- so the rail works by collapsing the item's font to
+     zero and restoring it on the icon. Tooltips are filled in by sidebar.js from
+     the label text at the moment of collapsing, because an icon with no name is
+     a guess. */
+  .navtoggle{display:flex;align-items:center;gap:9px;padding:7px 11px;margin:0 0 10px;
+             font-size:12px;color:var(--ink3);cursor:pointer;background:none;
+             border:1px solid transparent;border-radius:var(--radius-sm);width:100%;
+             text-align:left;font-family:inherit}
+  .navtoggle:hover{background:var(--panel2);color:var(--ink);border-color:var(--line)}
+  .navtoggle .ti{font-size:16px;width:18px;text-align:center;flex-shrink:0}
+  /* ---- COLLAPSED IS A HAMBURGER, NOT A RAIL ----
+     Owner's decision, 27 Aug 2026:
+
+         "when the sidebar is collapsed, it currently shows a vertical strip of
+          icons. This takes up space and looks cluttered. Instead: when
+          collapsed, show ONLY a hamburger menu icon (☰) at the top left --
+          exactly like Amazon Seller Central does. The icon strip approach is
+          removed."
+
+     The rail was kept for a reason that turned out not to hold: that a menu
+     which vanishes leaves nothing to switch WITH. It does not vanish -- the
+     hamburger stays, in the corner, which is where every app that does this
+     puts it. What the rail actually cost was 54px of every screen for a column
+     of unlabelled glyphs; measured on the Repricer, the table gained that width
+     back and the ten-column layout stopped needing to scroll sideways at
+     1366px.
+
+     Nothing is deleted. The full sidebar is one click away and comes back
+     exactly as it was, groups and all. */
+  #workspace.navmini .sidebar{width:44px;padding:10px 6px;overflow:hidden}
+  /* The hamburger is the only thing left, and it says what it does on hover. */
+  #workspace.navmini .navtoggle{justify-content:center;padding:9px 0;font-size:0;
+                                margin:0;border-color:var(--line)}
+  #workspace.navmini .navtoggle:hover{background:var(--panel2)}
+  #workspace.navmini .navtoggle .ti{font-size:19px}
+  /* EVERYTHING ELSE GOES. Not display:none on each rule -- one rule over the
+     sidebar's children, so a nav item added later is hidden by construction
+     rather than by somebody remembering to add it here. */
+  #workspace.navmini .sidebar>*:not(.navtoggle){display:none}
+  /* ONE LINE, NO SCROLLBAR.
+   The toolbar wrapped to two and three rows, each costing a listing row. It is
+   tighter and it MUST NOT WRAP -- and it must not scroll either: a horizontal
+   scrollbar hides the buttons at the end from anyone who does not think to drag
+   it. The buttons inside are shrunk instead, below, and nothing else in the app
+   is touched by that. */
+.wstoolbar{position:sticky;top:40px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
+             padding:5px 10px;display:flex;align-items:center;gap:5px;flex-wrap:nowrap}
+
+/* SCOPED TO THE TOOLBAR. .mktbtn and .ghost are used all over the app at their
+   own sizes; only the ones in this bar shrink, so no other screen's buttons
+   move. */
+  .wstoolbar .mktbtn{font-size:11px;padding:3px 7px}
+  .wstoolbar .ghost{font-size:11px;padding:3px 7px}
+/* It truncates rather than pushing the buttons off the end -- "synced 29m ago"
+   and "synced 3 hours ago" must not change what fits. */
+  .wstoolbar #synclabel{max-width:140px;overflow:hidden;text-overflow:ellipsis;
+                        white-space:nowrap}
+
+/* 3. THE STATUS DROPDOWN IS REDUNDANT -- the stat cards filter on click. Hidden,
+      NOT removed: metricFilter() in listings.js writes sel.value, and a missing
+      element would throw. */
+  #statussel{display:none !important}
+
+/* 6. TWO BARS THAT ONLY ADD HEIGHT between the stat cards and the table. */
+  #ws_datasrc.datasrc{display:none !important}
+  #gridhow{display:none !important}
+  .wstoolbar h2{font-size:15px;margin:0;font-weight:600}
+
+  /* ---- THE PAGE HEADER, ONE SIZE FOR EVERY SCREEN ----
+     Sales opened with a 28px title and a sentence under it. Every other screen
+     opened with a 15px .wstoolbar h2 -- and a page whose name is the size of a
+     button label reads as a panel inside something else rather than as a screen
+     in its own right. That one difference is most of why the newer tabs looked
+     unfinished beside the older ones.
+
+     It was worse than an oversight: Sales' title was written inline, so there
+     was nothing for another screen to reuse even if it wanted to, and the
+     consistency test wrote the gap down as an exemption instead of closing it.
+     One class now, used by all of them. */
+  .pagehead{margin:0 0 14px}
+  .pagehead h1,.pagehead .pagetitle{font-size:28px;font-weight:600;line-height:30.8px;
+                                    margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  .pagehead .pagetitle .ti{font-size:24px;color:var(--accent);width:24px;text-align:center}
+  .pagehead .panelsub,.pagehead .sub{color:var(--muted);font-size:12px;
+                                     line-height:1.5;max-width:104ch}
+
+  /* A supplier link inside a reason line. The browser's own link colour is a
+     dark blue that all but disappears on a dark panel, and these sit in muted
+     grey text where they need to be findable. */
+  #srcbody a{color:var(--accent2,var(--accent));text-decoration:none;
+             border-bottom:1px dotted currentColor}
+  #srcbody a:hover{color:var(--ink);border-bottom-style:solid}
+  .wstoolbar .sub{color:var(--muted);font-size:12px}
+  .wstoolbar .spacer{flex:1}
+  .pill{padding:4px 10px;border-radius:999px;border:1px solid var(--line);
+        background:var(--panel2);color:var(--muted);cursor:pointer;font-size:13px}
+  /* Was a hardcoded blue fill inside a var(--accent) border. Once the accent
+     turned teal that became a blue pill ringed in teal, which reads as a bug
+     rather than a style. Same fix applied to .tabpill.active and .mktbtn.on. */
+  .pill.active{color:var(--accent2);border-color:var(--accent);background:var(--accent-bg)}
+  /* SIDE PADDING. 20-32px of nothing down both edges of every screen; 10px is
+   the gap the mockup keeps. Only the containers that set the page's left/right
+   gutter change -- no font size and no button padding among them. */
+#summary{padding:5px 10px;color:var(--muted);border-bottom:1px solid var(--line);
+           background:var(--panel);font-size:13px}
+  /* Run health badge -- sits directly above the log panel. Colour is the state,
+     so a frozen run is visibly different from a working one at a glance. */
+  .runhealth{display:flex;align-items:center;gap:10px;padding:6px 10px;
+       background:var(--panel);border-bottom:1px solid var(--line);font-size:13px}
+  .rh_dot{width:9px;height:9px;border-radius:50%;background:var(--ink3);flex:0 0 auto}
+  .rh_state{font-weight:600;letter-spacing:.02em}
+  .rh_detail{color:var(--muted)}
+  .rh_why{margin-left:auto;padding:4px 10px;font-size:12px;cursor:pointer;
+       border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit}
+  .rh_why:hover{border-color:var(--warn);color:var(--warn)}
+  .rh-running .rh_dot{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb, var(--as-lit-7fd1a0) 18%, transparent)}
+  .rh-running .rh_state{color:var(--ok)}
+  .rh-stalled .rh_dot{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb, var(--as-lit-e3b768) 20%, transparent)}
+  .rh-stalled .rh_state{color:var(--warn)}
+  .rh-stopped .rh_dot{background:var(--as-lit-ff8585-bg)}
+  .rh-stopped .rh_state{color:var(--as-lit-ff8585-fg)}
+  .rh-idle    .rh_dot{background:var(--ink3)}
+  .rh-idle    .rh_state{color:var(--ink3)}
+  #log{display:none;margin:0;padding:8px 10px;background:var(--bg);color:var(--as-lit-cbd3e1-fg);
+       border-bottom:1px solid var(--line);max-height:230px;overflow:auto;
+       font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
+  #log .l{opacity:.92}
+  #log .start,#log .done{color:var(--ok)}
+  main#grid{padding:8px 10px;display:grid;gap:14px;
+       grid-template-columns:repeat(auto-fill,minmax(360px,1fr));align-content:start}
+  /* secondary panels inside workspace (image refs / brand setup / generate) */
+  /* ORBIT: 32px content padding. The number lives in ONE place because the
+     section toolbars bleed to the panel edge with a NEGATIVE margin of exactly
+     this size -- when the two were separate numbers (padding 20px here, an
+     inline margin:-20px on seven toolbars) changing one silently inset every
+     toolbar by 12px. */
+  .wspanel{display:none;padding:var(--wspad,32px)}
+  /* WIDTH 100%, AND ALLOWED TO SHRINK. Without these a panel is a flex item of
+     .wsmain sized to its own MAX-CONTENT, and on a phone the widest thing in it
+     wins: measured on a 390px screen the Sales panel came out 1923px wide and
+     dragged the whole page sideways with it. Every chart was then drawn at that
+     width and scaled to fit, which is "the graphs do not look as original they
+     are too short" -- and the same fault applied to every screen with a wide
+     table on it, not only this one.
+
+     Measured after: the panel is 390 and the two top cards are 366, which is
+     exactly what Orbit measures on the same phone. On a desktop it changes
+     nothing -- the panel already filled its column -- and #sec_sales keeps its
+     1464 cap, because max-width beats width.
+
+     `min-width:0` alone does NOT fix it, and nor does `align-items:stretch`.
+     Both were tried in the live page and measured before this one was kept. */
+  .wsmain > .wspanel{width:100%;min-width:0}
+  .wspanel.show{display:block}
+  /* Toolbars that run edge-to-edge inside a padded panel. Was an inline style
+     repeated on seven sections; a class means the bleed follows the padding. */
+  .wstoolbar.bleed{position:static;
+                   margin:calc(var(--wspad,32px) * -1) calc(var(--wspad,32px) * -1) 16px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+        padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .card.flag{border-color:var(--as-lit-5a2230-bd)}
+
+  /* ---- A WIDE TABLE SCROLLS; IT DOES NOT GET CUT OFF ----
+     Reported as "the page cutting my visuals and getting out of the screen
+     where i can not see the text or graphics".
+
+     MEASURED in a real browser rather than guessed at, because a page-width
+     check says nothing here: the PAGE fits perfectly. What was happening is
+     worse than overflow. Our cards are `overflow:hidden` so their corners stay
+     round, and a table wider than its card is therefore CLIPPED -- no
+     scrollbar, no way to reach it, the columns simply gone. At 1280px:
+
+         Weekly KPIs   583px of table invisible
+         Listings       43px, which is the whole Actions column
+
+     Overflow at least leaves the content reachable. This did not.
+
+     The rule already existed -- but only inside mobile.css's phone media query,
+     so every desktop kept clipping. It is a general truth about a wide table in
+     a rounded box, not a phone problem, so it lives here now and mobile.css
+     keeps only the genuinely phone-specific part (the min-width floor that
+     stops a table squashing instead of scrolling).
+
+     `!important` because several of these cards carry the overflow inline. */
+  #workspace .card:has(> table),
+  #workspace .card:has(> .stk-table),
+  .ltwrap, #stk_ledger, #ppc_terms{
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    overscroll-behavior-x:contain;
+  }
+  .top{display:flex;align-items:center;gap:8px}
+  .badge{font-size:11px;font-weight:700;letter-spacing:.02em;padding:3px 9px;
+         border-radius:999px;text-transform:uppercase;white-space:nowrap}
+  /* Status pills on the Orbit trios: each status owns a background, a text
+     colour and a matching border, so they stay distinguishable by hue AND by
+     weight rather than by hue alone. */
+  .b-APPROVED{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-line)}
+  .b-NEEDS_REVIEW{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line)}
+  .b-IP_HOLD,.b-COMPLIANCE_HOLD,.b-ERROR{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
+  .b-none{background:var(--panel2);color:var(--ink2);border:1px solid var(--line)}
+  .risk{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px}
+  .risk.hi{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
+  .risk.med{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line)}
+  .title{font-weight:600;font-size:14px}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:12px}
+  .meta b{color:var(--ink);font-weight:600}
+  .findings{background:var(--red-bg);border:1px solid var(--red-line);border-radius:var(--radius-sm);
+            padding:8px 10px;font-size:12px;color:var(--red);white-space:pre-wrap}
+  .findings .h{font-weight:700;color:var(--red);margin-bottom:2px}
+  .errlist{display:flex;flex-direction:column;gap:5px;white-space:normal}
+  .erritem{background:var(--as-lit-2a1414-bg);border:1px solid var(--red-line);border-radius:6px;padding:6px 9px;
+           font-size:12px;color:var(--red);line-height:1.35}
+  .erritem.w{background:var(--as-lit-2a2414-bg);border-color:var(--as-lit-5c5024-bd);color:var(--as-lit-e8d9a8-fg)}
+  .errfield{font-weight:700;color:var(--as-lit-ffb4b4-fg);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .erritem.w .errfield{color:var(--as-lit-ffe08a-fg)}
+  details summary{cursor:pointer;color:var(--muted);font-size:12px}
+  ul.bul{margin:6px 0 0;padding-left:18px;color:var(--ink);font-size:12px}
+  ul.bul li{margin:2px 0}
+  .acts{display:flex;gap:8px;margin-top:2px}
+  .acts a{margin-left:auto;color:var(--accent);text-decoration:none;font-size:12px;align-self:center}
+  /* A FILLED GREEN BUTTON. It used to be called `.ok`, and that one bare word
+     caused every green patch in the app.
+
+     "i see these green pAtches everywhere it is also in .../inventory resolve
+      it everywhere"
+
+     `ok` is the obvious name for a STATE, so component after component wrote
+     `.stk-headline.ok`, `.odp-state.ok`, `.linkbtn.ok` and set only a text
+     colour -- reasonably, because a state modifier is not supposed to repaint
+     the box. But this rule also matched, painted the box solid green, and left
+     green text on a green ground. MEASURED on the Inventory screen: an <h3>
+     with background rgb(74,222,128) and color rgb(74,222,128), reading
+     "Nothing needs ordering" and showing nothing at all.
+
+     Renamed rather than patched at each site: three components were broken,
+     and the next one to use the word would have been broken too. The word is
+     now free to mean what everyone already assumed it meant. */
+  /* .okfill was the drawer's green Approve button. That button is now one half
+     of the .dwseg status control, which carries the green itself, and nothing
+     in any template or script asks for this class any more -- so the rule went
+     with the markup rather than being left behind to look load-bearing. */
+  .hold{background:transparent}
+  .empty{color:var(--muted);padding:40px;text-align:center;grid-column:1/-1}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+         background:var(--as-surface-1);border:1px solid var(--line);color:var(--ink);
+         padding:9px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;
+         /* ABOVE EVERY OVERLAY: at 80 a toast raised from inside a dialog
+            (z 9600) or the repricer's modal (9000) was drawn underneath it and
+            never seen (master audit, UX #7). */
+         z-index:9800;max-width:min(640px,calc(100vw - 32px))}
+  .toast.show{opacity:1}
+  /* A failure must not look like a success. */
+  .toast.err{border-color:var(--red);box-shadow:0 0 0 1px var(--red) inset}
+  .b-API_READY{background:var(--accent-bg);color:var(--accent2);border:1px solid var(--accent-line)}
+  .b-API_ERROR{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
+  /* LIVE is deliberately NEUTRAL, per the brief -- grey, not green. A listing
+     being live is the resting state, not an achievement to celebrate; green is
+     reserved for APPROVED, which is a thing you did. Keeping both green made a
+     grid of live listings glow as if everything needed attention. */
+  .b-LIVE{background:var(--panel2);color:var(--ink2);border:1px solid var(--line)}
+  /* The group of a variation family. Not a product: nothing buys it, it carries
+     no price, and it is deliberately outside the approve-and-submit flow. */
+  .b-PARENT{background:var(--panel2);color:var(--ink2);border:1px dashed var(--accent)}
+  table.kv{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;table-layout:fixed}
+  table.kv td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.kv td.k{color:var(--muted);width:38%;word-break:break-word;overflow-wrap:anywhere}
+  table.kv td.v{color:var(--ink);width:62%;word-break:break-word;overflow-wrap:anywhere}
+  .kvsec{margin-top:10px;color:var(--accent2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  pre.raw{display:none;margin:8px 0 0;padding:8px;background:var(--bg);border:1px solid var(--line);
+          border-radius:6px;font:11.5px/1.45 ui-monospace,Consolas,monospace;color:var(--as-lit-cbd3e1-fg);
+          white-space:pre-wrap;max-height:280px;overflow:auto}
+  .rawtoggle{margin-top:8px;color:var(--accent);cursor:pointer;font-size:12px;display:inline-block}
+  .payloadbox{margin-top:10px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--panel)}
+  .payloadbox>summary{color:var(--as-lit-8fd0ff-fg);font-size:12px}
+  .payloadnote{color:var(--ink3);font-size:11px;margin:6px 0;line-height:1.5}
+  pre.payloadraw{display:block;max-height:340px}
+  /* Fields sit on --bg, DARKER than the --panel they are drawn on, so an input
+     reads as a recess rather than another raised card. It was the reverse
+     before, which made fields disappear into the panel behind them. */
+  /* Orbit field geometry: --input, 8px radius, 10px 12px padding, 13px text.
+     Noticeably roomier than the 4px/6px it replaced -- the edit form gets
+     taller, which is the trade the Orbit spec makes for legibility. */
+  input.ed,select.ed,textarea.ed{width:100%;background:var(--input);border:1px solid var(--line);
+    color:var(--ink);border-radius:8px;padding:10px 12px;font:inherit;font-size:13px;
+    transition:border-color .12s,box-shadow .12s}
+  textarea.ed{resize:vertical;line-height:1.4}
+  /* A focus RING as well as a border colour. Border-colour alone is a 1px cue,
+     which is easy to lose on a dense edit form and invisible to anyone
+     tabbing through with the keyboard. */
+  input.ed:focus,select.ed:focus,textarea.ed:focus{outline:none;border-color:var(--accent);
+    box-shadow:0 0 0 2px var(--accent-bg)}
+  .ed::placeholder{color:var(--ink4)}
+  .ed.saved{border-color:var(--ok-line) !important}
+  .ed.err{border-color:var(--red) !important}
+  .ed.saving{opacity:.55}
+  select.ed{cursor:pointer}
+  /* Full editor: field delete + bullet controls */
+  .bctls{display:inline-flex;gap:2px;margin-left:6px;vertical-align:middle}
+  .bctl{background:var(--panel2);border:1px solid var(--line2);color:var(--as-lit-cfe0ff-fg);cursor:pointer;font-size:11px;
+    line-height:1;padding:2px 6px;border-radius:5px}
+  .bctl:hover{background:var(--as-lit-213555-bg);color:var(--as-lit-ffffff-fg)}
+  .bctl.del{color:var(--red);border-color:var(--red-line)}
+  .bctl.del:hover{background:var(--red-bg);color:var(--as-lit-ffffff-fg)}
+  .bctl.dis,.bctl:disabled{opacity:.35;cursor:default}
+  .cdel{background:none;border:none;color:var(--as-lit-c98a8a-fg);cursor:pointer;font-size:12px;padding:0 4px;border-radius:4px}
+  .cdel:hover{background:var(--red-bg);color:var(--as-lit-ffffff-fg)}
+  .cdel.dis,.cdel:disabled{color:var(--as-lit-5b6472-fg);cursor:not-allowed}
+  .cdel.dis:hover,.cdel:disabled:hover{background:none;color:var(--as-lit-5b6472-fg)}
+  .addbulletbtn{background:var(--as-lit-12233b-bg);border:1px dashed var(--as-info-border);color:var(--accent2);cursor:pointer;
+    font-size:12px;padding:5px 10px;border-radius:7px;margin-top:2px}
+  .addbulletbtn:hover{background:var(--as-info-bg);color:var(--as-lit-ffffff-fg)}
+  td.k{padding-top:9px;white-space:nowrap}
+  .ro{color:var(--muted)}
+  .safe{background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--as-lit-9fe0b8-fg)}
+  td.wcell{padding:6px 8px}
+  /* Label above a field, per Orbit: 11px, --ink3. */
+  .wlab{color:var(--ink3);font-size:11px;margin-bottom:4px}

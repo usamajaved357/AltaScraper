@@ -6,7 +6,7 @@
  * the work was happening on the server -- only the screen was blocked.
  */
 const fs = require("fs");
-const src = fs.readFileSync("D:/AltaScraper/static/js/miles_template.js", "utf8");
+const src = fs.readFileSync((__dirname + "/static/js/miles_template.js"), "utf8");
 
 let fails = 0;
 function check(label, got, want) {

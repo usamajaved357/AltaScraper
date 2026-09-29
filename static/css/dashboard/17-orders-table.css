@@ -1,0 +1,110 @@
+/* static/css/dashboard/17-orders-table.css -- the Orders table. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+/* ---- THE ORDERS TABLE ----------------------------------------------------
+   Reported as "i see text written into one another, no proper spacing and good
+   visuals like other pages", and that is what it was: table.kv is 3px of
+   vertical padding, which suits a two-column key/value list of single lines.
+   The orders table puts TWO lines in most of its cells -- a product name over
+   its SKU, a date over the channel and town, an order number over its unit
+   count -- so 3px between one order's small print and the next order's title
+   left them touching, with no line between rows to tell them apart.
+
+   Here rather than in the JS string: every other table's spacing is in this
+   file, and a second set of numbers inside a template literal is a second
+   place to keep in step. */
+table.ordtable{ border-collapse:separate; border-spacing:0; }
+/* SENTENCE CASE, TWO LINES, AND TIGHTER.
+   Every cell in this table carries two facts -- the order id and its unit
+   count, the date and the fulfilment channel -- and the heading named only the
+   first. The sub-line is the same .th-sub the listings table uses, so the two
+   tables cannot end up with two answers to what a heading looks like; the caps
+   go with it, for the same reason they went there (see listrow_detailed.css:
+   the app-wide `table th{text-transform:uppercase}` was shouting a heading
+   that had been written in sentence case all along). */
+table.ordtable th{
+  padding:7px 10px;
+  text-align:left;
+  font-size:10px;
+  font-weight:600;
+  letter-spacing:0;
+  text-transform:none;
+  color:var(--muted);
+  white-space:nowrap;
+  vertical-align:top;
+  background:rgba(0,0,0,.16);
+  border-bottom:1px solid var(--as-neutral-border);
+  position:sticky;                /* the headings stay while a long list scrolls */
+  top:0;
+  z-index:1;
+}
+/* 7px, so more than three orders fit above the fold.
+   "See 7+ order rows above the fold (currently only ~3 fit)." Every cell on
+   this row is two short lines; 11px of padding above and below each of them was
+   most of the height of the row. */
+table.ordtable td{
+  padding:7px 10px;
+  vertical-align:middle;          /* .kv aligns top, which floats a 34px image */
+  border-bottom:1px solid color-mix(in srgb, var(--as-neutral-border) 55%, transparent);
+}
+/* The sub-line under a heading. Same class and same shape as the listings
+   table's, defined here too because this table is styled in dashboard.css and
+   listrow_detailed.css is not loaded for the Orders screen's sake. */
+table.ordtable th .th-sub{
+  display:block; margin-top:1px;
+  /* May wrap: the heading row is nowrap, and on a narrow column the small
+     print ran into the next heading's ("fulfilmenand what is left"). */
+  white-space:normal;
+  font-size:10px; font-weight:400; letter-spacing:0;
+  text-transform:none; color:var(--ink4);
+}
+table.ordtable tbody tr:last-child > td{ border-bottom:0; }
+/* The row a click would open. Colour is reserved for status, so this is only
+   a lift in the background. */
+table.ordtable tbody tr.ordrow{ cursor:pointer; transition:background .12s; }
+table.ordtable tbody tr.ordrow:hover{ background:color-mix(in srgb, var(--as-lit-ffffff-ov) 3.5%, transparent); }
+table.ordtable tbody tr.ordrow.isopen{ background:color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent); }
+/* Small print under a main line, in every cell that has any. Without this the
+   two lines sit on top of each other at these font sizes. */
+table.ordtable td .cc{ margin-top:3px; line-height:1.35; }
+/* The opened detail row is part of the order above it, not a row of its own. */
+table.ordtable tbody tr.orddetail > td{
+  padding:0 12px 12px;
+  border-bottom:1px solid color-mix(in srgb, var(--as-neutral-border) 55%, transparent);
+  background:color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent);
+}
+
+/* CHIPS THAT SAY WHAT THEY DO. `.db-chip` had one appearance, so a screen
+   whose main action was "publish to Amazon" had to reach for a bare
+   <button class="danger"> and stopped matching everything around it.
+   The intent is carried by the border and the text, not by a fill: a
+   toolbar of six solid buttons has no first among them. */
+.db-chip.go{ border-color:var(--accent-line); color:var(--accent); }
+.db-chip.go:hover{ border-color:var(--accent); background:var(--accent-bg); }
+.db-chip.risk{ border-color:var(--red-line); color:var(--as-lit-fca5a5-fg); }
+.db-chip.risk:hover{ border-color:var(--red); background:var(--red-bg); }
+.db-chip[disabled]{ opacity:.45; cursor:not-allowed; }
+.db-chip[disabled]:hover{ border-color:var(--line); background:var(--panel2); }
+
+/* The one solid chip a screen is allowed, for the action it exists for. */
+.db-chip.primary{
+  background:var(--accent); border-color:var(--accent); color:var(--as-lit-06231b-fg); font-weight:600;
+}
+.db-chip.primary:hover{ filter:brightness(1.07); }
+
+/* A modal that opens onto one of these screens should not change key.
+   The five reference screens introduce themselves with a title and a
+   line of plain English; so do the Image Studio and Image Library. */
+.modal .panelhead{ margin:0 0 12px; }
+.modal .paneltitle{ display:flex; align-items:center; gap:8px; }
+.modal .paneltitle .ti{ color:var(--accent); font-size:17px; }
+
+/* Off-screen but still THERE: focusable, labelable, and read by a screen
+   reader. Used where the browser's own control is the only light-coloured
+   thing on a dark screen -- a bare <input type=file> -- and a <label> drives
+   it instead. display:none would take it out of the tab order and break the
+   very thing it is standing in for. */
+.visually-hidden{
+  position:absolute; width:1px; height:1px;
+  margin:-1px; padding:0; border:0;
+  clip:rect(0 0 0 0); clip-path:inset(50%);
+  overflow:hidden; white-space:nowrap;
+}

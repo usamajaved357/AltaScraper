@@ -45,7 +45,21 @@ function lvWants(r){
   catch(e){ return false; }
 }
 
-function lvGet(sku){ return LIVE_ATTRS[String(sku)] || null; }
+/* Only an answer fetched for the account AND marketplace open NOW. The cache
+ * is keyed by SKU, and SKUs are shared across accounts, so an entry fetched
+ * for another context is treated as absent (pdpContext, pdp.js). */
+function lvGet(sku){
+  const L = LIVE_ATTRS[String(sku)];
+  if(!L) return null;
+  if(L.ctx !== undefined && typeof pdpContext === "function" && L.ctx !== pdpContext()) return null;
+  return L;
+}
+
+/* Forget every cached answer. shell.js calls this (through pdpLeaveContext)
+ * when the account or marketplace changes. */
+function lvForgetAll(){
+  Object.keys(LIVE_ATTRS).forEach(function(k){ delete LIVE_ATTRS[k]; });
+}
 function lvKeys(sku){
   const L = lvGet(sku);
   return (L && L.state === "ok") ? Object.keys(L.values||{}) : [];
@@ -121,19 +135,31 @@ function lvIssueHtml(i){
 function lvEnsure(r){
   if(!lvWants(r)) return;
   const sku = String(r.sku);
-  if(LIVE_ATTRS[sku]) return;                 // cached, including a past failure
-  LIVE_ATTRS[sku] = {state:"loading", values:{}, multi:{}, content:{}, issues:[]};
+  if(lvGet(sku)) return;                      // cached for THIS context, including a past failure
+  // Stamped with the context it was asked for, and remembered by identity: an
+  // answer that lands after the entry was replaced or forgotten -- an account
+  // or marketplace switch, lvRefresh -- is not stored and redraws nothing.
+  const ctx = (typeof pdpContext === "function") ? pdpContext() : "";
+  const mine = {state:"loading", values:{}, multi:{}, content:{}, issues:[], ctx: ctx};
+  LIVE_ATTRS[sku] = mine;
+  const keep = function(v){
+    if(LIVE_ATTRS[sku] !== mine) return false;
+    v.ctx = ctx;
+    LIVE_ATTRS[sku] = v;
+    return true;
+  };
+  let current = true;
   const url = acctUrl("/listing/live_attributes?sku=" + encodeURIComponent(sku)
                       + "&mkt=" + encodeURIComponent(typeof rowMkt==="function" ? rowMkt(r) : ""));
   fetch(url).then(res => res.json()).then(j => {
     if(!j || !j.ok){
-      LIVE_ATTRS[sku] = {state:"error", values:{}, multi:{}, content:{}, issues:[],
-                         error: (j && j.error) || "Amazon did not answer"};
+      current = keep({state:"error", values:{}, multi:{}, content:{}, issues:[],
+                         error: (j && j.error) || "Amazon did not answer"});
     } else if(j.on_amazon === false){
-      LIVE_ATTRS[sku] = {state:"gone", values:{}, multi:{}, content:{}, issues:[],
-                         reason: j.reason || ""};
+      current = keep({state:"gone", values:{}, multi:{}, content:{}, issues:[],
+                         reason: j.reason || ""});
     } else {
-      LIVE_ATTRS[sku] = {state:"ok", values:j.values||{}, multi:j.multi||{},
+      current = keep({state:"ok", values:j.values||{}, multi:j.multi||{},
                          content:j.content||{}, issues:j.issues||[],
                          skipped:j.skipped||[], product_type:j.product_type||"",
                          // THE CATALOGUE RECORD, kept apart from `values`.
@@ -147,12 +173,14 @@ function lvEnsure(r){
                          // here, which is how a set of me-too offers was once
                          // diagnosed as "misfiled" and nearly moved.
                          shape:j.shape||null,
-                         amazon_status:j.amazon_status||""};
+                         amazon_status:j.amazon_status||""});
     }
   }).catch(e => {
-    LIVE_ATTRS[sku] = {state:"error", values:{}, multi:{}, content:{}, issues:[],
-                       error: String((e && e.message) || e)};
+    current = keep({state:"error", values:{}, multi:{}, content:{}, issues:[],
+                       error: String((e && e.message) || e)});
   }).then(() => {
+    // An answer for a context that is no longer open redraws nothing.
+    if(!current) return;
     // Only redraw if this SKU is still the one on screen -- in EITHER view.
     // Redrawing one the user has already left would put one listing's values
     // under another listing's name.
@@ -301,7 +329,7 @@ function lvBelow(sku, key, localVal){
        + '<button class="lv-use" title="Copy Amazon’s value into this listing, so '
        + 'what Submit sends matches what is in the box. Saves to the app only — '
        + 'nothing is sent to Amazon until you press Submit."'
-       + ' onclick="lvUse(\'' + esc(sku) + '\',\'' + esc(key) + '\')">use Amazon’s</button>'
+       + ' onclick="lvUse(' + jsArg(sku) + ',' + jsArg(key) + ')">use Amazon’s</button>'
        + '</div>';
 }
 
@@ -329,6 +357,10 @@ async function lvUse(sku, key){
  * even when Amazon disagrees with it -- overwriting those is the destructive
  * direction and is left as a per-field decision. */
 async function lvFillEmpty(sku){
+  // The account these values are copied INTO, taken before the confirmation:
+  // every write names it, so a switch part-way cannot send the rest to the new
+  // account's same-SKU listing (loop audit, 28 Sep 2026).
+  const pinAcct = (typeof acctId === "function") ? acctId() : "";
   const L = lvGet(sku);
   const r = ROWS.find(x => String(x.sku) === String(sku));
   if(!L || L.state !== "ok" || !r) return;
@@ -348,12 +380,15 @@ async function lvFillEmpty(sku){
     try{
       const j = await (await fetch("/edit", {method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify(acctBody({sku, target:"attr", key:k, value:L.values[k]}))})).json();
+        body: JSON.stringify(pinAcct && typeof acctBodyFor === "function"
+          ? acctBodyFor({sku, target:"attr", key:k, value:L.values[k]}, pinAcct)
+          : acctBody({sku, target:"attr", key:k, value:L.values[k]}))})).json();
       if(j.ok){ r.attributes = r.attributes || {}; r.attributes[k] = L.values[k]; done++; }
       else failed++;
     }catch(e){ failed++; }
   }
   toast("Filled " + done + " field(s)" + (failed ? (", " + failed + " failed") : ""));
+  if(pinAcct && typeof acctId === "function" && acctId() !== pinAcct) return;   // saved there
   if(typeof _rebuildDrawerData === "function") _rebuildDrawerData(sku);
 }
 
@@ -398,6 +433,9 @@ function lvDiffFields(sku){
 }
 
 async function lvPushChanges(sku){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   sku = String(sku);
   const L = lvGet(sku);
   const r = (typeof ROWS !== "undefined" && ROWS.find)
@@ -420,6 +458,10 @@ async function lvPushChanges(sku){
   const changes = {};
   todo.forEach(k => { changes[k] = a[k]; });
   try{
+    if(typeof acctId === "function" && acctId() !== _pinAcct){
+        if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+        return;
+      }
     const body = (typeof acctBody === "function")
       ? acctBody({sku: sku, changes: changes, confirmed: true,
                   product_type: L.product_type || r.product_type || "",
@@ -462,12 +504,12 @@ function lvBanner(r){
   if(L.state === "gone")
     return '<div class="lv-bar gone">Amazon has no listing with this SKU on this account, '
          + 'so there is nothing live to compare. The values below are this app’s own.'
-         + '<button class="lv-refresh" onclick="lvRefresh(\'' + esc(sku) + '\')">check again</button></div>';
+         + '<button class="lv-refresh" onclick="lvRefresh(' + jsArg(sku) + ')">check again</button></div>';
   if(L.state === "error")
     return '<div class="lv-bar err">Could not read this listing from Amazon: '
          + esc(L.error||"") + '. The values below are this app’s own — they are '
          + 'not wrong, they are just not confirmed against Amazon.'
-         + '<button class="lv-refresh" onclick="lvRefresh(\'' + esc(sku) + '\')">try again</button></div>';
+         + '<button class="lv-refresh" onclick="lvRefresh(' + jsArg(sku) + ')">try again</button></div>';
 
   const a = r.attributes || {};
   const vals = L.values || {};
@@ -495,16 +537,16 @@ function lvBanner(r){
     + '<span class="lv-dot"></span><b>Live on Amazon</b>'
     + (L.amazon_status ? '<span class="lv-status">' + esc(L.amazon_status) + '</span>' : "")
     + bits.join("")
-    + (only ? '<button class="lv-fill" onclick="lvFillEmpty(\'' + esc(sku) + '\')">'
+    + (only ? '<button class="lv-fill" onclick="lvFillEmpty(' + jsArg(sku) + ')">'
               + 'Fill ' + only + ' empty field(s) from Amazon</button>' : "")
     // THE REVERSE, which never existed. "Fill from Amazon" has always been here;
     // there was no way to send the other way, so an edit to a live listing sat
     // in this app indefinitely with nothing saying so.
-    + (_unsent ? '<button class="lv-push" onclick="lvPushChanges(\'' + esc(sku) + '\')"'
+    + (_unsent ? '<button class="lv-push" onclick="lvPushChanges(' + jsArg(sku) + ')"'
               + ' title="Patch these fields on the live Amazon listing. Only the '
               + 'ones that differ are sent, and you see each one before it goes.">'
               + 'Send ' + _unsent + ' change(s) to Amazon</button>' : "")
-    + '<button class="lv-refresh" onclick="lvRefresh(\'' + esc(sku) + '\')">refresh</button>'
+    + '<button class="lv-refresh" onclick="lvRefresh(' + jsArg(sku) + ')">refresh</button>'
     + '</div>'
     + lvShapeBar(L)
     + (issues.length

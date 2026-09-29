@@ -41,12 +41,6 @@ OK = "ok"
 FAILED = "failed"
 
 
-def _enum(marketplace):
-    from sp_api.base import Marketplaces
-    code = str(marketplace or "UK").upper()
-    return getattr(Marketplaces, code, Marketplaces.UK)
-
-
 def sales_rank(creds, marketplace, marketplace_id, asin, timeout=30):
     """The listing's best sales rank. Never raises.
 
@@ -66,8 +60,8 @@ def sales_rank(creds, marketplace, marketplace_id, asin, timeout=30):
         out["error"] = "sp_api CatalogItems not available: %s" % e
         return out
     try:
-        cat = CatalogItems(credentials=creds, marketplace=_enum(marketplace),
-                           timeout=timeout)
+        from api import sp_client as _sp
+        cat = _sp.client(CatalogItems, creds, marketplace, rule=_sp.API, timeout=timeout)
         res = cat.get_catalog_item(asin=asin, includedData=["salesRanks"],
                                    marketplaceIds=[marketplace_id])
         p = res.payload if hasattr(res, "payload") else (res or {})
@@ -114,8 +108,9 @@ def competitive_price(creds, marketplace, marketplace_id, asin, timeout=30):
         out["error"] = "sp_api ProductPricing not available: %s" % e
         return out
     try:
-        pricing = ProductPricing(credentials=creds, marketplace=_enum(marketplace),
-                                 timeout=timeout)
+        from api import sp_client as _sp
+        pricing = _sp.client(ProductPricing, creds, marketplace, rule=_sp.API,
+                             timeout=timeout)
         comp = pricing.get_competitive_pricing_for_asins(asin_list=[asin])
         items = comp.payload if isinstance(getattr(comp, "payload", None), list) else []
     except Exception as e:

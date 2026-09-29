@@ -25,7 +25,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const LIB = fs.readFileSync("D:/AltaScraper/static/js/listingimages.js", "utf8");
+const LIB = fs.readFileSync((__dirname + "/static/js/listingimages.js"), "utf8");
 
 /* Brace-matched body of a named function, so "the tile offers it" can be told
  * apart from "the file contains it somewhere". */

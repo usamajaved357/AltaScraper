@@ -12,11 +12,16 @@ AND THE UPLOAD COULD NOT READ ITS OWN SHEET. It split each line on commas, which
 is not what a CSV is. Then the server-side reader, which does parse CSV, was
 SNIFFING the dialect -- and the sniffer gets a real file wrong.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import io
 import csv
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -137,8 +142,8 @@ check("  with its row intact", b3, [["S8", "9.50"]])
 
 print("\n=== ONE csv writer, not one per template ===")
 truthy("it lives on its own", "def to_csv" in
-       open(r"D:\AltaScraper\domain\sheets.py", encoding="utf-8").read())
-SBSRC = open(r"D:\AltaScraper\domain\source_bulk.py", encoding="utf-8").read()
+       open(_os_repo.path.join(_REPO, r"domain\sheets.py"), encoding="utf-8").read())
+SBSRC = open(_os_repo.path.join(_REPO, r"domain\source_bulk.py"), encoding="utf-8").read()
 truthy("the supplier sheet uses it", "_sheets.to_csv(headers, rows)" in SBSRC)
 falsy("  and no longer writes its own", "csv.writer(buf" in SBSRC)
 truthy("a title with a comma is quoted, once, for both",
@@ -151,20 +156,20 @@ print("\n=== the file goes to the SERVER, which knows how to read it ===")
 # always-visible one was the unsafe one, so it was deleted rather than fixed.
 # What it was asserting is still true of the survivor, which is where this looks
 # now. ("uploading the cogs sheet should be in the one place")
-J = open(r"D:\AltaScraper\static\js\cogs.js", encoding="utf-8").read()
+J = open(_os_repo.path.join(_REPO, r"static\js\cogs.js"), encoding="utf-8").read()
 truthy("the browser posts the file", "/cogs/upload_sheet" in J)
 falsy("  rather than splitting lines on commas itself",
       'lines[i].split(",")' in J)
 truthy("  and says what happened to every row, not just a total",
        'r.status !== "set"' in J)
 # And the deleted one has not quietly come back.
-MT = open(r"D:\AltaScraper\static\js\miles_template.js", encoding="utf-8").read()
+MT = open(_os_repo.path.join(_REPO, r"static\js\miles_template.js"), encoding="utf-8").read()
 falsy("there is no second uploader", "async function uploadCogsCsv" in MT)
-R = open(r"D:\AltaScraper\routes\cogs_routes.py", encoding="utf-8").read()
+R = open(_os_repo.path.join(_REPO, r"routes\cogs_routes.py"), encoding="utf-8").read()
 truthy("the route reads it with the shared reader", "_sb.read_table" in R)
 truthy("  and writes nothing until the whole file has been read",
        "a sheet that fails halfway does not leave half the catalogue changed" in R)
-H = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read()
+H = open(_os_repo.path.join(_REPO, r"templates\dashboard.html"), encoding="utf-8").read()
 truthy("there is a button to get the sheet", "/cogs/template.csv" in H)
 # id="cogscsv" was the second upload's file input and is gone with it. The one
 # that remains is id="cogs_file", moved onto this toolbar from the selection bar

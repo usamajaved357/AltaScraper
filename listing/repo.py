@@ -114,6 +114,23 @@ def cell_value(ws, row, col, default=""):
         return default
 
 
+def attributes_of(ws, row, headers):
+    """A row's Attributes JSON as a dict ({} when absent or unreadable).
+
+    The one reader for "what attributes does this draft hold": /edit reads the
+    blob to change one key, and the activity log reads it to record the key's
+    old value -- one parse, so the two can never disagree (Rule 12)."""
+    import json as _json
+    if "Attributes JSON" not in (headers or []):
+        return {}
+    raw = cell_value(ws, row, headers.index("Attributes JSON") + 1) or "{}"
+    try:
+        obj = _json.loads(raw)
+    except Exception:
+        return {}
+    return obj if isinstance(obj, dict) else {}
+
+
 # ---------------------------------------------------------------------------
 # THROTTLING
 #

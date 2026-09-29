@@ -62,6 +62,14 @@ LR = rd("static/css/listrow_detailed.css")
 LRJS = rd("static/js/listrow_detailed.js")
 LSJS = rd("static/js/listings.js")
 BMK = rd("static/js/bookmarks.js")
+# THE MOCKUP IS NOT IN GIT -- it exists only as an untracked file in one
+# checkout. Without it this cannot be checked, which is "could not run" (exit
+# 125, reported separately by run_tests.py), not a failure of the app.
+# Milestone 1, 28 Sep 2026.
+if not os.path.exists(os.path.join(HERE, "altascraper-listings-mockup.html")):
+    print("altascraper-listings-mockup.html is not in this checkout (it is not "
+          "tracked in git), so the mockup comparison could not run.")
+    sys.exit(125)
 MOCK = rd("altascraper-listings-mockup.html")
 
 
@@ -212,7 +220,7 @@ check("  and the sub-label's", "font-size:11px" in rule(LR, ".inv-head .th-sub{"
 for sel, w in ((".col-cb{", "28px"), (".col-status{", "100px"),
                (".col-perf{", "120px"), (".col-inv{", "110px"),
                (".col-price{", "145px"), (".col-fees{", "105px"),
-               (".col-actions{", "24px")):
+               (".col-actions{", "96px")):  # 96px since 29 Sep 2026: Review + dots (owner)
     truthy("%s is still %s" % (sel.strip("{"), w), "width:" + w in rule(LR, sel))
 falsy("no horizontal scroll was added to the wrapper",
       re.search(r"overflow-x:\s*(auto|scroll)", rule(LR, ".lrwrap{")) is not None)

@@ -70,6 +70,7 @@ def _get(url, config, timeout=30):
 # filed under "unknown". This name is kept as an alias so the call sites here
 # read naturally; the dictionary itself lives in ai_usage.
 from domain.ai_usage import CONTEXT as _AI_CONTEXT
+from domain.ai_usage import whose as _aiu_whose      # the one "whose spend" rule
 
 
 def set_usage_context(feature="", workspace_id="", sku="", config_path=""):
@@ -127,7 +128,7 @@ def _record_openrouter(body, payload, ok=True, error="", ms=0):
         _usage.record(cp, feature=(_AI_CONTEXT.get("feature")
                                    or _usage.unnamed_feature()),
                       provider="openrouter", model=model,
-                      workspace_id=_AI_CONTEXT.get("workspace_id") or "",
+                      workspace_id=_aiu_whose(),
                       input_tokens=i, output_tokens=o, images=n_img,
                       kind=("image" if n_img else "text"),
                       # OpenRouter's own figure where it gave one -- the only

@@ -26,10 +26,15 @@ NOTHING, and the arithmetic must be exact rather than approximately right.
 It also pins that this thing FILES NOTHING. Finding money is one action;
 raising a case with Amazon is another, and it is a person's to take.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import money_back as _mb        # noqa: E402
 
@@ -138,10 +143,10 @@ print("\n== a zero has a denominator ==")
 # "Nothing owed" means one thing when 200 refunds were examined and something
 # entirely different when none were. The page cannot say the first while meaning
 # the second.
-SRC = open(r"D:\AltaScraper\domain\money_back.py", encoding="utf-8-sig").read()
+SRC = open(_os_repo.path.join(_REPO, r"domain\money_back.py"), encoding="utf-8-sig").read()
 for field in ("orders_checked", "refunds_checked"):
     truthy("find() reports %s alongside the answer" % field, field in SRC)
-JS = open(r"D:\AltaScraper\static\js\stock.js", encoding="utf-8-sig").read()
+JS = open(_os_repo.path.join(_REPO, r"static\js\stock.js"), encoding="utf-8-sig").read()
 truthy("and the page prints it", re.search(r"refunds_checked[\s\S]{0,200}orders_checked", JS))
 truthy("  saying so plainly when no refund has settled yet",
        "No refunds have settled yet" in JS)
@@ -153,7 +158,7 @@ for banned in ("requests.", "http", "post(", "submit", "claim("):
     check("money_back.py never reaches out to anything (%r)" % banned,
           banned in BODY, False)
 truthy("the page says it files nothing", "never files a claim" in JS)
-ROUTES = open(r"D:\AltaScraper\routes\inventory_routes.py",
+ROUTES = open(_os_repo.path.join(_REPO, r"routes\inventory_routes.py"),
               encoding="utf-8-sig").read()
 truthy("the route is read-only", "/inventory/money-back" in ROUTES)
 check("  with no POST", bool(re.search(

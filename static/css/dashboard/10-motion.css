@@ -1,0 +1,294 @@
+/* static/css/dashboard/10-motion.css -- motion and polish: transitions, skeletons, chart entrances, tooltips, reduced motion. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+/* =====================================================================
+   MOTION AND POLISH
+   =====================================================================
+   "the visuals of it the animation it feels like it is lagging."
+
+   Nothing here changes what any screen does, what it shows, or where
+   anything sits. It is entirely about how the app moves.
+
+   THE ONE RULE EVERYTHING BELOW OBEYS: animation must MASK waiting, never
+   add to it. Every duration here is between .12s and .3s, which is under
+   the threshold where motion starts to feel like something you are waiting
+   for. Nothing animates that the user did not just do -- no idle motion, no
+   decoration, nothing playing on a screen sitting untouched.
+
+   Deliberately NOT here, per the brief: ripples, parallax, 3D transforms,
+   ambient particles, sound.
+   ===================================================================== */
+
+/* -- 1. PAGE TRANSITIONS ------------------------------------------------
+   Switching sections was instant, which sounds ideal and does not read that
+   way: with nothing to mark the change, a new screen looks like the old one
+   redrew wrongly. A short rise-and-fade says "this is a different place". */
+@keyframes fadeIn{
+  from{ opacity:0; transform:translateY(8px); }
+  to  { opacity:1; transform:translateY(0); }
+}
+/* NO ENTRANCE ON A SECTION SWITCH -- measured, and it corrects what was here.
+   Orbit's content area was sampled at 0, 80, 160, 320, 640 and 1200ms across
+   three tab switches and reported `animation: none, 0s` at every single frame.
+   It does not fade, slide or scale a section in; the content is simply there.
+
+   This used to fade every panel in over .25s. The earlier brief asked for that
+   explicitly ("content should not just appear -- it should fade in"), so the
+   two instructions disagree; "exactly like Orbit, bit by bit" is the later and
+   more emphatic one, and this is what Orbit actually does. Put the rule back if
+   the fade is preferred -- it is one line.
+
+   What Orbit DOES do on a switch is answered elsewhere and already matches: a
+   tab already visited comes back instantly with no skeleton (measured: charts
+   restored within 80ms), and only an unvisited one shows loading state. That is
+   static/js/screenstate.js.
+
+   The fadeIn keyframes stay -- staggered table rows and the modals use them. */
+@keyframes _fadeInKept{ from{opacity:0} to{opacity:1} }
+
+/* -- 2. SKELETON LOADING -----------------------------------------------
+   .skeleton and @keyframes shimmer were added in the layout pass and never
+   used. These are the shapes that make them usable: a placeholder that
+   occupies the space the real content will, so nothing jumps when it lands.
+   The shimmer already stops under prefers-reduced-motion. */
+.skrow{ height:44px; margin:6px 0; }
+.skline{ height:12px; margin:6px 0; }
+.skline.short{ width:40%; }
+.skline.half { width:60%; }
+.skcard{ height:78px; }
+.skchart{ height:240px; }
+.skgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+         gap:10px; margin-bottom:14px; }
+
+/* -- 3. SMOOTH SCROLLING ------------------------------------------------
+   And containment, so flicking a panel to its end does not then start
+   scrolling the page behind it -- which is most of what "janky" describes.
+
+   ONLY EVER LIST BOXES THAT THE USER CAN ACTUALLY SCROLL HERE.
+   `overscroll-behavior:contain` means "when this box cannot scroll any
+   further, do NOT pass the scroll on to the page". On a box that scrolls,
+   that is what you want. On a box that can never scroll, it means the wheel
+   is swallowed and NOTHING moves.
+
+   .ltwrap was in this list and is exactly that case: it is `overflow:hidden`
+   purely to clip the listings table to the card's rounded corners. Hidden
+   still counts as a scroll container to the browser, so the pair of rules
+   read as "this frame owns the wheel, and this frame never moves" -- put the
+   cursor anywhere over the listings table and the page froze; move it off the
+   table and scrolling worked again. Reported as "when i place my cursor in
+   this area and scroll up or down the screen does not move".
+
+   .wsmain, .tablewrap, .modalbody and .foldgroup went with it, and nothing
+   changes by their leaving: .tablewrap and .modalbody are not classes this app
+   has ever had, and .wsmain and .foldgroup have no overflow at all, so the
+   property was inert on all four. They were a loaded gun -- the day somebody
+   gives .wsmain an overflow, the whole workspace stops scrolling.
+
+   The test for adding a selector here is one question: can the user scroll
+   inside it? That means a height limit (max-height / fixed height) AND
+   overflow auto or scroll. .drawer has both. .ltwrap had neither.
+   test_scroll_trap.py enforces exactly that, for every selector, not just
+   these. */
+html{ scroll-behavior:smooth; }
+.drawer{ overscroll-behavior:contain; }
+
+/* -- 4. CHART ENTRANCES -------------------------------------------------
+   A chart appearing fully-formed is the moment the app looks most like a
+   page of printed numbers. It fades and settles; the line draws itself. */
+@keyframes chartFadeIn{
+  from{ opacity:0; transform:scale(.97); }
+  to  { opacity:1; transform:scale(1); }
+}
+@keyframes chartSweep{
+  from{ clip-path:inset(0 100% 0 0); }
+  to  { clip-path:inset(0 0 0 0); }
+}
+/* MEASURED, and it corrected this: Orbit's chart FRAME does not animate at all.
+   At 2500ms into a load its axes, gridlines, tick labels and stat figures are
+   already in place at full opacity, and only the data is still arriving -- the
+   bars growing up from the baseline and the lines drawing in.
+   (orbit_shots/load_02500ms.png.)
+
+   Fading and scaling the whole chart, which is what this used to do, moves the
+   axis labels while someone is reading them and makes the panel feel like it
+   is still arriving after it has arrived. So the container is left alone and
+   the animation is on the series only. */
+/* BOTH SHAPES. `chartbox` is the <svg> ITSELF, so ".chartbox svg path" asks for
+   an svg inside an svg and matches nothing -- which is why the line never drew
+   itself despite the keyframes being right. Kept alongside the descendant form
+   so a chart wrapped in a card still animates. */
+svg.chartbox path.series,
+.chartcard svg path.series,
+.chartbox svg path.series{
+  /* 1.5s, which is what Recharts animates a series over and therefore what
+     Orbit's charts do -- measured, and three times slower than the .5s guess
+     that was here. At half a second the line is drawn before the eye has found
+     it, which reads as "no animation" rather than as a fast one. `ease` is
+     Recharts' default curve. */
+  animation:chartSweep 1.5s ease;
+}
+
+/* A CHART BELOW THE FOLD WAITS ITS TURN.
+ *
+ * "the orbit graph shows a motion when i go and scroll up and down... see all
+ * graphs while scrolling i want this thing in my app".
+ *
+ * MEASURED on Orbit, by watching the path data rather than the CSS (its charts
+ * animate in JavaScript, which a CSS probe cannot see):
+ *
+ *     returning to the Sales page   ANIMATES
+ *     scrolling a chart back in     static
+ *     a plain reload                ANIMATES
+ *
+ * Ours already did exactly the same -- verified the same way. So what is being
+ * asked for is not something Orbit has: it is that the charts further down the
+ * page should still have their motion left when you reach them. On both apps
+ * they animate the moment the screen opens, so by the time you have scrolled to
+ * the fourth one it finished playing to an empty room.
+ *
+ * `motion.js` therefore holds a chart that is BELOW THE FOLD at zero progress
+ * and releases it when it scrolls into view -- once, never again, because a
+ * chart that re-runs every time it crosses the edge of the screen is a
+ * distraction rather than an entrance. Charts already on screen are untouched
+ * and animate immediately, as they do now.
+ *
+ * If IntersectionObserver is missing, the class is never applied and every
+ * chart animates immediately -- the behaviour that exists today. */
+svg.chartbox.await-view path.series,
+svg.chartbox.await-view .bar{
+  animation-play-state:paused;
+}
+/* Bars grow from the baseline rather than appearing at full height, which is
+   what Recharts does by default and what the 2500ms frame shows. */
+@keyframes barGrow{
+  from{ transform:scaleY(0); }
+  to  { transform:scaleY(1); }
+}
+svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
+  /* An SVG rect scales about the viewBox origin unless told otherwise, so
+     without this the bars would grow from the TOP of the chart downwards.
+     transform-box:fill-box makes "bottom" mean the bottom of the bar. */
+  transform-box:fill-box;
+  transform-origin:bottom;
+  /* Same 1.5s as the lines, so the whole series arrives together rather than
+     the bars finishing while the lines are still drawing. */
+  animation:barGrow 1.5s ease;
+}
+
+/* -- 4b. THE CHART KEY IS A SET OF SWITCHES ----------------------------
+   "user is able to click them to enable those options, they are enabled by
+   default and user can hide the lines by again clicking on them".
+
+   Built as real <button>s in salesCombo (static/js/salescharts.js) so they are
+   reachable by keyboard; this is only what they look like. Styled to stay a KEY
+   first and a control second -- Orbit's key items are plain text with a coloured
+   mark and no button furniture, and the mark is what the eye uses to read the
+   chart. So: no border, no background, no padding that would break the row of
+   marks apart. The pointer and the hover are what say it can be clicked. */
+.sc-keys{
+  display:flex; gap:18px; justify-content:center; flex-wrap:wrap;
+  margin-top:6px; font-size:12px;
+}
+.sc-key{
+  display:inline-flex; align-items:center; gap:6px;
+  background:none; border:0; padding:0; margin:0;
+  font:inherit; color:inherit; cursor:pointer;
+  /* Only the colour and opacity move on toggle, so the key never reflows and
+     the items do not jump sideways as they are switched. */
+  transition:opacity .15s ease;
+}
+.sc-key:hover{ opacity:.75; }
+.sc-key:focus-visible{
+  outline:2px solid var(--accent, var(--as-lit-6ac7e8-bd)); outline-offset:2px; border-radius:3px;
+}
+/* SWITCHED OFF. Dimmed, and the name struck through: dimming alone is how a
+   DISABLED control looks, and these are never disabled -- clicking one brings
+   its line back. The line through the name says "this is off", not "this cannot
+   be used". The coloured mark keeps its colour so the item is still findable. */
+.sc-key.off{ opacity:.45; }
+.sc-key.off span{ text-decoration:line-through; }
+.sc-key-sq{
+  width:11px; height:11px; border-radius:2px; opacity:.55;
+  display:inline-block; flex:none;
+}
+
+/* -- 5. TABLE ROW STAGGER ----------------------------------------------
+   Rows arrive in a cascade rather than as one block. The delays are
+   generated in JS (see altaStagger in static/js/motion.js) rather than
+   written out twenty times here, and they stop after the twentieth row: a
+   hundred-row table must not take three seconds to finish appearing. */
+.trow-enter{ animation:fadeIn .2s ease backwards; }
+
+/* -- 6. HOVER MICROINTERACTIONS ----------------------------------------
+   Small, fast, and only on things that are actually clickable. The table
+   row is the fastest of them because rows are SCANNED -- anything slower
+   than .12s smears as the pointer travels down a list. */
+/* The hover lift now belongs to the shared card. Kept: a card that filters is
+   a control, and a control that does not answer the pointer does not read as
+   one. */
+.ui-stat[onclick]{ transition:transform .2s ease, box-shadow .2s ease,
+                   border-color .15s ease, background .15s ease; }
+.ui-stat[onclick]:hover{ transform:translateY(-2px);
+                         box-shadow:0 4px 12px rgba(0,0,0,.3); }
+.mktbtn.on, .db-chip{ transition:transform .15s ease, box-shadow .2s ease,
+                                 border-color .15s ease, background .15s ease; }
+.mktbtn.on:hover, .db-chip:hover{ transform:translateY(-1px);
+                                  box-shadow:0 4px 16px rgba(0,0,0,.25); }
+.mktbtn.on:active, .db-chip:active{ transform:translateY(0); box-shadow:none; }
+.navitem{ transition:background .2s ease, color .2s ease, border-color .2s ease; }
+.tile{ transition:border-color .15s ease, transform .15s ease; }
+.lt tbody tr{ transition:background .12s ease; }
+
+/* -- 7. DRAWER AND MODAL MOTION ----------------------------------------
+   The drawer already slides. What it lacked was a settle at the end: a
+   slight overshoot is what makes a panel feel like an object with weight
+   rather than a rectangle whose left edge moved. */
+@keyframes slideLeft{
+  from{ transform:translateX(100%); }
+  to  { transform:translateX(0); }
+}
+@keyframes modalIn{
+  from{ opacity:0; transform:scale(.95); }
+  to  { opacity:1; transform:scale(1); }
+}
+.drawer.show, .drawer.open{
+  animation:slideLeft .22s cubic-bezier(.34,1.56,.64,1);
+}
+.scrim.show, .modal.show, .modalbg.show{ animation:fadeIn .15s ease; }
+.modalcard, .modalbox, .modal .card{ animation:modalIn .3s ease; }
+
+/* -- 8. TOOLTIPS --------------------------------------------------------
+   The delay is the point: a tooltip that appears the instant the pointer
+   crosses it fires constantly while you are on your way somewhere else. */
+.tipwrap{ position:relative; }
+.tipwrap .tip{
+  position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+  background:var(--panel2); border:1px solid var(--line); border-radius:6px;
+  padding:8px 12px; font-size:12px; line-height:1.5; max-width:240px; width:max-content;
+  color:var(--ink); box-shadow:0 4px 12px rgba(0,0,0,.4);
+  opacity:0; visibility:hidden; pointer-events:none; z-index:60;
+  transition:opacity .15s ease, visibility .15s ease;
+  transition-delay:0s;
+}
+.tipwrap:hover .tip{ opacity:1; visibility:visible; transition-delay:.2s; }
+/* Near the right-hand edge, anchor to the right so it cannot run off. */
+.tipwrap.tipleft .tip{ left:auto; right:0; transform:none; }
+.tipwrap.tipbelow .tip{ bottom:auto; top:calc(100% + 6px); }
+
+/* -- 9. NUMBERS ---------------------------------------------------------
+   Counting numbers must not reflow the layout as their width changes,
+   which is what makes a count-up look broken rather than alive. */
+.statnum, .countup{ font-variant-numeric:tabular-nums; }
+
+/* -- 10. REDUCED MOTION -------------------------------------------------
+   An operating-system preference, and it is not a suggestion. Everything
+   above collapses to effectively instant -- not removed, because a
+   zero-length animation still fires the events some of this relies on. */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+  html{ scroll-behavior:auto; }
+}
+

@@ -68,6 +68,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             pass
         return out
 
+    def _scope_for_caller(only):
+        """The account this caller's usage view is limited to.
+
+        -> `only` unchanged when they may see every account (or named one --
+           the doorman has already checked they may open it); their single
+           account when they may see exactly one; otherwise a refusal response.
+        """
+        from auth import users as _users
+        if only or _users.caller_sees_every_account(CONFIG_PATH):
+            return only
+        mine = [a for a in _names() if _users.caller_may_see(CONFIG_PATH, a)]
+        if len(mine) == 1:
+            return mine[0]
+        return (jsonify({"ok": False,
+                         "error": "Choose an account: this view compares every "
+                                  "account, and your access covers only some."}),
+                200)
+
     @app.route("/aiusage/summary")
     def aiusage_summary():
         start, end = _window()
@@ -76,6 +94,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # nobody asked and hide the account actually running up the bill. Pass
         # ?id=<account> to narrow it.
         only = (request.args.get("id") or "").strip()
+        # AN ALL-ACCOUNTS TOTAL IS FOR SOMEONE WHO MAY SEE ALL ACCOUNTS. For a
+        # user limited to some, filtering the rows would leave the totals
+        # counting the others, so they get their one account -- or are asked to
+        # pick one (master audit, 28 Sep 2026).
+        _refused = _scope_for_caller(only)
+        if isinstance(_refused, tuple):
+            return _refused
+        only = _refused
         try:
             data = _usage.summary(CONFIG_PATH, start=start, end=end,
                                   workspace_id=(only or None))
@@ -121,6 +147,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         """The individual calls, for when a total looks wrong and you want why."""
         start, end = _window()
         only = (request.args.get("id") or "").strip()
+        _refused = _scope_for_caller(only)          # see aiusage_summary
+        if isinstance(_refused, tuple):
+            return _refused
+        only = _refused
         feature = (request.args.get("feature") or "").strip()
         where, args = ["day>=?", "day<=?"], [start, end]
         if only:

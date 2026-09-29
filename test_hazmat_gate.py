@@ -59,12 +59,15 @@ def falsy(label, got):
     check(label, bool(got), False)
 
 
-SRC = open("amazon_listing_generator.py", encoding="utf-8").read()
+# Plan B5 (29 Sep 2026) moved the builder's compliance block -- this hazmat
+# section with it -- verbatim into listing/attributes_phases.phase_compliance,
+# which ends where the minimal-mode block used to follow it.
+SRC = open(os.path.join("listing", "attributes_phases.py"), encoding="utf-8").read()
 
-# The whole hazmat section: from the schema-loaded branch to the minimal-mode
-# block that follows it.
+# The whole hazmat section: from the schema-loaded branch to the end of the
+# compliance step (the minimal-mode block follows it, in the builder).
 HZ = SRC.split("# hazmat: build from the LIVE schema structure")[1]
-HZ = HZ.split("# MINIMAL MODE:")[0]
+HZ = HZ.split("return _backfilled, _has_battery")[0]
 SCHEMA_BRANCH = HZ.split("        # SCHEMA DIDN'T LOAD for hazmat")[0]
 FALLBACK_BRANCH = HZ.split("        # SCHEMA DIDN'T LOAD for hazmat")[1]
 

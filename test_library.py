@@ -27,8 +27,22 @@ except Exception as e:
     print("could not read required_credentials:", e)
 
 # 3. build creds exactly like the generator
-c = json.load(open("config.json", encoding="utf-8"))
-a = [x for x in c["accounts"] if x.get("id") == "sheelady_us"][0]
+# THE CONFIG THE RUN WAS GIVEN, never the checkout's own. This needs the
+# REAL sheelady_us credentials, which a safe test run does not have -- so
+# without them it reports "could not run" (125) rather than failing or reading
+# live keys by accident (Milestone 1, 28 Sep 2026).
+import os
+_cfg_path = os.environ.get("CONFIG_PATH") or "config.json"
+try:
+    c = json.load(open(_cfg_path, encoding="utf-8"))
+except (OSError, ValueError):
+    c = {}
+_acc = [x for x in (c.get("accounts") or []) if x.get("id") == "sheelady_us"]
+if not _acc:
+    print("sheelady_us is not configured in this run (a safe test run has no "
+          "real credentials), so this live check could not run.")
+    sys.exit(125)
+a = _acc[0]
 creds = {
     "lwa_app_id": a.get("lwa_client_id") or a.get("lwa_app_id", ""),
     "lwa_client_secret": a.get("lwa_client_secret", ""),

@@ -1,0 +1,17 @@
+    <div id="sec_imagestudio" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-photo-edit"></i> Image Studio</h2>
+        <div class="sub">Make a listing's main and secondary images from its source photographs. Nothing here reaches Amazon &mdash; images are generated, reviewed and saved to the listing's library; sending one to a live slot is a separate, deliberate step.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="navTo('listings')"
+                  title="Back to the listings, to pick a different product"><i class="ti ti-arrow-left"></i> Listings</button>
+        </div>
+      </div>
+      <!-- THE STUDIO PICKS ITS OWN PRODUCT NOW.
+           Its empty state used to say "Open Listings and press the photo
+           button", which IS the round trip being complained about. The picker
+           is the shared one (productpicker.js), so this page and the Image
+           Library cannot disagree about what this account sells. -->
+      <div id="studio_picker"></div>
+      <div id="studiobody" style="padding:4px 0"></div>
+    </div>

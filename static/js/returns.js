@@ -33,8 +33,24 @@ let RET = {data: null, days: 30, busy: false, sort: "returns", range: null};
  * been issued since. Nothing is cancelled, so a slow reply is still allowed to
  * finish and simply loses. */
 let _RET_SEQ = 0;
-function _retTicket(){ return ++_RET_SEQ; }
-function _retCurrent(t){ return t === _RET_SEQ; }
+// A TICKET ALSO NAMES THE ACCOUNT AND MARKETPLACE IT WAS TAKEN IN (Milestone 3).
+// "The last request wins" was only half the rule: RET.busy dropped the NEW
+// account's request while the old one was in flight, so the old one stayed the
+// "last" and its answer was painted on the new account's screen (audit S5).
+function _retTicket(){
+  return {n: ++_RET_SEQ,
+          sc: (typeof screenScope === "function") ? screenScope() : null};
+}
+function _retCurrent(t){
+  if(!t || t.n !== _RET_SEQ) return false;
+  return (typeof screenStillIn === "function" && t.sc) ? screenStillIn(t.sc) : true;
+}
+// Every returns request names the account and marketplace the screen shows
+// (audit S8: /returns/report named neither, so the server answered for
+// whatever it had selected). scopeQs() is the one builder (scopeq.js).
+function _retUrl(path, extra){
+  return path + ((typeof scopeQs === "function") ? scopeQs(extra) : "");
+}
 
 function _rEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -84,7 +100,7 @@ async function returnsLoad(){
     + 'Asking Amazon for the returns report — they build these slowly, so this '
     + 'can take a minute…</div>';
   try{
-    const j = await (await fetch("/returns/report?days=" + RET.days)).json();
+    const j = await (await fetch(_retUrl("/returns/report", {days: RET.days}))).json();
     // The slowest request on this screen, and the one most likely to land after
     // a file you uploaded while waiting for it. If anything newer has been
     // asked for, this answer is stale on arrival and is dropped.
@@ -155,7 +171,7 @@ async function returnsUploadFile(input){
   try{
     const fd = new FormData();
     files.forEach(f => fd.append("file", f));
-    const j = await (await fetch("/returns/upload", {method:"POST", body: fd})).json();
+    const j = await (await fetch(_retUrl("/returns/upload"), {method:"POST", body: fd})).json();
     if(!_retCurrent(t)) return;
     if(!j || !j.ok){
       if(body) body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
@@ -189,7 +205,7 @@ async function returnsClear(){
               + "is holding, so you can start again with different files."))
     return;
   try{
-    const j = await (await fetch("/returns/clear", {method:"POST"})).json();
+    const j = await (await fetch(_retUrl("/returns/clear"), {method:"POST"})).json();
     RET.data = null; RET.range = null;
     const body = document.getElementById("retbody");
     if(body) body.innerHTML = "";
@@ -206,9 +222,8 @@ async function returnsSetRange(from, to){
   const prev = body ? body.innerHTML : "";
   const t = _retTicket();
   try{
-    const q = "?from=" + encodeURIComponent(from || "")
-            + "&to=" + encodeURIComponent(to || "");
-    const j = await (await fetch("/returns/view" + q)).json();
+    const j = await (await fetch(_retUrl("/returns/view",
+                                         {from: from || "", to: to || ""}))).json();
     if(!_retCurrent(t)) return;
     if(!j || !j.ok){ toast((j && j.error) || "Could not apply that range."); return; }
     RET.range = j.zoomed ? {from: j.start, to: j.end,
@@ -242,7 +257,7 @@ async function returnsQualityFile(input){
   try{
     const fd = new FormData();
     fd.append("file", f);
-    const j = await (await fetch("/returns/quality", {method:"POST", body: fd})).json();
+    const j = await (await fetch(_retUrl("/returns/quality"), {method:"POST", body: fd})).json();
     if(!_retCurrent(t)) return;
     if(!j || !j.ok){
       toast((j && j.error) || "Could not read that file");
@@ -270,7 +285,7 @@ async function returnsQualityFile(input){
    JSON, which is why the reply is sniffed first. */
 async function returnsExport(){
   try{
-    const r = await fetch("/returns/export.xlsx");
+    const r = await fetch(_retUrl("/returns/export.xlsx"));
     const type = r.headers.get("content-type") || "";
     if(!r.ok || type.indexOf("json") >= 0){
       const j = await r.json().catch(function(){ return null; });
@@ -454,7 +469,7 @@ function _riDailyChart(days, daily, dmax){
     + ' data-l="' + L + '" data-r="' + R + '" data-w="' + W + '"'
     + ' data-days="' + _rEsc(days.join(",")) + '">'
     + '<rect x="' + L + '" y="' + T + '" width="' + iw + '" height="' + ih
-    + '" fill="#0d1220" stroke="#1e2733"/>'
+    + '" class="ri-plot"/>'
     + grid + bars + ticks
     + '<rect id="ri_drag" x="0" y="' + T + '" width="0" height="' + ih
     + '" fill="rgba(79,140,255,.22)" stroke="#4f8cff" stroke-width="1"'
@@ -570,7 +585,7 @@ function returnsRender(){
           const r = RET_REPORTS[k];
           return '<div class="ri-card"><div class="ri-card-head">'
             + '<div class="ri-card-title">' + _rEsc(r.name) + '</div>'
-            + '<button class="db-chip" onclick="returnsUploadOpen(\'' + k + '\')">'
+            + '<button class="db-chip" onclick="returnsUploadOpen(' + jsArg(k) + ')">'
             + '<i class="ti ti-file-upload"></i> Upload this one</button></div>'
             + '<div class="cc" style="font-size:11.5px;line-height:1.6">'
             + '<b>Where:</b> ' + _rEsc(r.where) + '</div>'

@@ -72,7 +72,9 @@ async function ppcaLoad(){
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/analytics/overview?" + qs)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     PPCA.loading = false;
     if(!j || !j.ok){
       host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
@@ -575,14 +577,7 @@ function ppcaProfitability(j, cur){
   const wpct = (w.spend !== null && w.spend !== undefined && t.spend)
     ? _ppcaRound1(100 * w.spend / t.spend) : null;
 
-  let net = null;
-  if(r.fee_rate !== null && r.fee_rate !== undefined
-     && r.cogs_rate !== null && r.cogs_rate !== undefined
-     && t.sales !== null && t.sales !== undefined
-     && t.spend !== null && t.spend !== undefined){
-    net = Math.round((t.sales - t.spend - t.sales * r.fee_rate
-                      - t.sales * r.cogs_rate) * 100) / 100;
-  }
+  const net = _ppcaAdProfit(t.sales, t.spend, r);
   // PROFIT AFTER ADVERTISING, from the server. See the NET PROFIT card below.
   const np = j.net_profit || {};
   const npv = (np.net_profit === undefined) ? null : np.net_profit;
@@ -754,6 +749,24 @@ function _ppcaEfficiencyCard(j, eff, effBadge){
         + "figure; the weighting is ours."});
 }
 
+/* WHAT ATTRIBUTED SALES LEFT AFTER THE VAT, AMAZON'S FEE, THE STOCK AND THE ADS.
+ *
+ * The browser's one copy of domain/ppc_analytics.ad_profit, reading the same
+ * three shares the server sends in `rates` -- including vat_share, the VAT
+ * inside every pound of sales on a VAT-registered account. The two copies this
+ * replaces left VAT in, so the tiles disagreed with the campaign rows beside
+ * them (found by the review of the profit work, 28 Sep 2026). null when a rate
+ * is unknown, never a guessed margin. */
+function _ppcaAdProfit(sales, spend, r){
+  r = r || {};
+  if(r.fee_rate === null || r.fee_rate === undefined
+     || r.cogs_rate === null || r.cogs_rate === undefined
+     || sales === null || sales === undefined
+     || spend === null || spend === undefined) return null;
+  const share = Number(r.vat_share || 0) + Number(r.fee_rate) + Number(r.cogs_rate);
+  return Math.round((Number(sales) - Number(spend) - Number(sales) * share) * 100) / 100;
+}
+
 /* ---- 6. revenue, ad spend and profit ------------------------------------ */
 function ppcaRevenueChart(j, cur){
   const d = j.daily || [];
@@ -762,9 +775,7 @@ function ppcaRevenueChart(j, cur){
   const canProfit = (r.fee_rate !== null && r.fee_rate !== undefined
                      && r.cogs_rate !== null && r.cogs_rate !== undefined);
   const profit = d.map(function(x){
-    if(!canProfit || x.ad_sales === null || x.spend === null) return null;
-    return Math.round((x.ad_sales - x.spend - x.ad_sales * r.fee_rate
-                       - x.ad_sales * r.cogs_rate) * 100) / 100;
+    return canProfit ? _ppcaAdProfit(x.ad_sales, x.spend, r) : null;
   });
   const lines = [{key: "ad_spend",
                   values: d.map(function(x){ return x.spend; })}];

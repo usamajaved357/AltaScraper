@@ -4,6 +4,7 @@ Auto-extracted @app.route("/genimage...") funcs; shared helpers injected. Verifi
 verify_free_vars.py.
 """
 from flask import request, jsonify, Response, send_from_directory
+from domain.request_account import id_or_open as _id_or_open   # arch A5
 import base64 as _b64
 import json
 import os
@@ -43,6 +44,7 @@ from domain.image_rules import (            # noqa: F401  (re-exported)
     _LIST_RULES, _IMAGE_TEXT_RULES, _PRESENCE_RULES, _SQUARE_CANVAS,
     _presence_rule,
 )
+from domain import request_account as _rqa
 
 
 BRAND_UNBRANDED = "unbranded"
@@ -176,7 +178,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # A job stamped before accounts were recorded has no account at all --
         # shown rather than hidden, because making existing work disappear from
         # its own progress bar is the worse failure.
-        _acct = str(_state.get("active_account_id", "") or "")
+        _acct = _rqa.current(_state)
         out, elsewhere = [], 0
         with _IMG_JOBS_LOCK:
             for jid, j in _IMG_JOBS.items():
@@ -218,7 +220,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # money, and the button is nowhere near the work it was killing. Scoped
         # to the account the same way the progress bar is, so what Stop ends is
         # exactly what the bar was showing.
-        _acct = str(_state.get("active_account_id", "") or "")
+        _acct = _rqa.current(_state)
         n, skipped = 0, 0
         with _IMG_JOBS_LOCK:
             for j in _IMG_JOBS.values():
@@ -271,12 +273,12 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
     def genimage_instructions():
         """Get or save the custom image instructions the AI remembers for every image."""
         if request.method == "GET":
-            aid = request.args.get("id", "") or _state.get("active_account_id", "")
+            aid = _id_or_open(request.args.get("id", ""), _state)
             return jsonify({"ok": True, "instructions": _load_img_instructions(aid)})
         b = request.get_json(force=True) or {}
         text = (b.get("instructions", "") or "").strip()[:4000]
         scope = (b.get("scope", "account") or "account").lower()
-        aid = b.get("id", "") or _state.get("active_account_id", "")
+        aid = _id_or_open(b.get("id", ""), _state)
         ok = _save_img_instructions(text, aid=aid, scope=scope)
         return jsonify({"ok": ok, "instructions": text})
 
@@ -296,9 +298,21 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # changed) filed the image under the wrong account, or under the shared root
         # where the owning workspace never showed it. Capturing it here pins each image
         # to the workspace it was generated for.
-        _acct_now = _state.get("active_account_id", "") or ""
+        _acct_now = _rqa.current(_state)
+        # NO ACCOUNT, NO BATCH (owner decision, read.txt 29 Sep 2026: "Capture
+        # and pin the account when the batch begins. Never file images under
+        # whichever account is open when processing finishes."). A batch with
+        # no account used to be stamped "" and the worker then filed each image
+        # under whatever was open when it FINISHED. Refused before any job or
+        # thread exists.
+        if not str(_acct_now or "").strip():
+            return jsonify({"ok": False, "error": (
+                "No account is open. Open the account these images are for, "
+                "then start the batch again.")}), 400
         for jb in jobs:
-            jb.setdefault("_acct_id", _acct_now)
+            # SET, never setdefault: `_acct_id` sent by the browser would file
+            # images into an account the guard never checked (review).
+            jb["_acct_id"] = _acct_now
         # a lightweight plan (label + concept per job) so the UI can show every
         # planned image and its status from the very start, not just as they finish.
         plan = [{"label": jb.get("label", ""), "sku": jb.get("sku", ""),
@@ -329,7 +343,11 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
             ref_img = ""
             try:
                 import glob as _g, os as _o
-                _vk = _state.get("active_view") or ""
+                # The selected brand view belongs to the OPEN account; a tab
+                # showing another account must not get its reference photo.
+                _nm = _rqa.named_now()
+                _vk = ("" if (_nm and _nm != (_state.get("active_account_id") or ""))
+                       else (_state.get("active_view") or ""))
                 for _pf in _g.glob(_o.path.join(_o.path.dirname(CONFIG_PATH), "brands", "*", "profile.json")):
                     _p = json.load(open(_pf, encoding="utf-8"))
                     if (_p.get("brand_name") or "") == _vk:
@@ -947,7 +965,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 f.write(_bytes)
         except Exception as e:
             return jsonify({"ok": False, "error": f"write failed: {e}"}), 500
-        _aid = _state.get("active_account_id", "") or ""
+        _aid = _rqa.current(_state)
         _pfx = f"/media/_acct/{_safe_sku(_aid)}" if _aid else "/media"
         _rel = f"{_safe_sku(sku)}/{sub}/{fname}" if sub else f"{_safe_sku(sku)}/{fname}"
         return jsonify({"ok": True, "url": f"{_pfx}/{_rel}",
@@ -1162,7 +1180,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # sheet. Saved under the first selected SKU's "secondary" folder, account-scoped.
         # Additive: what gets written to the row / submitted is unchanged.
         try:
-            _aid0 = _state.get("active_account_id", "") or ""
+            _aid0 = _rqa.current(_state)
             _first = _safe_sku(skus[0])
             _secdir = os.path.join(_sku_dir(skus[0]), "secondary")
             os.makedirs(_secdir, exist_ok=True)

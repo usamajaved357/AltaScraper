@@ -18,13 +18,18 @@ So: every moved id exists exactly once, on the listings page, and the five files
 that write to those nodes are still loaded and still load before the file that
 calls them.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import collections
 import glob
 import re
 import sys
 
-HTML = r"D:\AltaScraper\templates\dashboard.html"
-CSS = r"D:\AltaScraper\static\css\genflow.css"
+HTML = _os_repo.path.join(_REPO, r"templates\dashboard.html")
+CSS = _os_repo.path.join(_REPO, r"static\css\genflow.css")
 src = open(HTML, encoding="utf-8").read()
 fails = []
 
@@ -44,10 +49,10 @@ dupes = sorted(k for k, v in collections.Counter(
 check("every id is unique", dupes, [])
 
 # Read once, up front, because most sections below need more than one of them.
-sh = open(r"D:\AltaScraper\static\js\shell.js", encoding="utf-8").read()
-hw = open(r"D:\AltaScraper\static\js\howworks.js", encoding="utf-8").read()
-gf = open(r"D:\AltaScraper\static\js\genflow.js", encoding="utf-8").read()
-lj = open(r"D:\AltaScraper\static\js\listings.js", encoding="utf-8").read()
+sh = open(_os_repo.path.join(_REPO, r"static\js\shell.js"), encoding="utf-8").read()
+hw = open(_os_repo.path.join(_REPO, r"static\js\howworks.js"), encoding="utf-8").read()
+gf = open(_os_repo.path.join(_REPO, r"static\js\genflow.js"), encoding="utf-8").read()
+lj = open(_os_repo.path.join(_REPO, r"static\js\listings.js"), encoding="utf-8").read()
 
 
 def _nocomment(s):
@@ -131,13 +136,13 @@ check("  and toggles it", 'onclick="genflowToggle()"' in src, True)
 print("\n=== every handler the moved markup calls is defined ===")
 blk = src[src.index('<div id="genflow"'):src.index('<div id="gridhow">')]
 js = "".join(open(p, encoding="utf-8", errors="replace").read()
-             for p in glob.glob(r"D:\AltaScraper\static\js\*.js"))
+             for p in glob.glob(_os_repo.path.join(_REPO, r"static\js\*.js")))
 for fn in sorted(set(re.findall(r'on(?:click|input)="([A-Za-z0-9_]+)\(', blk))):
     check("%s() is defined" % fn,
           bool(re.search(r"\bfunction\s+%s\s*\(" % fn, js)), True)
 
 print("\n=== genflow.js re-implements none of the five ===")
-gf = open(r"D:\AltaScraper\static\js\genflow.js", encoding="utf-8").read()
+gf = open(_os_repo.path.join(_REPO, r"static\js\genflow.js"), encoding="utf-8").read()
 
 
 def _nocomment(s):
@@ -196,7 +201,7 @@ for fn in sorted(set(re.findall(r"closeRunMenu\(\);([A-Za-z0-9_]+)\(", gf))):
           bool(re.search(r"\bfunction\s+%s\s*\(" % fn, js)), True)
 
 print("\n=== bulk submit is a way IN to submitLive, not a second submit path ===")
-lj = open(r"D:\AltaScraper\static\js\listings.js", encoding="utf-8").read()
+lj = open(_os_repo.path.join(_REPO, r"static\js\listings.js"), encoding="utf-8").read()
 check("the button exists in the selection bar", 'id="selsubmit"' in src, True)
 check("  and calls submitLive", 'onclick="submitLive()"' in src, True)
 # submitLive already scopes to selectedSkus() and confirms the destination

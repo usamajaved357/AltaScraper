@@ -105,8 +105,12 @@ truthy("the only sum shown is net times units sold",
        "Number(d.net) * Number(d.units_30d)" in _c)
 
 print("\n=== the route asks the modules that already own each number ===")
+# Re-pinned 28 Sep 2026: the route asks domain/unit_profit -- the one per-unit
+# answer the Live rows and the cost editor share -- and THAT asks the resolver.
+# Still one opinion about the fee; one more module between them.
+_UP = io.open(os.path.join("domain", "unit_profit.py"), encoding="utf-8").read()
 truthy("Amazon's charges from the three-tier resolver",
-       "_fees.breakdown_for(" in RT)
+       "_up.at_price(" in RT and "_fees.breakdown_for(" in _UP)
 truthy("  which is the one that reads the tiers", "def breakdown_for(" in FEES)
 truthy("the cost from the app's own resolver", "_resolve_cogs(wsid, sku)" in RT)
 truthy("the 30-day units from the listing metrics", "_lm.for_skus(" in RT)

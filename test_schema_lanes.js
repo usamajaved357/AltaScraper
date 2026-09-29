@@ -30,7 +30,7 @@ function check(label, got, want) {
   console.log("  %s %s", label.padEnd(62),
               ok ? "OK" : `FAIL got=${JSON.stringify(got)} want=${JSON.stringify(want)}`);
 }
-const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const read = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 const how = read("static/js/howworks.js");
 const submit = read("static/js/submit.js");
 

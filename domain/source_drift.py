@@ -150,7 +150,8 @@ def at_a_glance(pairs, current, rule, source_id=None, promo=None):
         r = _sourcing.rule_with_defaults(rule)
         got = _pricing.achieved(out["sell_price"], out["landed"], r["referral_rate"],
                                 shipping_label=r["shipping_label"],
-                                ads_margin=r["ads_margin"])
+                                ads_margin=r["ads_margin"],
+                                vat_rate=r.get("vat_rate"))
         out["profit"] = got.get("profit")
         out["margin_pct"] = got.get("margin_pct")
         out["roi_pct"] = got.get("roi_pct")
@@ -176,7 +177,8 @@ def at_a_glance(pairs, current, rule, source_id=None, promo=None):
             after = _promos.apply_to(out["sell_price"], promo)
             got2 = _pricing.achieved(after, out["landed"], r["referral_rate"],
                                      shipping_label=r["shipping_label"],
-                                     ads_margin=r["ads_margin"])
+                                     ads_margin=r["ads_margin"],
+                                     vat_rate=r.get("vat_rate"))
             out["promo"] = dict(promo)
             out["promo_note"] = _promos.describe(promo)
             out["sell_price_promo"] = after

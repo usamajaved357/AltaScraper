@@ -26,7 +26,7 @@ function storeFrom(){
 let VIEWS = [];        // [{key,label,brand,marketplace,sheet,tab}]
 let ACTIVE_WS = null;  // currently-open workspace member (a view)
 let CUR_GROUP = null;  // currently-open workspace group (brand across marketplaces)
-let CUR_SEC = "listings";
+let CUR_SEC = "home";      // the app opens on Home (owner, 29 Sep 2026)
 
 // Which spreadsheet + tab the OPEN workspace actually reads and writes.
 // {out_id,out_gid,out_tab,in_id,in_gid,missing:[]} -- or null for Dropshipping.
@@ -373,6 +373,11 @@ let CUR_ACCOUNT = null;
 function _toggleVat(on){
   const w = document.getElementById("ac_vat_wrap");
   if(w) w.style.display = on ? "" : "none";
+  // Touching the box IS an answer -- ticked or unticked (see accountSave).
+  const cb = document.getElementById("ac_vat_on");
+  if(cb && cb.dataset) cb.dataset.answered = "1";
+  const note = document.getElementById("ac_vat_unanswered");
+  if(note) note.style.display = "none";          // it is answered now
   if(on){
     const f = document.getElementById("ac_vat_pct");
     // Default to the standard UK rate rather than 0 -- ticking the box and
@@ -385,6 +390,18 @@ function _toggleVat(on){
 async function enterAccount(accountId){
   const a=ACCOUNTS.find(x=>x.id===accountId) || ACCOUNTS[0];
   if(!a){ toast("Account not found"); return; }
+  // A DIFFERENT ACCOUNT IS A DIFFERENT PRODUCT CONTEXT (owner, 27 Sep 2026).
+  // The product page used to stay open across this line: still showing the
+  // old account's listing, while every save from it named the new account
+  // (acctBody reads CUR_ACCOUNT at the moment of saving) -- and SKUs are shared
+  // between accounts, so the save found a row. Closed and forgotten HERE,
+  // before CUR_ACCOUNT moves, so anything that saves on the way out still
+  // saves to the account it was typed in. Re-entering the SAME account is not
+  // a change and closes nothing. (test_pdp_account_switch.js)
+  if((!CUR_ACCOUNT || String(CUR_ACCOUNT.id) !== String(a.id))
+     && typeof pdpLeaveContext === "function"){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
   CUR_ACCOUNT=a;
   // Refresh inventory alert badge when workspace changes (fire-and-forget)
   if(typeof invBadgeRefresh === 'function') invBadgeRefresh();
@@ -408,10 +425,21 @@ async function enterAccount(accountId){
   // listings are not known yet, and the previous account's are not an
   // approximation of them.
   ROWS=[]; if(typeof TABS!=="undefined") TABS=[];
+  // AND THE TICKS. A ticked SKU is a SKU in the account it was ticked in, and
+  // the same SKU can exist in the next one -- so a selection carried across
+  // this line made the next bulk Delete/Approve/GTIN act on the NEW account's
+  // rows (master audit S2, 28 Sep 2026). enterWorkspace cleared it; this, the
+  // way the account switcher comes in, did not.
+  if(typeof SELECTED !== "undefined" && SELECTED && SELECTED.clear){
+    SELECTED.clear();
+    if(typeof updateSelBar === "function"){ try{ updateSelBar(); }catch(e){} }
+  }
+  if(typeof SRC_SEL !== "undefined"){ try{ SRC_SEL = new Set(); }catch(e){} }
   // ...and this account's drafts are not loaded either. Without clearing it, the
   // previous account's "loaded" would let the new account's empty grid claim
   // "no listings" before a single row had been asked for.
   if(typeof ROWS_LOADED !== "undefined") ROWS_LOADED = false;
+  window.ROWS_ERR = "";           // the last account's failure is not this one's
   if(typeof DUP_INDEX!=="undefined" && DUP_INDEX && DUP_INDEX.clear) DUP_INDEX.clear();
   var _g=document.getElementById("grid"); if(_g) _g.innerHTML="";
   var _sm=document.getElementById("summary"); if(_sm) _sm.innerHTML="";
@@ -432,7 +460,13 @@ async function enterAccount(accountId){
   LIST_SOURCE = 'drafts';
   // default marketplace: account's configured default, else first detected
   const dflt = a.default_marketplace && (a.marketplaces||[]).indexOf(a.default_marketplace)>=0 ? a.default_marketplace : null;
-  WS_MARKET = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");
+  const _newMkt = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");
+  // Re-entering the same account can still move the MARKETPLACE (back to the
+  // default), which is a change of product context too (pdpLeaveContext).
+  if(String(_newMkt) !== String(WS_MARKET || "") && typeof pdpLeaveContext === "function"){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
+  WS_MARKET = _newMkt;
   CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js
   // A read-only workspace has no live catalog at all -- /live/catalog refuses it --
   // so don't offer the Live / All / Sync controls that can only fail.
@@ -518,7 +552,9 @@ async function enterAccount(accountId){
   if(typeof renderSwitchRows === "function") renderSwitchRows();
   // Remembered so the next visit opens here instead of a grid of cards.
   try{ localStorage.setItem("alta_last_account", String(a.id || "")); }catch(e){}
-  navTo("listings");
+  // THE APP OPENS ON HOME (owner, 29 Sep 2026: "yes app should ope on the new
+  // home screen"). It was Listings.
+  navTo("home");
   altaSyncUrl();
   // Start the background refresh as soon as a CONNECTED workspace is open, not
   // only once someone has visited the Live tab. That is what makes switching to
@@ -599,7 +635,19 @@ function buildAccountMktSwitch(a){
   const mkts=a.marketplaces&&a.marketplaces.length?a.marketplaces:[];
   if(!mkts.length) return;
   // keep the current selection if it's valid for this account; else default to first
-  if(!WS_MARKET || (WS_MARKET!=="__all__" && mkts.indexOf(WS_MARKET)<0)){ WS_MARKET=mkts[0]; }
+  if(!WS_MARKET || (WS_MARKET!=="__all__" && mkts.indexOf(WS_MARKET)<0)){
+    // Moving the marketplace is a change of product context (pdpLeaveContext).
+    if(WS_MARKET && typeof pdpLeaveContext === "function"){ try{ pdpLeaveContext(); }catch(e){} }
+    // From "" too: "Detect marketplaces" on an account that had none moves it
+    // from "" to its first, and a load in flight then sees a different scope,
+    // returns early and would leave its busy flag set (batch 1 review).
+    const _moved = WS_MARKET !== mkts[0];
+    WS_MARKET=mkts[0];
+    // A MOVED MARKETPLACE IS A SWITCH like any other: what screens hold, and
+    // any reply in flight, belong to the old one (Milestone 3 review -- loads
+    // in flight returned early and left their busy flags set).
+    if(_moved && typeof screenForgetAll === "function"){ try{ screenForgetAll(); }catch(e){} }
+  }
   if(WS_MARKET!=="__all__"){
     // One table of what a marketplace code means, in static/js/marketplaces.js.
     // This was an inline ternary here AND another in switchAccountMarket, and
@@ -621,14 +669,23 @@ async function detectMarketplaces(accountId){
     if(!j.ok){ toast("Detect failed: "+(j.error||"")); 
       // refresh the account object so the button comes back
       try{ var al=await (await fetch("/accounts/list")).json(); ACCOUNTS=al.accounts||[]; }catch(e){}
-      var a=ACCOUNTS.find(x=>x.id===accountId); if(a) buildAccountMktSwitch(a);
+      // Only the OPEN account's switcher is rebuilt: building it for another
+      // account could move WS_MARKET to that account's marketplace.
+      var a=ACCOUNTS.find(x=>x.id===accountId);
+      if(a && CUR_ACCOUNT && String(CUR_ACCOUNT.id) === String(a.id)) buildAccountMktSwitch(a);
       return;
     }
     toast("Detected: "+(j.marketplaces||[]).join(", "));
     // update local account + rebuild switcher
     try{ var al=await (await fetch("/accounts/list")).json(); ACCOUNTS=al.accounts||[]; }catch(e){}
     var a2=ACCOUNTS.find(x=>x.id===accountId);
-    if(a2){ CUR_ACCOUNT=a2; buildAccountMktSwitch(a2); }
+    // REFRESH THE OPEN ACCOUNT, NEVER REPLACE IT. The switcher can run this for
+    // an account that is not the open one; assigning CUR_ACCOUNT here made that
+    // account "open" to every later save (acctBody) while the screen, ROWS and
+    // the server all still described the real one. (test_pdp_account_switch.js)
+    if(a2 && CUR_ACCOUNT && String(CUR_ACCOUNT.id) === String(a2.id)){
+      CUR_ACCOUNT=a2; buildAccountMktSwitch(a2);
+    }
   }catch(e){ toast("Error: "+e); }
 }
 async function setDefaultMarketplace(){
@@ -644,13 +701,24 @@ async function setDefaultMarketplace(){
   }catch(e){ toast("Error: "+e); }
 }
 async function switchAccountMarket(m){
+  // A DIFFERENT MARKETPLACE IS A DIFFERENT PRODUCT CONTEXT (owner, 27 Sep
+  // 2026): the same SKU there is another Amazon listing. Close the product page
+  // and forget what it held BEFORE the marketplace moves.
+  const _mktMoved = String(m) !== String(WS_MARKET || "");
+  if(_mktMoved && typeof pdpLeaveContext === "function"){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
   WS_MARKET=m;
   CUR_SYMBOL = mktSymbol(m) || "\u00a3";   // one table, in static/js/marketplaces.js
   // A marketplace is as different as an account: UK sales are not US sales.
   // Remembered screens are keyed by both, so they will reload -- but what is
   // already painted has to go, or the UK figures sit under the US heading until
   // the reload lands.
-  if(typeof screenForgetAll === "function") screenForgetAll();
+  //
+  // ONLY WHEN IT MOVED. Re-picking the marketplace already open forgot
+  // everything too, so a save or an image batch in flight was treated as
+  // belonging to another context and its result dropped (batch 3-4 review).
+  if(_mktMoved && typeof screenForgetAll === "function") screenForgetAll();
   // The counting numbers remember what they last showed, so they animate only a
   // real change. Every one of those figures is about to describe something
   // else, so that memory goes with the rest.
@@ -732,7 +800,7 @@ function openAccountEditor(id){
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-receipt-tax"></i> VAT</div><div class="cc" style="font-size:11.5px">Amazon reports this account's order values with VAT <b>already inside them</b>. If this company is VAT registered, that portion belongs to HMRC and is not your revenue — so profit and margin are worked out after it is taken out. Leave unticked if this company is not registered. Each company is separate, so set it per account.</div></td></tr>
       <tr><td class="k">VAT registered</td><td class="v">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
-          <input type="checkbox" id="ac_vat_on" ${(a.vat_percent||0) > 0 ? 'checked' : ''} onchange="_toggleVat(this.checked)">
+          <input type="checkbox" id="ac_vat_on" ${(a.vat_percent||0) > 0 ? 'checked' : ''} data-answered="${(a.vat_percent === null || a.vat_percent === undefined) ? '0' : '1'}" onchange="_toggleVat(this.checked)">
           <span>This company charges VAT</span>
         </label>
         <div id="ac_vat_wrap" style="margin-top:6px;${(a.vat_percent||0) > 0 ? '' : 'display:none'}">
@@ -742,7 +810,7 @@ function openAccountEditor(id){
           <div class="cc" style="font-size:11px;margin-top:3px">20% is the standard UK rate. Change it if this company pays a different one.</div>
         </div>
         ${(a.vat_percent === null || a.vat_percent === undefined)
-          ? '<div class="cc" style="font-size:11px;margin-top:4px;color:var(--warn)"><i class="ti ti-alert-triangle"></i> Not answered yet — profit is withheld for this account until you say.</div>'
+          ? '<div class="cc" id="ac_vat_unanswered" style="font-size:11px;margin-top:4px;color:var(--warn)"><i class="ti ti-alert-triangle"></i> Not answered yet — until you say, only the VAT Amazon itemised is taken out and profit is marked “VAT unknown”. Saving without touching this box leaves it unanswered.</div>'
           : ''}
       </td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-lock"></i> No Amazon account of its own?</div><div class="cc" style="font-size:11.5px">If this workspace has no SP-API credentials above, it can borrow another account's Amazon app to look up <b>catalogue data only</b> — product types, item type keywords, valid values, fees. It can <b>never</b> read that account's listings or inventory, and it can <b>never</b> publish. Leave as "none" for a normal, connected account.</div></td></tr>
@@ -781,9 +849,9 @@ function openAccountEditor(id){
     <input type="hidden" id="ac_id" value="${esc(a.id||'')}">
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="primary" onclick="saveAccount()">Save account</button>
-      ${id?`<button onclick="detectFromEditor('${esc(id)}')"><i class="ti ti-radar"></i> Detect marketplaces</button>`:''}
-      ${id?`<button onclick="detectBrandsFromEditor('${esc(id)}')"><i class="ti ti-tags"></i> Detect brands</button>`:''}
-      ${id?`<button class="del" onclick="deleteAccount('${esc(id)}')">Delete</button>`:''}
+      ${id?`<button onclick="detectFromEditor(${jsArg(id)})"><i class="ti ti-radar"></i> Detect marketplaces</button>`:''}
+      ${id?`<button onclick="detectBrandsFromEditor(${jsArg(id)})"><i class="ti ti-tags"></i> Detect brands</button>`:''}
+      ${id?`<button class="del" onclick="deleteAccount(${jsArg(id)})">Delete</button>`:''}
       <button onclick="closeAccountEditor()">Cancel</button>
     </div>
     ${typeof howWorks==="function"?(howWorks('acct_connect')+howWorks('acct_marketplaces')+howWorks('acct_brands')):""}
@@ -883,19 +951,27 @@ async function saveAccount(){
     ebay_app_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
     ebay_cert_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
     default_marketplace:(document.getElementById("ac_marketplace")||{}).value||"UK",
-    // A PERCENTAGE, because "20" and "0.2" are the same rate written two ways
-    // and only the sender knows which was meant. Unticked sends 0 -- "not
-    // registered", which is a real answer -- rather than blank, which means
-    // nobody has said and makes the app withhold the figure instead.
-    vat_percent: ((document.getElementById("ac_vat_on")||{}).checked)
-      ? (parseFloat((document.getElementById("ac_vat_pct")||{}).value) || 0)
-      : 0,
     brands:((document.getElementById("ac_brands")||{}).value||"").split(",").map(s=>s.trim()).filter(Boolean),
     features:[
       ...(((document.getElementById("ac_feat_harvest")||{}).checked)?["harvest"]:[]),
       ...(((document.getElementById("ac_feat_imgtpl")||{}).checked)?["image_template"]:[])
     ]
   };
+  // VAT, as a PERCENTAGE, because "20" and "0.2" are the same rate written two
+  // ways and only the sender knows which was meant. Unticked sends 0 -- "not
+  // registered", a real answer -- BUT ONLY WHEN THE QUESTION WAS ANSWERED:
+  // already answered, or the box touched in this editor. An account nobody has
+  // answered for, saved without touching the box, sends nothing, so the server
+  // keeps "nobody has said" (accounts_routes: None must survive the round trip).
+  // It used to send 0 and quietly declare the account not VAT registered.
+  {
+    const _vb = document.getElementById("ac_vat_on");
+    if(_vb && (!_vb.dataset || _vb.dataset.answered !== "0")){
+      body.vat_percent = _vb.checked
+        ? (parseFloat((document.getElementById("ac_vat_pct")||{}).value) || 0)
+        : 0;
+    }
+  }
   if(!body.label){ toast("Account name required"); return; }
   if(outUrl.trim() && !outP.id){ toast("Output sheet link looks wrong — couldn't read a sheet ID"); return; }
   try{
@@ -1002,6 +1078,12 @@ function closeAccounts(){
 
 async function enterWorkspace(key){
   const v=VIEWS.find(x=>String(x.key)===String(key)) || {key:key,label:key};
+  // Another workspace is another product context: close the product page
+  // before anything moves (pdpLeaveContext, pdp.js).
+  if(typeof pdpLeaveContext === "function"
+     && !(typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && String(ACTIVE_WS.key) === String(v.key))){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
   ACTIVE_WS=v;
   // switch the backend view so all existing routes read this workspace's sheet
   try{ await fetch("/view/set",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1025,7 +1107,17 @@ async function enterWorkspace(key){
   document.getElementById("nav_setup").style.display = isDrop ? "none" : "flex";
   window.WS_BRAND = isDrop ? "" : (v.brand||"");
   // currency + marketplace for this workspace
-  WS_MARKET = _mktOf(v) || (isDrop ? "" : "");
+  const _wsMkt = _mktOf(v) || (isDrop ? "" : "");
+  // Re-entering the same workspace can still move the marketplace, which is a
+  // change of product context (pdpLeaveContext, pdp.js).
+  if(String(_wsMkt) !== String(WS_MARKET || "") && typeof pdpLeaveContext === "function"){
+    try{ pdpLeaveContext(); }catch(e){}
+  }
+  const _wsMoved = String(_wsMkt) !== String(WS_MARKET || "");
+  WS_MARKET = _wsMkt;
+  // Same rule as every other switch (Milestone 3 review): held data and
+  // in-flight replies belong to the marketplace just left.
+  if(_wsMoved && typeof screenForgetAll === "function"){ try{ screenForgetAll(); }catch(e){} }
   // This one only knew about dollars and pounds, so a German or Irish
   // marketplace showed euro amounts with a pound sign in front of them.
   CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js
@@ -1041,7 +1133,7 @@ async function enterWorkspace(key){
   if(_gs){
     _gs.textContent = (v.label? "\u201c"+v.label+"\u201d" : "this workspace\u2019s");
   }
-  navTo("listings");
+  navTo("home");      // opening a workspace lands on Home, as enterAccount does
   altaSyncUrl();
   loadRows();
   loadViews();   // keep legacy view <select> in sync if present
@@ -1220,6 +1312,8 @@ function navTo(sec){
   if(sec==="imagelib"){ if(typeof imagelibOnOpen==="function") imagelibOnOpen(); }
   if(sec==="uploads"){ if(typeof uploadsOnOpen==="function") uploadsOnOpen(); }
   if(sec==="permissions"){ if(typeof permissionsOnOpen==="function") permissionsOnOpen(); }
+  if(sec==="team"){ if(typeof teamOnOpen==="function") teamOnOpen(); }
+  if(sec==="performance"){ if(typeof perfOnOpen==="function") perfOnOpen(); }
   // studioPickerOnOpen draws the product picker and then calls
   // imagestudioOnOpen itself, so the Studio works with nothing chosen -- it no
   // longer has to be entered from Listings.
@@ -1237,6 +1331,10 @@ function navTo(sec){
   if(typeof bmkRender==="function") bmkRender();
     _mark();
   }
+  // HOME REDRAWS ON EVERY VISIT, not only when it is stale: its counts change
+  // the moment something is approved or sent elsewhere. Cheap -- what it asks
+  // Amazon for is cached or already held (static/js/home.js).
+  if(sec==="home"){ if(typeof homeOnOpen==="function") homeOnOpen(); }
   altaSyncUrl();
 }
 async function loadTargetAccount(){
@@ -1305,12 +1403,12 @@ function enterWorkspaceBlank(){
 // /w/<ws>/generate resolving to a section that no longer exists in the markup,
 // which shows as a blank page rather than as a wrong address -- and an old
 // bookmark to it now falls through to the default section instead.
-const ALTA_SECTIONS = ["listings","imagerefs","setup",
+const ALTA_SECTIONS = ["home","listings","imagerefs","setup",
                        "sales","traffic","hourly","ppc","inventory","sync","monitor","miles",
                        "weekly","daily","orders","returns","variations","sellerimport",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
-                       "compliance","categories","drppc","permissions",
+                       "compliance","categories","drppc","permissions","team","performance",
                        // The three advertising screens. One computation layer
                        // behind all three (domain/ppc_analytics.py).
                        "ppcanalytics","ppcterms","ppccampaigns","ppclive",
@@ -1384,7 +1482,7 @@ function altaCurrentPath(){
     if(pp) return pp;
   }
   const slug = String(ACTIVE_WS.key || "") || "default";
-  const sec  = (ALTA_SECTIONS.indexOf(CUR_SEC) >= 0) ? CUR_SEC : "listings";
+  const sec  = (ALTA_SECTIONS.indexOf(CUR_SEC) >= 0) ? CUR_SEC : "home";
   let p = "/w/" + encodeURIComponent(slug) + "/" + sec;
   // Drafts is the default so it stays out of the address; Live and All are worth
   // recording, because landing back on Drafts after a refresh is the annoyance.
@@ -1424,7 +1522,18 @@ async function altaRouteFromUrl(){
   // enterAccount() would put a spinner in front of a screen that is already
   // rendered and only hidden.
   if(!lm && typeof pdpIsOpen === "function" && pdpIsOpen()){
-    try{ pdpClose(); }catch(e){}
+    // Back/Forward to ANOTHER workspace's screen is a change of product
+    // context: leave it properly (save a field being typed in to the account
+    // it belongs to, forget the page's caches, and leave the address bar to
+    // this router). Within the same workspace it is an ordinary close.
+    let _tw = "";
+    try{ _tw = decodeURIComponent((/^\/w\/([^\/]+)/.exec(location.pathname || "") || [])[1] || ""); }catch(e){}
+    const _cw = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS) ? String(ACTIVE_WS.key || "") : "";
+    if(_tw && _cw && _tw !== _cw && typeof pdpLeaveContext === "function"){
+      try{ pdpLeaveContext(); }catch(e){}
+    } else {
+      try{ pdpClose(); }catch(e){}
+    }
   }
   const m = lm ? [lm[0], lm[1], "listings"]
               : /^\/w\/([^\/]+)(?:\/([^\/]+))?\/?$/.exec(location.pathname || "");
@@ -1455,8 +1564,8 @@ async function altaRouteFromUrl(){
     return;
   }
   const ws  = decodeURIComponent(m[1] || "");
-  let   sec = m[2] || "listings";
-  if(ALTA_SECTIONS.indexOf(sec) < 0) sec = "listings";
+  let   sec = m[2] || "home";
+  if(ALTA_SECTIONS.indexOf(sec) < 0) sec = "home";
   let src = "";
   try{ src = new URLSearchParams(location.search).get("src") || ""; }catch(e){}
 

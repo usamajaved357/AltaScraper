@@ -65,7 +65,7 @@ function pdpImgGenSection(r){
     + '<div class="pdpi-sechead"><span class="pdpi-sect">Image Studio</span>'
     +   '<span class="pdpi-secsub">one click generates</span></div>'
     + '<div class="pdpig-presets">' + PDPIG_PRESETS.map(function(p){
-        return '<button class="pdpig-btn" onclick="pdpImgGenRun(\'' + p.key + '\')"'
+        return '<button class="pdpig-btn" onclick="pdpImgGenRun(' + jsArg(p.key) + ')"'
              + (busy ? " disabled" : "") + '><i class="ti ' + p.icon + '"></i> '
              + esc(p.label) + '</button>';
       }).join("") + '</div>'
@@ -184,6 +184,9 @@ async function pdpImgGenRun(preset){
   const before = {};
   ((typeof PDPI !== "undefined" && PDPI.library) || []).forEach(function(f){ before[f.url] = 1; });
 
+  // Whose listing this batch is for -- taken BEFORE the request, so a switch
+  // while it starts cannot make it look like the new account's (review).
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   let resp;
   try{
     resp = await (await fetch("/genimage/start_batch", {method: "POST",
@@ -193,6 +196,10 @@ async function pdpImgGenRun(preset){
   if(!resp || !resp.ok){ _pdpigSay('<span class="bad">' + esc((resp && resp.error) || "failed to start") + '</span>'); return; }
 
   PDPIG.running = true; PDPIG.sku = sku; PDPIG.job = resp.job;
+  // The pictures are filed under the batch's account by the server; they are
+  // only PLACED into slots if the screen is still on it -- the same SKU in
+  // another account is another listing.
+  const _moved = function(){ return !!_sc && typeof screenStillIn === "function" && !screenStillIn(_sc); };
   _pdpigSetBusy(true);
   _pdpigSay('<span class="genspin"></span> Generating 0/' + jobs.length + '…');
   let polling = false;
@@ -200,7 +207,18 @@ async function pdpImgGenRun(preset){
     if(polling) return;
     polling = true;
     try{
-      const st = await (await fetch("/genimage/job_status?job=" + encodeURIComponent(resp.job))).json();
+      const _r = await fetch("/genimage/job_status?job=" + encodeURIComponent(resp.job));
+      // 404 IS FINAL (the server no longer has the job, e.g. after a restart):
+      // polling forever left PDPIG.running set, which blocked every later run.
+      if(_r.status === 404){
+        clearInterval(t);
+        PDPIG.running = false;
+        _pdpigSetBusy(false);
+        _pdpigSay('<span class="bad">This batch can no longer be followed (the app may have restarted). '
+          + 'Images that finished were saved to the Library.</span>');
+        return;
+      }
+      const st = await _r.json();
       if(!st || !st.ok) return;
       if(st.status === "running"){
         _pdpigSay('<span class="genspin"></span> Generating ' + st.done + '/' + st.total + '…');
@@ -210,7 +228,7 @@ async function pdpImgGenRun(preset){
       PDPIG.running = false;
       _pdpigSetBusy(false);
       const okN = (st.results || []).filter(function(x){ return x.ok; }).length;
-      const placed = await _pdpigPlace(sku, preset, before);
+      const placed = _moved() ? 0 : await _pdpigPlace(sku, preset, before);
       _pdpigSay('<span class="ok"><i class="ti ti-check"></i> ' + okN + '/' + st.total + ' made'
         + (placed ? " · " + placed + " put into empty slots" : "")
         + ' · all saved to Library.</span>'

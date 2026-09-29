@@ -90,6 +90,9 @@ async function krtRemove(kw, asin) {
 // button says how many reports it is about to ask for rather than starting an
 // unknown amount of waiting.
 async function krtCheckNow() {
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   if (!KRT.watch.length) {
     KRT.note = "Add a keyword and an ASIN first."; krtRender(); return;
   }
@@ -103,6 +106,12 @@ async function krtCheckNow() {
     + "the first time for a given week.\n\nNothing runs on a timer — this "
     + "happens only when you press OK.";
   if (!await uiConfirm(msg)) return;
+  // Checked BEFORE the busy flag is set: returning after it left "Check now"
+  // stuck on its spinner (review).
+  if(typeof acctId === "function" && acctId() !== _pinAcct){
+    if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+    return;
+  }
 
   KRT.checking = true; KRT.note = ""; krtRender();
   try {

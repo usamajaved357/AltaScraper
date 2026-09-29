@@ -28,9 +28,14 @@ The through-line of all five: a figure that could not be computed came out as
 zero and was indistinguishable from a real zero. So the sharpest checks here are
 that unknown stays None, and that None never renders as 0.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import report_reader as _rr      # noqa: E402
 from domain import weekly_kpi as _wk         # noqa: E402

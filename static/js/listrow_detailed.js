@@ -93,6 +93,9 @@ async function lrLoadMetrics(rows, force){
   LR_LOADING = true;
   if(force) LR_ASKED = new Set();
   need.forEach(s => LR_ASKED.add(s));
+  // The account this request is for, visible to the finally below too.
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
+  const _gone = () => !!_sc && !screenStillIn(_sc);
   try{
     // A cap matching the route's own, so the URL cannot grow past what a
     // server will accept on a large catalogue.
@@ -132,6 +135,7 @@ async function lrLoadMetrics(rows, force){
          + "&asins="  + encodeURIComponent(ask.map(s => asinOf(byS[s])).join(","));
     if(force) url += "&fetch=1";
     const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
+    if(_gone()) return;   // switched account/marketplace meanwhile
     if(j && j.ok){
       // MERGED, not replaced. Several blocks contribute their own SKUs, and
       // assigning the reply would throw away whatever the previous block had
@@ -145,10 +149,15 @@ async function lrLoadMetrics(rows, force){
       LR_ERRORS = {all: (j && j.error) || "could not read the metrics"};
     }
   }catch(e){
+    if(_gone()) return;
     LR_ERRORS = {all: String((e && e.message) || e)};
   }finally{
-    LR_LOADING = false;
-    if(typeof render === "function") render();
+    // Only this request's own flag: after a switch the new account's request
+    // owns LR_LOADING (Milestone 3 review).
+    if(!_gone()){
+      LR_LOADING = false;
+      if(typeof render === "function") render();
+    }
   }
 }
 
@@ -739,7 +748,7 @@ function lrProduct(r){
         // already clickable, so the one thing that looks like the product's
         // name was the one thing that did not behave like a link.
     +   '<div class="prod-title" title="' + esc(r.title || "") + '"'
-    +     ' onclick="event.stopPropagation();openListing(\'' + esc(r.sku) + '\')">'
+    +     ' onclick="event.stopPropagation();openListing(' + jsArg(r.sku) + ')">'
     +     (esc(r.title || "") || '<span class="prod-dim">(no title)</span>') + '</div>'
     +   '<div class="prod-meta">' + asinBit
     +     '<br>SKU <span class="sku">' + esc(r.sku || "") + '</span>'
@@ -1171,7 +1180,9 @@ async function lrLoadRules(){
     // only the account, and a rule is per marketplace.
     const url = (typeof _srcUrl === "function") ? _srcUrl("/sourcing/rules_all")
                                                 : "/sourcing/rules_all";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;
     const j = await (await fetch(url)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // another account's rules (M3 review)
     if(!j || !j.ok) return;
     LR_RULES_LOADED = true;
     let added = 0;
@@ -1202,7 +1213,7 @@ function lrRuleBox(r, key, label, title){
        +   esc(v == null ? "" : String(v)) + '"'
        +   ' onclick="event.stopPropagation()"'
        +   ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
-       +   ' onchange="lrSaveRule(\'' + esc(r.sku) + '\',\'' + key + '\',this)">'
+       +   ' onchange="lrSaveRule(' + jsArg(r.sku) + ',' + jsArg(key) + ',this)">'
        + '</div>';
 }
 
@@ -1223,7 +1234,11 @@ async function lrSaveRule(sku, key, el){
   try{
     const j = await (await fetch("/sourcing/rules", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify((typeof _srcBody === "function") ? _srcBody(body) : body)
+      // _srcBody ALREADY returns the JSON text (sourcing.js); stringifying it
+      // again sent a quoted string, which /sourcing/rules could not read, so
+      // every Min/Max typed on this row failed to save (front-end review,
+      // 29 Sep 2026).
+      body: (typeof _srcBody === "function") ? _srcBody(body) : JSON.stringify(body)
     })).json();
     if(!j || !j.ok){ toast("Could not save: " + ((j && j.error) || "")); return; }
     const rule = lrRule(sku);
@@ -1390,9 +1405,8 @@ function lrFees(r){
     // lose the list, the filter and the scroll to read four numbers, then have
     // to find your way back to compare it with the row beneath. The price is
     // passed so the panel opens on the price you were looking at.
-    + '<span class="fee-link" onclick="event.stopPropagation();revOpen(\''
-    + esc(r.sku) + '\',\'' + esc(String(r.price == null ? "" : r.price)
-                                   .replace(/[^0-9.]/g, "")) + '\')"'
+    + '<span class="fee-link" onclick="event.stopPropagation();revOpen(' + jsArg(r.sku) + ',' + jsArg(String(r.price == null ? "" : r.price)
+                                   .replace(/[^0-9.]/g, "")) + ')"'
     + ' title="What this unit earns at a given price — Amazon’s cut and the '
     + 'stock cost, without leaving the list">Calculate revenue</span>';
 }
@@ -1405,7 +1419,7 @@ function detailedRow(r, isChild){
   const sel = (typeof SELECTED !== "undefined") && SELECTED.has(String(r.sku));
   return '<tr class="inv-row' + (sel ? " sel" : "") + (isChild ? " var-child" : "")
     + '" data-sku="' + esc(r.sku) + '"'
-    + ' onclick="openListing(\'' + esc(r.sku) + '\')">'
+    + ' onclick="openListing(' + jsArg(r.sku) + ')">'
     + '<td class="col-cb" onclick="event.stopPropagation()">'
     +   ((typeof rowSelectBox === "function") ? rowSelectBox(r) : "") + '</td>'
     + '<td class="col-status">' + lrStatus(r) + '</td>'
@@ -1420,16 +1434,24 @@ function detailedRow(r, isChild){
         //      Image refs, Optimize listing, Variation, etc. Hide ALL of them
         //      under the three-dot menu."
         //
-        // rowActions() draws seven buttons in a strip and is shared with the
-        // table and the card views, so it is not changed -- those two are not
-        // being redesigned (Rule 7). This view simply does not call it. The
-        // dots open drawerMore(), the overflow menu that already exists and
-        // already holds these actions, so nothing is reimplemented (Rule 12).
+        // This view keeps its own dots and does not call rowActions(). Since the
+        // design migration (28 Sep 2026) the table and card views follow the
+        // same idea -- Review + "···", the icon strip folded into tileMenu. The
+        // dots here open drawerMore(), the overflow menu that already holds
+        // these actions, so nothing is reimplemented (Rule 12).
     + '<td class="col-actions" onclick="event.stopPropagation()">'
-    +   '<i class="ti ti-dots act-dots" title="Everything else"'
-    +   ' onclick="drawerMore(event,\'' + esc(r.sku) + '\',' + (r.row || 0) + ','
+    // REVIEW, as in the table and card views (owner, 29 Sep 2026: "yes
+    // detailed listing view i agree"). Every row here is one this app holds,
+    // so it always has a draft to review; it opens exactly what the row click
+    // opens (openListing).
+    +   '<button type="button" class="btn primary lr-review" title="Open this listing\'s product page"'
+    +   ' onclick="openListing(' + jsArg(r.sku) + ')">Review</button>'
+    // A BUTTON, not a bare icon: an <i> cannot be reached with Tab, so this
+    // menu was mouse-only. The look is unchanged (listrow_detailed.css).
+    +   '<button type="button" class="act-dots" title="Everything else" aria-label="More actions"'
+    +   ' onclick="drawerMore(event,' + jsArg(r.sku) + ',' + (r.row || 0) + ','
     +   ((typeof isAmazonLive === "function" && isAmazonLive(r)) ? "true" : "false")
-    +   ')"></i></td>'
+    +   ')"><i class="ti ti-dots" aria-hidden="true"></i></button></td>'
     + '</tr>';
 }
 
@@ -1551,7 +1573,9 @@ async function lrLoadFamilies(){
   LR_FAM_ASKED = true;
   try{
     const url = "/variations/families";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;
     const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // another account's families
     if(!j || !j.ok){ LR_FAMILIES = {}; return; }
     const map = {};
     (j.families || []).forEach(function(f){
@@ -1616,7 +1640,7 @@ function lrFamilyRow(g){
   // The parent spans the data columns rather than filling them with dashes: it
   // is a container, not a product, and Amazon draws it the same way.
   return '<tr class="var-parent' + (open ? " open" : "") + '"'
-    + ' onclick="lrToggleFamily(\'' + esc(g.parent_sku) + '\')">'
+    + ' onclick="lrToggleFamily(' + jsArg(g.parent_sku) + ')">'
     + '<td class="col-cb" onclick="event.stopPropagation()"></td>'
     + '<td class="col-status">'
     +   '<span class="var-toggle' + (open ? " open" : "") + '">'

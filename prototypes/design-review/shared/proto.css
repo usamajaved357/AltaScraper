@@ -1,0 +1,95 @@
+/* Shared by the three design prototypes. The COLOURS are the real app's own
+ * tokens (static/css/dashboard.css), copied on purpose: the three directions
+ * should differ in how they WORK, not in paint. Nothing here is a proposed
+ * design-system rule. */
+:root{
+  --bg:#0f1117; --panel:#161a22; --panel2:#1c212b; --panel3:#232936;
+  --line:#2a3140; --line2:#343c4d;
+  --ink:#e8eaed; --ink2:#9aa3b2; --ink3:#7d8697;
+  --accent:#2dd4a8; --accent-bg:#0d2e25; --accent-line:#1a4a3d;
+  --gold:#f0b429; --gold-bg:#2a2310; --gold-line:#4a3d1a;
+  --ok:#4ade80; --ok-bg:#0f1f14; --ok-line:#1a4a28;
+  --warn:#f59e0b; --warn-bg:#241a05; --warn-line:#4a3510;
+  --red:#f27272; --red-bg:#2a0f0f; --red-line:#4a1a1a;
+  --ai:#c8b6ff; --ai-bg:#1b1530;
+  --note:#ffd54a;
+  --radius:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.45 Inter,"Segoe UI",system-ui,-apple-system,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--panel2);
+  border:1px solid var(--line2);border-radius:7px;padding:6px 9px}
+a{color:var(--accent)}
+.muted{color:var(--ink2)}
+.unknown{color:var(--ink3);font-style:italic}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+.hidden{display:none!important}
+
+/* ---- the prototype frame (not part of any design) ---- */
+.proto-banner{position:sticky;top:0;z-index:500;display:flex;align-items:center;
+  gap:12px;padding:6px 14px;background:#3a2a00;color:#ffe9a8;font-size:12.5px;
+  border-bottom:1px solid #6b5200}
+.proto-banner b{color:#fff}
+.proto-banner .sp{flex:1}
+.proto-banner button,.proto-banner select{background:#5a4300;border:1px solid #8a6a00;
+  color:#fff3c9;border-radius:6px;padding:3px 9px;font-size:12px}
+.proto-banner a{color:#ffe9a8}
+
+/* ---- design notes: every major piece is tagged; notes mode shows why ---- */
+body.notes [data-piece]{outline:1px dashed rgba(255,213,74,.55);outline-offset:2px;position:relative}
+.piece-tag{display:none}
+body.notes .piece-tag{display:inline-flex;position:absolute;top:-9px;left:6px;z-index:60;
+  background:var(--note);color:#231b00;font:700 10.5px/1 system-ui;padding:3px 6px;
+  border-radius:5px;cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.why-pop{position:fixed;z-index:700;max-width:380px;background:#fff8dc;color:#2a2200;
+  border-radius:10px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:13px}
+.why-pop h4{margin:0 0 6px;font-size:13.5px}
+.why-pop p{margin:0 0 6px}
+.why-pop .x{float:right;border:0;background:none;font-size:16px;color:#6b5a00}
+.notes-list{position:fixed;right:12px;bottom:12px;width:360px;max-height:60vh;overflow:auto;
+  z-index:650;background:#fff8dc;color:#2a2200;border-radius:12px;padding:12px 14px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:12.5px;display:none}
+body.notes .notes-list{display:block}
+.notes-list h3{margin:0 0 8px;font-size:13px}
+.notes-list li{margin-bottom:6px}
+.notes-list b{color:#5a4300}
+
+/* ---- common bits every direction may use ---- */
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;
+  font-size:11.5px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.pill.review{background:var(--warn-bg);color:var(--warn);border-color:var(--warn-line)}
+.pill.blocked,.pill.refused{background:var(--red-bg);color:var(--red);border-color:var(--red-line)}
+.pill.ready{background:var(--ok-bg);color:var(--ok);border-color:var(--ok-line)}
+.pill.live{background:var(--panel3);color:var(--ink);border-color:var(--line2)}
+.pill.submitted{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-line)}
+.pill.draft{background:var(--panel2);color:var(--ink2);border-color:var(--line)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+
+.modal-wrap{position:fixed;inset:0;z-index:600;background:rgba(5,7,12,.66);
+  display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:var(--panel);border:1px solid var(--line2);border-radius:14px;
+  width:min(520px,100%);box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.modal h3{margin:0;padding:16px 18px 6px;font-size:16px}
+.modal .mb{padding:4px 18px 14px;color:var(--ink2)}
+.modal .mf{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;
+  border-top:1px solid var(--line)}
+.who{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:10px 0;
+  padding:10px 12px;border-radius:9px;background:var(--panel2);border:1px solid var(--line2);
+  color:var(--ink);font-size:13px}
+.who span:nth-child(odd){color:var(--ink2)}
+
+.btn{border:1px solid var(--line2);background:var(--panel2);border-radius:8px;padding:6px 12px}
+.btn:hover{border-color:var(--ink3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#06221a;font-weight:650}
+.btn.danger{background:var(--red-bg);border-color:var(--red-line);color:var(--red);font-weight:600}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#241b00;font-weight:650}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.skel{background:linear-gradient(90deg,var(--panel2),var(--panel3),var(--panel2));
+  background-size:200% 100%;animation:sk 1.2s linear infinite;border-radius:6px;height:14px}
+@keyframes sk{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skel{animation:none}}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

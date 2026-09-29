@@ -26,9 +26,14 @@ WHAT IS PINNED HERE
   3. the seller name survives the round trip from eBay into the database
   4. the shared half of an alert is only said once when it is really shared
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import source_fetch as _fetch          # noqa: E402
 from domain import source_link as _slink           # noqa: E402
@@ -157,7 +162,7 @@ print("\n== one function names a link, not two ==")
 # own name they would drift, and the same supplier would read two ways on two
 # screens (CLAUDE.md Rule 12).
 import re                                                     # noqa: E402
-srcs = {p: open(r"D:\AltaScraper\%s" % p, encoding="utf-8-sig").read()
+srcs = {p: open(_os_repo.path.join(_REPO, r"%s") % p, encoding="utf-8-sig").read()
         for p in ("domain/order_sources.py", "routes/sourcing_routes.py",
                   # The reasons and rejections this module writes name a source
                   # too -- "Buying from X at 12.99 delivered" -- and they are
@@ -167,14 +172,14 @@ srcs = {p: open(r"D:\AltaScraper\%s" % p, encoding="utf-8-sig").read()
 for p, s in srcs.items():
     truthy("%s asks source_link for the name" % p,
            re.search(r"_slink\.display_name\(", s))
-js = open(r"D:\AltaScraper\static\js\sourcing.js", encoding="utf-8-sig").read()
+js = open(_os_repo.path.join(_REPO, r"static\js\sourcing.js"), encoding="utf-8-sig").read()
 # Same name, same fallback -- read off options_for's `label`, which is what
 # display_name() writes into it, rather than off the raw source row. One
 # function still decides what a link is called (CLAUDE.md Rule 12).
 truthy("the repricer draws the server's name",
        "s.label || _srcShort(s.url)" in js)
 # And nothing writes the slot back into the column display_name reads.
-enrol = open(r"D:\AltaScraper\listing\suppliers.py", encoding="utf-8-sig").read()
+enrol = open(_os_repo.path.join(_REPO, r"listing\suppliers.py"), encoding="utf-8-sig").read()
 check("enrolling a supplier does not name it after its sheet column",
       bool(re.search(r'label\s*=\s*"Supplier %d"', enrol)), False)
 check("  the slot is kept as the priority, which is what orders the list",

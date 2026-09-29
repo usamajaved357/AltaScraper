@@ -39,20 +39,57 @@ def current():
         return UNOWNED
 
 
-def _is_manager(config_path):
-    """Can the caller manage users? They see everything."""
+def person(config_path, uid=None):
+    """WHO A USER ID IS: {"id", "name", "email"}, or {} when unknown.
+
+    The ONE lookup behind every "who did it" label (Rule 12): the upload
+    history (upload_log.uploader), the activity log (activity.person) and Dr
+    PPC's records all name people through this. `uid` None = the signed-in
+    user. Each caller chooses how to word the label; the lookup is shared."""
+    try:
+        uid = current() if uid is None else str(uid or "")
+        if not uid:
+            return {}
+        from auth import users
+        u = users.get_user(config_path, uid) or {}
+        return {"id": uid, "name": str(u.get("name") or ""), "email": str(u.get("email") or "")}
+    except Exception:
+        return {}
+
+
+def label(config_path, uid=None):
+    """The person as the RECORDS name them: email, else name, else the id; ""
+    when nobody is signed in (the shared-password owner, or background work).
+    Upload history, Dr PPC, the repricer's manual prices and the error log all
+    use this one wording."""
+    p = person(config_path, uid)
+    if not p:
+        return ""
+    return p["email"] or p["name"] or p["id"]
+
+
+def holds(config_path, perm):
+    """Does the signed-in person hold permission `perm`? The ONE lookup for a
+    route that must ask this itself (Rule 12; tracking's remove used a copy).
+
+    No user id means the shared-password owner (or the open local app), who
+    holds everything -- the guard clears a session with no uid once real
+    accounts exist. Any failure answers False: fail closed."""
     try:
         from auth import users
         uid = current()
         if not uid:
-            # The shared-password owner is the only user, so nothing is hidden
-            # from them either.
             return True
         u = users.get_user(config_path, uid)
-        return bool(u and users.has_permission(u, "manage_users"))
+        return bool(u and users.has_permission(u, perm))
     except Exception:
-        # Never let a permissions lookup failure hide someone's own work.
         return False
+
+
+def _is_manager(config_path):
+    """Can the caller manage users? They see everything. (Through holds();
+    a lookup failure still answers False, as it always did.)"""
+    return holds(config_path, "manage_users")
 
 
 def may_see(job, config_path=None):

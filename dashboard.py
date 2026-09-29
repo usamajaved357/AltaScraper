@@ -22,6 +22,7 @@ It reuses config.json (google_spreadsheet_id, google_service_account_json,
 brand_name) and runs in the SAME folder as amazon_listing_generator.py.
 """
 
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import json
 import re
 import sys
@@ -185,6 +186,8 @@ def _public_media_url(media_url: str) -> str:
 # auth/guard.py, which holds the whole policy in one readable table. Nothing about
 # who-may-do-what is decided in this file.
 from auth.guard import make_doorman as _make_doorman
+from auth.guard import harden_session as _harden_session
+_harden_session(app)
 app.before_request(_make_doorman(CONFIG_PATH, _APP_PASSWORD))
 
 
@@ -230,8 +233,10 @@ def _json_errors(e):
     if code == 500:
         try:
             import domain.selfcheck as _sc
+            # session["email"] is never set; the one "who" wording (job_owner).
+            import domain.job_owner as _jo
             _sc.record(getattr(request, "path", ""), getattr(request, "method", ""),
-                       code, e, user=(session.get("email") or session.get("uid") or ""))
+                       code, e, user=_jo.label(CONFIG_PATH))
         except Exception:
             pass
 
@@ -365,8 +370,8 @@ def _save_active_state():
     try:
         data = {k: _state.shared(k) for k in _ACTIVE_KEYS
                 if _state.shared(k) is not None}
-        with open(_ACTIVE_STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        from domain import jsonstore as _js     # atomic (a crash cannot empty it)
+        _js.write_json_atomic(_ACTIVE_STATE_PATH, data, indent=2)
     except Exception:
         pass
 
@@ -431,6 +436,13 @@ def _ws():
     # Read the ACTIVE account's own sheet/tab. Resolve the tab by gid first (the
     # exact tab the generator writes to), then by name. If it doesn't exist yet,
     # auto-create it so accounts never silently fall back to another's listings.
+    #
+    # AND ONLY FOR THE ACCOUNT WHOSE SHEET IT IS: a request from a tab showing
+    # another account is refused here, once, for every route that opens it.
+    from domain import request_account as _rqa
+    _other = _rqa.sheet_mismatch(_state)
+    if _other:
+        raise SheetScopeError(_other)
     sid = _state.get("active_sheet_id") or _cfg()["google_spreadsheet_id"]
     tab = str(_state.get("active_tab") or "").strip()
     gid = str(_state.get("active_tab_gid") or "").strip()
@@ -517,7 +529,14 @@ def _active_account():
     """
     try:
         import accounts as _acc
-        aid = _state.get("active_account_id")
+        # THE ACCOUNT THE REQUEST NAMES, else the open one (domain/
+        # request_account.current). The open account is ONE value for every
+        # tab, so routes that asked for it acted on whichever tab switched last
+        # -- stock pushed, auto-fixes run, Ads keys saved for the wrong account
+        # (two-tab audit, 28 Sep 2026). The guard has already checked that the
+        # caller may use the named account. Outside a request, the open one.
+        from domain import request_account as _rqa
+        aid = _rqa.current(_state)
         if not aid:
             return None
         return _acc.get_account(_cfg(), aid, CONFIG_PATH) or None
@@ -602,106 +621,24 @@ def _require_publish(acc: dict = None):
     return acc
 
 
-_SUBFIELD_PLUMBING = {"language_tag", "marketplace_id", "audience"}
+from listing.subfields import (_SUBFIELD_PLUMBING, _sf_enum_of, _sf_kind, _extract_subfields)  # moved (Milestone 4)
 
 
-def _sf_enum_of(node):
-    """Enum list for a schema node, unwrapping a localized array+items.value wrapper."""
-    if not isinstance(node, dict):
-        return None
-    if isinstance(node.get("enum"), list):
-        return [str(x) for x in node["enum"]]
-    # Amazon writes this shape two ways, and until now only the first was read:
-    #
-    #   with the array wrapper     node.items.properties.value.enum
-    #   without it                 node.properties.value.enum
-    #
-    # unit_count.type is the second kind -- a plain object whose `value` carries
-    # the closed list ["gram", "millilitre"] on MACHINE_LUBRICANT. Returning
-    # None for it meant auto-fix drew a free-text box, the AI answered "Count"
-    # from the field's description, and Amazon refused it every time. The
-    # surrounding code already guards against Amazon omitting the array marker
-    # (see _extract_subfields); this is the same omission, one level in.
-    for _src in (node.get("items"), node):
-        if not isinstance(_src, dict):
-            continue
-        props = _src.get("properties")
-        vp = props.get("value") if isinstance(props, dict) else None
-        if isinstance(vp, dict) and isinstance(vp.get("enum"), list):
-            return [str(x) for x in vp["enum"]]
-    return None
 
 
-def _sf_kind(node):
-    t = node.get("type") if isinstance(node, dict) else None
-    return "number" if t in ("number", "integer") else "text"
 
 
-def _extract_subfields(prop) -> list:
-    """Return the fillable sub-field controls Amazon expects under ONE attribute.
-    [] -> plain single-value attribute. Otherwise a list of {path,label,kind,enum}.
-    'path' is dot-joined keys UNDER the attribute, saved flat as '<field>.<path>'.
-
-    Handles Amazon's habit of nesting attributes two levels deep -- e.g.
-    `cable.length` in MASSAGER is itself a `{value, unit}` object, not a scalar.
-    Without walking into the child's inner `items.properties` we'd expose
-    `cable.length` as a single box and the AI would fill only the number OR
-    only the unit, producing 'invalid value for cable' rejections. Amazon's
-    schema often omits an explicit `type: "array"` marker on the inner wrapper,
-    so we probe for `items.properties` and `properties` regardless of the
-    marker. Same fix applies to `leg.length` (HARDWARE_TUBING) and any other
-    attribute where the second level is itself a value+unit pair."""
-    if not isinstance(prop, dict):
-        return []
-    node = prop
-    if isinstance(node.get("items"), dict):
-        # Unwrap array wrapper whether or not the "type": "array" marker is
-        # present -- Amazon frequently omits it on inner wrappers.
-        node = node["items"]
-    sub = node.get("properties") if isinstance(node, dict) else None
-    if not isinstance(sub, dict):
-        return []
-    keys = [k for k in sub.keys() if k not in _SUBFIELD_PLUMBING]
-    if keys == ["value"]:
-        return []
-    out = []
-    for k in keys:
-        child = sub[k]
-        cnode = child
-        # Unwrap child's array/items wrapper regardless of "type" marker
-        if isinstance(child, dict) and isinstance(child.get("items"), dict):
-            cnode = child["items"]
-        cprops = {}
-        if isinstance(cnode, dict) and isinstance(cnode.get("properties"), dict):
-            cprops = {ck: cv for ck, cv in cnode["properties"].items()
-                      if ck not in _SUBFIELD_PLUMBING}
-        if set(cprops.keys()) == {"value", "unit"}:
-            out.append({"path": k + ".value", "label": (k + " value").replace("_", " "),
-                        "kind": _sf_kind(cprops["value"]), "enum": _sf_enum_of(cprops["value"])})
-            out.append({"path": k + ".unit", "label": (k + " unit").replace("_", " "),
-                        "kind": "text", "enum": _sf_enum_of(cprops["unit"])})
-        elif cprops:
-            # Grandchildren present but not the plain value+unit shape: recurse
-            # so multi-level nested objects (like some battery.capacity variants)
-            # get exposed at every leaf. Prevents "invalid value" rejections
-            # on nested composites the AI could otherwise only half-fill.
-            grand = _extract_subfields(child)
-            if grand:
-                for g in grand:
-                    out.append({"path": k + "." + g["path"], "label": (k + " " + g["label"]),
-                                "kind": g.get("kind"), "enum": g.get("enum")})
-            else:
-                out.append({"path": k, "label": k.replace("_", " "),
-                            "kind": _sf_kind(child), "enum": _sf_enum_of(child)})
-        else:
-            out.append({"path": k, "label": k.replace("_", " "),
-                        "kind": _sf_kind(child), "enum": _sf_enum_of(child)})
-    return out
 
 
-def _load_schema(pt: str) -> dict:
+def _load_schema(pt: str, marketplace: str = "") -> dict:
     """Fetch+cache {'enums', 'required', 'attrs', 'subfields'} for a product type
-    from Amazon getDefinitions, for the active marketplace. Empties on failure."""
+    from Amazon getDefinitions, for `marketplace` -- or, when none is named, the
+    active marketplace, exactly as before. Empties on failure.
+
+    THE MARKETPLACE IS AN ARGUMENT (architecture batch A4). /schema used to set
+    the server-wide active marketplace for the length of its request so this
+    function would read it -- and every other request running at that moment
+    read the borrowed value too (master audit S11; only its restore was fixed)."""
     if not pt:
         return {"enums": {}, "required": [], "attrs": [], "subfields": {}, "titles": {},
             # help: Amazon's own description per field, for the (?) bubble.
@@ -709,7 +646,7 @@ def _load_schema(pt: str) -> dict:
             # readonly: fields Amazon says cannot be set.
             "help": {}, "maxitems": {}, "readonly": []}
     # marketplace-aware: US brands must get US sub-field schemas, not UK
-    _mkt = str(_state.get("active_marketplace", "") or "UK").upper()
+    _mkt = str(marketplace or _state.get("active_marketplace", "") or "UK").upper()
     _ck = f"{pt}::{_mkt}"
     if _ck in _state["schemas"]:
         return _state["schemas"][_ck]
@@ -931,20 +868,20 @@ def _load_schema(pt: str) -> dict:
     return info
 
 
-def _schema_subfields(pt: str) -> dict:
-    return _load_schema(pt).get("subfields", {})
+def _schema_subfields(pt: str, marketplace: str = "") -> dict:
+    return _load_schema(pt, marketplace).get("subfields", {})
 
 
-def _schema_enums(pt: str) -> dict:
-    return _load_schema(pt)["enums"]
+def _schema_enums(pt: str, marketplace: str = "") -> dict:
+    return _load_schema(pt, marketplace)["enums"]
 
 
-def _schema_required(pt: str) -> list:
-    return _load_schema(pt)["required"]
+def _schema_required(pt: str, marketplace: str = "") -> list:
+    return _load_schema(pt, marketplace)["required"]
 
 
-def _schema_attrs(pt: str) -> list:
-    return _load_schema(pt)["attrs"]
+def _schema_attrs(pt: str, marketplace: str = "") -> list:
+    return _load_schema(pt, marketplace)["attrs"]
 
 
 def _variation_schema(product_type: str, marketplace: str = "",
@@ -1091,13 +1028,13 @@ def _valid_values() -> dict:
 _FALLBACK_VV_PT = "HOME"   # generic options for product types not in valid_values.json
 
 
-def _options_for(pt: str) -> dict:
+def _options_for(pt: str, marketplace: str = "") -> dict:
     """Dropdown options per attribute: human-readable valid_values (flat-file) first,
     falling back to HOME for unknown types, with schema enums filling any gaps."""
     vv   = _valid_values()
     base = pt if pt in vv else _FALLBACK_VV_PT
     opts = {k: list(v) for k, v in vv.get(base, {}).items() if isinstance(v, list) and v}
-    for k, v in _schema_enums(pt).items():
+    for k, v in _schema_enums(pt, marketplace).items():
         opts.setdefault(k, v)
     return opts
 
@@ -1296,19 +1233,7 @@ _URL_RE    = re.compile(r"https?://[^\s)>\]]+")
 CHAT_MODEL = "claude-sonnet-4-6"
 
 
-def _fetch_image_b64(url: str):
-    """Fetch an image URL -> (media_type, base64_str). None on failure / non-image / >5MB."""
-    try:
-        import urllib.request
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            ct   = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-            data = r.read()
-        if not ct.startswith("image/") or len(data) > 5_000_000:
-            return None
-        return ct, base64.b64encode(data).decode("ascii")
-    except Exception:
-        return None
+from domain.image_bytes import (_fetch_image_b64, _sniff_image_ext, _to_jpeg_bytes, _imgresult)  # moved (Milestone 4)
 
 
 import os
@@ -1324,7 +1249,10 @@ def _account_media_root(aid=None):
     """Per-account media folder so each workspace shows only its OWN images.
     Falls back to the shared root when no account is open."""
     if aid is None:
-        aid = _state.get("active_account_id", "") or ""
+        # The account the REQUEST is for (the page's), else the open one --
+        # one tab's upload must not land in the account another tab opened.
+        from domain import request_account as _rqa
+        aid = _rqa.current(_state)
     if not aid:
         return _media_root()        # no account -> shared root
     d = os.path.join(_media_root(), "_acct", _safe_sku(aid))
@@ -1335,28 +1263,8 @@ def _safe_sku(sku):
     return re.sub(r"[^A-Za-z0-9._-]", "_", str(sku or "_misc"))[:120] or "_misc"
 
 
-# ---- Google Drive image storage -------------------------------------------
-# Each account can set a master Drive FOLDER (its URL). Generated images for that
-# account are uploaded into per-product subfolders named "{SKU}_{ProductName}".
-# IMPORTANT: the Google service account email must be granted access (Editor) to
-# that Drive folder, exactly like sharing a Google Sheet with it.
-_DRIVE_FOLDER_CACHE = {}   # {"<parent>::<name>": folder_id}
+from api.google_drive import (_DRIVE_FOLDER_CACHE, _drive_folder_id_from_url, _drive_get_or_create_subfolder, _drive_direct_url, _drive_make_public)  # moved (Milestone 4)
 
-def _drive_folder_id_from_url(url):
-    """Pull the Drive folder ID out of a folder URL or accept a raw ID."""
-    s = str(url or "").strip()
-    if not s:
-        return ""
-    m = re.search(r"/folders/([A-Za-z0-9_-]+)", s)
-    if m:
-        return m.group(1)
-    m = re.search(r"[?&]id=([A-Za-z0-9_-]+)", s)
-    if m:
-        return m.group(1)
-    # raw id (no slashes/spaces)
-    if re.fullmatch(r"[A-Za-z0-9_-]{20,}", s):
-        return s
-    return ""
 
 def _drive_service():
     """Build a Drive API client using the same service account as Sheets.
@@ -1379,52 +1287,9 @@ def _drive_service():
             pass  # delegation not set up -> fall back to normal service-account creds
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
-def _drive_get_or_create_subfolder(svc, parent_id, name):
-    """Return the ID of subfolder `name` under `parent_id`, creating it if needed."""
-    name = str(name or "").strip()[:200] or "_misc"
-    ck = f"{parent_id}::{name}"
-    if ck in _DRIVE_FOLDER_CACHE:
-        return _DRIVE_FOLDER_CACHE[ck]
-    # look for an existing folder with this name under the parent
-    safe_name = name.replace("'", "\\'")
-    q = (f"name = '{safe_name}' and mimeType = 'application/vnd.google-apps.folder' "
-         f"and '{parent_id}' in parents and trashed = false")
-    try:
-        res = svc.files().list(q=q, fields="files(id,name)", pageSize=1,
-                               supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-        files = res.get("files", [])
-        if files:
-            _DRIVE_FOLDER_CACHE[ck] = files[0]["id"]
-            return files[0]["id"]
-    except Exception:
-        pass
-    # create it
-    meta = {"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]}
-    created = svc.files().create(body=meta, fields="id", supportsAllDrives=True).execute()
-    fid = created["id"]
-    _DRIVE_FOLDER_CACHE[ck] = fid
-    return fid
-
-def _drive_direct_url(file_id):
-    """Convert a Drive file id into a DIRECT image URL that external platforms
-    (Amazon, eBay) can fetch. The reliable format is lh3.googleusercontent.com/d/<id>
-    (the older drive.google.com/uc?export=view redirect is flaky). The file must
-    also be shared 'anyone with link: reader' for this to load -- see _drive_make_public."""
-    fid = str(file_id or "").strip()
-    return f"https://lh3.googleusercontent.com/d/{fid}" if fid else ""
 
 
-def _drive_make_public(svc, file_id):
-    """Grant 'anyone with the link: reader' on a Drive file so external platforms
-    can fetch the image. Idempotent -- ignores 'already exists' style errors."""
-    try:
-        svc.permissions().create(
-            fileId=file_id,
-            body={"type": "anyone", "role": "reader"},
-            supportsAllDrives=True,
-        ).execute()
-    except Exception:
-        pass  # already public, or permission already present -> fine
+
 
 
 def _drive_upload_image(parent_folder_id, sku, product_name, local_path, filename=None, subpath=""):
@@ -1475,46 +1340,60 @@ def _drive_upload_image(parent_folder_id, sku, product_name, local_path, filenam
     }
 
 
-def _drive_map_path():
+def _drive_map_path(media_url=None):
     """Path to the sidecar that maps a local media relpath -> its Drive file id +
     URLs, so we can (a) reuse the Amazon-usable link and (b) delete from Drive when
-    the local copy is deleted. Kept next to config.json, per active account root."""
+    the local copy is deleted. Kept next to config.json, per account root.
+
+    THE ACCOUNT IS THE ONE IN THE URL when there is one ("/media/_acct/<id>/..."):
+    an image-generation worker has no request and so resolved the OPEN account,
+    filing the entry under the wrong map -- and deleting the image from its own
+    account then left the Drive copy behind (background-jobs audit)."""
     try:
+        u = str(media_url or "")
+        if u.startswith("/media/_acct/"):
+            _aid = u[len("/media/_acct/"):].split("/", 1)[0]
+            if _aid:
+                return os.path.join(_media_root(), "_acct", _safe_sku(_aid), "_drive_map.json")
         return os.path.join(_account_media_root(), "_drive_map.json")
     except Exception:
         return os.path.join(_media_root(), "_drive_map.json")
 
 
-def _drive_map_load():
+def _drive_map_load(media_url=None):
     try:
-        with open(_drive_map_path(), encoding="utf-8") as f:
+        with open(_drive_map_path(media_url), encoding="utf-8") as f:
             return json.load(f) or {}
     except Exception:
         return {}
 
 
-def _drive_map_save(m):
+def _drive_map_save(m, media_url=None):
+    # Atomically: a crash mid-write used to empty the map and orphan every
+    # Drive copy it listed (domain/jsonstore).
+    from domain import jsonstore as _js
+    _p = _drive_map_path(media_url)
     try:
-        with open(_drive_map_path(), "w", encoding="utf-8") as f:
-            json.dump(m, f)
+        os.makedirs(os.path.dirname(_p), exist_ok=True)
     except Exception:
         pass
+    _js.write_json_atomic(_p, m)
 
 
 def _drive_map_put(media_url, info):
-    m = _drive_map_load()
+    m = _drive_map_load(media_url)
     m[str(media_url)] = info
-    _drive_map_save(m)
+    _drive_map_save(m, media_url)
 
 
 def _drive_map_get(media_url):
-    return _drive_map_load().get(str(media_url))
+    return _drive_map_load(media_url).get(str(media_url))
 
 
 def _drive_map_remove(media_url):
-    m = _drive_map_load()
+    m = _drive_map_load(media_url)
     info = m.pop(str(media_url), None)
-    _drive_map_save(m)
+    _drive_map_save(m, media_url)
     return info
 
 
@@ -1530,50 +1409,13 @@ def _drive_delete_file(file_id):
         return False
 
 
-def _sniff_image_ext(raw: bytes, fallback: str = "jpg") -> str:
-    """Return the TRUE image extension by reading the file's magic-number bytes,
-    not the (often-wrong) mime label the AI model claims. Amazon rejects a file
-    whose bytes don't match its extension (e.g. JPEG bytes named .png), so the
-    saved filename must reflect the actual format.
-
-    THE BODY MOVED to domain/media_kinds.sniff_ext. It was defined here and
-    injected into two route modules -- and the route that saves generated images
-    was not one of them, so that path used the mime label and wrote JPEGs called
-    .png. A helper only the injected callers can reach is a helper the next
-    writer will not use, so it now lives with the rest of the image-file rules
-    and this delegates (rule 12)."""
-    from domain import media_kinds as _mk
-    return _mk.sniff_ext(raw, fallback)
 
 
-def _to_jpeg_bytes(raw: bytes, quality: int = 90) -> bytes:
-    """Convert any image bytes (PNG/WebP/GIF/JPEG) to JPEG bytes. Amazon prefers
-    JPEG for listing images and they're much smaller than PNG. Transparency is
-    flattened onto a white background (Amazon main images need white anyway).
-    Falls back to the original bytes if PIL/conversion fails."""
-    try:
-        from io import BytesIO
-        from PIL import Image as _PImg
-        im = _PImg.open(BytesIO(raw))
-        # flatten alpha onto white so JPEG (no transparency) looks right
-        if im.mode in ("RGBA", "LA", "P"):
-            im = im.convert("RGBA")
-            bg = _PImg.new("RGB", im.size, (255, 255, 255))
-            bg.paste(im, mask=im.split()[-1])
-            im = bg
-        else:
-            im = im.convert("RGB")
-        out = BytesIO()
-        im.save(out, format="JPEG", quality=quality, optimize=True)
-        return out.getvalue()
-    except Exception:
-        return raw
 
 
-def _sku_dir(sku):
-    d = os.path.join(_account_media_root(), _safe_sku(sku))
-    os.makedirs(d, exist_ok=True)
-    return d
+import domain.image_jobs as _m4_image_jobs  # moved (Milestone 4)
+_m4_image_jobs.bind(sys.modules[__name__])
+from domain.image_jobs import (_sku_dir, _new_img_job, _job_push, _job_finish, _job_cancelled, _img_instructions_path, _load_img_instructions, _save_img_instructions, _run_img_jobs_bg, _img_worker_count, _run_img_jobs_parallel, _run_img_jobs_bg_inner)  # moved (Milestone 4)
 
 
 
@@ -1596,431 +1438,51 @@ _COGS_OVERRIDE = _cogs_store_mod.all_overrides()
 _COGS_FILE = _cogs_store_mod.path_for(CONFIG_PATH)
 _IMG_CACHE = {}  # {"accountid::MKT::SKU": {"url":..., "ts":epoch}} live listing main images
 
-# ---- background image-generation jobs (so the UI never blocks) ----
-_IMG_JOBS = {}        # job_id -> {status, total, done, results:[...], error, ts}
-_IMG_JOBS_LOCK = threading.Lock()
+# ---- background image-generation jobs: the job table and its lock are owned
+# by domain/image_jobs.py (architecture batch A3); the same objects, re-exported.
+from domain.image_jobs import _IMG_JOBS, _IMG_JOBS_LOCK
 
 
-def _new_img_job(total, label="", plan=None):
-    import time as _t, uuid as _u
-    jid = _u.uuid4().hex[:12]
-    with _IMG_JOBS_LOCK:
-        from domain import job_owner as _jo
-        _IMG_JOBS[jid] = _jo.stamp(
-            {"status": "running", "total": total, "done": 0,
-             "results": [], "error": "", "ts": _t.time(),
-             "cancel": False, "label": label, "plan": plan or [],
-             # WHICH ACCOUNT THIS BATCH BELONGS TO. Jobs carried an owner but no
-             # account, so one person's batches were indistinguishable across
-             # workspaces: the progress bar for a Nestwell batch appeared while
-             # you were in Jack Reacherd, and "Stop all" on that screen ended it.
-             # Accounts are independent; their jobs and their Stop buttons have
-             # to be too.
-             "account": str(_state.get("active_account_id", "") or "")})
-    try:
-        with _IMG_JOBS_LOCK:
-            for k in [k for k, v in _IMG_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
-                _IMG_JOBS.pop(k, None)
-    except Exception:
-        pass
-    return jid
 
 
-def _job_push(jid, result):
-    with _IMG_JOBS_LOCK:
-        j = _IMG_JOBS.get(jid)
-        if j:
-            j["results"].append(result)
-            j["done"] = len(j["results"])
 
 
-def _job_finish(jid, error=""):
-    with _IMG_JOBS_LOCK:
-        j = _IMG_JOBS.get(jid)
-        if j:
-            j["status"] = "error" if error else "done"
-            if error:
-                j["error"] = error
 
 
-def _job_cancelled(jid):
-    """Workers check this between images so a Stop-all takes effect promptly."""
-    with _IMG_JOBS_LOCK:
-        j = _IMG_JOBS.get(jid)
-        return bool(j and j.get("cancel"))
 
 
-# =============================================================================
-# AUTO-FIX AS A SERVER-SIDE JOB
-# =============================================================================
-# Auto-fix used to be a loop inside the BROWSER (static/js/autofix.js): it called
-# /suggest -> /edit -> /run/api in a JS `while`. So it died whenever the browser
-# stopped executing JS -- a locked screen, a slept laptop, a closed tab, a re-login.
-# The user would come back to a half-finished batch with no progress shown.
-#
-# It now runs HERE, on the server, exactly like image generation:
-#   * it keeps running when nobody is watching,
-#   * ANY signed-in browser can see the same live progress (the job registry is
-#     server state, not per-tab state),
-#   * it stops only when it finishes, or when the user presses Stop.
-# Same code path locally and on Render -- there is no browser dependency left.
-# =============================================================================
-_AF_JOBS = {}                       # job_id -> {...}
-_AF_JOBS_LOCK = threading.Lock()
-_AF_MAX_ROUNDS = 8                  # matches the old browser loop
+# AUTO-FIX AS A SERVER-SIDE JOB -- the job table, its lock and the loop's limits
+# are owned by domain/autofix_jobs.py (architecture batch A3); re-exported here.
+from domain.autofix_jobs import _AF_JOBS, _AF_JOBS_LOCK, _AF_MAX_ROUNDS
 
 
-def _af_new(skus, account_id, label=""):
-    import time as _t, uuid as _u
-    jid = _u.uuid4().hex[:12]
-    with _AF_JOBS_LOCK:
-        # retire anything older than an hour so the registry can't grow forever
-        for k in [k for k, v in _AF_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
-            _AF_JOBS.pop(k, None)
-        from domain import job_owner as _jo
-        _AF_JOBS[jid] = _jo.stamp({
-            "id": jid, "status": "running", "cancel": False, "error": "",
-            "ts": _t.time(), "started_at": _t.strftime("%Y-%m-%d %H:%M:%S"),
-            "account_id": account_id, "label": label,
-            "skus": list(skus), "total": len(skus), "done": 0,
-            "current": "", "current_round": 0,
-            "summary": {"cleared": 0, "stuck": 0, "failed": 0, "not_run": len(skus)},
-            "results": [],          # one entry per finished SKU
-            "steps": [],            # human-readable progress lines
-        })
-    return jid
+import domain.autofix_jobs as _m4_autofix_jobs  # moved (Milestone 4)
+_m4_autofix_jobs.bind(sys.modules[__name__])
+from domain.autofix_jobs import (_af_new, _af_get, _af_active, _af_cancelled, _af_stop, _af_step, _af_set, _af_finish, _af_preview, _run_autofix_bg, _run_autofix_bg_inner)  # moved (Milestone 4)
 
 
-def _af_get(jid):
-    with _AF_JOBS_LOCK:
-        j = _AF_JOBS.get(jid)
-        return dict(j) if j else None
 
 
-def _af_active():
-    """The job to show when no id is given: the newest RUNNING one, else the newest
-    job of any status.
-
-    The fallback matters. Returning only running jobs meant that the moment a run
-    finished, this went None -- so the polling browser lost the final result and the
-    panel just froze on the last tick. A finished job stays visible (for the hour it
-    lives in the registry) so the outcome is always readable, including by someone who
-    signs in after it ended.
-    """
-    # SCOPED TO THE ACCOUNT ASKING. The registry is process-wide and this
-    # returned the newest job of ANY account, so opening Jack Reacherd showed a
-    # Nestwell auto-fix in progress -- somebody else's SKUs, somebody else's
-    # errors, and a Stop button next to them. The job already records the
-    # account it was started for; it simply was not being read.
-    #
-    # A job stamped before accounts were recorded has none, and is still shown:
-    # hiding work that is genuinely running is the worse failure.
-    acct = str(_state.get("active_account_id", "") or "")
-    with _AF_JOBS_LOCK:
-        if not _AF_JOBS:
-            return None
-        def _mine(v):
-            a = str(v.get("account_id") or "")
-            return (not a) or (not acct) or a == acct
-        pool_all = [v for v in _AF_JOBS.values() if _mine(v)]
-        if not pool_all:
-            return None
-        run = [v for v in pool_all if v.get("status") == "running"]
-        pool = run or pool_all
-        return dict(sorted(pool, key=lambda x: x.get("ts", 0))[-1])
 
 
-def _af_cancelled(jid):
-    with _AF_JOBS_LOCK:
-        j = _AF_JOBS.get(jid)
-        return bool(j and j.get("cancel"))
 
 
-def _af_stop(jid=""):
-    """Stop one job, or every running job IN THIS ACCOUNT when jid is empty.
-
-    "Every running job" meant every one on the server, so Stop in one workspace
-    cancelled an auto-fix loop running in another -- work that was part-way
-    through rewriting listings and had to be started again from the beginning.
-    Naming a job id still stops exactly that job, wherever it belongs.
-    """
-    acct = str(_state.get("active_account_id", "") or "")
-    n = 0
-    with _AF_JOBS_LOCK:
-        for k, j in _AF_JOBS.items():
-            if j.get("status") != "running":
-                continue
-            if jid:
-                if k != jid:
-                    continue
-            else:
-                a = str(j.get("account_id") or "")
-                if a and acct and a != acct:
-                    continue
-            j["cancel"] = True
-            n += 1
-    return n
 
 
-def _af_step(jid, msg):
-    with _AF_JOBS_LOCK:
-        j = _AF_JOBS.get(jid)
-        if j:
-            j["steps"].append(msg)
-            del j["steps"][:-400]          # keep the tail bounded
 
 
-def _af_set(jid, **kw):
-    with _AF_JOBS_LOCK:
-        j = _AF_JOBS.get(jid)
-        if j:
-            j.update(kw)
 
 
-def _af_finish(jid, error=""):
-    with _AF_JOBS_LOCK:
-        j = _AF_JOBS.get(jid)
-        if j:
-            if j.get("cancel") and not error:
-                j["status"] = "stopped"
-            else:
-                j["status"] = "error" if error else "done"
-            if error:
-                j["error"] = error
 
 
-# --- the Preview step, run synchronously inside the worker --------------------
-# Reuse the EXISTING /run/api route by consuming its stream generator, rather than
-# rebuilding the generator's command line here. That keeps ONE source of truth for
-# account/sheet/tab/marketplace scoping -- if that logic changes, auto-fix follows.
-_AF_PROSE = re.compile(r"none of the requested|only publishes|fix any flagged errors|then click approve"
-                       r"|not processed|were not (?:submitted|processed)|not found in this tab|^\s*accounting:", re.I)
-_AF_ERRNUM = re.compile(r"(\d+)\s+(?:error|issue)\(s\)", re.I)
-_AF_EFIELD = re.compile(r"\[E\]\s*([a-z0-9_.]+)", re.I)
-_AF_NET = re.compile(r"getaddrinfo failed|failed to resolve|nameresolutionerror|max retries exceeded"
-                     r"|connectionerror|errno 11002|temporary failure in name resolution"
-                     r"|connection timed out|handshake operation timed out", re.I)
+# The Preview step's patterns: owned by domain/autofix_jobs.py (batch A3).
+from domain.autofix_jobs import _AF_PROSE, _AF_ERRNUM, _AF_EFIELD, _AF_NET
 
 
-def _af_preview(sku):
-    """Run one Preview for `sku` and return (verdict, error_fields, lines).
-
-    verdict: ok_preview | error | missing | busy | network | nocreds | unknown
-    """
-    from urllib.parse import quote as _q
-    lines, verdict, n_err, fields = [], None, 0, []
-    try:
-        with app.test_request_context(f"/run/api?skus={_q(sku)}"):
-            resp = app.view_functions["run"]("api")
-            for chunk in resp.response:            # drives the generator to completion
-                text = chunk.decode("utf-8", "replace") if isinstance(chunk, bytes) else str(chunk)
-                for raw in text.splitlines():
-                    if not raw.startswith("data: "):
-                        continue
-                    d = raw[6:]
-                    lines.append(d)
-                    if "[busy]" in d:
-                        verdict = "busy"
-                    if _AF_NET.search(d):
-                        verdict = "network"
-                    if "no seller_id" in d.lower():
-                        verdict = "nocreds"
-                    for m in _AF_EFIELD.finditer(d):
-                        if m.group(1) not in fields:
-                            fields.append(m.group(1))
-                    # NEVER read the generator's explanatory prose as a per-row result:
-                    # it names the SKU *and* the words "API_READY, APPROVED", which used
-                    # to be misparsed as success.
-                    if _AF_PROSE.search(d) or sku not in d:
-                        continue
-                    low = d.lower()
-                    m = _AF_ERRNUM.search(d)
-                    if m:
-                        verdict, n_err = "error", int(m.group(1))
-                    elif "not live" in low or "api call failed" in low or "api_error" in low:
-                        verdict, n_err = "error", 0
-                    elif "missing" in low and "skip" in low:
-                        verdict = "missing"
-                    elif "api_ready" in low or "preview clean" in low:
-                        verdict = "ok_preview"
-    except Exception as e:
-        return "exception", fields, lines + [f"preview crashed: {type(e).__name__}: {e}"]
-    return (verdict or "unknown"), fields, lines
 
 
-def _run_autofix_bg(jid):
-    """Crash-safe wrapper -- a worker that dies must never leave the job 'running'."""
-    try:
-        _run_autofix_bg_inner(jid)
-    except Exception as e:
-        try:
-            _af_finish(jid, error=f"worker crashed: {type(e).__name__}: {str(e)[:200]}")
-        except Exception:
-            pass
-    finally:
-        try:
-            with _AF_JOBS_LOCK:
-                j = _AF_JOBS.get(jid)
-                if j and j.get("status") == "running":
-                    j["status"] = "error"
-                    j["error"] = j.get("error") or "worker exited without finishing"
-        except Exception:
-            pass
 
 
-def _run_autofix_bg_inner(jid):
-    """Suggest -> Apply -> Preview, per SKU, until clean / stuck / stopped."""
-    job = _af_get(jid)
-    if not job:
-        return
-    skus = job["skus"]
-    acct = job["account_id"]
-
-    with app.app_context():
-        for idx, sku in enumerate(skus):
-            if _af_cancelled(jid):
-                _af_step(jid, "Stopped by user.")
-                break
-            # The worker writes to whatever sheet _ws() resolves, which follows the
-            # ACTIVE workspace. If the user switches account mid-run we would edit the
-            # wrong account's rows -- refuse rather than corrupt someone else's sheet.
-            if (_state.get("active_account_id") or "") != (acct or ""):
-                _af_finish(jid, error="Workspace changed while auto-fix was running, so it "
-                                      "stopped to avoid editing another account's listings. "
-                                      "Go back to the original workspace and run it again.")
-                return
-
-            _af_set(jid, current=sku, current_round=0)
-            _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — starting")
-            rounds, prev_errors, outcome, diagnosis = [], None, "failed", ""
-
-            for rnd in range(1, _AF_MAX_ROUNDS + 1):
-                if _af_cancelled(jid):
-                    break
-                _af_set(jid, current_round=rnd)
-                entry = {"round": rnd, "suggestions": [], "applied": [], "skipped": [],
-                         "verdict": None, "error_fields": [], "diagnosis": ""}
-
-                # 1) ask for suggestions
-                try:
-                    with app.test_request_context(json={"sku": sku}):
-                        sres = app.view_functions["suggest"]().get_json() or {}
-                except Exception as e:
-                    entry["diagnosis"] = f"/suggest crashed: {e}"
-                    rounds.append(entry); diagnosis = entry["diagnosis"]; break
-                if not sres.get("ok"):
-                    err = str(sres.get("error") or "unknown")
-                    entry["diagnosis"] = f"/suggest failed: {err}"
-                    rounds.append(entry); diagnosis = entry["diagnosis"]; break
-
-                allsug = sres.get("suggestions") or []
-                entry["suggestions"] = [{"field": s.get("field"), "value": s.get("value", ""),
-                                         "source": s.get("source", ""),
-                                         "code_owned": bool(s.get("_code_owned"))} for s in allsug]
-                ai = [s for s in allsug if not s.get("_code_owned")]
-                code_owned = len(allsug) - len(ai)
-                _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — round {rnd}: "
-                              f"{len(ai)} AI suggestion(s), {code_owned} code-owned")
-
-                # 2) apply them -- ONE batched write for the whole round. The old
-                # path called /edit per field (2-3 reads + a write + a cache-bust
-                # EACH), which tripped Google's per-minute quota (429) on multi-SKU
-                # runs. Collapsing a round into a single write also cuts wall-clock.
-                for s in ai:
-                    if not s.get("value"):
-                        entry["skipped"].append({"field": s.get("field"), "reason": "empty AI value"})
-                _batch = [{"target": "attr", "key": s.get("field"), "value": s.get("value")}
-                          for s in ai if s.get("value")]
-                if _batch and not _af_cancelled(jid):
-                    try:
-                        _ap, _sk = _apply_edits_batch(sku, _batch)
-                        entry["applied"].extend(_ap)
-                        entry["skipped"].extend(_sk)
-                    except Exception as e:
-                        for _s2 in _batch:
-                            entry["skipped"].append({"field": _s2.get("key"),
-                                                     "reason": f"batch edit crashed: {e}"})
-
-                # nothing new to apply and nothing code-owned -> the AI is out of ideas
-                if rnd > 1 and not entry["applied"] and code_owned == 0:
-                    entry["diagnosis"] = ("Nothing new to apply and no code-owned fields left. "
-                                          + ("Amazon still rejects: " + ", ".join(prev_errors.split("|"))
-                                             if prev_errors else "The AI has no more suggestions."))
-                    rounds.append(entry); outcome = "stuck"; diagnosis = entry["diagnosis"]; break
-
-                # 3) preview
-                _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — round {rnd}: previewing against Amazon…")
-                verdict, fields, _lines = _af_preview(sku)
-                entry["verdict"] = verdict
-                entry["error_fields"] = fields
-                rounds.append(entry)
-
-                if _af_cancelled(jid):
-                    break
-                if verdict == "ok_preview":
-                    entry["diagnosis"] = "Amazon accepted the Preview. Ready to Submit."
-                    outcome = "cleared"; diagnosis = entry["diagnosis"]
-                    _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — ✓ clean, ready to submit")
-                    break
-                if verdict in ("network", "nocreds", "busy", "exception"):
-                    entry["diagnosis"] = f"Environment issue ({verdict}) — not a listing problem."
-                    outcome = "failed"; diagnosis = entry["diagnosis"]; break
-                if verdict == "error":
-                    key = "|".join(sorted(fields))
-                    entry["diagnosis"] = "Amazon flagged: " + (", ".join(fields) or "(no field named)")
-                    # A CATALOGUE MATCH IS NOT A FIELD TO TRY HARDER AT.
-                    #
-                    #     "a color is not something amazon should stuck on"
-                    #
-                    # And it was not really stuck on the colour. Amazon code 8541
-                    # means our data MATCHES an existing ASIN and disagrees with
-                    # it; the field it names is where the disagreement is, not a
-                    # value that is wrong. The only value that would satisfy it
-                    # is Amazon's own -- which would attach our new product to
-                    # somebody else's ASIN, the piggyback listing Rule 1 exists
-                    # to prevent. So this stops on the FIRST round rather than
-                    # spending another one re-applying a value that was already
-                    # right. listing/api_issues.py owns the recognition and
-                    # decides on the CODE, never the prose (Rule 4).
-                    try:
-                        _rec = _api_issues.parse(
-                            (next((r for r in _records(_ws())
-                                   if str(r.get("SKU", "")).strip() == sku), {}) or {})
-                            .get("API Issues JSON"))
-                        _cc = _api_issues.catalogue_conflict(_rec)
-                    except Exception:
-                        _cc = None
-                    if _cc:
-                        entry["diagnosis"] = _api_issues.catalogue_conflict_note(_cc)
-                        outcome = "stuck"; diagnosis = entry["diagnosis"]
-                        _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — stopped: Amazon "
-                                      f"matched this to an existing ASIN")
-                        break
-                    if prev_errors is not None and prev_errors == key:
-                        entry["diagnosis"] += " — identical to the previous round, no progress."
-                        outcome = "stuck"; diagnosis = entry["diagnosis"]
-                        _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — stuck on: {', '.join(fields)}")
-                        break
-                    prev_errors = key
-                    continue
-                entry["diagnosis"] = f"Unclear outcome ({verdict}). Stopped for safety."
-                outcome = "failed"; diagnosis = entry["diagnosis"]; break
-
-            if _af_cancelled(jid):
-                _af_step(jid, "Stopped by user.")
-                break
-
-            with _AF_JOBS_LOCK:
-                j = _AF_JOBS.get(jid)
-                if j:
-                    j["results"].append({"sku": sku, "outcome": outcome,
-                                         "diagnosis": diagnosis, "rounds": rounds})
-                    j["done"] = len(j["results"])
-                    s = j["summary"]
-                    s[outcome] = s.get(outcome, 0) + 1
-                    s["not_run"] = max(0, j["total"] - j["done"])
-
-    _af_finish(jid)
 
 
 
@@ -2051,21 +1513,7 @@ os.makedirs(_PPC_OUT_DIR, exist_ok=True)
 
 
 
-def _parse_pct_from_context(ctx: str, key: str, default=None):
-    """Find something like 'TACOS 15%' or 'target tacos: 15' in the user's
-    context string. Returns None if not found -- caller adds to `missing` list.
-    NEVER invents a value."""
-    import re
-    if not ctx:
-        return default
-    pat = re.compile(rf"{key}\s*[:=]?\s*(\d+(?:\.\d+)?)\s*%?", re.I)
-    m = pat.search(ctx)
-    if m:
-        try:
-            return float(m.group(1))
-        except ValueError:
-            return default
-    return default
+from domain.report_parsers import (_parse_pct_from_context, _parse_3pl_csv, _num, _parse_sales_csv, _parse_uplift_csv, _parse_listings_report, _REPORT_BARCODE_TYPES, _report_barcode, _parse_required_missing)  # moved (Milestone 4)
 
 
 # ---------- Inventory replenishment endpoints ----------
@@ -2194,124 +1642,6 @@ def _fetch_fba_inventory_via_spapi(marketplace: str) -> dict:
     return out
 
 
-def _parse_3pl_csv(raw_bytes: bytes) -> dict:
-    """Parse an uploaded 3PL stock CSV. Expected columns (order-insensitive):
-      sku (or SKUs, natural sku, sku)
-      3PL Stock (Available at Warehouse)
-      In-Transit Stock (Sea/Truck to 3PL)
-      Ordered Quantity
-    Returns dict keyed by SKU.
-    """
-    import csv, io
-    try:
-        text = raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw_bytes.decode("latin-1")
-    reader = csv.DictReader(io.StringIO(text))
-    by_sku = {}
-    # tolerant column name matching
-    def _pick(row, options):
-        for opt in options:
-            for k in row:
-                if k and k.strip().lower() == opt.lower():
-                    return row[k]
-        # fuzzier: substring match
-        for opt in options:
-            for k in row:
-                if k and opt.lower() in k.strip().lower():
-                    return row[k]
-        return ""
-    for row in reader:
-        sku = _pick(row, ["sku", "skus", "seller sku", "natural sku"])
-        if not sku:
-            continue
-        by_sku[sku.strip()] = {
-            "sku":            sku.strip(),
-            "pl3_available":  _num(_pick(row, ["3pl stock", "available at warehouse", "warehouse stock"])),
-            "pl3_in_transit": _num(_pick(row, ["in-transit", "in transit", "sea/truck"])),
-            "pl3_ordered":    _num(_pick(row, ["ordered quantity", "on order", "ordered qty"])),
-        }
-    return by_sku
-
-
-def _num(x, default=0.0) -> float:
-    if x is None or x == "":
-        return default
-    try:
-        s = str(x).replace(",", "").strip()
-        return float(s) if s else default
-    except (ValueError, TypeError):
-        return default
-
-
-def _parse_sales_csv(raw_bytes: bytes) -> dict:
-    """Parse a Daily Sales CSV. Only needs SKU + per-day rate (units/day).
-    Expected columns: sku, daily_rate  OR  sku, sales_last_30, window_days.
-    Returns {sku: {sales_last_n, sales_window_days}}.
-    """
-    import csv, io
-    try:
-        text = raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw_bytes.decode("latin-1")
-    reader = csv.DictReader(io.StringIO(text))
-    by_sku = {}
-    def _pick(row, options):
-        for opt in options:
-            for k in row:
-                if k and k.strip().lower() == opt.lower():
-                    return row[k]
-        for opt in options:
-            for k in row:
-                if k and opt.lower() in k.strip().lower():
-                    return row[k]
-        return ""
-    for row in reader:
-        sku = _pick(row, ["sku", "seller sku"])
-        if not sku:
-            continue
-        # daily_rate is preferred; fallback to sales/window
-        daily = _pick(row, ["daily rate", "daily_rate", "units per day", "sales per day"])
-        sales_n = _pick(row, ["sales_last_n", "sales", "units", "sales last 30"])
-        window = _pick(row, ["window_days", "window", "days"])
-        if daily != "":
-            by_sku[sku.strip()] = {
-                "sales_last_n":       _num(daily),
-                "sales_window_days":  1,
-            }
-        else:
-            by_sku[sku.strip()] = {
-                "sales_last_n":       _num(sales_n),
-                "sales_window_days":  _num(window, default=30) or 30,
-            }
-    return by_sku
-
-
-def _parse_uplift_csv(raw_bytes: bytes, field: str) -> dict:
-    """Parse a YoY or PD uplift CSV (sku -> uplift fraction).
-    field: 'yoy_uplift' or 'pd_uplift'
-    Expected columns: sku, uplift (or the specific field name)
-    """
-    import csv, io
-    try:
-        text = raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw_bytes.decode("latin-1")
-    reader = csv.DictReader(io.StringIO(text))
-    by_sku = {}
-    def _pick(row, options):
-        for opt in options:
-            for k in row:
-                if k and k.strip().lower() == opt.lower():
-                    return row[k]
-        return ""
-    for row in reader:
-        sku = _pick(row, ["sku", "seller sku"])
-        if not sku:
-            continue
-        val = _pick(row, [field, "uplift", "increment", "yoy", "pd"])
-        by_sku[sku.strip()] = _num(val)
-    return by_sku
 
 
 
@@ -2320,356 +1650,26 @@ def _parse_uplift_csv(raw_bytes: bytes, field: str) -> dict:
 
 
 
-def _img_instructions_path():
-    """Sidecar file holding the user's custom image instructions that the AI
-    should remember for EVERY image generation, on top of the strategist's brief."""
-    return os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "_image_instructions.json")
-
-
-def _load_img_instructions(aid=None):
-    """Returns the custom instruction text. Stored per-account when an account is
-    active, with a global fallback that applies to all accounts."""
-    try:
-        with open(_img_instructions_path(), encoding="utf-8") as f:
-            d = json.load(f) or {}
-    except Exception:
-        d = {}
-    aid = aid or _state.get("active_account_id", "") or ""
-    # per-account instruction wins; otherwise the global one
-    return (d.get("by_account", {}).get(aid, "") or d.get("global", "") or "").strip()
-
-
-def _save_img_instructions(text, aid=None, scope="account"):
-    try:
-        try:
-            with open(_img_instructions_path(), encoding="utf-8") as f:
-                d = json.load(f) or {}
-        except Exception:
-            d = {}
-        d.setdefault("by_account", {})
-        if scope == "global":
-            d["global"] = text or ""
-        else:
-            aid = aid or _state.get("active_account_id", "") or ""
-            d["by_account"][aid] = text or ""
-        with open(_img_instructions_path(), "w", encoding="utf-8") as f:
-            json.dump(d, f, indent=2)
-        return True
-    except Exception:
-        return False
 
 
 
 
-def _run_img_jobs_bg(jid, jobs, kind):
-    """Crash-safe wrapper around the image worker.
-
-    A worker that dies on an unhandled exception -- e.g. the genimage/aplus NameError, or
-    any failure BEFORE the per-job try -- never reached _job_finish, so its job sat on
-    "running" forever: the UI spun at 0/N and Stop looked broken (Stop only sets a `cancel`
-    flag, which a dead worker never reads). This guarantees the job is always retired.
-    """
-    try:
-        _run_img_jobs_parallel(jid, jobs, kind)
-    except Exception as _we:
-        try:
-            _job_finish(jid, error=f"worker crashed: {type(_we).__name__}: {str(_we)[:160]}")
-        except Exception:
-            pass
-    finally:
-        # Belt-and-braces: whatever happened, never leave the job on "running".
-        try:
-            with _IMG_JOBS_LOCK:
-                _j = _IMG_JOBS.get(jid)
-                if _j and _j.get("status") == "running":
-                    _j["status"] = "error"
-                    _j["error"] = _j.get("error") or "worker exited without finishing"
-        except Exception:
-            pass
 
 
-# How many products may be generated for at the same time. Small on purpose:
-# every image is a paid model call, and the image APIs rate-limit per account, so
-# a large pool converts "faster" into "throttled and more expensive". Three is
-# roughly three times quicker than the old strictly-sequential worker without
-# getting near the limits. ALTA_IMG_WORKERS overrides it.
-def _img_worker_count():
-    try:
-        n = int(os.environ.get("ALTA_IMG_WORKERS") or 3)
-    except Exception:
-        n = 3
-    return max(1, min(n, 8))
 
 
-def _run_img_jobs_parallel(jid, jobs, kind):
-    """Generate for several PRODUCTS at once, images within a product in order.
-
-    The worker ran every image in one sequence, so generating 8 images each for
-    two products meant 16 one after another -- the second product did not start
-    until the first had completely finished. Grouping by SKU and running the
-    groups concurrently is what "side by side" means here, and it keeps each
-    product's own images in their intended order (main before secondaries).
-
-    Splitting by SKU rather than round-robin also keeps a product's images
-    together on one thread, so a rate-limit stall delays one product rather than
-    smearing across all of them.
-    """
-    groups = {}
-    for jb in jobs:
-        groups.setdefault(str(jb.get("sku", "") or "_misc"), []).append(jb)
-    chunks = list(groups.values())
-
-    if len(chunks) <= 1:
-        _run_img_jobs_bg_inner(jid, jobs, kind, finish=False)
-    else:
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=min(_img_worker_count(), len(chunks))) as pool:
-            list(pool.map(lambda c: _run_img_jobs_bg_inner(jid, c, kind, finish=False),
-                          chunks))
-    # Finished exactly once, by the dispatcher. Letting each worker finish the
-    # job would retire it the moment the FIRST product was done, and the rest
-    # would keep writing results into a job the UI had already stopped watching.
-    _job_finish(jid)
 
 
-def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
-    """Background worker: runs a list of generation jobs, pushing each result.
 
-    `finish=False` when several of these run as one job (see
-    _run_img_jobs_parallel) -- the dispatcher retires the job after all of them.
-    """
-    # Custom instructions the user wants the AI to remember for EVERY image
-    # (e.g. "always pure white background", "include our logo top-left", "no people").
-    # We append them to each job's brief so they apply on top of the strategist.
-    _custom = _load_img_instructions()
-    with app.app_context():
-        for job in jobs:
-            if _job_cancelled(jid):
-                _job_finish(jid, error="stopped by user")
-                return
-            label = job.get("label", "")
-            ref = job.get("ref", "")
-            if not ref:
-                _job_push(jid, {"ok": False, "label": label, "sku": job.get("sku", ""),
-                                "error": "no reference image"})
-                continue
-            try:
-                payload = job.get("payload", {})
-                # WHICH LISTING THIS PICTURE IS FOR.
-                #
-                # The SKU was on the job WRAPPER and the payload is what gets
-                # dispatched, so it never arrived. Every endpoint here grounds
-                # its image in the listing via _listing_for(), which needs a sku
-                # or a listing and was getting neither -- so every image was
-                # designed from a photograph and a title, with the bullets,
-                # attributes and package contents never consulted.
-                #
-                # That is how a set comes back disagreeing with its own copy: an
-                # image showing two carabiners under text that says one. Stamped
-                # here rather than in each of the five callers, so a new kind of
-                # image cannot be added without it.
-                if job.get("sku") and not payload.get("sku"):
-                    payload["sku"] = job.get("sku")
-                if _custom:
-                    # add to whatever brief field the endpoint reads, without
-                    # clobbering the strategist's art direction.
-                    payload["custom_instructions"] = _custom
-                    if payload.get("art_direction") is not None:
-                        payload["art_direction"] = (str(payload.get("art_direction", "")).rstrip()
-                                                    + "\n\nUSER STANDING INSTRUCTIONS (always apply): " + _custom)
-                # These handlers were extracted into route modules in Phase 3, so they're
-                # no longer bare names in this module. Call them via the Flask view registry
-                # (endpoint == function name) -- fixes "name 'genimage_from_concept' is not
-                # defined" and the same latent break for recipe/source/secondary/aplus.
-                # "recipe" here is the ENGINE, not the deleted saved-recipe feature.
-                # The Creative button ("Generate 3 variations") runs through this
-                # view, so genimage_recipe must stay even though no recipe UI is
-                # left. See the header of static/js/genimage.js.
-                if kind in ("recipe", "creative"):
-                    with app.test_request_context(json=payload):
-                        resp = app.view_functions["genimage_recipe"]()
-                elif kind == "concept":
-                    with app.test_request_context(json=payload):
-                        resp = app.view_functions["genimage_from_concept"]()
-                elif kind == "source":
-                    with app.test_request_context(json=payload):
-                        resp = app.view_functions["genimage_process_source"]()
-                elif kind == "secondary":
-                    with app.test_request_context(json=payload):
-                        resp = app.view_functions["genimage_secondary_v2"]()
-                elif kind == "aplus":
-                    with app.test_request_context(json=payload):
-                        resp = app.view_functions["aplus_generate"]()
-                else:
-                    _job_push(jid, {"ok": False, "label": label, "error": "unknown job kind"})
-                    continue
-                if isinstance(resp, tuple):
-                    data = resp[0].get_json()
-                else:
-                    data = resp.get_json()
-                data = data or {"ok": False, "error": "no response"}
-                data["label"] = label
-                data["sku"] = job.get("sku", "")
-                data["_kind"] = kind
-                data["_payload"] = job.get("payload", {})
-                # AUTO-SAVE every successful image to the SKU's media library so
-                # background results are NEVER lost (even if the user closes the modal)
-                if data.get("ok") and data.get("data_url"):
-                    try:
-                        sku = job.get("sku", "_misc")
-                        du = data["data_url"]
-                        # Decide a subfolder so each kind of image is filed inside
-                        # the SKU folder rather than in one heap:
-                        #
-                        #   (root)          main / concepts
-                        #   secondary       the PT01..PT08 supporting images
-                        #   aplus/basic     A+ modules, standard tier
-                        #   aplus/premium   A+ modules, premium tier
-                        #
-                        # THE KIND COMES FROM THE JOB, NOT THE BATCH. This read the
-                        # batch-level `kind`, and the strategist -- which is how
-                        # most images are actually made -- submits its whole batch
-                        # as kind "concept" with the real kind on each job's
-                        # payload (static/js/genimage.js _conceptJobs, and the bulk
-                        # button in listings.js). So every strategist-made
-                        # secondary and A+ image was filed at the SKU ROOT,
-                        # indistinguishable from a main image.
-                        #
-                        # That is not only untidy. The folder IS the kind -- there
-                        # is no image record anywhere, /media/list re-derives
-                        # `group` from the directory name on every read -- so a
-                        # misfiled image is permanently miscategorised, and the
-                        # two guards that depend on it both stopped working:
-                        # listing/images.py refuse_slot() would let an A+ image be
-                        # sent to Amazon as the MAIN photo, and the "you already
-                        # have N A+ images" warning never fired.
-                        _kind = str(payload.get("kind", "") or kind or "").lower()
-                        _sub = ""
-                        if _kind == "aplus":
-                            _tier = str(payload.get("tier", "") or data.get("tier", "") or "basic").lower()
-                            _tier = "premium" if "prem" in _tier else "basic"
-                            _sub = f"aplus/{_tier}"
-                            # PREMIUM A+ IS TWO IMAGES, NOT ONE. Amazon renders
-                            # premium modules at different sizes on desktop and on
-                            # mobile, and a single asset cannot satisfy both -- so
-                            # the tier folder is split again by which one this is.
-                            # Basic A+ has no such split and keeps a flat folder.
-                            _dev = str(payload.get("device", "") or data.get("device", "") or "").lower()
-                            if _tier == "premium" and _dev in ("desktop", "mobile"):
-                                _sub = f"aplus/premium/{_dev}"
-                        elif _kind == "secondary":
-                            _sub = "secondary"
-                        # Resolve the image to RAW BYTES. The model may return a
-                        # data: URL (base64) OR a remote https URL -- the old code
-                        # only handled data: URLs, so URL-returning models saved
-                        # NOTHING (empty Drive + empty library). Handle both.
-                        raw_bytes = None
-                        ext = "png"
-                        if du.startswith("data:"):
-                            head, _, raw = du.partition(",")
-                            mime = (re.search(r"data:([^;]+)", head) or [None, "image/png"])[1]
-                            ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(mime, "png")
-                            try:
-                                raw_bytes = _b64.b64decode(raw)
-                            except Exception:
-                                raw_bytes = None
-                        elif re.match(r"^https?://", du.strip(), re.I):
-                            try:
-                                import urllib.request as _ur
-                                _rq = _ur.Request(du.strip(), headers={"User-Agent": "Mozilla/5.0"})
-                                with _ur.urlopen(_rq, timeout=30) as _rr:
-                                    raw_bytes = _rr.read()
-                                    _ct = _rr.headers.get("Content-Type", "") if hasattr(_rr, "headers") else ""
-                                if "jpeg" in _ct or "jpg" in _ct: ext = "jpg"
-                                elif "webp" in _ct: ext = "webp"
-                                elif "gif" in _ct: ext = "gif"
-                            except Exception as _fe:
-                                data["save_error"] = f"could not fetch image url: {str(_fe)[:120]}"
-                                raw_bytes = None
-                        if raw_bytes:
-                            import time as _t
-                            # Convert every generated image to JPEG: Amazon prefers
-                            # JPEG for listing images and they're far smaller than the
-                            # ~3-4 MB PNGs the models return. (No quality loss that
-                            # matters at q90 for photographic product images.)
-                            raw_bytes = _to_jpeg_bytes(raw_bytes, quality=90)
-                            ext = "jpg"
-                            # Naming: for LIVE Amazon listings we want Amazon's own
-                            # convention {ASIN}.{TYPE}.{ext} (e.g. B000123456.MAIN.jpg,
-                            # ...PT01.jpg for secondary, ...APLUS01.jpg for A+). The
-                            # frontend passes 'asin' + 'img_code' on the job for that.
-                            # Fall back to the old timestamp name when no code is set.
-                            _asin = str(job.get("asin", "") or "").strip().upper()
-                            _code = str(job.get("img_code", "") or "").strip().upper()
-                            if _asin and _code:
-                                fname = f"{_asin}.{_code}.{ext}"
-                            else:
-                                fname = f"generated_{int(_t.time()*1000)}.{ext}"
-                            # Use the account captured when the batch was ENQUEUED, not
-                            # whatever is active now -- a background job can finish after
-                            # a redeploy or a workspace switch, and reading _state here is
-                            # what misfiled images (and lost the user's A+ content).
-                            _aid = str(job.get("_acct_id", "") or _state.get("active_account_id", "") or "")
-                            _acct_root = _account_media_root(_aid) if _aid else _media_root()
-                            _dir = os.path.join(_acct_root, _safe_sku(sku))
-                            if _sub:
-                                _dir = os.path.join(_dir, *_sub.split("/"))
-                            os.makedirs(_dir, exist_ok=True)
-                            _full = os.path.join(_dir, fname)
-                            with open(_full, "wb") as f:
-                                f.write(raw_bytes)
-                            _pfx = f"/media/_acct/{_safe_sku(_aid)}" if _aid else "/media"
-                            _subpart = f"{_sub}/" if _sub else ""
-                            saved_url = f"{_pfx}/{_safe_sku(sku)}/{_subpart}{fname}"
-                            data["saved_url"] = saved_url
-                            data["saved_to_disk"] = True   # the persistent copy that survives redeploys
-                            # OPTIONAL mirror to Drive. Drive is a nice-to-have backup, not
-                            # required: the image is already safe on the persistent disk
-                            # above. So "no Drive folder" is a normal state, not an error --
-                            # surfacing it as drive_error made the UI look like the save
-                            # failed when it fully succeeded on disk.
-                            try:
-                                # the account that OWNS this image (captured at enqueue),
-                                # not whichever workspace is active now
-                                acc = None
-                                if _aid:
-                                    try:
-                                        import accounts as _accmod
-                                        acc = _accmod.get_account(_cfg(), _aid, CONFIG_PATH)
-                                    except Exception:
-                                        acc = None
-                                acc = acc or _active_account()
-                                folder = (acc or {}).get("drive_folder_url", "")
-                                parent_id = _drive_folder_id_from_url(folder) if folder else ""
-                                if not parent_id:
-                                    data["drive_skipped"] = "no Drive folder configured (optional)"
-                                else:
-                                    _prod = ""
-                                    try:
-                                        _rec = next((r for r in _records(_ws())
-                                                     if str(r.get("SKU", "")).strip() == str(sku).strip()), None)
-                                        _prod = (_rec or {}).get("Title", "") or ""
-                                    except Exception:
-                                        _prod = ""
-                                    dres = _drive_upload_image(parent_id, sku, _prod, _full,
-                                                               filename=fname, subpath=_sub)
-                                    if dres.get("id"):
-                                        _drive_map_put(saved_url, {"drive_id": dres.get("id"),
-                                                                   "direct_url": dres.get("direct_url", ""),
-                                                                   "view_url": dres.get("view_url", "")})
-                                        data["drive_direct_url"] = dres.get("direct_url", "")
-                                    else:
-                                        data["drive_error"] = "Drive upload returned no file id"
-                            except Exception as _de:
-                                data["drive_error"] = str(_de)[:200]
-                    except Exception as _se:
-                        data["save_error"] = str(_se)[:200]
-                _job_push(jid, data)
-            except Exception as e:
-                _job_push(jid, {"ok": False, "label": label, "sku": job.get("sku", ""),
-                                "error": str(e)[:200]})
-    if finish:
-        _job_finish(jid)
+
+
+
+
+
+
+
+
+
 
 
 _IMG_TTL = 86400  # 24h — product images rarely change
@@ -2700,10 +1700,7 @@ def _save_cogs_overrides():
 from domain import cogs as _cogs_mod
 
 
-def _cogs_from_sku(sku):
-    """Generated SKUs are formatted {source_price}_{N}Days_{ASIN}; the first
-    number is the source cost (incl. shipping). Returns float or None."""
-    return _cogs_mod.cost_from_sku(sku)
+from domain.cogs_estimate import (_cogs_from_sku, _estimate_profit)  # moved (Milestone 4)
 
 
 def _resolve_cogs(account_id, sku):
@@ -2712,191 +1709,12 @@ def _resolve_cogs(account_id, sku):
     return _cogs_mod.resolve(_COGS_OVERRIDE, account_id, sku)
 
 
-def _estimate_profit(price, cogs, referral_rate=0.15):
-    """Quick profit estimate: price - cogs - referral fee (default 15%).
-    FBA fee is not included in the fast estimate (use the Fees API for exact)."""
-    try:
-        price = float(str(price).replace(",", "").strip() or 0)
-    except Exception:
-        return None
-    if not price or cogs is None:
-        return None
-    referral = price * referral_rate
-    net = price - float(cogs) - referral
-    margin = (net / price) if price else 0
-    # MARGIN and ROI answer different questions and the card only ever showed the
-    # first. Margin is "how much of the sale price do I keep" -- it decides
-    # whether a price is healthy. ROI is "how hard is my cash working" -- it
-    # decides what to buy next, and on cheap stock it is a far bigger number:
-    # 9.50 of goods sold at 18.24 keeps 14.6% margin and returns 28% on the cash.
-    roi = (net / float(cogs)) if float(cogs) else None
-    return {"price": round(price, 2), "cogs": round(float(cogs), 2),
-            "referral": round(referral, 2), "net": round(net, 2),
-            "margin": round(margin * 100, 1),
-            "roi": (round(roi * 100, 1) if roi is not None else None)}
 
 
 
 
 
-def _build_patches(changes, marketplace_id=""):
-    """Translate approved {field:value} into SP-API JSON-Patch attribute ops.
-
-    marketplace_id is the SELECTOR Amazon files each value under, and for IMAGES
-    leaving it out was a silent no-op: the schema requires only media_location,
-    so Amazon answered ACCEPTED, reported no issues, and filed the image against
-    no marketplace. Images pushed from the app never arrived and nothing said
-    why. Every *_image_locator patch is now built by listing/images.build_patch,
-    which is the same builder /listing/image_push and the new-listing submit
-    already use -- one shape, three callers (Rule 12), instead of three shapes.
-
-    It defaults to "" so an old caller still works, but a caller that wants an
-    image to actually land must pass it.
-    """
-    from listing import images as _img
-    patches = []
-    if "title" in changes:
-        patches.append({"op": "replace", "path": "/attributes/item_name",
-                        "value": [{"value": changes["title"]}]})
-    if "description" in changes:
-        patches.append({"op": "replace", "path": "/attributes/product_description",
-                        "value": [{"value": changes["description"]}]})
-    if "bullets" in changes:
-        bl = changes["bullets"]
-        if isinstance(bl, str):
-            bl = [x for x in bl.split("\n") if x.strip()]
-        patches.append({"op": "replace", "path": "/attributes/bullet_point",
-                        "value": [{"value": x} for x in bl]})
-    if "price" in changes and changes["price"]:
-        patches.append({"op": "replace", "path": "/attributes/purchasable_offer",
-                        "value": [{"our_price": [{"schedule": [{"value_with_tax": float(changes["price"])}]}]}]})
-    if "main_image" in changes and changes["main_image"]:
-        patches.append(_img.build_patch(_img.MAIN, changes["main_image"],
-                                        marketplace_id))
-    # generic attributes from the full editable list (keys like "attr:<name>")
-    for k, v in changes.items():
-        if not k.startswith("attr:"):
-            continue
-        name = k[5:]
-        val = v
-        if isinstance(val, str) and " | " in val:
-            # multi-value attribute -> split back into list of {value}
-            parts = [p.strip() for p in val.split(" | ") if p.strip()]
-            if "image_locator" in name:
-                patches.append(_img.build_patch(name, parts, marketplace_id))
-            else:
-                patches.append({"op": "replace", "path": f"/attributes/{name}",
-                                "value": [{"value": p} for p in parts]})
-        else:
-            if "image_locator" in name:
-                patches.append(_img.build_patch(name, val, marketplace_id))
-            else:
-                patches.append({"op": "replace", "path": f"/attributes/{name}",
-                                "value": [{"value": val}]})
-    return patches
-
-
-
-
-
-
-def _parse_listings_report(text):
-    """Parse the TSV from GET_MERCHANT_LISTINGS_ALL_DATA into compact dicts.
-    Header names vary slightly between accounts/marketplaces, so match flexibly."""
-    if not text:
-        return []
-    lines = text.splitlines()
-    if not lines:
-        return []
-    header = [h.strip().lower().replace("_", "-") for h in lines[0].split("\t")]
-    # WHAT THIS REPORT DOES NOT CONTAIN (checked, not assumed -- rule 4).
-    # The 30 columns Amazon sends for GET_MERCHANT_LISTINGS_ALL_DATA were dumped
-    # for jack_uk/UK on 2026-08-20 and there is NO handling-time column. The
-    # nearest-looking candidate, will-ship-internationally, reads a constant 3 on
-    # every row -- including SKUs named 2Days and 5Days -- so it is not a
-    # disguised handling time. Do not add a col(r, "handling", ...) here hoping
-    # it turns up; the figure comes from getListingsItem
-    # (attributes.fulfillment_availability[0].lead_time_to_ship_max_days) and is
-    # merged into the catalogue in routes/live_routes.py.
-
-    def col(row, *names):
-        # exact match first
-        for n in names:
-            if n in header:
-                i = header.index(n)
-                if i < len(row):
-                    return row[i].strip()
-        # fuzzy: any header that contains the wanted token
-        for n in names:
-            for i, h in enumerate(header):
-                if n in h and i < len(row):
-                    v = row[i].strip()
-                    if v:
-                        return v
-        return ""
-
-    out = []
-    for ln in lines[1:]:
-        if not ln.strip():
-            continue
-        r = ln.split("\t")
-        title = col(r, "item-name", "title", "product-name")
-        out.append({
-            "sku":   col(r, "seller-sku", "sku"),
-            "asin":  col(r, "asin1", "asin"),
-            "title": title,
-            "price": col(r, "price"),
-            "qty":   col(r, "quantity"),
-            "status": col(r, "status", "listing-status") or "Active",
-            "brand": col(r, "brand", "brand-name"),
-            "fulfillment": col(r, "fulfillment-channel", "fulfilment-channel"),
-            "ship_group": col(r, "merchant-shipping-group", "merchant-shipping-group-name"),
-            # THE BARCODE, WHICH THIS REPORT HAS BEEN CARRYING ALL ALONG.
-            #
-            #     "my listings on all listings page shows ean none, this is not
-            #      possible, my every listing has ean"
-            #
-            # He is right, and the database agrees: 271 of 303 listings hold a
-            # UPC, and 86 of 86 on nestwell_goods. The rows saying "none" are
-            # the ones that come from THIS report rather than from a draft --
-            # Amazon's own catalogue -- and it was parsed without ever reading
-            # the identifier column.
-            #
-            # ONLY WHEN IT IS ACTUALLY A BARCODE. Amazon's product-id column
-            # holds whichever identifier the listing was created with, and
-            # product-id-type says which: 1 ASIN, 2 ISBN, 3 UPC, 4 EAN. An ASIN
-            # printed under the word EAN would be worse than the blank it
-            # replaces, so the type is checked and anything that is not a
-            # barcode is left out. A report with neither column simply yields
-            # "", which is what happened before this line existed.
-            "barcode": _report_barcode(col(r, "product-id", "product_id"),
-                                       col(r, "product-id-type", "product_id_type")),
-        })
-    return out
-
-
-# The values Amazon uses in product-id-type. 1 and 2 are an ASIN and an ISBN,
-# which are not barcodes and must never be shown as one.
-_REPORT_BARCODE_TYPES = {"3", "4", "UPC", "EAN", "GTIN", "GCID"}
-
-
-def _report_barcode(value, kind):
-    """The product id from a listings report, but only when it IS a barcode.
-
-    Returns "" for an ASIN, an ISBN, an unknown type, or a missing column --
-    the same empty string the parser produced before it read this at all, so a
-    report shaped differently from the ones seen here loses nothing.
-    """
-    v = str(value or "").strip()
-    if not v:
-        return ""
-    k = str(kind or "").strip().upper()
-    if not k:
-        # NO TYPE COLUMN AT ALL. A bare 12-14 digit number is a UPC or an EAN;
-        # an ASIN is ten characters and starts with a letter, so the two cannot
-        # be confused by length. Anything else is left alone.
-        return v if (v.isdigit() and 12 <= len(v) <= 14) else ""
-    return v if k in _REPORT_BARCODE_TYPES else ""
+from listing.patches import (_build_patches)  # moved (Milestone 4)
 
 
 
@@ -2907,19 +1725,16 @@ def _report_barcode(value, kind):
 
 
 
-def _parse_required_missing(note: str):
-    """Pull field keys out of an API-preview note like
-    "[E] warranty_description 'Product Warranty' is required but missing."."""
-    import re
-    out = []
-    for m in re.finditer(r"\[E\]\s*([a-z0-9_]+)", note or ""):
-        if m.group(1) not in out:
-            out.append(m.group(1))
-    # also catch "'x' is required"
-    for m in re.finditer(r"([a-z0-9_]{3,})\s+'[^']+'\s+is required", note or ""):
-        if m.group(1) not in out:
-            out.append(m.group(1))
-    return out
+
+
+
+
+
+
+
+
+
+
 
 
 def _marketplace_for_row(row):
@@ -3294,7 +2109,7 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
         return _code_owned_hits + prelim
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=key)
+        client = _ai_client(key)
         # Build a UNIFIED allowed-values map covering BOTH flat fields and
         # sub-field dot-keys. The AI sees one map, doesn't need to know which is
         # which -- it just picks from the allowed list per key.
@@ -3577,23 +2392,29 @@ def _load_recipes():
 
 def _save_recipes(data):
     try:
-        json.dump(data, open(_recipes_path(), "w", encoding="utf-8"), indent=2)
-        return True
+        from domain import jsonstore   # atomic: a crash mid-save lost every recipe
+        return jsonstore.write_json_atomic(_recipes_path(), data, indent=2)
     except Exception:
         return False
 
 
 def _active_brand():
     """Best-effort current brand: active view/brand, else active account's first brand."""
+    # The selected view/brand belong to the OPEN account. A request naming a
+    # different account (another tab) takes that account's own brand instead,
+    # so its images never carry the other company's name (two-tab review).
+    from domain import request_account as _rqa
+    _named = _rqa.named_now()
+    _other_tab = bool(_named) and _named != str(_state.get("active_account_id", "") or "")
     try:
-        bv = _state.get("active_view") or _state.get("active_brand") or ""
+        bv = "" if _other_tab else (_state.get("active_view") or _state.get("active_brand") or "")
         if bv:
             return bv
     except Exception:
         pass
     try:
         import accounts as _acc
-        aid = _state.get("active_account_id", "")
+        aid = _rqa.current(_state)
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if acc:
             bl = [x for x in (acc.get("brands") or []) if x and x.strip()]
@@ -3625,8 +2446,8 @@ def _load_miles_templates():
 
 def _save_miles_templates(data):
     try:
-        json.dump(data, open(_miles_tpl_index_path(), "w", encoding="utf-8"), indent=2)
-        return True
+        from domain import jsonstore   # atomic, as _save_recipes
+        return jsonstore.write_json_atomic(_miles_tpl_index_path(), data, indent=2)
     except Exception:
         return False
 
@@ -3673,29 +2494,6 @@ _CREATIVE_STRATEGIES = {
 
 
 
-def _imgresult(res, extra=None):
-    if res.get("image_b64"):
-        data_url = f"data:{res.get('mime','image/png')};base64,{res['image_b64']}"
-    elif res.get("image_url"):
-        data_url = res["image_url"]
-    else:
-        return jsonify({"ok": False, "error": "no image returned"}), 400
-    out = {"ok": True, "data_url": data_url,
-           "detailed_prompt": res.get("detailed_prompt", ""),
-           # WAS THE BRIEF REWORDED TO GET PAST THE SAFETY FILTER?
-           #
-           # Some product words (slasher, blade, weapon-ish nouns) trip the image
-           # provider's filter -- a real weed slasher came back as "the input text
-           # may contain sensitive information". run_pipeline now rewords once and
-           # retries instead of failing, which is right, but the picture is then
-           # made from words the user did not write. Carry the flag through so the
-           # screen can say so; detailed_prompt above is the wording actually used.
-           "softened_prompt": bool(res.get("softened_prompt")),
-           "text_provider": res.get("text_provider"),
-           "image_provider": res.get("image_provider")}
-    if extra:
-        out.update(extra)
-    return jsonify(out)
 
 
 
@@ -4156,7 +2954,7 @@ def build_app(backend=None):
                            _drive_upload_image=_drive_upload_image)
     import routes.submit_routes as _submit_routes
     _submit_routes.register(app, _records=_records, _active_account=_active_account,
-                            _state=_state, _cfg=_cfg)
+                            _state=_state, _cfg=_cfg, _ws=_ws, CONFIG_PATH=CONFIG_PATH)
     import routes.cogs_routes as _cogs_routes
     _cogs_routes.register(app, _state=_state, _COGS_OVERRIDE=_COGS_OVERRIDE,
                           _save_cogs_overrides=_save_cogs_overrides,
@@ -4215,6 +3013,10 @@ def build_app(backend=None):
     import routes.tracking_routes as _tracking_routes
     _tracking_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                               _state=_state, _active_account=_active_account)
+    import routes.order_purchase_routes as _order_purchase_routes
+    _order_purchase_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
+    import routes.order_ship_routes as _order_ship_routes
+    _order_ship_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
     import routes.asin_charges_routes as _asin_charges_routes
     _asin_charges_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                   _state=_state, _active_account=_active_account)
@@ -4348,7 +3150,8 @@ def build_app(backend=None):
     # already syncs -- and one frozen week out. See routes/weekly_routes.py.
     import routes.weekly_routes as _weekly_routes
     _weekly_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
-                            _active_account=_active_account, _state=_state)
+                            _active_account=_active_account, _state=_state,
+                            _client=_client)
     # The daily round -- the checklist somebody works through every morning,
     # run by the app. See routes/daily_routes.py.
     import routes.daily_routes as _daily_routes
@@ -4606,6 +3409,7 @@ def build_app(backend=None):
     _catalog_routes.register(app, _cfg=_cfg, _state=_state, CONFIG_PATH=CONFIG_PATH)
     import routes.aplus_routes as _aplus_routes
     _aplus_routes.register(app, _APLUS_MODULES=_APLUS_MODULES, _cfg=_cfg,
+                           APLUS_MOBILE_IS_ASSUMED=APLUS_MOBILE_IS_ASSUMED,
                            _load_img_instructions=_load_img_instructions,
                            _imgresult=_imgresult)
     import routes.settings_routes as _settings_routes
@@ -4704,6 +3508,9 @@ def build_app(backend=None):
     _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
     import routes.users_routes as _users_routes
     _users_routes.register(app, CONFIG_PATH=CONFIG_PATH)
+    # Employee Performance: the one activity log's recorder and its reads.
+    import routes.activity_routes as _activity_routes
+    _activity_routes.register(app, CONFIG_PATH=CONFIG_PATH, APP_PASSWORD=_APP_PASSWORD)
 
     # Keep EVERY connected account+marketplace's live catalogue fresh, server-side.
     # The browser timer could only refresh the one workspace that happened to be
@@ -4815,8 +3622,8 @@ def build_app(backend=None):
     # invisible until the app was restarted -- which looks exactly like "the
     # change didn't work". Re-checked at most once every few seconds, which is
     # cheap and only happens off-server.
-    _paas = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER")
-                 or os.environ.get("DYNO"))
+    from config import hosting as _hosting          # one list of markers
+    _paas = _hosting.is_hosted()
     _av = {"ts": 0.0}
 
     # AND THE TEMPLATE ITSELF.

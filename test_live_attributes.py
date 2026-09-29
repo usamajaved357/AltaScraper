@@ -34,10 +34,15 @@ down, by the normal attribute handling. The property that must hold is:
 which is what is checked here, field by field, on shapes taken from real
 listings.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import ast
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from listing import live_attributes as LA        # noqa: E402
 
@@ -57,9 +62,11 @@ def truthy(label, got):
 
 
 # ---------------------------------------------------------------------------
-# Lift the REAL _renest out of the generator.
+# Lift the REAL _renest out of listing/attributes_helpers.py -- moved there
+# verbatim from the generator in plan B2 (29 Sep 2026); the builder imports it
+# under the same name, so this is still the function the payload uses.
 # ---------------------------------------------------------------------------
-SRC = open(r"D:\AltaScraper\amazon_listing_generator.py", encoding="utf-8").read()
+SRC = open(_os_repo.path.join(_REPO, "listing", "attributes_helpers.py"), encoding="utf-8").read()
 _tree = ast.parse(SRC)
 _fn = None
 for _node in ast.walk(_tree):
@@ -67,8 +74,11 @@ for _node in ast.walk(_tree):
         _fn = _node
         break
 
-print("\nloading the real _renest out of amazon_listing_generator.py")
-truthy("_renest was found in the generator", _fn is not None)
+print("\nloading the real _renest out of listing/attributes_helpers.py")
+truthy("_renest was found where the builder imports it from", _fn is not None)
+_GEN = open(_os_repo.path.join(_REPO, r"amazon_listing_generator.py"), encoding="utf-8").read()
+truthy("  and the builder really imports that one",
+       "from listing.attributes_helpers import (_renest," in _GEN)
 if _fn is None:
     print("\n1 failed\n  FAILED: _renest has moved -- update this test to follow it")
     sys.exit(1)
@@ -239,7 +249,7 @@ check("survives nonsense input", [f for f in fails if "raised" in f], [])
 # ---------------------------------------------------------------------------
 print("\nthe rule is the schema reader's rule, not a second one")
 # ---------------------------------------------------------------------------
-_DASH = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+_DASH = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8").read()
 truthy("dashboard still collapses a lone `value` to a plain attribute",
        'if keys == ["value"]:' in _DASH)
 check("and this module uses the same plumbing set",

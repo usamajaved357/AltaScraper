@@ -92,7 +92,7 @@ def import_from_worksheet(config_path, workspace_id, ws_in, source="sheet"):
     Uses the GENERATOR'S OWN reader, so the column-name handling cannot drift
     between what gets imported and what the generator would have read itself.
     """
-    from amazon_listing_generator import read_input_sheet
+    from listing.sheet_input import read_input_sheet  # its home since Milestone 4; the engine re-exports this same function
     products = read_input_sheet(ws_in) or []
     added, updated = import_rows(config_path, workspace_id, products, source=source)
     return added, updated, len(products)

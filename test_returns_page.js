@@ -45,7 +45,7 @@ function sandbox(){
     jsArg: x => "'" + String(x == null ? "" : x).replace(/'/g, "\\'") + "'",
   };
   vm.createContext(s);
-  vm.runInContext(fs.readFileSync("D:/AltaScraper/static/js/returns.js", "utf8"), s);
+  vm.runInContext(fs.readFileSync((__dirname + "/static/js/returns.js"), "utf8"), s);
   return s;
 }
 
@@ -177,7 +177,7 @@ truthy("  and offers the upload instead", blocked.indexOf("upload one instead") 
 PANELS.forEach(p => truthy("  panel still drawn: " + p, blocked.indexOf(p) >= 0));
 
 console.log("\n=== the report's design system is in the stylesheet ===");
-const css = fs.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
+const css = fs.readFileSync((__dirname + "/static/css/dashboard.css"), "utf8");
 [".ri-kpis", ".ri-kpi", ".ri-card", ".ri-daily", ".ri-hbar", ".ri-mini",
  ".ri-comment", ".ri-insight", ".ri-sev", ".ri-sample"].forEach(function(c2){
   truthy("  " + c2, css.indexOf(c2) >= 0);
@@ -195,7 +195,7 @@ console.log("\n=== Product Line Performance, the section the report has ===");
  * rule load-bearing: invented lines must never appear beside real returns.
  */
 {
-  const rv = fs.readFileSync("D:/AltaScraper/domain/returns_view.py", "utf8");
+  const rv = fs.readFileSync((__dirname + "/domain/returns_view.py"), "utf8");
   truthy("the server works out a line for each product", /def line_of\(/.test(rv));
   truthy("  and returns them summed per line", /"lines": line_rows/.test(rv));
   truthy("  saying how they were derived", /"lines_from"/.test(rv));
@@ -205,7 +205,7 @@ console.log("\n=== Product Line Performance, the section the report has ===");
   // The report's own columns, in its order.
   const cols = ["Product Line", "Returns", "Ordered", "Return Rate", "Revenue",
                 "Est. Lost Rev", "Issue Mix", "SKUs"];
-  const js = fs.readFileSync("D:/AltaScraper/static/js/returns.js", "utf8");
+  const js = fs.readFileSync((__dirname + "/static/js/returns.js"), "utf8");
   cols.forEach(c2 => truthy("  column: " + c2, js.indexOf(">" + c2 + "<") >= 0));
   truthy("and the report's own subtitle",
          js.indexOf("Return rate and revenue impact by product family") >= 0);

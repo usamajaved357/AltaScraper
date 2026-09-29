@@ -39,13 +39,18 @@ THE RULE NOW, AND WHY IT IS TWO RULES
 Both properties are needed and they pull in opposite directions, which is why
 this file tests them against each other rather than one at a time.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json
 import os
 import shutil
 import sys
 import tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 from domain import live_snapshots as _snap      # noqa: E402
 
@@ -172,7 +177,7 @@ check("  while the quantity still updates", qty_of(rec, "SKU01"), 4)
 
 print("\n== the caller no longer votes with the wrong list ==")
 import re                                                        # noqa: E402
-SRC = open(r"D:\AltaScraper\routes\live_routes.py", encoding="utf-8-sig").read()
+SRC = open(_os_repo.path.join(_REPO, r"routes\live_routes.py"), encoding="utf-8-sig").read()
 BODY = "\n".join(re.sub(r"#.*$", "", ln) for ln in SRC.split("\n"))
 truthy("there is a separate list for things that are not faults",
        re.search(r"^\s*notes\s*=\s*\[\]", BODY, re.M))

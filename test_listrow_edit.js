@@ -31,7 +31,7 @@ function check(label, got, want){
 function truthy(label, got){ check(label, !!got, true); }
 function falsy(label, got){ check(label, !!got, false); }
 
-const D = "D:/AltaScraper/";
+const D = (__dirname + "/");
 const LS = fs.readFileSync(D + "static/js/listings.js", "utf8");
 const LR = fs.readFileSync(D + "static/js/listrow_detailed.js", "utf8");
 const ED = fs.readFileSync(D + "static/js/listrow_edit.js", "utf8");
@@ -65,7 +65,10 @@ const iRect = DM.indexOf("getBoundingClientRect");
 const iAppend = DM.indexOf("appendChild");
 truthy("the rectangle is taken before the menu is created", iRect > 0 && iRect < iAppend);
 truthy("  and no anchor means no menu at all", /if\(!anchor \|\| !anchor\.getBoundingClientRect\) return;/.test(DM));
-truthy("the row still calls it from an <i>", /ti-dots act-dots/.test(LR));
+// Since the design migration the dots are a <button class="act-dots"> (an <i>
+// could not be reached with Tab). The anchoring above still matters: it is what
+// made the <i> work, and it keeps working for whatever element opens the menu.
+truthy("the row calls it from its dots button", /class="act-dots"[^>]*aria-label="More actions"/.test(LR));
 truthy("  and the reason it used to fail is written down",
       /closest\(\) returned null/.test(DM));
 
@@ -98,7 +101,7 @@ truthy("  it handles the API being absent", /navigator\.clipboard\.writeText/.te
 truthy("  and the async rejection, which a try/catch misses",
        /Copy refused by the browser/.test(UI));
 truthy("  a long value is not echoed into a toast", /s\.length <= 40/.test(UI));
-truthy("the menu uses it", /uiCopy\('/.test(DM));
+truthy("the menu uses it", /uiCopy\(('|\$\{jsArg\()/.test(DM));
 truthy("the auto-fix trace uses it", /uiCopy\(txt, "Trace copied"\)/.test(AF));
 truthy("the payload viewer uses it", /uiCopy\(document\.getElementById\('pl_/.test(AF));
 // The two big trace exports keep their own window fallback on purpose.

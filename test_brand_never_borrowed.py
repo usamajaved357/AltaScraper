@@ -108,6 +108,9 @@ for f in ("externally_assigned_product_identifier", "merchant_suggested_asin"):
 
 print("\n== and the builder still sends the owner's brand ==")
 GEN = open(os.path.join(HERE, "amazon_listing_generator.py"), encoding="utf-8").read()
+# Plan B3 (29 Sep 2026): the builder's brand lines moved verbatim to
+# listing/attributes_phases.py, which build_api_attributes calls.
+GEN += open(os.path.join(HERE, "listing", "attributes_phases.py"), encoding="utf-8").read()
 truthy("build_api_attributes sets brand from the row",
        'put("brand", _shape_simple(props["brand"], brand, mid))' in GEN)
 truthy("merchant_suggested_asin is still dropped outright",

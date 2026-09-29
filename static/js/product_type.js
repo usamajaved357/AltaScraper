@@ -31,8 +31,8 @@ function ptSearchBox(sku, r){
   return '<div class="ptsx" style="margin-top:6px">'
     + '<input id="' + id + '" class="ed" type="text" autocomplete="off" style="width:100%"'
     + ' placeholder="Search Amazon’s product types (click for suggestions from the title)"'
-    + ' onfocus="ptSearchFocus(\'' + esc(sku) + '\')"'
-    + ' oninput="ptSearchInput(\'' + esc(sku) + '\')">'
+    + ' onfocus="ptSearchFocus(' + jsArg(sku) + ')"'
+    + ' oninput="ptSearchInput(' + jsArg(sku) + ')">'
     + '<div id="' + id + '_out" class="cc" style="font-size:12px;margin-top:4px"></div>'
     + '</div>';
 }
@@ -79,7 +79,7 @@ async function _ptSearch(sku, title, q){
     + j.types.slice(0, 30).map(t =>
         '<button type="button" class="db-chip' + (t.name === cur ? " go" : "") + '"'
         + ' style="margin:2px 4px 2px 0" title="' + esc(t.display_name) + '"'
-        + ' onclick="ptPick(\'' + esc(sku) + '\',\'' + esc(t.name) + '\')">'
+        + ' onclick="ptPick(' + jsArg(sku) + ',' + jsArg(t.name) + ')">'
         + esc(t.name) + (t.name === cur ? " ✓" : "") + '</button>'
       ).join("");
 }
@@ -206,6 +206,9 @@ async function _ptList(skus, includeSubmitted){
 }
 
 async function ptFixDrafts(){
+  // THE ACCOUNT THIS FIX IS FOR, taken before the first wait (the lookups and
+  // the dialog below): a switch during either must not turn it into B's fix.
+  const pin = (typeof screenScope === "function") ? screenScope() : null;
   const aid = (typeof acctId === "function") ? acctId() : "";
   if(!aid){ toast("Open an account first"); return; }
 
@@ -341,9 +344,21 @@ async function ptFixDrafts(){
   if(!chosen || !chosen.length) return;
 
   let ok = 0; const failed = [];
+  // One account for the whole batch: `pin`, taken at the top.
   for(const r of chosen){
+    if((pin && typeof screenStillIn === "function" && !screenStillIn(pin))){
+      await uiAlert("Stopped: the account or marketplace changed part-way. Changed " + ok
+        + " product type(s); the rest were not saved.");
+      return;
+    }
     const j = await editField(r.sku, "col", "Product Type", r.amazon);
     if(j && j.ok) ok++; else failed.push(r.sku + ": " + ((j && j.error) || "save failed"));
+  }
+  if((pin && typeof screenStillIn === "function" && !screenStillIn(pin))){
+    // Say what happened in the account it happened in, rather than nothing.
+    await uiAlert("Changed " + ok + " product type(s) before the account or marketplace "
+      + "changed." + (failed.length ? "\n\nNot saved:\n" + failed.join("\n") : ""));
+    return;
   }
   try{
     await fetch("/product_types/recheck", {method:"POST", headers:{"Content-Type":"application/json"},

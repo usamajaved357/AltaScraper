@@ -116,7 +116,7 @@ function catpRender() {
   [["all", "All time"], ["month", "Last month"], ["quarter", "Last 3 months"],
    ["year", "Last year"]].forEach(function (p) {
     html += '<button class="db-chip' + (CATP.period === p[0] ? " on" : "") +
-            '" onclick="catpPeriod(\'' + p[0] + '\')">' + p[1] + "</button>";
+            '" onclick="catpPeriod(' + jsArg(p[0]) + ')">' + p[1] + "</button>";
   });
   html += '<input class="ed" id="catp_q" placeholder="Search ASIN, title or SKU…" ' +
           'style="flex:1;min-width:180px" value="' + esc(CATP.q) +
@@ -188,8 +188,10 @@ function catpPeriod(p) {
 async function catpLoad() {
   CATP.loading = true; CATP.note = ""; catpRender();
   try {
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/catalog/products" +
       _catpQs({ period: CATP.period }))).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if (j && j.ok) CATP.data = j;
     else CATP.note = (j && j.error) || "Could not read the catalogue.";
   } catch (e) {

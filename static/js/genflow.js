@@ -162,6 +162,7 @@ function openToolbarMenu(ev, html){
   // Kept on screen: a menu at the end of the toolbar would otherwise hang off
   // the right edge of the page.
   m.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - m.offsetWidth - 8)) + "px";
+  if(typeof uiMenuKeys === "function") uiMenuKeys(m, btn, closeRunMenu);
   setTimeout(function(){
     document.addEventListener("click", closeRunMenu, {once: true});
   }, 0);
@@ -223,8 +224,19 @@ function closeRunMenu(){
 /* GENERATE. runMode('generate') in submit.js is the one place a run is started
  * and the one place the stream is opened; this only refuses to start an empty
  * one, which otherwise spends a request to be told there was nothing to do. */
-function genflowGenerate(){
-  const n = (typeof IQ !== "undefined" && IQ && IQ.rows) ? IQ.rows.length : 0;
+async function genflowGenerate(){
+  let n = (typeof IQ !== "undefined" && IQ && IQ.rows) ? IQ.rows.length : 0;
+  // ASK, DON'T ASSUME. IQ.rows is only filled when the queue panel has been
+  // drawn, so with a full queue and that panel never opened this said "Nothing
+  // queued" (master audit, UX #4). Reading the queue changes nothing.
+  if(!n){
+    try{
+      const j = await (await fetch(typeof acctUrl === "function"
+                                   ? acctUrl("/input/rows") : "/input/rows")).json();
+      n = ((j && j.rows) || []).length;
+      if(typeof IQ !== "undefined" && IQ && j && j.rows) IQ.rows = j.rows;
+    }catch(e){}
+  }
   if(!n){
     if(typeof toast === "function"){
       toast("Nothing queued — press Upload template and drop a spreadsheet first.");

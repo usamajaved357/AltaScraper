@@ -10,12 +10,17 @@ the source sheet. That is right for an import -- re-importing updates in place
 instead of duplicating -- and useless by hand, where every added row would be
 index 0 and would overwrite the last one.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os
 import shutil
 import sys
 import tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -129,8 +134,8 @@ check("clearing still needs approve_delete",
       required_permission("/input/clear", "POST"), "approve_delete")
 
 print("\n=== the screen owns its own functions ===")
-IQ = open(r"D:\AltaScraper\static\js\inputqueue.js", encoding="utf-8").read()
-SH = open(r"D:\AltaScraper\static\js\shell.js", encoding="utf-8").read()
+IQ = open(_os_repo.path.join(_REPO, r"static\js\inputqueue.js"), encoding="utf-8").read()
+SH = open(_os_repo.path.join(_REPO, r"static\js\shell.js"), encoding="utf-8").read()
 truthy("the queue file defines them", "function loadInputSheet()" in IQ)
 # shell.js loads LAST, so a leftover copy there would silently win and the
 # screen would go back to being read-only.

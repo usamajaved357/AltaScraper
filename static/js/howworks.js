@@ -232,16 +232,16 @@ function _studioAddResult(job, j, grid){
              title="${esc(j.detailed_prompt||'')}">Brief reworded to pass the image
              filter — hover to read the wording used</div>`
       : "";
-    inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
+    inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
       <div class="srescap">${label}</div>
       ${_softLine}
       ${_driveLine}
       <div class="sresacts">
-        <button class="ib" onclick="studioSave('${cardId}','${esc(job.sku)}')"><i class="ti ti-device-floppy"></i> Save to media</button>
-        <button class="ib" onclick="studioDownload('${cardId}','${esc(job.sku)}')"><i class="ti ti-download"></i></button>
-        <button class="ib" onclick="studioToDrive('${cardId}','${esc(job.sku)}')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
-        ${canReroll?`<button class="ib" onclick="studioReroll('${cardId}')" title="Generate this one again (e.g. if a detail came out wrong)"><i class="ti ti-refresh"></i> Redo this</button>`:''}
-        ${canReroll?`<button class="ib" onclick="studioRefine('${cardId}')" title="Tell the AI a small change to make to THIS image"><i class="ti ti-wand"></i> Refine…</button>`:''}
+        <button class="ib" onclick="studioSave(${jsArg(cardId)},${jsArg(job.sku)})"><i class="ti ti-device-floppy"></i> Save to media</button>
+        <button class="ib" onclick="studioDownload(${jsArg(cardId)},${jsArg(job.sku)})"><i class="ti ti-download"></i></button>
+        <button class="ib" onclick="studioToDrive(${jsArg(cardId)},${jsArg(job.sku)})" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+        ${canReroll?`<button class="ib" onclick="studioReroll(${jsArg(cardId)})" title="Generate this one again (e.g. if a detail came out wrong)"><i class="ti ti-refresh"></i> Redo this</button>`:''}
+        ${canReroll?`<button class="ib" onclick="studioRefine(${jsArg(cardId)})" title="Tell the AI a small change to make to THIS image"><i class="ti ti-wand"></i> Refine…</button>`:''}
       </div>`;
     // WHAT IT IS FOR, carried to the Save button. Without this every image --
     // hero, lifestyle, A+ header -- was written into one flat folder as
@@ -280,13 +280,13 @@ async function studioReroll(cardId){
                                 kind:r.kind||"main",
                                 tier:(r.payload&&r.payload.tier)||"",
                                 variant:((r.payload&&r.payload.viewport)==="mobile"?"mobile":"desktop")};
-        card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
+        card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
           <div class="srescap">${esc(r.label)} · redone</div>
           <div class="sresacts">
-            <button class="ib" onclick="studioSave('${cardId}','')"><i class="ti ti-device-floppy"></i> Save to media</button>
-            <button class="ib" onclick="studioDownload('${cardId}','')"><i class="ti ti-download"></i></button>
-            <button class="ib" onclick="studioToDrive('${cardId}','')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
-            <button class="ib" onclick="studioReroll('${cardId}')"><i class="ti ti-refresh"></i> Redo this</button>
+            <button class="ib" onclick="studioSave(${jsArg(cardId)},'')"><i class="ti ti-device-floppy"></i> Save to media</button>
+            <button class="ib" onclick="studioDownload(${jsArg(cardId)},'')"><i class="ti ti-download"></i></button>
+            <button class="ib" onclick="studioToDrive(${jsArg(cardId)},'')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+            <button class="ib" onclick="studioReroll(${jsArg(cardId)})"><i class="ti ti-refresh"></i> Redo this</button>
           </div>`;
       }
     } else {
@@ -327,13 +327,13 @@ async function studioRefine(cardId){
       // keep refine available so you can iterate (refine the refined image)
       if(j._kind&&j._payload){ STUDIO._reroll[cardId]={kind:j._kind, payload:j._payload, label:(STUDIO._reroll[cardId]?STUDIO._reroll[cardId].label:cur.sku)}; }
       if(card){
-        card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
+        card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
           <div class="srescap">refined: ${esc(instruction.trim()).slice(0,40)}</div>
           <div class="sresacts">
-            <button class="ib" onclick="studioSave('${cardId}','${esc(cur.sku||'')}')"><i class="ti ti-device-floppy"></i> Save to media</button>
-            <button class="ib" onclick="studioDownload('${cardId}','${esc(cur.sku||'')}')"><i class="ti ti-download"></i></button>
-            <button class="ib" onclick="studioToDrive('${cardId}','${esc(cur.sku||'')}')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
-            <button class="ib" onclick="studioRefine('${cardId}')" title="Make another small change"><i class="ti ti-wand"></i> Refine…</button>
+            <button class="ib" onclick="studioSave(${jsArg(cardId)},${jsArg(cur.sku||'')})"><i class="ti ti-device-floppy"></i> Save to media</button>
+            <button class="ib" onclick="studioDownload(${jsArg(cardId)},${jsArg(cur.sku||'')})"><i class="ti ti-download"></i></button>
+            <button class="ib" onclick="studioToDrive(${jsArg(cardId)},${jsArg(cur.sku||'')})" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+            <button class="ib" onclick="studioRefine(${jsArg(cardId)})" title="Make another small change"><i class="ti ti-wand"></i> Refine…</button>
           </div>`;
       }
     } else {
@@ -466,16 +466,29 @@ const _SCHEMA_INFLIGHT = {};      // "PT|MKT" -> the request already in the air
  * the third. They are of no use once you have left; the work is dropped.
  */
 let _SCHEMA_GEN = 0;
-function schemasAbandon(){ _SCHEMA_GEN++; }
+function schemasAbandon(){
+  _SCHEMA_GEN++;
+  // AND FORGET WHAT IS IN THE AIR. A request from before the switch now stores
+  // nothing (the generation check in _loadOneSchema), so handing it to the new
+  // account's identical request left SCHEMAS[pt] empty -- no dropdowns until
+  // the page was reopened (Milestone 3 review). The new request asks afresh.
+  for(const k in _SCHEMA_INFLIGHT) delete _SCHEMA_INFLIGHT[k];
+}
 
 async function _loadOneSchema(pt, q, mp, force){
   // Asked once even if several parts of the screen want it at the same moment.
   const key = pt + "|" + mp + (force ? "|f" : "");
   if(!force && _SCHEMA_INFLIGHT[key]) return _SCHEMA_INFLIGHT[key];
   const run = (async function(){
+    // A schema is per product type AND marketplace, but SCHEMAS is keyed by
+    // type alone: a reply landing after a marketplace/account switch would be
+    // filed as the new one's (master audit S7). Asked in one generation,
+    // stored only in that generation.
+    const gen = _SCHEMA_GEN;
     try{
       const r = await fetch("/schema/"+encodeURIComponent(pt)+q);
       const j = await r.json();
+      if(gen !== _SCHEMA_GEN) return;
       // help / maxitems / readonly: Amazon's own description per field, how many
       // values it takes, and whether it can be set. The product page draws its
       // (?) bubbles, its "Add more" and its locks from these -- see the note in
@@ -488,6 +501,7 @@ async function _loadOneSchema(pt, q, mp, force){
                          : {opts:{}, req:[], attrs:[], subs:{}, titles:{},
                             help:{}, maxitems:{}, readonly:[]};
     }catch(e){
+      if(gen !== _SCHEMA_GEN) return;
       SCHEMAS[pt] = {opts:{}, req:[], attrs:[], subs:{}, titles:{},
                      help:{}, maxitems:{}, readonly:[]};
     }finally{
@@ -557,7 +571,7 @@ let ES=null;
 function showStop(on){ const b=document.getElementById("stopbtn"); if(b) b.disabled=!on; }
 async function stopRun(){
   const b=document.getElementById("stopbtn"); if(b) b.disabled=true;
-  try{ const r=await fetch("/stop",{method:"POST"}); const j=await r.json();
+  try{ const r=await fetch("/stop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(typeof acctBody==="function"?acctBody({}):{})}); const j=await r.json();
        toast(j.ok?"Stopping the run\u2026":("Stop: "+(j.error||"nothing running"))); }
   catch(e){ toast("Stop failed"); if(b) b.disabled=false; }
 }

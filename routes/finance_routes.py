@@ -9,6 +9,8 @@ import datetime as _dt
 from flask import request, jsonify
 
 from domain import contribution as _contrib
+from domain import finance_coverage as _fcov   # its SQL (architecture batch A6)
+from domain import finance_view as _fview     # its panels (architecture batch A8)
 from routes import scope as _scope_mod
 
 
@@ -65,10 +67,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         where money is read off.
         """
         try:
-            from data import db as _db
-            rows = _db.get_db(CONFIG_PATH).execute(
-                "SELECT DISTINCT marketplace FROM finance_daily "
-                "WHERE workspace_id=? LIMIT 2", (wsid,)).fetchall()
+            rows = _fcov.marketplaces_with_data(CONFIG_PATH, wsid)
             return rows[0]["marketplace"] if len(rows) == 1 else ""
         except Exception:
             return ""
@@ -139,18 +138,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         empty_note, have = "", {}
         if not rows:
             try:
-                from data import db as _db
-                r = _db.get_db(CONFIG_PATH).execute(
-                    "SELECT COUNT(*) n, MIN(date) a, MAX(date) b FROM finance_daily "
-                    "WHERE workspace_id=? AND marketplace=?",
-                    (wsid, mkt)).fetchone()
+                r = _fcov.span(CONFIG_PATH, wsid, mkt)
                 have = {"rows": (r["n"] if r else 0) or 0,
                         "first": (r["a"] if r else None),
                         "last": (r["b"] if r else None)}
-                other = _db.get_db(CONFIG_PATH).execute(
-                    "SELECT marketplace, COUNT(*) n FROM finance_daily "
-                    "WHERE workspace_id=? GROUP BY marketplace",
-                    (wsid,)).fetchall()
+                other = _fcov.rows_per_marketplace(CONFIG_PATH, wsid)
                 have["other_marketplaces"] = {x["marketplace"]: x["n"]
                                               for x in other
                                               if x["marketplace"] != mkt}
@@ -193,16 +185,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # second place for a caveat to hide.
         notes = _contrib.notes(rows, totals)
         try:
-            from data import db as _db
-            _c = _db.get_db(CONFIG_PATH)
-            _f = _c.execute(
-                "SELECT COUNT(DISTINCT asin) a, MAX(date) last FROM finance_daily "
-                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=?",
-                (wsid, mkt, start, end)).fetchone()
-            _s = _c.execute(
-                "SELECT COUNT(DISTINCT asin) a FROM sales_daily "
-                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
-                "  AND asin<>'*'", (wsid, mkt, start, end)).fetchone()
+            _c, _f, _s = _fcov.settled_and_sold(CONFIG_PATH, wsid, mkt, start, end)
             settled = int((_f["a"] if _f else 0) or 0)
             sold = int((_s["a"] if _s else 0) or 0)
             last = (_f["last"] if _f else None) or ""
@@ -221,11 +204,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 # "the last few days are not in the figures" about days with no
                 # sales is a warning about nothing, and those are the ones that
                 # teach a reader to skip the list.
-                _gap = _c.execute(
-                    "SELECT COALESCE(SUM(ordered_sales),0) s FROM sales_daily "
-                    "WHERE workspace_id=? AND marketplace=? AND asin='*' "
-                    "  AND date>? AND date<=?",
-                    (wsid, mkt, last, end)).fetchone()
+                _gap = _fcov.sales_after(_c, wsid, mkt, last, end)
                 if float((_gap["s"] if _gap else 0) or 0) > 0:
                     notes.append({"level": "info", "text": (
                         "Nothing has settled after %s yet, so the last few days "
@@ -254,104 +233,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "ads_connected": totals.get("ad_spend") is not None,
                         "currency": totals.get("currency") or ""})
 
+    # Both panels live in domain/finance_view.py (architecture batch A8).
     def _finance_previous(wsid, mkt, start, end, basis):
-        """The same window, immediately before. Totals only.
-
-        Every "vs prev 30d" on the cards is against this. Returns None rather
-        than zeros when the earlier window has nothing -- a move from no data to
-        a number is not a rise, and rendering it as one invites somebody to
-        celebrate a sync finishing.
-        """
-        import datetime as _dt
-        try:
-            s = _dt.date.fromisoformat(start)
-            e = _dt.date.fromisoformat(end)
-        except ValueError:
-            return None
-        span = (e - s).days + 1
-        pe = s - _dt.timedelta(days=1)
-        ps = pe - _dt.timedelta(days=span - 1)
-        from domain import sales_data as _sd
-        try:
-            fn = (_contrib.by_product if basis == "settlement"
-                  else _contrib.by_product_orders)
-            _rows, tot = fn(CONFIG_PATH, wsid, mkt, ps.isoformat(),
-                            pe.isoformat(), vat_rate=_sd.vat_rate_for(_cfg, wsid))
-        except Exception:
-            return None
-        if not _rows:
-            return None
-        tot["start"] = ps.isoformat()
-        tot["end"] = pe.isoformat()
-        return tot
+        return _fview.previous_window(CONFIG_PATH, _cfg, wsid, mkt, start, end, basis)
 
     def _finance_overhead(wsid, mkt, start, end, totals):
-        """The gap between contribution and net profit, itemised as far as it can be.
-
-        THE SPEC ASKS FOR EIGHT NAMED AMAZON FEE TYPES -- fba_inbound_transportation,
-        fba_disposal, deal_participation and the rest. THOSE ARE NOT STORED.
-        domain/finance_data buckets every charge into referral, FBA, promo or
-        "other", and only the bucket survives; the fee TYPE Amazon sent is not
-        kept. So the accordion shows the two lines that ARE knowable -- what
-        Amazon charged the account outside any order, and the costs entered by
-        hand -- and says plainly that the rest cannot be broken down yet rather
-        than inventing eight rows of plausible names.
-
-        That is a real limitation with a real fix (keep the fee type on the way
-        in), and naming it is how it gets fixed rather than papered over.
-        """
-        out = {"items": [], "total": 0.0, "why": ""}
-
-        # THE SAME CHARGE WHICHEVER CALENDAR IS ON. This read
-        # totals["unattributed_fees"], which is derived by comparing Amazon's
-        # settled figures against the product ROWS -- a comparison that only
-        # holds when those rows came from the settlement feed. On the order
-        # calendar the rows cover far more revenue than Amazon has settled, so
-        # the gap came out nought and the overhead line read 65.51 on one tab
-        # and 0.00 on the other, for the same month and the same subscription.
-        # domain/expenses owns the figure now and neither half of it depends on
-        # the basis (Rule 12).
-        try:
-            from domain import expenses as _exp0
-            unatt = _exp0.account_level_charge(CONFIG_PATH, wsid, mkt, start, end)
-        except Exception:
-            unatt = float(totals.get("unattributed_fees") or 0.0)
-        if unatt:
-            out["items"].append({
-                "label": "Amazon charges that belong to no order",
-                "amount": round(unatt, 2),
-                "note": ("The monthly selling subscription is the usual one. "
-                         "Amazon posts these against the account rather than a "
-                         "sale, so no per-product row can carry them."),
-                "children": [],
-            })
-
-        try:
-            from domain import expenses as _exp
-            man = _exp.for_window(CONFIG_PATH, wsid, mkt, start, end)
-        except Exception:
-            man = {"total": 0.0, "items": [], "recorded": 0}
-        out["items"].append({
-            "label": "Your own costs",
-            # RECORDED NONE AND SPENT NONE ARE DIFFERENT, and the accordion says
-            # which: None reads "not recorded", 0.00 is a measurement.
-            "amount": (round(float(man.get("total") or 0), 2)
-                       if man.get("recorded") else None),
-            "note": ("The accountant, the software, the packaging — Amazon "
-                     "reports none of it." if man.get("recorded") else
-                     "Nothing recorded, so nothing has been subtracted for it."),
-            "children": [{"label": x["name"], "amount": x["in_window"]}
-                         for x in (man.get("items") or [])],
-        })
-
-        out["total"] = round(unatt + float(man.get("total") or 0), 2)
-        out["why"] = (
-            "Amazon sends a type with every charge — storage, inbound "
-            "transportation, disposal, deal participation — but this app keeps "
-            "only the bucket it falls into, so those cannot be listed "
-            "separately yet. The total above is right; the breakdown inside it "
-            "is not available.")
-        c = totals.get("contribution")
-        out["contribution"] = c
-        out["net_profit"] = (round(c - out["total"], 2) if c is not None else None)
-        return out
+        return _fview.overhead(CONFIG_PATH, wsid, mkt, start, end, totals)

@@ -107,6 +107,9 @@ function navGroupBadges() {
 // the active screen may have come from a deep link into a group the user last
 // left shut.
 function navGroupSyncActive(sec) {
+  // The icon rail marks the same place (navrail.js); told here because this is
+  // what every navigation already calls.
+  if (typeof navRailSync === "function") navRailSync(sec);
   const name = navGroupOf(sec || (typeof CUR_SEC !== "undefined" ? CUR_SEC : ""));
   if (!name) {
     navGroupBadges();
@@ -134,7 +137,7 @@ function navGroupsInit() {
     const name = g.dataset.grp || "";
     navGroupApply(name, set.has(name));
   });
-  navGroupSyncActive(typeof CUR_SEC !== "undefined" ? CUR_SEC : "listings");
+  navGroupSyncActive(typeof CUR_SEC !== "undefined" ? CUR_SEC : "home");
 }
 
 if (typeof document !== "undefined") {

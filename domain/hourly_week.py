@@ -64,6 +64,19 @@ def known_order_ids(config_path, workspace_id, marketplace, since):
     return {r["order_id"] for r in rows}
 
 
+def stored_items(config_path, workspace_id, marketplace, order_id):
+    """One order's stored lines (asin, sku, title, units), rows as SQLite gave them.
+
+    Moved word for word from routes/orders_routes.py _items_from_store
+    (architecture batch A6); the route keeps the shaping and error handling.
+    """
+    return _db.get_db(config_path).execute(
+        "SELECT asin, sku, title, units FROM order_lines "
+        "WHERE workspace_id=? AND marketplace=? AND order_id=?",
+        (str(workspace_id or ""), str(marketplace or ""),
+         str(order_id or ""))).fetchall()
+
+
 def store_lines(config_path, workspace_id, marketplace, lines):
     """Write order lines, ignoring ones already there."""
     if not lines:

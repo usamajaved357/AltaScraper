@@ -190,3 +190,19 @@ tracking-*.csv
 # Upload history: the original files people uploaded (real costs, suppliers,
 # tracking). Kept beside config.json by domain/upload_log.py; never committed.
 /uploads/
+
+# Claude Code shared working state. Lives in the MAIN checkout only and is read
+# by every worktree through its absolute path (CLAUDE.md "Where things live"):
+# in-flight work and temporary output (traces, plans, test baselines, reports).
+/current-work.md
+/active/
+# Personal Claude Code permission scraps; the shared rules are .claude/settings.json.
+.claude/settings.local.json
+
+# Automatic before-change copies the app makes (e.g. the COGS clear button),
+# which hold real costs and inputs.
+/_backups/
+
+# Dated bug-check baselines (e.g. dashboard.baseline.20260926.py); the plain
+# *.baseline.py pattern above does not match these.
+*.baseline.*.py

@@ -121,4 +121,6 @@ function _dsEsc(s){
     : String(s == null ? "" : s).replace(/[&<>"]/g,
         c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 }
-function _dsArg(s){ return "'" + String(s || "").replace(/'/g, "\\'") + "'"; }
+// ONE escaper for a value inside an inline handler: jsArg, in users.js (Rule 12,
+// Milestone 2). This name is kept for its callers.
+function _dsArg(s){ return jsArg(s || ""); }

@@ -36,6 +36,8 @@ import json
 import datetime
 import threading
 
+from config import settings as _settings
+
 # Amazon's OWN retail storefront names -- DOMESTIC and CROSS-BORDER:
 #   "Amazon", "Amazon.de", "Amazon.co.uk", "Amazon.com.be", "Amazon.nl",
 #   "Amazon US", "Amazon EU", "Amazon UK", ...
@@ -103,8 +105,8 @@ def set_seller(config_path, seller_id, name="", kind="name", marketplace=""):
         # block a kind belongs in live in exactly one place.
         _apply_one(ks, sid, name, kind, marketplace)
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            if not _settings.write_raw(cfg, config_path):   # atomic (Milestone 1)
+                raise OSError("could not write %s" % config_path)
         except Exception as e:
             return {"ok": False, "error": f"could not write config: {str(e)[:120]}"}
     return {"ok": True, "kind": kind, "previous": previous}
@@ -198,8 +200,8 @@ def set_sellers_bulk(config_path, rows):
             return {"ok": False, "error": "no usable rows",
                     "skipped": out["skipped"]}
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            if not _settings.write_raw(cfg, config_path):   # atomic (Milestone 1)
+                raise OSError("could not write %s" % config_path)
         except Exception as e:
             return {"ok": False, "error": "could not write config: %s" % str(e)[:120]}
     return out
@@ -237,8 +239,8 @@ def auto_add_amazon(config_path, seller_id, marketplace, name):
         lst.append({"id": sid, "source": "auto", "name": _norm(name),
                     "at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")})
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            if not _settings.write_raw(cfg, config_path):   # atomic (Milestone 1)
+                raise OSError("could not write %s" % config_path)
         except Exception:
             return False
         return True

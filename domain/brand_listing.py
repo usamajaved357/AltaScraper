@@ -442,19 +442,34 @@ def _img_to_data_url(src: str) -> str:
             ctx.check_hostname = False
             ctx.verify_mode = _ssl.CERT_NONE
             req = _u.Request(s, headers={"User-Agent": "Mozilla/5.0"})
-            with _u.urlopen(req, timeout=30, context=ctx) as r:
-                data = r.read()
+            # Through the URL policy: public addresses only, re-checked on each
+            # redirect (Milestone 2). The certificate exception above stays --
+            # it is about broken supplier certs, not about where we may go.
+            from domain import url_policy as _urlp
+            with _urlp.urlopen(req, timeout=30, context=ctx) as r:
+                data = r.read(40 * 1024 * 1024)
             mime = _mt.guess_type(s)[0] or "image/jpeg"
             return f"data:{mime};base64," + _b64.b64encode(data).decode("ascii")
         # local /media/ path -> resolve under the app's media dir
         if s.startswith("/media/"):
-            p = _Path(_app_dir()) / "media" / s[len("/media/"):]
+            _mroot = (_Path(_app_dir()) / "media").resolve()
+            p = (_mroot / s[len("/media/"):]).resolve()
+            # Inside the media folder, and a picture (see the local-path note
+            # below): "/media/../config.json" must not resolve to anything.
+            if (_mroot not in p.parents
+                    or p.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".gif")):
+                return ""
             if p.exists():
                 mime = _mt.guess_type(str(p))[0] or "image/png"
                 return f"data:{mime};base64," + _b64.b64encode(p.read_bytes()).decode("ascii")
             return ""
-        # absolute or relative local file path
+        # absolute or relative local file path -- A PICTURE, AND ONLY A PICTURE.
+        # Whatever this returns is sent to an outside image model; any path at
+        # all meant a template path naming config.json would ship it there
+        # (change review, Milestone 2).
         p = _Path(s)
+        if p.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+            return ""
         if p.exists():
             mime = _mt.guess_type(str(p))[0] or "image/png"
             return f"data:{mime};base64," + _b64.b64encode(p.read_bytes()).decode("ascii")

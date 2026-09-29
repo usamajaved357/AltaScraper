@@ -18,7 +18,10 @@ function _streamRun(url, doneMsg){
   }else if(log){
     log.style.display="block"; log.textContent="";
   }
-  ES=new EventSource(url);
+  // NAMES THE ACCOUNT (known-issues #4): with none named the server ran it
+  // for whatever it last had selected, and mismatch_for_write can only
+  // refuse a disagreement it is told about.
+  ES=new EventSource(typeof acctUrl === "function" ? acctUrl(url) : url);
   ES.onmessage=e=>{
     if(hasUI){ genuiLine(e.data); return; }
     if(!log) return;
@@ -53,16 +56,16 @@ function _logLineEl(d){
   div.textContent=s;
   div.style.whiteSpace="pre-wrap"; div.style.padding="1px 0";
   if(/\[E\]|NOT live|invalid attribute value|does not match any ASIN|not in the catalog|cannot be added|\b\d+\s+(?:error|issue)\(s\)/i.test(s)){
-    div.style.color="#ff6b6b"; div.style.fontWeight="700"; div.style.borderLeft="3px solid #ff6b6b";
-    div.style.paddingLeft="8px"; div.style.margin="6px 0"; div.style.background="rgba(255,107,107,.07)";
+    div.style.color="var(--red)"; div.style.fontWeight="700"; div.style.borderLeft="3px solid var(--red)";
+    div.style.paddingLeft="8px"; div.style.margin="6px 0"; div.style.background="var(--red-bg)";
   } else if(/\[W\]|We are ignoring|warning/i.test(s)){
     div.style.color="var(--warn)";
   } else if(/\[start\]|\[done\]|API mode:|seller:|fetching schema|MODE:|Listing Generator|complete --/i.test(s)){
-    div.style.color="#7f8ea3";
+    div.style.color="var(--ink3)";
   } else if(/LIVE \(|Amazon accepted|no missing|accepted this listing|Published live/i.test(s)){
-    div.style.color="#5fd08a"; div.style.fontWeight="600";
+    div.style.color="var(--ok)"; div.style.fontWeight="600";
   } else {
-    div.style.color="#cfe0ff";
+    div.style.color="var(--ink)";     // shared tokens: the log reads in both themes (29 Sep 2026)
   }
   return div;
 }
@@ -81,7 +84,10 @@ function _streamRunPanel(url, sku, mode){
   // summary cannot. If a submit reports ok:0, nothing was published -- full stop.
   let summary=null;          // {ok, errors, skipped}
   let notSubmitted=[];       // the generator's "none of the requested SKU(s)…" explanation
-  ES=new EventSource(url);
+  // NAMES THE ACCOUNT (known-issues #4): with none named the server ran it
+  // for whatever it last had selected, and mismatch_for_write can only
+  // refuse a disagreement it is told about.
+  ES=new EventSource(typeof acctUrl === "function" ? acctUrl(url) : url);
   ES.onmessage=e=>{
     const d=e.data||"";
     lines.push(d);
@@ -343,13 +349,14 @@ async function submitOne(sku){
   if(!sku) return;
   // same safety as the global submit: precheck local images, then confirm the account
   try{
-    const pc=await (await fetch("/submit/precheck")).json();
+    const pc=await (await fetch("/submit/precheck?skus="+encodeURIComponent(sku))).json();
     if(pc&&pc.ok&&pc.count>0){
-      const hit=(pc.local_image_rows||[]).some(x=>String(x.sku)===String(sku));
+      const hit=(pc.local_image_rows||[]).find(x=>String(x.sku)===String(sku));
       if(hit){
-        if(!await uiConfirm("⚠ This listing's main image is a LOCAL file Amazon can't fetch (it lives on your PC). "
-          +"It will FAIL with 'Unable to Retrieve Media Content'.\n\nUse a publicly-hosted image URL first, "
-          +"or submit anyway to see the error?")) return;
+        // The reason is the submit's own (domain/image_urls.main_image_problem).
+        if(!await uiConfirm("\u26a0 This listing's main image: "+(hit.why||"cannot be used")+".\n\n"
+          +"Set one of your own images, reachable by Amazon, as the main image first -- "
+          +"or submit anyway?")) return;
       }
     }
   }catch(e){}
@@ -455,6 +462,7 @@ async function loadRows(){
   const reqAccount = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
                      ? String(CUR_ACCOUNT.id || "") : "";
   const token = ++_ROWS_SEQ;
+  window.ROWS_ERR = "";          // a new attempt: the last failure is no longer the news
   const stillMine = function(){
     if(token !== _ROWS_SEQ) return false;                  // a newer request exists
     const now = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
@@ -507,9 +515,11 @@ async function loadRows(){
       }
     }catch(e){}
     if(!j || j._failed){
+      // Remembered for Home, whose listing cards would otherwise wait for ever.
+      window.ROWS_ERR = (j&&j.error)||"timed out";
       const _g=document.getElementById("grid");
-      if(_g) _g.innerHTML='<div class="empty">Could not load listings: '+esc((j&&j.error)||"timed out")
-        +'<div style="margin-top:10px"><button class="mktbtn on" onclick="loadRows()"><i class="ti ti-refresh"></i> Retry</button></div></div>';
+      // A failure, with Try again (uiError, pageui.js) -- not the "no data" style.
+      if(_g) _g.innerHTML=uiError("Listings could not be loaded", (j&&j.error)||"timed out", "loadRows", "listings");
       else toast("Could not load listings: "+((j&&j.error)||"timeout"));
       return;
     }
@@ -517,10 +527,11 @@ async function loadRows(){
       // This workspace has no sheet/tab configured. The app deliberately refuses to
       // fall back to the shared default tab (it holds another account's listings), so
       // say so plainly and send the user to the one place that fixes it.
+      window.ROWS_ERR = j.error || "the listings could not be read";   // for Home
       if(j.sheet_scope_error){
         ROWS=[];
         const g=document.getElementById("grid");
-        if(g) g.innerHTML=`<div class="empty" style="border:1px solid var(--red-line);border-radius:10px;background:rgba(255,80,80,.05)">
+        if(g) g.innerHTML=`<div class="empty" style="border:1px solid var(--red-line);border-radius:10px;background:color-mix(in srgb, var(--as-lit-ff5050-bg) 5%, transparent)">
           <div style="color:var(--red);font-weight:600;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> This workspace has no sheet configured</div>
           <div class="cc" style="max-width:620px;margin:0 auto 12px;line-height:1.5">${esc(j.error||"")}</div>
           <button class="mktbtn on" onclick="openCurrentAccountSettings()">Open Account settings</button></div>`;
@@ -536,6 +547,7 @@ async function loadRows(){
     // The answer has arrived. From here an empty ROWS really does mean "this
     // account has no drafts", and the screen may say so.
     ROWS_LOADED = true;
+  window.ROWS_ERR = "";
     // WHICH STORE THESE CAME FROM. Kept so the screen can say when some of
     // these listings are still only in the spreadsheet, and offer to bring them
     // in -- the app is mid-migration and that is the fact that keeps surfacing
@@ -665,7 +677,7 @@ async function sendChat(){
 async function saveDefault(sku, pt, btn){
   btn.disabled=true; const orig=btn.textContent; btn.textContent="Saving…";
   try{
-    const res=await fetch("/save_default",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sku:sku})});
+    const res=await fetch("/save_default",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(acctBody({sku:sku}))});   // names the account (change review, M2)
     const j=await res.json();
     if(j.ok){ btn.textContent="★ Saved "+j.count+" default(s) for "+(j.pt||pt); toast("Defaults saved for "+(j.pt||pt)+" — future "+(j.pt||pt)+" listings will prefill these"); setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},2800); }
     else{ btn.textContent=orig; btn.disabled=false; toast("Save failed: "+(j.error||"")); }

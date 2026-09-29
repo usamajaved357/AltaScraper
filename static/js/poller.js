@@ -109,6 +109,26 @@ if(typeof document !== "undefined" && document.addEventListener){
   });
 }
 
+/* A FIXED-INTERVAL poll that obeys rule 1 above, for the few things that must
+ * keep asking forever at a slow pace (server health, the monitor and
+ * notification badges). They were bare setIntervals and asked from hidden
+ * tabs all day (master audit section 10: "three pollers don't pause in hidden
+ * tabs"). Hidden: skipped. Shown again: asked at once, not after the gap.
+ * Milestone 11. */
+function altaEvery(ms, fn){
+  const safe = function(){ try{ const r = fn(); if(r && r.catch) r.catch(function(){}); }catch(e){} };
+  const id = setInterval(function(){
+    if(typeof document !== "undefined" && document.hidden) return;
+    safe();
+  }, ms);
+  if(typeof document !== "undefined" && document.addEventListener){
+    document.addEventListener("visibilitychange", function(){
+      if(!document.hidden) safe();
+    });
+  }
+  return id;
+}
+
 /* For the diagnostics screen: what is still asking, and how often. */
 function altaPollerStatus(){
   return _ALTA_POLLERS.map(function(p){

@@ -46,7 +46,22 @@ function acctId(){
  * did before -- the server treats a missing account as "said nothing" and
  * serves it. An account that IS named and disagrees is refused. */
 function acctBody(obj){
-  const id = acctId();
+  return acctBodyFor(obj, acctId());
+}
+
+/* Stamp a POST body with a GIVEN account -- the one a bulk action started in.
+ *
+ *     const pin = acctId();                 // once, before the loop
+ *     for(...){
+ *       if(acctId() !== pin) break;         // switched part-way: stop
+ *       fetch(url, {body: JSON.stringify(acctBodyFor({sku}, pin))});
+ *     }
+ *
+ * acctBody() reads the account afresh on every call, so a loop built on it
+ * sent every SKU after an account switch to the NEW account's same-SKU rows --
+ * a GTIN declaration, an arm, a delete on Amazon (master audit S1, 28 Sep
+ * 2026). A loop takes the account once and names it on every request. */
+function acctBodyFor(obj, id){
   if(!id) return obj || {};
   return Object.assign({}, obj || {}, {account: id});
 }
@@ -61,5 +76,96 @@ function acctUrl(url){
   const id = acctId();
   if(!id) return url;
   const u = String(url || "");
+  // Already names one: leave it -- that caller chose deliberately, and two
+  // account= values would be read differently by different routes.
+  if(/[?&]account=/.test(u)) return u;
   return u + (u.indexOf("?") >= 0 ? "&" : "?") + "account=" + encodeURIComponent(id);
 }
+
+// ============ PATHS THAT FOLLOW THE TAB, NOT THE SERVER ============
+//
+// These routes answered for the SERVER'S open account -- one for every tab,
+// owned by whichever tab switched last. With two tabs open, the image library
+// showed the other account's pictures, an upload was filed under it, and
+// Variations read (and could push to) it. Found by the two-tab check in
+// tools/browser_smoke.py (28 Sep 2026).
+//
+// The server now reads the account a request names (domain/request_account
+// .current). Naming it at ~40 call sites by hand is how the forty-first
+// forgets, so it is done here, once, for the paths listed and nothing else: a
+// url that already names an account is left alone. A trailing "/" means every
+// path under it. The permission guard checks the named account as usual.
+const ACCT_SCOPED_PATHS = [
+  "/media/list", "/media/upload", "/media/zip", "/media/delete",
+  "/genimage/", "/variations/", "/run/health",
+  "/listing/image_slots", "/listing/image_push", "/listing/push_image",
+  // Added by the full two-tab audit (28 Sep 2026): callers that sent no
+  // account at all, so the server's open one was used -- Ads keys saved,
+  // queue rows written, Drive uploads, Miles runs, variants queued, sync.
+  "/settings/ads", "/settings/ads/", "/input/", "/drive/", "/miles/", "/miles_template/render",
+  "/sync/", "/variant/", "/agent/", "/submit/target", "/submit/precheck",
+  "/dup_check",
+  // Added 29 Sep 2026 (4G open-account map): writes whose browser callers named
+  // no account, so the server's open one decided -- deleting empty rows,
+  // applying a compliance rescan, approving from the "how it works" panel,
+  // auto-fix's own edits, and a brand's save/list.
+  "/clear_empty", "/rescan/", "/approve", "/edit", "/brand/",
+  // Added 29 Sep 2026 (security review): the "why is it stuck" stack dump,
+  // which the server refuses without a named account.
+  "/run/stack",
+];
+/* ...and the tab's MARKETPLACE with it, unless the url already names one. The
+ * server otherwise uses the marketplace last picked in ANY tab: the account
+ * followed this tab while the country followed another, and Variations could
+ * publish to the wrong country's listings (two-tab review). "All marketplaces"
+ * is not a country and is not sent. */
+function acctMktUrl(url){
+  const u = String(url || "");
+  if(/[?&]marketplace=/.test(u)) return u;
+  let m = "";
+  try{ m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? String(WS_MARKET) : ""; }catch(e){}
+  if(!m || m === "__all__") return u;
+  return u + (u.indexOf("?") >= 0 ? "&" : "?") + "marketplace=" + encodeURIComponent(m);
+}
+/* A STREAM names its account too. new EventSource(url) does not go through
+ * fetch(), so the wrapper below never stamped it: the Miles generate / optimize
+ * / run streams and the brand run all ran for the server's open account --
+ * another tab's, with two open (4G, 29 Sep 2026). Every EventSource that starts
+ * account work builds its url through this. */
+function acctStreamUrl(url){
+  return acctMktUrl(acctUrl(url));
+}
+/* Does the request BODY already name its account? A caller that chose one --
+ * above all a bulk loop pinned with acctBodyFor(pin) -- is never overridden:
+ * stamping the account open NOW onto its url would name two accounts in one
+ * request after a mid-loop switch, and routes read them in different orders. */
+function _bodyNamesAccount(init){
+  try{
+    const b = init && init.body;
+    if(typeof b !== "string" || b.indexOf("account") < 0) return false;
+    const o = JSON.parse(b);
+    return !!(o && typeof o === "object" && (o.account || o.account_id));
+  }catch(e){ return false; }
+}
+function acctScopedPath(url){
+  const u = String(url || "");
+  if(u.charAt(0) !== "/" || /[?&]account=/.test(u)) return false;
+  const path = u.split("?")[0];
+  return ACCT_SCOPED_PATHS.some(function(p){
+    return p.charAt(p.length - 1) === "/" ? path.indexOf(p) === 0 : path === p;
+  });
+}
+(function(){
+  if(typeof window === "undefined" || !window.fetch || window.fetch._acctScoped) return;
+  const _orig = window.fetch.bind(window);
+  const _scoped = function(input, init){
+    try{
+      if(typeof input === "string" && acctScopedPath(input)
+         && !_bodyNamesAccount(init)) input = acctMktUrl(acctUrl(input));
+    }
+    catch(e){ /* never let the stamp stop the request */ }
+    return _orig(input, init);
+  };
+  _scoped._acctScoped = true;
+  window.fetch = _scoped;
+})();

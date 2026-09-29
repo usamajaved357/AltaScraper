@@ -278,16 +278,105 @@ def account_level_charge(config_path, workspace_id, marketplace, start, end):
         "WHERE workspace_id=? AND marketplace=? AND asin='*' "
         "AND date>=? AND date<=?",
         (workspace_id, marketplace, start, end)).fetchone()
+    # BOTH SIDES ON THE SAME CALENDAR: the day Amazon POSTED the money.
+    #
+    # This compared what Amazon posted in the window (finance_daily) with the
+    # fees on orders PLACED in the window -- two calendars. A July order's 2.00
+    # charge settled on 5 Aug was then in July's fees AND in August's
+    # "account charge", counted twice; and orders placed late in a window but
+    # settled after it inflated the other side and could hide the subscription
+    # altogether. Found by the review of the profit-accuracy work, 28 Sep 2026.
+    #
+    # Every order-level posting carries its order id and posted_date in
+    # order_fees, so "posted in the window and attached to an order" is exact,
+    # and what finance_daily holds beyond it belongs to no order. It also
+    # counts each posting once however many products the order had -- the
+    # join to order_lines this replaces counted a three-product order three
+    # times.
     attributed = conn.execute(
-        "SELECT ROUND(SUM(COALESCE(f.other_fees,0)),2) o FROM order_lines o2 "
-        "JOIN order_fees f ON f.workspace_id=o2.workspace_id "
-        "  AND f.marketplace=o2.marketplace AND f.order_id=o2.order_id "
-        "WHERE o2.workspace_id=? AND o2.marketplace=? "
-        "AND substr(o2.purchase_date,1,10)>=? AND substr(o2.purchase_date,1,10)<=?",
+        "SELECT ROUND(SUM(COALESCE(other_fees,0)),2) o FROM order_fees "
+        "WHERE workspace_id=? AND marketplace=? "
+        "AND substr(posted_date,1,10)>=? AND substr(posted_date,1,10)<=?",
         (workspace_id, marketplace, start, end)).fetchone()
     gap = round(float((charged["o"] if charged else 0) or 0)
                 - float((attributed["o"] if attributed else 0) or 0), 2)
     return max(0.0, gap)
+
+
+def _is_amazon_charge(expense):
+    """Is this recorded cost the owner's own entry for an AMAZON account charge?
+
+    It has to say Amazon -- by its category (suggest() files it under "Amazon")
+    or its name. The earlier test was any name containing "subscription",
+    which made a "Helium 10 subscription" stand in for Amazon's own charge and
+    quietly stop that being subtracted. Found by the review, 28 Sep 2026.
+    """
+    # AND IT HAS TO BE THE ACCOUNT CHARGE, not any Amazon cost. Matching every
+    # name containing "amazon" let an "Amazon PPC (manual)" entry cancel the
+    # measured subscription -- found by the second review, 28 Sep 2026. So: the
+    # category suggest() files it under, or a name that says Amazon AND says
+    # what kind of charge it is.
+    e = expense or {}
+    name = str(e.get("name") or "").lower()
+    if str(e.get("category") or "").strip().lower() == "amazon":
+        return True
+    return "amazon" in name and any(
+        w in name for w in ("subscription", "seller account", "selling plan",
+                            "professional plan", "monthly fee"))
+
+
+def _subscription_recorded(config_path, workspace_id, marketplace):
+    """Has the owner recorded Amazon's account charge as a cost of their own?
+
+    Only decides whether suggest() should OFFER to add it. How much of it to
+    stop subtracting is overhead_for's job, and it works that out for the
+    window, not from whether an entry exists at all.
+    """
+    return any(_is_amazon_charge(r)
+               for r in all_for(config_path, workspace_id, marketplace))
+
+
+def overhead_for(config_path, workspace_id, marketplace, start, end):
+    """The step from the headline profit to NET profit. -> a dict.
+
+        net profit = profit (the Sales card's figure)
+                   - what Amazon charged the ACCOUNT and no order carries
+                   - the costs you entered yourself
+
+    THE ONE PLACE THAT STEP IS TAKEN. The P&L and the Finance screen each had
+    their own, and they disagreed: Finance subtracted Amazon's account charge
+    automatically, the P&L only once somebody had typed it in as a cost -- so
+    the two "net profit" figures for the same month differed by the
+    subscription (CLAUDE.md Rule 12).
+
+    The account charge is MEASURED (Amazon took it), so it comes off. Where
+    the owner has ALSO recorded it as a cost of their own, the part of it his
+    entry already covers IN THIS WINDOW is not taken off a second time -- only
+    the remainder. So an entry starting 1 Sep stops nothing in August, and an
+    entry for less than Amazon charged still leaves the difference to come off.
+    """
+    try:
+        charge = account_level_charge(config_path, workspace_id, marketplace,
+                                      start, end)
+    except Exception:
+        charge = 0.0
+    man = for_window(config_path, workspace_id, marketplace, start, end)
+    covered = round(sum(float(i.get("in_window") or 0.0)
+                        for i in (man.get("items") or [])
+                        if _is_amazon_charge(i)), 2)
+    amazon = round(max(0.0, charge - covered), 2)
+    recorded_already = charge > 0 and covered > 0
+    own = round(float(man.get("total") or 0.0), 2)
+    return {
+        "amazon_account_charges": amazon,
+        "amazon_charge_seen": round(charge, 2),
+        "amazon_charge_in_own_costs": bool(recorded_already),
+        "amazon_charge_covered_by_own": covered,
+        "own_costs": own,
+        "own_costs_recorded": bool(man.get("recorded")),
+        "own_costs_detail": man,
+        "total": round(amazon + own, 2),
+    }
 
 
 def suggest(config_path, workspace_id, marketplace, start, end):
@@ -312,10 +401,8 @@ def suggest(config_path, workspace_id, marketplace, start, end):
 
     # Already recorded? Matched on name rather than amount, because the amount
     # is what somebody would correct.
-    for r in all_for(config_path, workspace_id, marketplace):
-        n = str(r.get("name") or "").lower()
-        if "subscription" in n or "seller account" in n or "monthly fee" in n:
-            return None
+    if _subscription_recorded(config_path, workspace_id, marketplace):
+        return None
 
     return {
         "name": "Amazon selling subscription",
@@ -324,7 +411,8 @@ def suggest(config_path, workspace_id, marketplace, start, end):
         "starts": str(start)[:10],
         "why": ("Amazon charged this account %.2f in this window that belongs to "
                 "no order — the monthly selling subscription is the usual one. "
-                "It cannot be attached to a sale, so no per-order query can find "
-                "it and it is not in the profit above. Add it as a monthly cost "
-                "and it will be." % gap),
+                "It is already taken off net profit as an Amazon account charge. "
+                "Add it as a monthly cost of your own if you want it named and "
+                "carried into months Amazon has not posted yet; it will not be "
+                "counted twice." % gap),
     }

@@ -67,7 +67,21 @@ def falsy(label, got):
 CSS = io.open(os.path.join(HERE, "static", "css", "dashboard.css"),
               encoding="utf-8").read()
 ROOT = re.search(r":root\s*\{(.*?)\n\s*\}", CSS, re.S).group(1)
-TOK = dict(re.findall(r"--([\w-]+)\s*:\s*(#[0-9a-fA-F]{3,8})\s*;", ROOT))
+# THE LEGACY NAMES POINT AT THE DESIGN TOKENS since 28 Sep 2026 (--bg is
+# var(--as-bg-canvas) ...), so each is resolved through static/css/foundations.css's
+# DARK values -- this test now measures the design system's own colours.
+_TOKCSS = io.open(os.path.join(HERE, "static", "css", "foundations.css"), encoding="utf-8").read()
+_AS = {}
+for _blk in re.findall(r':root, \[data-theme="dark"\]\s*\{(.*?)\}', _TOKCSS, re.S):
+    _AS.update(dict(re.findall(r"--([\w-]+)\s*:\s*(#[0-9a-fA-F]{3,8})\s*;", _blk)))
+TOK = {}
+for _name, _val in re.findall(r"--([\w-]+)\s*:\s*([^;]+);", ROOT):
+    _val = _val.strip()
+    _m = re.match(r"var\(--([\w-]+)\)$", _val)
+    if _m and _m.group(1) in _AS:
+        TOK[_name] = _AS[_m.group(1)]
+    elif re.match(r"#[0-9a-fA-F]{3,8}$", _val):
+        TOK[_name] = _val
 
 
 def rgb(h):

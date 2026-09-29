@@ -134,6 +134,7 @@
   overflow:hidden}
 .rp-sbar div{display:flex;align-items:center;justify-content:center;
   font-size:10px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden}
+/* White on purpose, in both themes: every segment is a fixed chart colour. */
 /* One money-bar palette, shared with the order panel -- see dashboard.css.
    The referral was #e25c5c here, a red; coral is the same fact without the
    "something is wrong" the red carried. */
@@ -179,10 +180,10 @@
 .rp-met2{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
 .rp-m2{text-align:center;padding:5px 8px;border-radius:var(--radius-sm);
   flex:1;min-width:74px}
-.rp-m2g{background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.08)}
-.rp-m2g .rp-n{color:#22c55e}
-.rp-m2b{background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.08)}
-.rp-m2b .rp-n{color:#3b82f6}
+.rp-m2g{background:color-mix(in srgb, var(--as-lit-22c55e-bg) 5%, transparent);border:1px solid color-mix(in srgb, var(--as-lit-22c55e-bd) 8%, transparent)}
+.rp-m2g .rp-n{color:var(--as-lit-22c55e-fg)}
+.rp-m2b{background:color-mix(in srgb, var(--as-lit-3b82f6-bg) 5%, transparent);border:1px solid color-mix(in srgb, var(--as-lit-3b82f6-bd) 8%, transparent)}
+.rp-m2b .rp-n{color:var(--as-lit-3b82f6-fg)}
 /* No amber tile. A tile that changes colour breaks the set of three greens and
  * a blue, and the miss against a target is already said twice over: the table's
  * ROI column goes amber, and the panel carries a red notice with the price that
@@ -223,7 +224,7 @@
  * two-letter states read down the page, not a warning beside a name. */
 .rp-sup .rp-tag{font-size:8px;font-weight:700;padding:1px 4px;
   letter-spacing:.03em}
-.rp-tgu{background:var(--ok);color:#0a1a14}
+.rp-tgu{background:var(--ok);color:var(--as-action-fg)}
 .rp-tgo{background:var(--red-bg);color:var(--red)}
 /* Remove this supplier. Its own class, not the rules pills': it deletes a link
  * and the price readings recorded against it, where every .rp-rl opens an
@@ -286,3 +287,8 @@
   padding:4px 7px;font-size:10px;line-height:1.4;white-space:nowrap;
   pointer-events:none;box-shadow:0 3px 10px rgba(0,0,0,.45);
   font-variant-numeric:tabular-nums;color:var(--ink);z-index:2}
+
+/* The repricer chart's grid and crosshair (sourcing_chart.js): a faint white
+   wash on the dark theme, as classes so the light theme gets a faint ink one. */
+.spc-grid{ stroke:color-mix(in srgb, var(--as-lit-ffffff-ov) 6%, transparent); }
+.spc-axis{ stroke:color-mix(in srgb, var(--as-lit-ffffff-ov) 22%, transparent); }

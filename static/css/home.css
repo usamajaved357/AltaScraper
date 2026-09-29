@@ -1,0 +1,50 @@
+/* static/css/home.css -- the Home screen (static/js/home.js; owner 29 Sep 2026).
+   Prototype A's queue board: cards you can clear, each a count. Tokens only. */
+
+#sec_home .hm-sec{ margin:0 0 22px; }
+#sec_home .hm-h{ margin:0 0 10px; font:var(--as-text-overline); letter-spacing:var(--as-tracking-overline);
+  text-transform:uppercase; color:var(--as-text-muted); }
+
+.hm-queue{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; }
+.hm-card{
+  display:flex; flex-direction:column; align-items:flex-start; gap:3px; width:100%; height:100%;
+  text-align:left; cursor:pointer; font:inherit; color:var(--as-text-primary);
+  background:var(--as-surface-1); border:1px solid var(--as-border); border-radius:var(--as-radius-lg);
+  padding:12px 14px;
+}
+.hm-card:hover{ background:var(--as-surface-3); }
+.hm-card:focus-visible{ outline:var(--as-focus-w) solid var(--as-focus-ring); outline-offset:2px; }
+.hm-n{ font:var(--as-text-kpi-lg); font-variant-numeric:tabular-nums; min-height:30px; display:flex; align-items:center; }
+.hm-n.muted{ color:var(--as-text-muted); }
+.hm-t{ font:var(--as-text-body-strong); }
+.hm-d{ font:var(--as-text-small); color:var(--as-text-secondary); }
+.hm-card.hot{ border-color:var(--as-warning-border); }
+.hm-card.hot .hm-n{ color:var(--as-warning); }
+.hm-card.bad{ border-color:var(--as-danger-border); }
+.hm-card.bad .hm-n{ color:var(--as-danger); }
+
+.hm-stats{ display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:10px; }
+.hm-stat{ display:flex; flex-direction:column; gap:2px; padding:12px 14px;
+  background:var(--as-surface-1); border:1px solid var(--as-border); border-radius:var(--as-radius-lg); }
+.hm-sl{ font:var(--as-text-small); color:var(--as-text-secondary); }
+.hm-sv{ font:var(--as-text-kpi); font-variant-numeric:tabular-nums; }
+
+.hm-foot{ margin-top:8px; font:var(--as-text-small); color:var(--as-text-muted); }
+.hm-foot a{ color:var(--as-text-link); }
+.hm-err{ padding:12px 14px; border-radius:var(--as-radius-md); font:var(--as-text-body);
+  background:var(--as-warning-bg); border:1px solid var(--as-warning-border); color:var(--as-text-primary); }
+.hm-err .ti{ color:var(--as-warning); }
+.hm-ok{ padding:12px 14px; border-radius:var(--as-radius-md); font:var(--as-text-body);
+  background:var(--as-success-bg); border:1px solid var(--as-success-border); color:var(--as-text-primary); }
+.hm-ok .ti{ color:var(--as-success); }
+.hm-part{ padding:12px 14px; border-radius:var(--as-radius-md); font:var(--as-text-body);
+  background:var(--as-neutral-bg); border:1px solid var(--as-neutral-border); color:var(--as-text-primary); }
+.hm-part .ti{ color:var(--as-text-secondary); }
+.hm-loading{ padding:12px 2px; font:var(--as-text-body); color:var(--as-text-secondary);
+  display:flex; align-items:center; gap:8px; }
+
+@media (max-width: 520px){
+  .hm-queue{ grid-template-columns:1fr 1fr; gap:8px; }
+  .hm-card{ padding:10px 11px; }
+  .hm-d{ display:none; }            /* the title says it; the line is for wide screens */
+}

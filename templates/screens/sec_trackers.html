@@ -1,0 +1,12 @@
+    <div id="sec_trackers" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-chart-dots"></i> Trackers</h2>
+        <div class="sub">Watch a number on a listing — its sales rank, its Buy Box price, your price, or Amazon's cut — and be told when it drifts from what you wanted. Nothing is read until you press Check now.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" id="trk_refresh" onclick="trkRefresh()"><i class="ti ti-refresh"></i> Check now</button>
+          <button class="db-chip" onclick="trkLoad()"><i class="ti ti-reload"></i> Reload</button>
+        </div>
+      </div>
+      <div id="trk_tabs" class="stk-tabbar"></div>
+      <div id="trk_body" style="padding:4px 0"></div>
+    </div>

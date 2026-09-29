@@ -51,34 +51,34 @@
  */
 #pdp{
   /* surfaces */
-  --pdp-bg:#1a1d23;          /* mockup --bg      the page under everything */
-  --pdp-panel:#1e2128;       /* mockup --panel   the card itself */
-  --pdp-raise:#252830;       /* mockup --panel2  hero image well, badges */
-  --pdp-input:#14171c;       /* mockup --sidebar INPUTS and the footer, and it
+  --pdp-bg:var(--as-lit-1a1d23-bg);          /* mockup --bg      the page under everything */
+  --pdp-panel:var(--as-lit-1e2128-bg);       /* mockup --panel   the card itself */
+  --pdp-raise:var(--as-lit-252830);       /* mockup --panel2  hero image well, badges */
+  --pdp-input:var(--as-lit-14171c-bg);       /* mockup --sidebar INPUTS and the footer, and it
                                 is DARKER than the panel, not lighter -- the
                                 boxes are cut into the card rather than raised
                                 off it. That inversion is most of why the two
                                 did not look alike. */
-  --pdp-line:#2a2f3a;        /* mockup --line    borders */
-  --pdp-line2:rgba(42,47,58,.3); /* the attribute row's quieter rule */
-  --pdp-edge:#2a2f3a;        /* mockup uses --line for control borders too */
+  --pdp-line:var(--as-lit-2a2f3a-bd);        /* mockup --line    borders */
+  --pdp-line2:color-mix(in srgb, var(--as-lit-2a2f3a-bd) 30%, transparent); /* the attribute row's quieter rule */
+  --pdp-edge:var(--as-lit-2a2f3a-bd);        /* mockup uses --line for control borders too */
   /* text */
-  --pdp-ink:#c9d1d9;         /* mockup --ink   headings, values */
-  --pdp-ink2:#8b949e;        /* mockup --ink2  body */
-  --pdp-ink3:#6e7681;        /* mockup --ink3  labels, the grey over boxes */
-  --pdp-dim:#6e7681;         /* mockup --ink3  captions */
-  --pdp-faint:#484f5a;       /* mockup --ink4  placeholders, the (?) ring */
+  --pdp-ink:var(--as-lit-c9d1d9-fg);         /* mockup --ink   headings, values */
+  --pdp-ink2:var(--as-lit-8b949e-fg);        /* mockup --ink2  body */
+  --pdp-ink3:var(--as-lit-6e7681-fg);        /* mockup --ink3  labels, the grey over boxes */
+  --pdp-dim:var(--as-lit-6e7681-fg);         /* mockup --ink3  captions */
+  --pdp-faint:var(--as-lit-484f5a-fg);       /* mockup --ink4  placeholders, the (?) ring */
   /* accents */
-  --pdp-accent:#2dd4bf;      /* mockup --accent  TEAL, not the blue */
-  --pdp-accentbg:rgba(45,212,191,.08);
-  --pdp-link:#58a6ff;        /* mockup --link */
-  --pdp-ok:#7fd1a0;          /* mockup --ok */
-  --pdp-okbg:rgba(127,209,160,.08);
-  --pdp-warn:#e3b768;        /* mockup --warn */
-  --pdp-warnbg:rgba(227,183,104,.10);
-  --pdp-danger:#ff6b6b;      /* mockup --red */
-  --pdp-dangerbg:rgba(255,107,107,.10);
-  --pdp-green:#7fd1a0;       /* the mockup's Submit is --ok, not a deep green */
+  --pdp-accent:var(--as-lit-2dd4bf);      /* mockup --accent  TEAL, not the blue */
+  --pdp-accentbg:color-mix(in srgb, var(--as-lit-2dd4bf-bg) 8%, transparent);
+  --pdp-link:var(--as-lit-58a6ff-fg);        /* mockup --link */
+  --pdp-ok:var(--as-lit-7fd1a0);          /* mockup --ok */
+  --pdp-okbg:color-mix(in srgb, var(--as-lit-7fd1a0-bg) 8%, transparent);
+  --pdp-warn:var(--as-lit-e3b768);        /* mockup --warn */
+  --pdp-warnbg:color-mix(in srgb, var(--as-lit-e3b768-bg) 10%, transparent);
+  --pdp-danger:var(--as-lit-ff6b6b);      /* mockup --red */
+  --pdp-dangerbg:color-mix(in srgb, var(--as-lit-ff6b6b-bg) 10%, transparent);
+  --pdp-green:var(--as-lit-7fd1a0);       /* the mockup's Submit is --ok, not a deep green */
   /* THE BASE TYPE IS THE MOCKUP'S BODY RULE: 12px/1.45. dashboard.css sets
      14px/1.5 on the page under this, and every unstyled line inside inherited
      it -- which is why rows measured 17.4px against the mockup's 15.95 even
@@ -182,7 +182,7 @@
    * The rail and the tabs live inside it now rather than beside a wide page --
    * see .pdp-layout below. */
   width:100%;
-  max-width:680px;
+  max-width:680px;   /* OWNER-LOCKED (the PDP mockup; test_pdp_mockup_match) -- kept over the design package's 720 */
   /* A CARD IS AS TALL AS ITS CONTENTS. min-height:calc(100vh - 38px) forced it
      to the full screen whatever it held, so a short listing got a panel with
      empty space at the bottom and no visible lower edge -- which is what made
@@ -371,10 +371,10 @@ body.pdp-on .chatwrap{ z-index:79; }
 /* An 'accepted with warnings' listing is a SUCCESS. Amber, not red, and folded
    away when there are errors above it competing for the same attention. */
 .pdp-error.warn{
-  background:var(--pdp-warnbg, rgba(214,158,46,.08));
-  border-color:var(--pdp-warn, #d69e2e);
+  background:var(--pdp-warnbg, color-mix(in srgb, var(--as-lit-d69e2e-bg) 8%, transparent));
+  border-color:var(--pdp-warn, var(--as-lit-d69e2e-bd));
 }
-.pdp-error.warn > i{ color:var(--pdp-warn, #d69e2e); }
+.pdp-error.warn > i{ color:var(--pdp-warn, var(--as-lit-d69e2e-fg)); }
 .pdp-errwarns > summary{
   font-size:11px; color:var(--pdp-ink3); cursor:pointer;
   padding:5px 0; list-style:none;
@@ -529,7 +529,7 @@ body.pdp-on .chatwrap{ z-index:79; }
 .pdp-footer button.pdp-footer-cancel{ background:transparent; color:var(--pdp-ink); }
 .pdp-footer button.pdp-footer-cancel:hover{ border-color:var(--pdp-ink3); }
 .pdp-footer button.pdp-footer-save{
-  background:var(--pdp-accent); border:none; color:#0a1628;
+  background:var(--pdp-accent); border:none; color:var(--as-lit-0a1628-fg);
   font-weight:600;
 }
 .pdp-footer button.pdp-footer-save:hover{ opacity:.9; }
@@ -593,7 +593,7 @@ body.pdp-on .chatwrap{ z-index:79; }
   border:1px solid var(--pdp-edge); background:transparent; color:var(--pdp-ink2);
   cursor:pointer; display:flex; align-items:center; gap:5px; font-family:inherit;
 }
-.pdp-tb:hover{ border-color:#555; color:var(--pdp-ink); }
+.pdp-tb:hover{ border-color:var(--as-lit-555555-bd); color:var(--pdp-ink); }
 .pdp-tb i{ font-size:14px; }
 .pdp-tb.accent{ background:var(--pdp-accent); color:#fff; border-color:transparent; }
 .pdp-tb.success{ background:var(--pdp-green); color:#fff; border-color:transparent; }
@@ -655,10 +655,10 @@ body.pdp-on .chatwrap{ z-index:79; }
   background:transparent; border:1px solid transparent; border-radius:4px;
   padding:1px 5px; width:15ch; letter-spacing:.02em;
 }
-.pdp-barcode:hover{ border-color:var(--pdp-line, #333a45); }
+.pdp-barcode:hover{ border-color:var(--pdp-line, var(--as-lit-333a45-bd)); }
 .pdp-barcode:focus{
-  outline:none; background:var(--pdp-surface, #1f242c);
-  border-color:var(--pdp-accent, #2dd4a8);
+  outline:none; background:var(--pdp-surface, var(--as-lit-1f242c-bg));
+  border-color:var(--pdp-accent, var(--as-lit-2dd4a8-bd));
 }
 /* The verdict. Never a colour on its own -- the words carry it, because a
    coloured dot with no sentence is the thing this whole feature exists to
@@ -666,38 +666,38 @@ body.pdp-on .chatwrap{ z-index:79; }
 .pdp-barcode-say{ display:block; font-size:10.5px; line-height:1.5;
                   margin:2px 0 0 60px; max-width:52ch; }
 .pdp-barcode-say.checking{ color:var(--pdp-dim); }
-.pdp-barcode-say.good{ color:var(--pdp-ok, #2dd4a8); }
-.pdp-barcode-say.bad{ color:var(--pdp-bad, #f87171); }
+.pdp-barcode-say.good{ color:var(--pdp-ok, var(--as-lit-2dd4a8-fg)); }
+.pdp-barcode-say.bad{ color:var(--pdp-bad, var(--as-lit-f87171-fg)); }
 /* The starting verdict (pdpBarcodeVerdict), before anything is typed. */
-.pdp-barcode-say .ok{ color:var(--pdp-ok, #2dd4a8); }
-.pdp-barcode-say .warn{ color:var(--gold, #e3b768); }
-.pdp-barcode-say .bad{ color:var(--pdp-bad, #f87171); }
+.pdp-barcode-say .ok{ color:var(--pdp-ok, var(--as-lit-2dd4a8-fg)); }
+.pdp-barcode-say .warn{ color:var(--gold, var(--as-lit-e3b768-fg)); }
+.pdp-barcode-say .bad{ color:var(--pdp-bad, var(--as-lit-f87171-fg)); }
 .pdp-barcode-say .ti{ font-size:11px; }
 /* "Showing Amazon's live copy..." -- one subtle line (pdpAmazonCopyNote). */
 .pdp-amznote{ display:flex; align-items:center; gap:5px; font-size:11px;
   color:var(--pdp-dim); padding:4px 8px; margin:6px 0 10px;
-  border:1px solid var(--pdp-line, #2a2f3a); border-radius:4px; }
+  border:1px solid var(--pdp-line, var(--as-lit-2a2f3a-bd)); border-radius:4px; }
 .pdp-amznote .ti{ font-size:13px; }
 
 /* SAFETY & COMPLIANCE: the four verdicts as badges, then the two groups
    (pdpSafetyTab). The colours are the rail's -- the same lsCheckStates. */
 .pdp-sbadges{ display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 12px; }
 .pdp-sbadge{ font-size:11px; font-weight:600; padding:3px 9px; border-radius:4px;
-  border:1px solid var(--pdp-line, #2a2f3a); color:var(--pdp-dim); }
-.pdp-sbadge.ok{ color:var(--pdp-ok, #2dd4a8); border-color:#2dd4a840; background:#2dd4a810; }
-.pdp-sbadge.warn{ color:var(--gold, #e3b768); border-color:#e3b76840; background:#e3b76810; }
-.pdp-sbadge.bad{ color:var(--pdp-bad, #f87171); border-color:#f8717140; background:#f8717110; }
+  border:1px solid var(--pdp-line, var(--as-lit-2a2f3a-bd)); color:var(--pdp-dim); }
+.pdp-sbadge.ok{ color:var(--pdp-ok, var(--as-lit-2dd4a8-fg)); border-color:color-mix(in srgb, var(--as-lit-2dd4a8-bd) 25.1%, transparent); background:color-mix(in srgb, var(--as-lit-2dd4a8-bg) 6.3%, transparent); }
+.pdp-sbadge.warn{ color:var(--gold, var(--as-lit-e3b768-fg)); border-color:color-mix(in srgb, var(--as-lit-e3b768-bd) 25.1%, transparent); background:color-mix(in srgb, var(--as-lit-e3b768-bg) 6.3%, transparent); }
+.pdp-sbadge.bad{ color:var(--pdp-bad, var(--as-lit-f87171-fg)); border-color:color-mix(in srgb, var(--as-lit-f87171-bd) 25.1%, transparent); background:color-mix(in srgb, var(--as-lit-f87171-bg) 6.3%, transparent); }
 .pdp-grp{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
   color:var(--pdp-dim); margin:10px 0 6px; }
-.pdp-grp.ref{ margin-top:18px; padding-top:12px; border-top:1px solid var(--pdp-line, #2a2f3a); }
+.pdp-grp.ref{ margin-top:18px; padding-top:12px; border-top:1px solid var(--pdp-line, var(--as-lit-2a2f3a-bd)); }
 
 .pdp-badges{ display:flex; gap:5px; margin-top:10px; flex-wrap:wrap; }
 .pdp-hb{
   font-size:9px; padding:2px 6px; border-radius:3px; font-weight:600;
   display:inline-flex; align-items:center; gap:4px;
 }
-.pdp-hb.live{   background:var(--pdp-green); color:#0a1628; }
-.pdp-hb.sent{   background:var(--pdp-warnbg); color:var(--pdp-warn); border:1px solid #41240235; }
+.pdp-hb.live{   background:var(--pdp-green); color:var(--as-lit-0a1628-fg); }
+.pdp-hb.sent{   background:var(--pdp-warnbg); color:var(--pdp-warn); border:1px solid color-mix(in srgb, var(--as-lit-412402-bd) 20.8%, transparent); }
 .pdp-hb.gen{    background:var(--pdp-raise); color:var(--pdp-link); border:1px solid var(--pdp-line); }
 .pdp-hb.queued,
 .pdp-hb.other{  background:var(--pdp-raise); color:var(--pdp-ink3); border:1px solid var(--pdp-line); }
@@ -894,11 +894,11 @@ body.pdp-on .chatwrap{ z-index:79; }
 
 .pdp-note{ font-size:12px; color:var(--pdp-dim); padding:10px 0; }
 .pdp-err{
-  background:var(--pdp-dangerbg); border:1px solid #6b2222;
+  background:var(--pdp-dangerbg); border:1px solid var(--as-lit-6b2222-bd);
   border-radius:8px; padding:14px 16px; margin:20px 24px;
 }
 .pdp-err b{ color:var(--pdp-danger); }
-.pdp-errmsg{ font-size:12px; color:#ffb3b3; margin:6px 0 8px; }
+.pdp-errmsg{ font-size:12px; color:var(--as-lit-ffb3b3-fg); margin:6px 0 8px; }
 .pdp-body{ max-width:900px; margin:0 auto; }
 
 /* ---- 7. THE ATTRIBUTES TABLE ------------------------------------------- */
@@ -912,8 +912,8 @@ body.pdp-on .chatwrap{ z-index:79; }
   border:1px solid var(--pdp-edge); background:transparent; color:var(--pdp-ink3);
   cursor:pointer; font-weight:500; font-family:inherit;
 }
-.pdp-af:hover{ border-color:#555; color:var(--pdp-ink2); }
-.pdp-af.active{ background:var(--pdp-accentbg); color:var(--pdp-link); border-color:rgba(45,212,191,.31); }
+.pdp-af:hover{ border-color:var(--as-lit-555555-bd); color:var(--pdp-ink2); }
+.pdp-af.active{ background:var(--pdp-accentbg); color:var(--pdp-link); border-color:color-mix(in srgb, var(--as-lit-2dd4bf-bd) 31%, transparent); }
 .pdp-af b{ font-weight:600; }
 
 /* ---- THE ATTRIBUTE ROWS ------------------------------------------------

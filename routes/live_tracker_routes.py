@@ -15,26 +15,10 @@ import domain.request_account as _req_acct
 def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
 
     def _scope():
-        aid = _req_acct.named(request)
-        if not aid:
-            aid = str((_state or {}).get("active_account_id", "") or "")
-        if not aid:
-            try:
-                aid = str((_active_account() or {}).get("id") or "")
-            except Exception:
-                aid = ""
-        mkt = (request.args.get("marketplace")
-               or _state.get("active_marketplace") or "").upper()
-        if aid and (not mkt or mkt == "__ALL__"):
-            for a in ((_cfg() or {}).get("accounts") or []):
-                if str(a.get("id") or "") == aid:
-                    mkt = str(a.get("default_marketplace") or "").upper()
-                    if not mkt:
-                        ms = [str(m).upper() for m in (a.get("marketplaces") or [])
-                              if str(m).upper() != "__ALL__"]
-                        mkt = ms[0] if ms else ""
-                    break
-        return aid, mkt
+        # The one copy: routes/scope.ads_account (shared with ppc_analytics_routes).
+        from routes import scope as _scope_mod
+        return _scope_mod.ads_account(request, state=_state, active_account=_active_account,
+                                      cfg=_cfg, req_acct=_req_acct)
 
     def _need(aid, mkt):
         if aid and mkt:

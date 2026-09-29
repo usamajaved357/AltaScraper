@@ -87,7 +87,11 @@ yes("  and so does one whose figure is missing",
 
 print("\n== the same rule, both places it is applied ==")
 yes("the daily row uses it", "_every_unit_costed = (u == 0) or (cu == u)" in SD)
-yes("  and the bucket sum uses it", "if units and costed != units:" in SD)
+# Re-pinned 28 Sep 2026: profit_for gained a named `allow_uncosted` for the
+# screens that carry their own too-high warning (Finance). The grid still uses
+# the default, which is this same all-or-nothing rule.
+yes("  and the bucket sum uses it",
+    "if units and costed != units and not allow_uncosted:" in SD)
 check("neither uses the old `and u` form",
       "and u and cu == u" in SD or "if not units or costed != units:" in SD, False)
 

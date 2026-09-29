@@ -28,12 +28,17 @@ THE FIXTURE BELOW IS THAT ITEM'S REAL RESPONSE, trimmed. Not invented: the whole
 point of Rule 4 is that the field names and shapes come from what the API
 actually sent.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import datetime as dt
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 

@@ -227,6 +227,26 @@ def unnamed_feature():
     return "call outside a request"
 
 
+def whose():
+    """The account a call is spent FOR.
+
+    The account the current REQUEST names comes first -- including the
+    internal requests the image and auto-fix workers make, which name their
+    job's account. CONTEXT is one value for the whole process, set by whichever
+    web request ran last, so a background batch for one account was billed to
+    whatever account someone was browsing (background-jobs audit, 28 Sep 2026).
+    Outside a request, CONTEXT as before.
+    """
+    try:
+        from domain.request_account import named_now
+        got = named_now()
+        if got:
+            return got
+    except Exception:
+        pass
+    return CONTEXT.get("workspace_id") or ""
+
+
 def set_context(feature=None, workspace_id=None, sku=None, config_path=None):
     """Say what is happening, so the next calls can be attributed to it.
 
@@ -279,7 +299,7 @@ def install_anthropic_recorder(config_path):
             # must not look free.
             record(cp, feature=CONTEXT.get("feature") or "unknown",
                    provider="anthropic", model=model,
-                   workspace_id=CONTEXT.get("workspace_id") or "",
+                   workspace_id=whose(),
                    ok=False, error=str(e)[:200],
                    sku=CONTEXT.get("sku") or "",
                    ms=int((time.time() - t0) * 1000))
@@ -287,7 +307,7 @@ def install_anthropic_recorder(config_path):
         i, o = tokens_from_anthropic(resp)
         record(cp, feature=CONTEXT.get("feature") or "unknown",
                provider="anthropic", model=model,
-               workspace_id=CONTEXT.get("workspace_id") or "",
+               workspace_id=whose(),
                input_tokens=i, output_tokens=o,
                sku=CONTEXT.get("sku") or "",
                ms=int((time.time() - t0) * 1000))

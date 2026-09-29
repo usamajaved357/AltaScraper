@@ -42,11 +42,8 @@ function asBuild() {
   AS.built = true;
   var w = document.createElement('div');
   w.id = 'aswrap';
-  w.style.cssText = 'position:fixed;right:18px;bottom:80px;width:430px;'
-    + 'max-width:calc(100vw - 36px);height:min(620px,calc(100vh - 140px));'
-    + 'display:none;flex-direction:column;background:var(--sidebar);'
-    + 'border:1px solid var(--accent-line);border-radius:14px;z-index:9600;'
-    + 'box-shadow:0 18px 50px rgba(0,0,0,.55);overflow:hidden';
+  // Placed by static/css/floating.css, above the whole button column, so an
+  // open panel never hides the runs badge or the product chat button.
   w.innerHTML =
     '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;'
     + 'border-bottom:1px solid var(--line2);background:var(--panel)">'
@@ -75,13 +72,13 @@ function asBuild() {
 
   var b = document.createElement('button');
   b.id = 'asfab';
-  b.textContent = '✦ Ask about this account';
+  // Placed and sized by static/css/floating.css, with the other two buttons
+  // that share the corner. Under 1100px the words are hidden and the ✦ stays,
+  // so the accessible name is set here rather than read off the text.
+  b.innerHTML = '<span aria-hidden="true">✦</span><span class="fl-tx">Ask about this account</span>';
+  b.setAttribute('aria-label', 'Ask about this account');
   b.title = 'Ask a question about this account’s sales, stock and profit';
   b.onclick = asToggle;
-  b.style.cssText = 'position:fixed;right:18px;bottom:22px;z-index:9599;'
-    + 'background:var(--accent-bg);border:1px solid var(--accent-line);color:var(--accent2);'
-    + 'border-radius:22px;padding:9px 16px;cursor:pointer;font-size:12.5px;'
-    + 'box-shadow:0 8px 24px rgba(0,0,0,.4)';
   document.body.appendChild(b);
 }
 
@@ -123,7 +120,7 @@ function asEmpty() {
        'Anything I need to do today?']
       .map(function (q) {
         return '<button onclick="asAsk(this.textContent)" style="background:'
-          + '#16203a;border:1px solid var(--accent-line);color:var(--accent2);border-radius:14px;'
+          + 'var(--as-lit-16203a-bg);border:1px solid var(--accent-line);color:var(--accent2);border-radius:14px;'
           + 'padding:5px 11px;cursor:pointer;font-size:11.5px">'
           + asEsc(q) + '</button>';
       }).join('')
@@ -151,7 +148,7 @@ function asRender() {
     }
     if (m.role === 'error') {
       return '<div style="margin:0 0 12px;background:var(--red-bg);border:1px solid '
-        + '#5c2a33;border-radius:10px;padding:9px 11px;color:var(--red)">'
+        + 'var(--as-lit-5c2a33-bd);border-radius:10px;padding:9px 11px;color:var(--red)">'
         + asEsc(m.text) + '</div>';
     }
     var trace = '';

@@ -74,7 +74,7 @@ function milesRun(reattach){
   // the backend detects the active run and replays its live log instead of starting a new one.
   const url = reattach ? "/miles/run"
               : ("/miles/run" + (skipDone && skipDone.checked ? "?skip_done=1" : "?skip_done=0"));
-  ES=new EventSource(url);
+  ES=new EventSource((typeof acctStreamUrl === "function") ? acctStreamUrl(url) : url);
   let _sawBusy=false, _sawErr=false;   // so we don't falsely toast "finished" on a busy/blocked run
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=true;
   const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;
@@ -83,7 +83,7 @@ function milesRun(reattach){
     if(e.data.startsWith("[error]")) _sawErr=true;
     if(!log) return;
     const div=document.createElement("div");
-    if(e.data.startsWith("[error]")) div.style.color="#ff8585";
+    if(e.data.startsWith("[error]")) div.style.color="var(--red)";
     else if(e.data.startsWith("[done]")) div.style.color="var(--ok)";
     else if(e.data.startsWith("[start]")) div.style.color="var(--accent2)";
     else if(e.data.indexOf("NOT_FOUND")>=0||e.data.indexOf("NEEDS_REVIEW")>=0) div.style.color="var(--warn)";
@@ -101,7 +101,7 @@ function milesRun(reattach){
   ES.onerror=()=>{if(ES){ES.close();ES=null;
     const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
     const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=true;
-    if(log){const d=document.createElement("div");d.style.color="#ff8585";d.textContent="[error] stream interrupted — check the app terminal for a Python traceback";log.appendChild(d);}
+    if(log){const d=document.createElement("div");d.style.color="var(--red)";d.textContent="[error] stream interrupted — check the app terminal for a Python traceback";log.appendChild(d);}
   }};
 }
 // ROBUST LIVE PROGRESS: poll the server every 2s so you always see where a run is --
@@ -150,7 +150,7 @@ function milesPollTick(){
         t.lines.forEach(function(ln){ const d=document.createElement("div");
           if(ln.indexOf("NOT_FOUND")>=0||ln.indexOf("NEEDS_REVIEW")>=0) d.style.color="var(--warn)";
           else if(ln.indexOf("WROTE draft")>=0) d.style.color="var(--ok)";
-          else if(ln.startsWith("[error]")) d.style.color="#ff8585";
+          else if(ln.startsWith("[error]")) d.style.color="var(--red)";
           d.textContent=ln; log.appendChild(d); });
         log.scrollTop=log.scrollHeight;
       }
@@ -222,13 +222,14 @@ function milesGenerate(){
   sessionStorage.setItem("mg_tab",   tab.trim());
   sessionStorage.setItem("mg_limit", (lim.trim() && parseInt(lim)>0) ? parseInt(lim).toString() : "");
   const qs=params.toString();
-  ES=new EventSource("/miles/generate"+(qs?"?"+qs:""));
+  const _gu = "/miles/generate"+(qs?"?"+qs:"");
+  ES=new EventSource((typeof acctStreamUrl === "function") ? acctStreamUrl(_gu) : _gu);
   const gb=document.getElementById("miles_genbtn"); if(gb) gb.disabled=true;
   const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;
   ES.onmessage=e=>{
     if(!log) return;
     const div=document.createElement("div");
-    if(e.data.startsWith("[error]")) div.style.color="#ff8585";
+    if(e.data.startsWith("[error]")) div.style.color="var(--red)";
     else if(e.data.startsWith("[done]")) div.style.color="var(--ok)";
     else if(e.data.startsWith("[start]")) div.style.color="var(--accent2)";
     div.textContent=e.data;
@@ -252,13 +253,14 @@ function milesOptimize(){
   if(sheet.trim()) params.set("sheet", sheet.trim());
   if(tab.trim())   params.set("tab",   tab.trim());
   const qs=params.toString();
-  ES=new EventSource("/miles/optimize"+(qs?"?"+qs:""));
+  const _ou = "/miles/optimize"+(qs?"?"+qs:"");
+  ES=new EventSource((typeof acctStreamUrl === "function") ? acctStreamUrl(_ou) : _ou);
   const ob=document.getElementById("miles_optbtn"); if(ob) ob.disabled=true;
   const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;
   ES.onmessage=e=>{
     if(!log) return;
     const div=document.createElement("div");
-    if(e.data.startsWith("[error]")) div.style.color="#ff8585";
+    if(e.data.startsWith("[error]")) div.style.color="var(--red)";
     else if(e.data.startsWith("[done]")) div.style.color="var(--ok)";
     else if(e.data.startsWith("[start]")) div.style.color="var(--accent2)";
     div.textContent=e.data;

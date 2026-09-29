@@ -109,6 +109,28 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
     #
     # A fixed monthly cost is a real cost and belongs in the P&L -- it is simply
     # not a RATE, and multiplying it by sales is not a way to charge it.
+    # OVER WHAT THE BUYER PAID, VAT INCLUDED -- principal plus the tax Amazon
+    # itemised beside it. Amazon charges its referral fee on the VAT-inclusive
+    # price, and the other two tiers of the fee rate are measured on that same
+    # base (amazon_fees.rate_from_orders: "15.0% of what the buyer paid and 18.0%
+    # of the principal, and only the first can be multiplied by a shelf price").
+    # This one divided by the principal alone, which on a VAT-registered account
+    # is the price WITHOUT VAT -- so jack_uk measured 17.5% where Amazon takes
+    # about 14.6% of the shelf price, and every listing priced on this fallback
+    # was charged a fifth too much in fees. Measured 28 Sep 2026. On accounts
+    # that are not VAT-registered the tax is nought and nothing changes.
+    #
+    # ONLY VAT, NEVER A SALES TAX. The tax column also carries US sales tax,
+    # which Amazon collects as marketplace facilitator and does NOT charge its
+    # referral fee on -- and which order_lines' revenue (the base the estimate
+    # is applied to) leaves out. So the tax is added only on an account that is
+    # VAT-registered. Found by the review of the profit work, 28 Sep 2026.
+    try:
+        from domain import unit_profit as _up
+        _vr = _up.account_vat_rate(config_path, workspace_id)
+        with_tax = _vr is not None and float(_vr) > 0
+    except Exception:
+        with_tax = False
     fees = principal = other = 0.0
     for r in (rows or {}).values():
         for k in ("referral_fees", "fba_fees"):
@@ -120,15 +142,17 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
             other += float(r.get("other_fees") or 0.0)
         except (TypeError, ValueError):
             pass
-        try:
-            principal += float(r.get("principal") or 0.0)
-        except (TypeError, ValueError):
-            pass
+        for k in (("principal", "tax") if with_tax else ("principal",)):
+            try:
+                principal += float(r.get(k) or 0.0)
+            except (TypeError, ValueError):
+                pass
 
     if principal >= MIN_PRINCIPAL_FOR_RATE and fees > 0:
         rate = round(fees / principal, 4)
         detail = ("%.1f%% -- referral and FBA fees Amazon actually charged this "
-                  "account on %.2f of settled sales since %s"
+                  "account on %.2f that buyers paid (VAT included where the "
+                  "account is VAT-registered) since %s"
                   % (rate * 100, principal, start.isoformat()))
         if other:
             # Named, not hidden. It is money that left the account and the owner
@@ -275,16 +299,130 @@ def for_lines(lines, rate, vat_rate=None, charge_of=None, promos_by_order=None):
     }
 
 
+def period_money(config_path, workspace_id, marketplace, start, end, rate,
+                 vat_rate=None, asin=None):
+    """The window's money on the ORDER calendar, summed. -> a dict.
+
+    THE ONE PLACE A PERIOD'S MONEY IS ADDED UP. The Sales Profit card, the P&L
+    and the Finance screen's account figure all come from here, because on 27
+    Sep 2026 they were four separate calculations and, for the same seven units
+    on jack_uk, reported 64.70, 80.76, 64.43 and 50.19 (CLAUDE.md Rule 12).
+
+    Built from the two shared pieces that already existed:
+      order_finance.complete_by_order_date  every order placed in the window --
+                                            Amazon's own fees, VAT and coupons
+                                            once settled, the account's measured
+                                            fee rate until then -- and refunds
+                                            on the day the money went back
+      sales_data.net_proceeds_for           what was kept out of it
+    """
+    from domain import order_finance as _of
+    from domain import sales_data as _sd
+
+    # ONE PRODUCT, when the screen is filtered to one: the same function cut by
+    # product, so a filtered Profit card is that product's figure -- its own
+    # orders, its own refunds -- rather than the account's minus that product's
+    # ad spend, which is what it read when the filter was ignored here.
+    if asin:
+        per = _of.complete_by_order_date(config_path, workspace_id, marketplace,
+                                         start, end, fee_rate=rate,
+                                         vat_rate=vat_rate, group="asin")
+        days = {asin: per[asin]} if asin in per else {}
+    else:
+        days = _of.complete_by_order_date(config_path, workspace_id, marketplace,
+                                          start, end, fee_rate=rate,
+                                          vat_rate=vat_rate)
+    money_keys = ("referral_fees", "fba_fees", "other_fees", "promo_fees",
+                  "principal", "tax", "refunds", "refund_tax",
+                  "refund_fees_returned", "reimbursements", "promos",
+                  "fees_estimated", "revenue_fee_unknown", "charges")
+    count_keys = ("refund_units", "orders_settled", "orders_estimated",
+                  "orders_fee_unknown", "orders_vat_derived")
+    tot = {k: 0.0 for k in money_keys}
+    tot.update({k: 0 for k in count_keys})
+    cur = ""
+    for d in days.values():
+        for k in money_keys:
+            tot[k] += float(d.get(k) or 0.0)
+        for k in count_keys:
+            tot[k] += int(d.get(k) or 0)
+        cur = cur or d.get("currency") or ""
+    tot = {k: (round(v, 2) if isinstance(v, float) else v) for k, v in tot.items()}
+
+    # `tax` is always present here, so net_proceeds_for takes it as the VAT and
+    # `principal` as what is left -- complete_by_order_date has already decided,
+    # order by order, whether Amazon itemised it or it had to be taken out.
+    m = _sd.net_proceeds_for(tot, vat_rate)
+    out = dict(tot)
+    out.update({
+        "currency": cur,
+        "revenue": round(tot["principal"] + tot["tax"], 2),   # what buyers paid
+        "vat": round(tot["tax"], 2),
+        "net_revenue": round(tot["principal"], 2),
+        "fees": round(float(m["total_fees"] or 0.0), 2),
+        "fees_actual": round(float(m["total_fees"] or 0.0)
+                             - tot["fees_estimated"], 2),
+        "net_proceeds": (m["net_proceeds"] if m["net_proceeds"] is not None
+                         else round(tot["principal"], 2)),
+    })
+
+    # WHICH VAT THIS IS. Named with sales_data's four words so every screen
+    # explains it the same way.
+    unsettled = tot["orders_estimated"] + tot["orders_fee_unknown"]
+    try:
+        r = None if vat_rate in (None, "") else float(vat_rate)
+    except (TypeError, ValueError):
+        r = None
+    if r is None:
+        # Nobody has said whether this account is registered. Amazon's own tax
+        # lines have been taken out where it sent them; anything it has not
+        # settled, or settled without a tax line, cannot be known.
+        vb = (_sd.VAT_UNKNOWN if (unsettled or not tot["tax"]) and tot["principal"]
+              else _sd.VAT_FROM_AMAZON)
+    elif r == 0:
+        vb = _sd.VAT_FROM_AMAZON if tot["tax"] else _sd.VAT_NONE
+    else:
+        vb = (_sd.VAT_DERIVED if (unsettled or tot["orders_vat_derived"])
+              else _sd.VAT_FROM_AMAZON)
+    out["vat_basis"] = vb
+    return out
+
+
 def for_period(config_path, workspace_id, marketplace, start, end,
                overrides=None, vat_rate=None, ads_connected=False,
-               ad_spend=0.0, revenue=None, units=None):
+               ad_spend=0.0, revenue=None, units=None, asin=None):
     """Profit on orders PLACED between two dates, from the seller's own costs.
 
     Returns the figure, how the fee rate was arrived at, and what it does not
     cover -- so the screen can state all three rather than showing a number and
     hoping.
+
+    THE HEADLINE PROFIT, and the P&L and the Finance screen report this same
+    figure (see period_money). What goes into it:
+
+        sales after VAT            at the account's VAT setting
+      - Amazon's fees              settled where Amazon has settled, the
+                                   account's measured rate where it has not
+      - coupons you funded
+      - refunds                    on the day the money went back
+      + fees returned on refunds, + reimbursements
+      - stock cost                 frozen onto each order; an uncosted unit is
+                                   counted as nothing and the figure SAYS so
+      - your per-product charges   (asin_charges)
+      - advertising                every pound measured, once it is connected
+
+    `revenue` and `units` are what the screen's own cards show. They are no
+    longer used to recompute the figure: the money now comes from the same
+    order rows the cards are built from. If they ever disagree, the reply says
+    so instead of quietly re-basing the fees on a different set of trade.
+
+    `asin` narrows everything to one product, for a screen filtered to it --
+    and then `ad_spend` must be that product's spend, which is what the Sales
+    screen passes.
     """
     lines = lines_between(config_path, workspace_id, marketplace, start, end)
+    if asin:
+        lines = [L for L in lines if str(L.get("asin") or "") == str(asin)]
     rate, basis, detail = fee_rate(config_path, workspace_id, marketplace, end)
 
     def _charge_of(asin, sku, on_date):
@@ -292,93 +430,118 @@ def for_period(config_path, workspace_id, marketplace, start, end,
         return _ac.per_unit(config_path, workspace_id, marketplace, asin,
                             sku=sku, on_date=on_date)
 
-    # WHAT EACH ORDER'S COUPON COST, keyed by order id so it lands on the
-    # ORDER's calendar rather than the settlement's. order_fees already holds it
-    # per order; only settled orders have one, which is correct -- an unsettled
-    # order has not had its promotion reported yet, and inventing one would be a
-    # guess. Never fatal: a missing table means no promotions, not no profit.
-    promos_by_order = {}
+    # The LINES answer what only they know: what the stock cost, which units
+    # have no cost, the owner's own per-product charges, goods versus postage.
+    # Their money arithmetic is not used -- period_money owns that.
+    out = for_lines(lines, rate if rate is not None else 0.0,
+                    vat_rate=vat_rate, charge_of=_charge_of)
+    lines_revenue = out["revenue"]     # what the order rows say buyers paid
+    money = period_money(config_path, workspace_id, marketplace, start, end,
+                         rate, vat_rate, asin=asin)
+
+    ads = (round(float(ad_spend or 0), 2) if ads_connected else None)
+    # The per-unit charges come from period_money, the same figure the Sales
+    # grid and the Finance rows subtract (order_finance works them out once).
+    out["charges"] = money["charges"]
+    profit = round(money["net_proceeds"] - out["cogs"] - money["charges"]
+                   - (ads or 0.0), 2)
+    net_rev = money["net_revenue"]
+    out.update({
+        "profit": profit,
+        # PROFIT OVER SALES AFTER VAT, on every screen.
+        "margin_pct": round(profit / net_rev * 100, 1) if net_rev else None,
+        "revenue": money["revenue"],
+        "vat": (None if money["vat_basis"] == "unknown" and not money["vat"]
+                else money["vat"]),
+        "vat_basis": money["vat_basis"],
+        "net_revenue": net_rev,
+        "fees": money["fees"],
+        "fees_actual": money["fees_actual"],
+        "fees_estimated": money["fees_estimated"],
+        "promo_fees": money["promo_fees"],
+        "promos": money["promos"],
+        "refunds": money["refunds"],
+        "refund_units": money["refund_units"],
+        "refund_fees_returned": money["refund_fees_returned"],
+        "reimbursements": money["reimbursements"],
+        "net_proceeds": money["net_proceeds"],
+        "orders_settled": money["orders_settled"],
+        "orders_estimated": money["orders_estimated"],
+        "orders_fee_unknown": money["orders_fee_unknown"],
+        "revenue_fee_unknown": money["revenue_fee_unknown"],
+        "currency": money["currency"],
+    })
+
+    # THE CARD'S OWN REVENUE, compared rather than substituted -- against what
+    # the ORDER ROWS say buyers paid, which is what the card is built from
+    # (live_reconcile.from_lines). Not against Amazon's settled principal plus
+    # tax: that legitimately differs on fully refunded and cross-border orders
+    # (sales_data.series says so), and comparing with it would leave a "press
+    # Sync" note that never goes away. A difference here means the two stores
+    # have drifted, which must be visible -- it is how "Total Sales 1,248,
+    # Profit 1,728" happened.
     try:
-        from data import db as _db
-        conn = _db.get_db(config_path)
-        for r in conn.execute(
-                "SELECT order_id, SUM(promos) p FROM order_fees "
-                "WHERE workspace_id=? AND marketplace=? AND IFNULL(promos,0) <> 0 "
-                "GROUP BY order_id", (workspace_id, marketplace)):
-            promos_by_order[str(r["order_id"])] = float(r["p"] or 0.0)
-    except Exception:
-        promos_by_order = {}
+        if (revenue is not None and not asin
+                and abs(float(revenue) - float(lines_revenue)) > 0.01):
+            out["revenue_note"] = (
+                "The orders behind this profit come to %.2f, and the sales "
+                "figure on screen is %.2f. They are built from the same orders, "
+                "so the gap means one of them has not caught up yet -- press "
+                "Sync." % (float(lines_revenue), float(revenue)))
+    except (TypeError, ValueError):
+        pass
 
-    out = for_lines(lines, rate, vat_rate=vat_rate, charge_of=_charge_of,
-                    promos_by_order=promos_by_order)
-
-    # REVENUE COMES FROM THE FIGURE ON THE CARD, not from a second derivation.
-    #
-    # This used to add up order_lines itself. order_lines and sales_daily are
-    # filled by different passes over different windows, so on a live account
-    # they drifted -- and profit was worked out over MORE trade than sales was,
-    # which produced "Total Sales 1,248, Profit 1,728". Profit exceeding revenue
-    # is not a rounding fault, it is two different questions on one row.
-    #
-    # Given the revenue the screen is showing, everything is recomputed against
-    # it, so the two cannot disagree by construction. The lines are still used
-    # for what only they know: what the stock cost, and which units have no cost.
-    if revenue is not None:
-        try:
-            rev = round(float(revenue), 2)
-        except (TypeError, ValueError):
-            rev = out["revenue"]
-        vat = 0.0
-        if vat_rate:
-            try:
-                r = float(vat_rate)
-                if 0 < r < 1:
-                    vat = round(rev * r / (1.0 + r), 2)
-            except (TypeError, ValueError):
-                vat = 0.0
-        net = round(rev - vat, 2)
-        fees = round(net * float(rate), 2)
-        # The promotion is subtracted here too. This branch recomputes profit
-        # against the revenue the CARD is showing, and it used to drop every
-        # deduction the first pass had worked out except cogs and charges -- so
-        # on any window the screen supplied a revenue for, the coupon came back.
-        profit = round(net - fees - out["cogs"] - out["charges"]
-                       - float(out.get("promos") or 0.0), 2)
-        out.update({
-            "revenue": rev, "vat": vat, "net_revenue": net, "fees": fees,
-            "profit": profit,
-            "margin_pct": round(profit / net * 100, 1) if net else None,
-            # The unit count the screen is showing, so "x of y units have no
-            # cost" counts against the same y the owner can see.
-            "units": int(units) if units is not None else out["units"],
-        })
-        _u = out["units"] or 0
-        _missing = max(0, _u - int(out["costed_units"] or 0))
-        out["missing_units"] = _missing
-        out["complete"] = (_missing == 0 and _u > 0)
-        out["warning"] = ("" if not _missing else
-                          "%d of %d units have no cost recorded, so nothing was "
-                          "subtracted for them and this profit is HIGHER than "
-                          "the truth. Set a cost on those products to fix it."
-                          % (_missing, _u))
+    notes = []
+    if out.get("warning"):
+        notes.append(out["warning"])
+    if money["orders_fee_unknown"]:
+        notes.append(
+            "%d order(s) worth %.2f have NO fee in this figure: the account has "
+            "no measured fee rate yet, so the fee was left out rather than "
+            "guessed. Profit is higher than the truth by whatever Amazon "
+            "charges." % (money["orders_fee_unknown"],
+                          money["revenue_fee_unknown"]))
+    if money["vat_basis"] == "unknown":
+        notes.append(
+            "No VAT rate is set for this account, so VAT has only been taken "
+            "out where Amazon itemised it. If the account is VAT-registered, "
+            "this profit is too high. Set the rate on the account.")
+    if out.get("revenue_note"):
+        notes.append(out["revenue_note"])
+    # A PER-PRODUCT CHARGE THAT LOOKS LIKE ADVERTISING, beside measured ad
+    # spend. asin_charges was where a hand-allocated ad figure went while the
+    # Ads API was not connected; once it is, both come off and the same money
+    # is subtracted twice. Not decided here -- the label is the owner's own
+    # words -- only said, so he can remove whichever one he no longer wants.
+    if ads_connected and ads:
+        _adlike = [p["label"] for p in (out.get("charge_parts") or [])
+                   if any(w in str(p.get("label") or "").lower()
+                          for w in ("advert", "ppc", "sponsored", " ads", "ads "))
+                   or str(p.get("label") or "").strip().lower() in ("ad", "ads")]
+        if _adlike:
+            notes.append(
+                "Your per-product charges include %s, which looks like an "
+                "advertising allowance -- and the advertising Amazon measured is "
+                "also taken off. If both are the same money, remove the "
+                "allowance on the product so it is not counted twice."
+                % ", ".join('"%s"' % x for x in _adlike[:3]))
+    out["notes"] = notes
 
     # AD SPEND ONLY WHEN IT IS KNOWN. Asked for: build it the way Orbit does --
     # subtracted once the Advertising API is connected, and nothing subtracted
     # at all while it is not. A guessed ad figure would move profit more than
     # anything else on this screen.
     out["ads_connected"] = bool(ads_connected)
-    out["ad_spend"] = round(float(ad_spend or 0), 2) if ads_connected else None
-    if ads_connected and ad_spend:
-        out["profit"] = round(out["profit"] - float(ad_spend), 2)
-        out["margin_pct"] = (round(out["profit"] / out["net_revenue"] * 100, 1)
-                             if out["net_revenue"] else None)
+    out["ad_spend"] = ads
 
     out.update({
         "rate": rate, "rate_basis": basis, "rate_detail": detail,
         "start": start, "end": end, "basis": "order",
         "vat_rate": vat_rate,
         "note": ("Worked out from your own cost prices, because Amazon reports "
-                 "no profit against an order until it settles. Fees: " + detail
+                 "no profit against an order until it settles. Fees: Amazon's "
+                 "own where it has settled the order, otherwise " + detail
+                 + ". Refunds are counted on the day the money went back."
                  + ("" if ads_connected else
                     " Advertising is not connected, so no ad spend is "
                     "subtracted.")),

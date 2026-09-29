@@ -623,6 +623,24 @@ CREATE INDEX IF NOT EXISTS idx_tracking_order
 CREATE INDEX IF NOT EXISTS idx_tracking_status
     ON order_tracking(workspace_id, status);
 
+-- "I bought this one from the supplier": a record a PERSON makes, never a
+-- purchase the app makes. Holds no money -- what the order cost is the order
+-- line's cost (order_lines.cogs, domain/order_cogs), one place (Rule 12).
+CREATE TABLE IF NOT EXISTS order_purchases (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id    TEXT NOT NULL,
+    marketplace     TEXT NOT NULL,
+    order_id        TEXT NOT NULL,
+    supplier        TEXT,                -- as the person wrote it
+    supplier_url    TEXT,
+    supplier_ref    TEXT,                -- the supplier's own order number
+    note            TEXT,
+    bought_at       TEXT,
+    bought_by       TEXT                 -- job_owner.label; "" = shared-password owner
+);
+CREATE INDEX IF NOT EXISTS idx_purchases_order
+    ON order_purchases(workspace_id, marketplace, order_id);
+
 CREATE TABLE IF NOT EXISTS buyer_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,
@@ -1406,6 +1424,36 @@ CREATE TABLE IF NOT EXISTS live_mirror (
     synced_at     REAL NOT NULL,          -- epoch seconds of the Amazon read
     PRIMARY KEY (workspace_id, marketplace, sku)
 );
+
+-- WHO DID WHAT: the one application-wide activity/audit log (Employee
+-- Performance, 29 Sep 2026). One row per MEANINGFUL business action -- a draft
+-- created, a listing edited, images generated, a file uploaded, a price or
+-- tracking pushed, a PPC change -- whether it worked or not. Reads and clicks
+-- are never recorded. `detail` is redacted JSON: never a password, key, token
+-- or credential. Kept for ever (deleting audit rows is the owner's call).
+-- domain/activity.py is the only writer and reader.
+CREATE TABLE IF NOT EXISTS activity_log (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts            REAL NOT NULL,          -- epoch seconds
+    user_id       TEXT,                   -- auth user id; "" = shared-password owner / system
+    user_label    TEXT,                   -- name or email AT THE TIME (survives deletion)
+    workspace_id  TEXT,                   -- the account the work was in; "" = not account work
+    marketplace   TEXT,
+    category      TEXT,                   -- listings | images | files | amazon | ...
+    action        TEXT,                   -- e.g. listing.edit, image.generate
+    entity_type   TEXT,                   -- sku | order | upload | campaign | user | ...
+    entity_id     TEXT,
+    entity_count  INTEGER,                -- how many things one action touched
+    summary       TEXT,                   -- one human-readable sentence
+    ok            INTEGER NOT NULL DEFAULT 1,
+    http_status   INTEGER,
+    detail        TEXT,                   -- redacted JSON
+    method        TEXT,
+    path          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log(ts);
+CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id, ts);
+CREATE INDEX IF NOT EXISTS idx_activity_ws ON activity_log(workspace_id, ts);
 """
 
 

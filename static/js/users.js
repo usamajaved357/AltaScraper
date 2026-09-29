@@ -137,7 +137,7 @@ function can(perm){
 // the area it used to name (auth/users.py FEATURE_PARENT), so an account with
 // nothing set behaves exactly as it did before.
 const SECTION_FEATURE = {
-  listings:"listings", generate:"generate", sync:"sync", variations:"variations",
+  home:"listings", listings:"listings", generate:"generate", sync:"sync", variations:"variations",
   sellerimport:"sellerimport", miles:"miles",
   imagestudio:"imagestudio", imagerefs:"imagerefs", imagelib:"imagelib",
   inventory:"inventory", sourcing:"repricer",
@@ -174,6 +174,12 @@ const SECTION_FEATURE = {
   // time -- which is why both of these were missed. test_permission_coverage.py
   // now fails on an unmapped section rather than leaving it to be noticed.
   brief:"brief", permissions:"permissions",
+  // Team (29 Sep 2026) is listed for the coverage test, but it is decided by
+  // SECTION_PERMISSION below (manage_users), not by this page level.
+  team:"permissions",
+  // Employee Performance: listed for the coverage test; decided by
+  // SECTION_PERMISSION (view_activity), like /activity in auth/guard.py.
+  performance:"permissions",
   // Phase 1 analytics. Mapped ON ARRIVAL rather than left to be noticed later:
   // an unmapped section is never hidden, and that default is what let /brief
   // show revenue to a user with sales="none". These read Brand Analytics --
@@ -195,6 +201,22 @@ function featureLevel(feat){
   const f = (ME.features || {});
   const v = f[feat];
   return (v === undefined || v === null || v === "") ? "edit" : String(v);
+}
+
+// SCREENS THE SERVER GATES BY A PERMISSION, NOT A PAGE LEVEL. auth/guard.py
+// keeps /users/* to manage_users and nothing else, so Team follows exactly that:
+// somebody given "manage users" gets Team even if their "accounts" area is none
+// (a lister's preset), and somebody without it never sees Team, whatever their
+// page levels say. Listed here, a section ignores SECTION_FEATURE.
+const SECTION_PERMISSION = { team: "manage_users", performance: "view_activity" };
+
+// The one answer to "what may this person do with this screen":
+// "none" / "view" / "edit", or "" when the section is not mapped at all.
+function sectionLevel(sec){
+  const p = SECTION_PERMISSION[sec];
+  if(p) return can(p) ? "edit" : "none";
+  const feat = SECTION_FEATURE[sec];
+  return feat ? featureLevel(feat) : "";
 }
 
 // HIDDEN, NOT DIMMED.
@@ -240,9 +262,7 @@ function featureLevel(feat){
 function maySeeSection(sec){
   try{
     if(typeof ME === "undefined" || !ME) return true;   // before /users/me lands
-    const feat = SECTION_FEATURE[sec];
-    if(!feat) return true;                              // unmapped -> not a ban
-    return featureLevel(feat) !== "none";
+    return sectionLevel(sec) !== "none";                // "" is unmapped -> not a ban
   }catch(e){ return true; }
 }
 
@@ -251,9 +271,7 @@ function applyPermissionsToUI(){
 
   // 1. Whole sections the person has no access to.
   document.querySelectorAll(".navitem[data-sec]").forEach(function(el){
-    const feat = SECTION_FEATURE[el.dataset.sec];
-    if(!feat) return;
-    if(featureLevel(feat) === "none"){
+    if(sectionLevel(el.dataset.sec) === "none"){
       el.style.display = "none";
       el.setAttribute("data-hidden-by-permission", "1");
     }
@@ -285,13 +303,16 @@ function applyPermissionsToUI(){
   //    different thing from having no access, and conflating them would hide
   //    screens from people who are meant to read them.
   document.querySelectorAll("[data-sec]").forEach(function(el){
-    const feat = SECTION_FEATURE[el.dataset.sec];
-    if(feat && featureLevel(feat) === "view") el.setAttribute("data-readonly", "1");
+    if(sectionLevel(el.dataset.sec) === "view") el.setAttribute("data-readonly", "1");
   });
 }
 
 // ---- the admin screen ---------------------------------------------------
 function openUsers(){
+  // TEAM IS THE PLACE NOW (29 Sep 2026): the Users button opens the Team
+  // screen, which renderUsers below draws into. The modal is kept only for a
+  // page without the Team screen.
+  if(document.getElementById("sec_team") && typeof navTo === "function"){ navTo("team"); return; }
   const m = document.getElementById("usersmodal");
   if(m) m.classList.add("open");
   renderUsers();
@@ -301,20 +322,67 @@ function closeUsers(){
   if(m) m.classList.remove("open");
 }
 
+// WHICH ACCOUNTS AND MARKETPLACES a person can reach, in words. Marketplaces
+// are DERIVED from the accounts: there is no per-person marketplace limit in
+// auth/ (see docs/decisions.md, Team) -- this only says what their accounts cover.
+//
+// ACCOUNTS is only what the VIEWER may open (/accounts/list), so it can never be
+// the whole truth about somebody else: an id it does not know is shown as the
+// raw id, never dropped, and the marketplaces line says when it cannot see all
+// of that person's accounts. A marketplace counts only when it is in the
+// account's own list -- the same test enterAccount applies to its default.
+function _teamAccess(u){
+  const accounts = (typeof ACCOUNTS !== "undefined" && ACCOUNTS) ? ACCOUNTS : [];
+  const byId = {};
+  accounts.forEach(function(a){ byId[a.id] = a; });
+  const ws = u.workspaces || [];
+  const all = ws.indexOf("*") >= 0;
+  const viewerAll = (typeof ME === "undefined" || !ME)
+                 || (ME.workspaces || []).indexOf("*") >= 0;
+  const known = all ? accounts : ws.filter(function(id){ return byId[id]; }).map(function(id){ return byId[id]; });
+  const unknown = all ? [] : ws.filter(function(id){ return !byId[id]; });
+  const mk = {};
+  known.forEach(function(a){
+    (a.marketplaces || []).forEach(function(m){ m = String(m||"").trim().toUpperCase(); if(m) mk[m] = 1; });
+  });
+  const names = all ? "all accounts (including any added later)"
+    : (known.map(function(a){ return a.label || a.id; }).concat(unknown).join(", ") || "none");
+  let mkts = Object.keys(mk).sort().join(", ");
+  if((all && !viewerAll) || unknown.length){
+    mkts = (mkts ? mkts + ", " : "") + "plus any on accounts you cannot open";
+  }
+  return {accounts: names, marketplaces: mkts || "—"};
+}
+
+function _teamWhen(ts){
+  if(!ts) return "never";
+  try{ const d = new Date(Number(ts) * 1000); return isNaN(d) ? "—" : d.toLocaleString(); }
+  catch(e){ return "—"; }
+}
+
 async function renderUsers(){
-  const body = document.getElementById("usersbody");
+  // The Team screen when it is on the page, else the old modal's body.
+  const body = document.getElementById("teambody") || document.getElementById("usersbody");
   if(!body) return;
+  // The Team summary counts the drawn rows, so re-running the filter after the
+  // body changes clears it while loading and on an error -- a failure never sits
+  // under counts that look current.
+  const _sync = function(){ if(typeof teamFilter === "function") teamFilter(); };
   body.innerHTML = '<div class="cc" style="padding:16px"><span class="genspin"></span> Loading…</div>';
+  _sync();
   let j;
   try{ j = await (await fetch("/users/list")).json(); }
-  catch(e){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load users: '+_uesc(String(e))+'</div>'; return; }
+  catch(e){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load users: '+_uesc(String(e))+'</div>'; _sync(); return; }
   if(!j || !j.ok){
     body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_uesc((j&&j.error)||"Could not load users")+'</div>';
+    _sync();
     return;
   }
   _setMeta(j);
 
-  let h = '<div style="font-weight:600;font-size:15px;margin-bottom:2px">Users &amp; permissions</div>';
+  // The Team screen has its own heading; this one is for the old modal only.
+  let h = body.id === "teambody" ? ""
+        : '<div style="font-weight:600;font-size:15px;margin-bottom:2px">Users &amp; permissions</div>';
 
   if(j.bootstrap){
     h += '<div class="cc" style="font-size:12px;margin:6px 0 12px;padding:8px 10px;'
@@ -342,22 +410,24 @@ async function renderUsers(){
       return '<span class="db-chip" style="font-size:10px;padding:1px 6px">'
            + _uesc((USERS_META.all_permissions[p]||p).split(",")[0]) + '</span>';
     }).join(" ") || '<span class="cc" style="font-size:11px">read only</span>';
-    const ws = (u.workspaces||[]).indexOf("*")>=0
-      ? "all workspaces"
-      : (u.workspaces||[]).join(", ");
-    let state = "";
-    if(!u.active)            state = '<span style="color:var(--warn)">disabled</span>';
-    else if(u.invite_expired) state = '<span style="color:var(--red)">invite expired</span>';
-    else if(u.pending_invite) state = '<span style="color:var(--warn)">invite not accepted</span>';
-    else                      state = '<span style="color:var(--ok)">active</span>';
+    let state = "", skey = "active";
+    if(!u.active)            { state = '<span style="color:var(--warn)">disabled</span>'; skey = "disabled"; }
+    else if(u.invite_expired){ state = '<span style="color:var(--red)">invite expired</span>'; skey = "expired"; }
+    else if(u.pending_invite){ state = '<span style="color:var(--warn)">invite not accepted</span>'; skey = "invited"; }
+    else                       state = '<span style="color:var(--ok)">active</span>';
+    const acc = _teamAccess(u);
 
-    h += '<tr><td style="padding:9px 6px;border-top:1px solid var(--line2)">'
+    h += '<tr data-team-id="'+_uesc(u.id)+'" data-team-state="'+skey+'" data-team-search="'
+      +  _uesc(((u.name||"")+" "+(u.email||"")).toLowerCase())+'">'
+      +  '<td style="padding:9px 6px;border-top:1px solid var(--line2)">'
       +  '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
       +  '<div style="flex:1;min-width:190px">'
       +    '<div style="font-weight:600;font-size:13px">'+_uesc(u.name||u.email)+'</div>'
       +    '<div class="cc" style="font-size:11px">'+_uesc(u.email)+' · '+_uesc(u.role)+' · '+state+'</div>'
       +    '<div style="margin-top:5px">'+perms+'</div>'
-      +    '<div class="cc" style="font-size:11px;margin-top:4px">Workspaces: '+_uesc(ws)+'</div>'
+      +    '<div class="cc" style="font-size:11px;margin-top:4px">Accounts: '+_uesc(acc.accounts)
+      +      ' · Marketplaces: '+_uesc(acc.marketplaces)+'</div>'
+      +    '<div class="cc" style="font-size:11px;margin-top:2px">Last signed in: '+_uesc(_teamWhen(u.last_login))+'</div>'
       +  '</div>'
       +  '<div style="display:flex;gap:6px;flex-wrap:wrap">'
       +    '<button class="db-chip" onclick="userEdit('+_uarg(u.id)+')">Edit</button>'
@@ -377,9 +447,9 @@ async function renderUsers(){
   h += '<div style="margin-top:18px;border-top:1px solid var(--line2);padding-top:14px">'
     +  '<div style="font-weight:600;font-size:13px;margin-bottom:8px">Add a person</div>'
     +  '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
-    +    '<input class="rc-in" id="nu_email" placeholder="their@email.com" style="flex:1;min-width:200px;margin:0">'
-    +    '<input class="rc-in" id="nu_name"  placeholder="Name (optional)" style="flex:1;min-width:140px;margin:0">'
-    +    '<select class="rc-in" id="nu_role" style="width:auto;margin:0" onchange="userRolePreset()">'
+    +    '<input class="rc-in" id="nu_email" aria-label="Email address" placeholder="their@email.com" style="flex:1;min-width:200px;margin:0">'
+    +    '<input class="rc-in" id="nu_name" aria-label="Name" placeholder="Name (optional)" style="flex:1;min-width:140px;margin:0">'
+    +    '<select class="rc-in" id="nu_role" aria-label="Role" style="width:auto;margin:0" onchange="userRolePreset()">'
     +      Object.keys(USERS_META.roles).map(function(r){
              return '<option value="'+_uesc(r)+'"'+(r==="lister"?" selected":"")+'>'+_uesc(r)+'</option>'; }).join("")
     +    '</select>'
@@ -404,6 +474,7 @@ async function renderUsers(){
     +  '</div>';
 
   body.innerHTML = h;
+  _sync();
 }
 
 // Per-feature access, the way Amazon's child accounts work: each area is None,
@@ -440,6 +511,7 @@ function featureRows(prefix, current){
     return '<div style="display:flex;align-items:center;gap:8px;font-size:12px'
       + (isChild ? ';padding-left:14px' : ';font-weight:600') + '">'
       + '<select class="'+prefix+'_feat" data-feat="'+_uesc(k)+'" '
+      +   'aria-label="Access to '+_uesc(F[k])+'" '
       +   'style="width:132px;padding:3px 6px;font-size:12px">'
       +   (isChild ? opt("", "Inherit (" + _uesc(parent[k]) + ")") : "")
       +   opt("none","No access") + opt("view","View only") + opt("edit","View &amp; edit")
@@ -472,14 +544,10 @@ function featureRows(prefix, current){
         + (feats.length !== 1 ? 's' : '') + '</span>'
         + '<span class="permgrp-set">'
         + '<span class="cc">set all:</span>'
-        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
-        +   gid + '\',\'none\')">No access</button>'
-        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
-        +   gid + '\',\'view\')">View</button>'
-        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
-        +   gid + '\',\'edit\')">Edit</button>'
-        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
-        +   gid + '\',\'\')" title="Let every page in this group follow its area again">Inherit</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(' + jsArg(gid) + ',\'none\')">No access</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(' + jsArg(gid) + ',\'view\')">View</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(' + jsArg(gid) + ',\'edit\')">Edit</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(' + jsArg(gid) + ',\'\')" title="Let every page in this group follow its area again">Inherit</button>'
         + '</span></div>';
       return '<div class="permgroup" data-gid="' + gid + '">' + head + rows + '</div>';
     }).join("");
@@ -549,20 +617,24 @@ function _collect(prefix, attr, cls){
     .map(function(c){ return c.getAttribute(attr); });
 }
 
-function userRolePreset(){
-  const role = (document.getElementById("nu_role")||{}).value || "lister";
+// ONE role preset for both forms: the add form (prefix "nu") and one person's
+// editor (prefix "ue"+id). Nothing is stored until Create / Save.
+function _rolePreset(prefix, selectId, fallback){
+  const role = (document.getElementById(selectId)||{}).value || fallback;
   const preset = (USERS_META.roles||{})[role] || [];
-  document.querySelectorAll(".nu_perm").forEach(function(c){
+  document.querySelectorAll("."+prefix+"_perm").forEach(function(c){
     c.checked = preset.indexOf(c.getAttribute("data-perm")) >= 0;
   });
   // Roles preset the AREA access too, so picking "lister" hides PPC and
   // credentials without anyone having to know that is what a lister means.
   const fpre = (USERS_META.role_features||{})[role] || {};
-  document.querySelectorAll(".nu_feat").forEach(function(s){
+  document.querySelectorAll("."+prefix+"_feat").forEach(function(s){
     const k = s.getAttribute("data-feat");
     if(fpre[k]) s.value = fpre[k];
   });
 }
+
+function userRolePreset(){ _rolePreset("nu", "nu_role", "lister"); }
 
 async function userCreate(){
   const email = ((document.getElementById("nu_email")||{}).value||"").trim();
@@ -625,6 +697,16 @@ function userEdit(id){
     if(!u) return;
     host.innerHTML =
         '<div style="margin:8px 0 4px;padding:10px;border:1px solid var(--line2);border-radius:6px">'
+      // NAME AND ROLE were fixed after creation (the server always accepted
+      // them). Picking a role presets the boxes below, as it does when adding
+      // someone; nothing is stored until Save.
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+      +   '<label class="cc" style="font-size:11.5px">Name <input class="rc-in" id="uename_'+_uesc(id)+'" value="'+_uesc(u.name||"")+'" style="margin:0;width:180px"></label>'
+      +   '<label class="cc" style="font-size:11.5px">Role <select class="rc-in" id="uerole_'+_uesc(id)+'" style="margin:0;width:auto" onchange="userEditRolePreset('+_uarg(id)+')">'
+      +     Object.keys(USERS_META.roles||{}).map(function(r){
+              return '<option value="'+_uesc(r)+'"'+(r===u.role?" selected":"")+'>'+_uesc(r)+'</option>'; }).join("")
+      +   '</select></label>'
+      + '</div>'
       + '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they SEE?</div>'
       + '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">'
       +   featureRows("ue"+id, u.features||{})
@@ -643,10 +725,16 @@ function userEdit(id){
   });
 }
 
+// The same preset as the add form, for one person's editor.
+function userEditRolePreset(id){ _rolePreset("ue"+id, "uerole_"+id, ""); }
+
 async function userSave(id){
   const st = document.getElementById("uesave_"+id);
   if(st) st.textContent = "Saving…";
+  const _nm = document.getElementById("uename_"+id), _rl = document.getElementById("uerole_"+id);
   const payload = {id:id,
+                   name: _nm ? _nm.value.trim() : undefined,
+                   role: _rl ? _rl.value : undefined,
                    permissions:_collect("ue"+id,"data-perm","perm"),
                    features:   _collectFeatures("ue"+id),
                    workspaces: _collect("ue"+id,"data-ws","ws")};

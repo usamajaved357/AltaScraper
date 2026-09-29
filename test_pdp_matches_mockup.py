@@ -60,10 +60,20 @@ PAIRS = [("--pdp-bg", "bg"), ("--pdp-panel", "panel"), ("--pdp-raise", "panel2")
          ("--pdp-faint", "ink4"), ("--pdp-accent", "accent"),
          ("--pdp-link", "link"), ("--pdp-ok", "ok"), ("--pdp-warn", "warn")]
 tok = CSS[CSS.index("#pdp{"):CSS.index("}", CSS.index("#pdp{"))]
+# Since 29 Sep 2026 (owner: hard-coded colours onto shared ones, for light mode)
+# each value is a palette variable whose DARK value is the colour itself
+# (static/css/palette.css). The page is owner-locked, so the dark value must
+# still be the mockup's exactly -- read through the variable.
+_PAL = read("static", "css", "palette.css")
+_DARK = dict(re.findall(r"(--as-lit-[a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{6})\s*;",
+                        _PAL.split('[data-theme="light"]')[0]))
 for ours, theirs in PAIRS:
     want = ROOT.get(theirs, "").strip()
     m = re.search(re.escape(ours) + r"\s*:\s*([^;]+);", tok)
     got = (m.group(1).strip() if m else None)
+    lv = re.fullmatch(r"var\((--as-lit-[a-z0-9-]+)\)", got or "")
+    if lv:
+        got = _DARK.get(lv.group(1), got)
     check("%-14s = mockup --%s" % (ours, theirs), got, want)
 # THE ACCENT IS THE ONE THAT SHOWS. Everything lit -- the active tab, the save
 # button, a focus ring -- was the old blue.
@@ -146,7 +156,8 @@ check("only the two identity columns can be locked", _locked_cols, ["Brand", "UP
 # The title is edited in the hero (drawer.js dwTitleParts), the price and
 # handling in the offer rows -- none of them passes through _lockOn at all.
 yes("  the title editor is untouched by it",
-    'dwBlurSave(this,\\\'\' + esc(r.sku) + \'\\\',\\\'col\\\',\\\'Title\\\')'
+    # jsArg for the SKU since Milestone 2 (the handler-argument XSS fix)
+    'dwBlurSave(this,\' + jsArg(r.sku) + \',\\\'col\\\',\\\'Title\\\')'
     in read("static", "js", "drawer.js")
     or "'col','Title'" in read("static", "js", "drawer.js"))
 yes("  and the price and handling boxes are still editCell",

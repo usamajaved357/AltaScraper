@@ -44,7 +44,9 @@ async function ppctLoad(){
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/analytics/terms?" + qs)).json();
+    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     PPCT.loading = false;
     if(!j || !j.ok){
       host.innerHTML = '<div class="ppc-page wide"><div style="padding:18px;'
@@ -387,7 +389,7 @@ function ppctSummary(rows, cur, ch){
     + '</div>';
 }
 
-/* Match type, exactly as the mockup colours it: transparent tints for the three
+/* Match type, in Campaign Analytics' colours (ppc.css): transparent tints for the three
  * real match types, plain dim text for the long targeting names, and a small PT
  * pill when the term is an ASIN rather than something anybody typed. */
 function ppctMatchBadge(m, isPt){

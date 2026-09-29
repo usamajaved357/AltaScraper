@@ -64,7 +64,10 @@ truthy("the displayed cost is passed", P.indexOf('"&cost=" + encodeURIComponent'
 truthy("  taken from the one place that decides it", P.indexOf("cogsOf(r)") >= 0);
 truthy("  and only when it is a real number above zero",
   P.indexOf("Number(c.cost) > 0") >= 0);
-const R = fs.readFileSync(path.join(HERE, "routes", "revenue_routes.py"), "utf8");
+// Line endings normalised: a Windows checkout has CRLF (core.autocrlf) and the
+// checks below look for "\n" (Milestone 1, 28 Sep 2026).
+const R = fs.readFileSync(path.join(HERE, "routes", "revenue_routes.py"), "utf8")
+  .replace(/\r\n/g, "\n");
 truthy("the route accepts it", R.indexOf('request.args.get("cost")') >= 0);
 // A cost the owner actually SET must never be overridden by one the browser
 // happens to be drawing.

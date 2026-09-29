@@ -121,7 +121,10 @@ print("\n=== the switch that ends the migration ===")
 from data import choice as _choice
 import json as _json
 
-_cfg = _json.load(open("config.json", encoding="utf-8"))
+# The config the run was given (run_tests.py hands every test a stand-in),
+# never the checkout's own. Milestone 1, 28 Sep 2026.
+_cfg = _json.load(open(os.environ.get("CONFIG_PATH") or "config.json",
+                       encoding="utf-8"))
 # ASSERTED ON A CONFIG THAT HAS NOT ANSWERED, not on this machine's live one.
 # These two read config.json directly and asserted True, so they were really
 # testing "whoever ran this has not turned Sheets off yet" -- and they failed the

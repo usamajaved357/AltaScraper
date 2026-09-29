@@ -8,9 +8,14 @@ Nine columns at a 900px minimum, and the two things anyone actually wants from a
 list of orders -- what was in it, and whether it was worth selling -- were the
 two that were not there.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -61,10 +66,15 @@ check("an empty order says nothing rather than crashing",
       OV.item_summary([])["title"], "")
 
 print("\n=== the screen ===")
-JS = open(r"D:\AltaScraper\static\js\orders.js", encoding="utf-8").read()
-truthy("there is an Item column", "'Item', 'Order'" in JS)
+JS = open(_os_repo.path.join(_REPO, r"static\js\orders.js"), encoding="utf-8").read()
+# Since 29 Sep 2026 the table follows the design plan's Orders layout (owner:
+# "Layout first"): select, Order, Item, Channel, State, Due / next, Cost,
+# Profit (margin and ROI under it), Next step. What these checks protect --
+# the item and its picture, and margin and ROI visible on the row -- stays.
+truthy("there is an Item column", "'sel', 'Order', 'Item'" in JS)
 truthy("  with a picture", "_ordItemImage(" in JS)
-truthy("margin and ROI have their own columns", "'Margin', 'ROI'" in JS)
+truthy("margin and ROI are on the row, under Profit",
+       "'Cost', 'Profit', 'Next step'" in JS and "' · ROI ' + _ordPct(r.roi_pct" in JS)
 truthy("  coloured against their own thresholds",
        "_ordPct(r.margin_pct, 20, 8" in JS and "_ordPct(r.roi_pct, 30, 12" in JS)
 truthy("  and neither is invented when unknown",
@@ -74,7 +84,7 @@ truthy("the account column only appears when there is more than one",
 truthy("the table is narrower than it was", "min-width:760px" in JS)
 truthy("  and no longer 900", "min-width:900px" not in JS)
 truthy("the Item column gets the width, not the four-character money ones",
-       "width:34%" in JS and "_narrow[t]" in JS)
+       "(t === 'Item' ? ' style=\"width:26%\"'" in JS)
 truthy("  and a long product name wraps rather than being cut to nothing",
        "-webkit-line-clamp:2" in JS)
 
@@ -85,7 +95,7 @@ print("\n=== it shows all of that WITHOUT being asked ===")
 truthy("reading the items is ON by default", "profit: true" in JS)
 truthy("  and the button starts in the on state",
        'class="db-chip on" id="ord_profit"' in
-       open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read())
+       open(_os_repo.path.join(_REPO, r"templates\dashboard.html"), encoding="utf-8").read())
 
 print("\n--- but the list is not made to wait for it ---")
 truthy("the list is drawn first, then the items fill in",
@@ -103,7 +113,7 @@ print("\n=== the picture is resolved by the SERVER ===")
 # It was matched in the page against LIVE_ITEMS -- the catalogue the LISTINGS
 # screen loads. Open Orders directly, as anyone does, and that array is empty:
 # every row had a name and a grey placeholder. Measured: 0 pictures on 35 rows.
-R = open(r"D:\AltaScraper\routes\orders_routes.py", encoding="utf-8").read()
+R = open(_os_repo.path.join(_REPO, r"routes\orders_routes.py"), encoding="utf-8").read()
 truthy("the row carries its own image", 'it["img"] = _cat_look(' in R)
 truthy("the page still falls back to its own catalogue",
        "if(item.img) return item.img;" in JS and "LIVE_ITEMS" in JS)
@@ -114,18 +124,18 @@ print("\n--- and ONE lookup does it, for every screen that needs it ---")
 # ASIN, another only ASIN, a third folds case and the fourth does not, and the
 # same product ends up with two pictures in one app. CLAUDE.md Rule 12.
 truthy("orders asks the shared catalogue", "from domain import catalogue" in R)
-C = open(r"D:\AltaScraper\domain\catalogue.py", encoding="utf-8").read()
+C = open(_os_repo.path.join(_REPO, r"domain\catalogue.py"), encoding="utf-8").read()
 truthy("  which is where the snapshot is actually read", "live_snapshots" in C)
 truthy("  and SKU beats ASIN, in one place", "WHY SKU BEATS ASIN" in C)
-T = open(r"D:\AltaScraper\domain\traffic_view.py", encoding="utf-8").read()
+T = open(_os_repo.path.join(_REPO, r"domain\traffic_view.py"), encoding="utf-8").read()
 truthy("traffic asks it too", "_cat.titles(" in T)
 truthy("  and no longer reads the snapshot itself",
        "live_snapshots" not in T)
-S = open(r"D:\AltaScraper\routes\sales_routes.py", encoding="utf-8").read()
+S = open(_os_repo.path.join(_REPO, r"routes\sales_routes.py"), encoding="utf-8").read()
 truthy("and so does the Sales breakdown", "_cat.index(" in S)
 truthy("  giving each product row its picture and name",
        'r["img"] =' in S and 'r["title"] =' in S)
-SJ = open(r"D:\AltaScraper\static\js\sales.js", encoding="utf-8").read()
+SJ = open(_os_repo.path.join(_REPO, r"static\js\sales.js"), encoding="utf-8").read()
 truthy("  which the table then draws", "r.img" in SJ and "r.title" in SJ)
 
 print("\n=== each account's orders stay in its own account ===")
@@ -135,7 +145,7 @@ print("\n=== each account's orders stay in its own account ===")
 truthy("the default is the workspace you have open",
        'account: ""' in JS)
 truthy("  and __all__ is no longer the default", 'account: "__all__"' not in JS)
-H = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read()
+H = open(_os_repo.path.join(_REPO, r"templates\dashboard.html"), encoding="utf-8").read()
 # THE PICKER IS GONE, and with it the ability to read another company's orders
 # from inside this one. It used to offer "Every account" AND an entry per
 # account, and the per-account entries were the half that actually did the
@@ -152,7 +162,7 @@ truthy("  and nothing fills a picker with every account",
        "sel.appendChild(o)" not in JS)
 # A rule that only exists in the browser is not a rule -- the endpoint is
 # reachable directly.
-R0 = open(r"D:\AltaScraper\routes\orders_routes.py", encoding="utf-8").read()
+R0 = open(_os_repo.path.join(_REPO, r"routes\orders_routes.py"), encoding="utf-8").read()
 truthy("the server refuses every-account outright",
        'if want == "__all__"' in R0)
 truthy("  and an unresolvable account returns NOTHING, not everything",
@@ -162,7 +172,7 @@ truthy("  and an unresolvable account returns NOTHING, not everything",
 truthy("the rows are stamped with whose they are", "ORD.rowsFor" in JS)
 truthy("  and a different workspace forces a reload",
        "ORD.rowsFor !== _ws" in JS)
-SS = open(r"D:\AltaScraper\static\js\screenstate.js", encoding="utf-8").read()
+SS = open(_os_repo.path.join(_REPO, r"static\js\screenstate.js"), encoding="utf-8").read()
 truthy("switching workspace forgets the orders held in memory",
        "ORD.rows = []" in SS)
 truthy("  including whose they were", 'ORD.account = ""' in SS)
@@ -172,7 +182,7 @@ print("\n=== the visuals ===")
 truthy("the table is in a panel like every other screen", 'class="panelcard"' in JS)
 truthy("  with its spacing in the stylesheet, not in a template literal",
        "padding:6px 8px" not in JS)
-CSS = open(r"D:\AltaScraper\static\css\dashboard.css", encoding="utf-8").read()
+CSS = open(_os_repo.path.join(_REPO, r"static\css\dashboard.css"), encoding="utf-8").read()
 truthy("there is a rule for this table", "table.ordtable" in CSS)
 truthy("  rows are separated by a line", "table.ordtable td{" in CSS)
 truthy("  small print does not sit on the line above it",

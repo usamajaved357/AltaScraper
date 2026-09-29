@@ -28,11 +28,16 @@ every figure says so. That is asserted here, because an inferred number
 presented as a setting read from Amazon would be the app claiming something it
 cannot know.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import io
 import re
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 
@@ -52,9 +57,9 @@ def falsy(l, g):
     check(l, bool(g), False)
 
 
-J = io.open(r"D:\AltaScraper\static\js\sourcing.js", encoding="utf-8").read()
-G = io.open(r"D:\AltaScraper\static\js\guide.js", encoding="utf-8").read()
-R = io.open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
+J = io.open(_os_repo.path.join(_REPO, r"static\js\sourcing.js"), encoding="utf-8").read()
+G = io.open(_os_repo.path.join(_REPO, r"static\js\guide.js"), encoding="utf-8").read()
+R = io.open(_os_repo.path.join(_REPO, r"routes\sourcing_routes.py"), encoding="utf-8").read()
 # The comments quote the request verbatim, so they are stripped before any
 # assertion runs on "the code says X".
 JS = re.sub(r"//[^\n]*", "", re.sub(r"/\*[\s\S]*?\*/", "", J))
@@ -88,11 +93,11 @@ print("\n--- it measures the COUPON, not an average across orders without one --
 # reported "2% off" for a discount that is really about 5%, because the seven
 # undiscounted orders diluted it.
 truthy("orders with no discount are skipped when measuring the rate",
-       "if promo <= 0:" in io.open(r"D:\AltaScraper\domain\promotions.py",
+       "if promo <= 0:" in io.open(_os_repo.path.join(_REPO, r"domain\promotions.py"),
                                    encoding="utf-8").read())
 truthy("  but counted, so the screen can say how often it applied",
        "settled_orders" in P.measured.__doc__ or "settled_orders" in
-       io.open(r"D:\AltaScraper\domain\promotions.py", encoding="utf-8").read())
+       io.open(_os_repo.path.join(_REPO, r"domain\promotions.py"), encoding="utf-8").read())
 
 print("\n=== both sums, on every row that has a discount ===")
 _rule = {"referral_rate": 0.15, "shipping_label": 0, "ads_margin": 0,
@@ -165,7 +170,7 @@ truthy("  and it says the postage is NOT in that number",
        "counted by Amazon separately" in JS)
 truthy("  because the decision took the postage days off",
        "postage already covers" in io.open(
-           r"D:\AltaScraper\domain\sourcing.py", encoding="utf-8").read())
+           _os_repo.path.join(_REPO, r"domain\sourcing.py"), encoding="utf-8").read())
 falsy("no coupon columns on a SKU with no measured discount",
       "if(p){" not in JS)
 
@@ -193,10 +198,10 @@ truthy("  keyed on the fields options_for actually returns",
 truthy("  and it still uses the shared delivery sentence",
        "_srcDeliveryLine({" in JS)
 truthy("  which puts the cheapest first and marks it",
-       "odp-rank" in io.open(r"D:\AltaScraper\static\js\orders.js",
+       "odp-rank" in io.open(_os_repo.path.join(_REPO, r"static\js\orders.js"),
                              encoding="utf-8").read())
 truthy("  and carries each supplier's delivery estimate",
-       "delivery_text" in io.open(r"D:\AltaScraper\domain\order_sources.py",
+       "delivery_text" in io.open(_os_repo.path.join(_REPO, r"domain\order_sources.py"),
                                   encoding="utf-8").read())
 # A SKU WITH NO SUPPLIER SAYS SO rather than drawing an empty table. It was the
 # guard against orders.js not having loaded; the renderer is local now, so the
@@ -236,7 +241,7 @@ falsy("no confirm() left in the code",
 truthy("  replaced by one in the app's own skin", "function srcConfirm" in JS)
 truthy("    which is the app-wide one, not a second copy",
        "return uiConfirm(" in JS.split("function srcConfirm(")[1][:400])
-DLG = io.open(r"D:\AltaScraper\static\js\dialog.js", encoding="utf-8").read()
+DLG = io.open(_os_repo.path.join(_REPO, r"static\js\dialog.js"), encoding="utf-8").read()
 truthy("  Escape cancels it", 'e.key === "Escape"' in DLG)
 truthy("  and it resolves like confirm(), so callers only gained an await",
        "resolve(value)" in DLG and "cancelValue: false" in DLG)

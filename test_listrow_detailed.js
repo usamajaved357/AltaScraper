@@ -35,6 +35,8 @@ const CSS      = fs.readFileSync("static/css/listrow_detailed.css", "utf8");
 
 // ---- the app's helpers, as the page provides them -------------------------
 globalThis.window = globalThis;
+// The page's own jsArg (users.js); handlers use it since Milestone 2.
+globalThis.jsArg = require("./test_helpers.js").jsArg;
 globalThis.esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
                                                 .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 globalThis.CUR_SYMBOL = "£";
@@ -229,6 +231,12 @@ truthy("the row menu is the shared overflow, drawerMore",
        /onclick="drawerMore\(event,/.test(liveHtml));
 truthy("  and it does not open the listing either",
        /class="col-actions" onclick="event\.stopPropagation\(\)"/.test(liveHtml));
+// Review, as in the table and card views (owner, 29 Sep 2026).
+truthy("every row has a Review button that opens the listing",
+       /class="btn primary lr-review"[^>]*onclick="openListing\(/.test(liveHtml)
+       && /class="btn primary lr-review"/.test(draftHtml));
+truthy("  beside the dots, which stay",
+       liveHtml.indexOf("lr-review") < liveHtml.indexOf("act-dots"));
 globalThis.SELECTED.add(LIVE.sku);
 truthy("a selected row is marked", /class="inv-row sel"/.test(ctx.detailedRow(LIVE)));
 globalThis.SELECTED.clear();

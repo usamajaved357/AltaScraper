@@ -6,6 +6,7 @@ ai_providers and anthropic are imported inline in the bodies.
 
 Routes: GET /aplus/modules, POST /aplus/generate
 """
+from api.anthropic_client import client as _ai_client   # arch A7: one constructor
 import re
 
 from flask import request, jsonify
@@ -32,7 +33,8 @@ from flask import request, jsonify
 from domain.image_rules import _IMAGE_TEXT_RULES, _PRESENCE_RULES
 
 
-def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
+def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult,
+             APLUS_MOBILE_IS_ASSUMED=""):
     """Attach the /aplus/* routes to the existing Flask app."""
 
     @app.route("/aplus/modules", methods=["GET"])
@@ -43,11 +45,10 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         each screen -- and the mobile one is COMPOSED for a phone rather than
         being the desktop asset scaled down.
         """
-        try:
-            import dashboard as _dash
-            note = getattr(_dash, "APLUS_MOBILE_IS_ASSUMED", "")
-        except Exception:
-            note = ""
+        # INJECTED, not `import dashboard`: that loads a SECOND copy of the
+        # running app (it runs as __main__) just to read one sentence (master
+        # audit A2, Milestone 5).
+        note = APLUS_MOBILE_IS_ASSUMED or ""
         return jsonify({"ok": True, "modules": _APLUS_MODULES,
                         # Said out loud rather than left to be discovered: the
                         # desktop figures are Amazon's published ones, the
@@ -218,7 +219,7 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
             key = (_cfg().get("anthropic_api_key") or "").strip()
             if key:
                 import anthropic
-                client = anthropic.Anthropic(api_key=key)
+                client = _ai_client(key)
                 msg = client.messages.create(
                     model="claude-sonnet-4-5", max_tokens=400,
                     system=("Write concise Amazon A+ module copy: one short headline (<=8 words) and "

@@ -34,8 +34,10 @@ function truthy(label, got){ check(label, !!got, true); }
 function falsy(label, got){ check(label, !!got, false); }
 
 const sandbox = { document: { getElementById: () => null }, console };
+// The page's own jsArg (users.js); handlers use it since Milestone 2.
+sandbox.jsArg = require("./test_helpers.js").jsArg;
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync("D:/AltaScraper/static/js/salescharts.js", "utf8"), sandbox);
+vm.runInContext(fs.readFileSync((__dirname + "/static/js/salescharts.js"), "utf8"), sandbox);
 
 const days = ["2026-08-01","2026-08-02","2026-08-03","2026-08-04","2026-08-05"];
 const now  = days.map((d, i) => ({label: d, value: [10, 20, 30, 40, 50][i]}));
@@ -135,7 +137,7 @@ truthy("a year comparison names itself differently",
          .indexOf("Last year") >= 0);
 
 console.log("\n=== sales.js asks for the period before ===");
-const SALES_JS = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
+const SALES_JS = fs.readFileSync((__dirname + "/static/js/sales.js"), "utf8");
 truthy("there is a loader for it", SALES_JS.indexOf("async function salesLoadCompare") >= 0);
 truthy("it is not awaited with the main load, so charts draw first",
        SALES_JS.indexOf("salesLoadCompare(sum).catch") >= 0);
@@ -165,10 +167,12 @@ const picker = (function(){
   return SALES_JS.slice(s, e);
 })();
 
+// new Function below runs in the GLOBAL scope, not the sandbox above.
+globalThis.jsArg = require("./test_helpers.js").jsArg;
 function drawWith(seriesNow, compare, offsetDays){
   let out = "";
   const fn = new Function("SC_SRC", "SER", "CMP", "OFF", `
-    ${fs.readFileSync("D:/AltaScraper/static/js/salescharts.js", "utf8")}
+    ${fs.readFileSync((__dirname + "/static/js/salescharts.js"), "utf8")}
     const _sEsc = s => String(s == null ? "" : s);
     const SALES = {preset:"30d", start:"", end:"", _zoomBack:null, _chartDates:null,
                    compare: CMP, compareOffsetDays: OFF, compareRange:"before"};

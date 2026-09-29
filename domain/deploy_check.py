@@ -70,8 +70,8 @@ def check(config_path, in_use=None):
     app_dir = os.path.dirname(os.path.abspath(__file__))
     app_root = os.path.dirname(app_dir)
     looks_ephemeral = os.path.normcase(data_dir).startswith(os.path.normcase(app_root))
-    on_paas = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER")
-                   or os.environ.get("DYNO"))
+    from config import hosting as _hosting          # one list of markers
+    on_paas = _hosting.is_hosted()
     if looks_ephemeral and on_paas:
         add("State survives a deploy", False,
             "state is inside the app folder (%s) -- this is WIPED on every deploy"
@@ -103,6 +103,38 @@ def check(config_path, in_use=None):
         "set" if pw else "NOT SET -- the login gate is DISABLED",
         "With no password and no user accounts, anyone who reaches the URL has "
         "full access.")
+
+    # --- configuration a feature cannot work without (NAMES only, never a
+    #     value) -- docs/deployment-manifest.md §3-4 (29 Sep 2026) ----------
+    try:
+        import json as _json0
+        _c0 = _json0.load(open(cfg, encoding="utf-8")) if os.path.exists(cfg) else {}
+    except Exception:
+        _c0 = {}
+    _oauth = [a for a in (_c0.get("accounts") or [])
+              if isinstance(a, dict) and str(a.get("auth") or "").lower() == "oauth"]
+    if _oauth:
+        _tk = bool(os.environ.get("ALTA_TOKEN_KEY"))
+        add("ALTA_TOKEN_KEY is set (OAuth accounts)", _tk,
+            "set" if _tk else "NOT SET -- %d OAuth account(s) cannot be read" % len(_oauth),
+            "The OAuth sellers' refresh tokens are stored encrypted with this key; "
+            "without it (or with a different one) none of them can reach Amazon.")
+    _ai = bool(str(_c0.get("anthropic_api_key") or "").strip()
+               or str(_c0.get("openrouter_api_key") or "").strip())
+    add("An AI key is configured", _ai or not _c0,
+        "present" if _ai else ("config not readable" if not _c0 else
+                               "NOT SET -- listing generation and AI features cannot run"),
+        "anthropic_api_key (or openrouter_api_key) in config.json writes the listing copy.")
+    try:
+        from config import background as _bg
+        _bg_on = _bg.enabled()
+    except Exception:
+        _bg_on = True
+    add("Background work", True,
+        "on (timers, repricer pushes, monitor, refresher, nightly backup)" if _bg_on
+        else "OFF (%s=off) -- a test or parallel copy: nothing runs on its own"
+        % "ALTASCRAPER_BACKGROUND",
+        "Only a production copy should run background work (deployment manifest §6).")
 
     # --- files that should exist once in use -------------------------------
     for fname, what in (("config.json", "your credentials"),

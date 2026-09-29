@@ -88,19 +88,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
 
         Read through domain/accounts.py, which every other Amazon call already
         uses -- a second way of assembling credentials here would eventually
-        disagree with the one the rest of the app publishes through.
+        disagree with the one the rest of the app publishes through. The one
+        copy is domain/source_apply.seller_creds, shared with the timer job.
         """
-        from domain import accounts as _acc
-        cfg = _cfg() if callable(_cfg) else (_cfg or {})
-        acc = None
-        for a in (cfg.get("accounts") or []):
-            if str(a.get("id")) == str(workspace_id):
-                acc = a
-                break
-        if not acc:
-            raise RuntimeError("no account called %s" % workspace_id)
-        return (_acc.account_creds(acc), _acc.marketplace_id(marketplace),
-                str(acc.get("seller_id") or ""))
+        from domain import source_apply as _sapply
+        return _sapply.seller_creds(_cfg, workspace_id, marketplace)
 
     def _where():
         """(account_id, marketplace) for the request.
@@ -117,16 +109,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         then to the one that actually HAS a snapshot -- because a marketplace
         with cached listings is a better guess than none at all, and there is
         usually exactly one.
+
+        THE ACCOUNT THE PAGE NAMED, through the shared resolver (routes/scope,
+        Rule 12). This read ?id= only, and every GET from the Repricer sends
+        ?account= -- so the list, the candidates and the checks were answered
+        for the server's OPEN account, which is whichever tab switched last.
+        "__all__" is not a country and is dropped there; the marketplace
+        follows the named account; the only-one-with-data fallback is kept.
         """
-        acc = _active_account() or {}
-        body = request.get_json(silent=True) or {}
-        wsid = (request.args.get("id") or body.get("id")
-                or acc.get("id") or _state.get("active_account_id") or "")
-        mkt = (request.args.get("marketplace") or body.get("marketplace")
-               or _state.get("active_marketplace")
-               or acc.get("default_marketplace") or "").upper()
-        if not mkt and wsid:
-            mkt = _only_marketplace_with_data(wsid)
+        from routes import scope as _scope_mod
+        _acc, wsid, mkt = _scope_mod.for_request(
+            request, state=_state, active_account=_active_account, cfg=_cfg,
+            config_path=CONFIG_PATH, with_data=_only_marketplace_with_data)
         return wsid, mkt
 
     def _where_acc():
@@ -134,8 +128,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         wsid, mkt = _where()
         cfg = _cfg() if callable(_cfg) else (_cfg or {})
         acc = next((a for a in (cfg.get("accounts") or [])
-                    if str(a.get("id") or "") == str(wsid)), None) \
-              or (_active_account() or {})
+                    if str(a.get("id") or "") == str(wsid)), None)
+        if acc is None:
+            # The open account's record only if it IS the one named. Otherwise
+            # a named-but-unknown id was paired with another seller's
+            # credentials (see routes/scope.resolve); {} makes the route refuse.
+            _open = _active_account() or {}
+            acc = _open if (not wsid or str(_open.get("id") or "") == str(wsid)) else {}
         return acc, wsid, mkt
 
     def _only_marketplace_with_data(wsid):
@@ -887,14 +886,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         sku = (b.get("sku") or "").strip()
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
-        try:
-            price = float(str(b.get("price")).replace("£", "").replace("$", "")
-                          .replace(",", "").strip())
-        except (TypeError, ValueError):
+        # The shared rule (listing.pricing.usable_price): NaN and infinity used
+        # to pass the `<= 0` check here and reach Amazon (price-write map).
+        from listing import pricing as _pricing_mod
+        price, _why = _pricing_mod.usable_price(str(b.get("price")), strip_symbols=True)
+        if _why == "not_a_number":
             return jsonify({"ok": False, "error": (
                 "that must be an amount, e.g. 18.47 -- got %r"
                 % b.get("price"))}), 400
-        if price <= 0:
+        if _why:
             return jsonify({"ok": False, "error": (
                 "a price has to be above zero")}), 400
 
@@ -934,51 +934,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             got["attributes"], {"price": round(price, 2)}, mkt_id)
         if err:
             return jsonify({"ok": False, "error": err}), 400
-        res = _al.patch(creds, mkt, seller, sku, mkt_id, got["product_type"],
-                        patches,
-                        issue_locale=("en_US" if str(mkt).upper() == "US"
-                                      else "en_GB"))
-        if res.get("status") != _al.OK:
-            why = res.get("error") or "Amazon rejected the change"
-            if res.get("issues"):
-                why += " -- " + "; ".join(
-                    str(i.get("message") or "")[:120]
-                    for i in res["issues"][:3])
+        # The one price send (domain/source_apply.push_patches, 4F).
+        sent, why, submission_id = _apply.push_patches(
+            creds, mkt, seller, sku, mkt_id, got["product_type"], patches)
+        if not sent:
             return jsonify({"ok": False, "error": why}), 400
 
         # RECORDED AS A MANUAL OVERRIDE, in the same log the automatic changes
-        # go to. A price that moved with no entry beside it is a price nobody
-        # can account for later, and "who changed this" is the first question
-        # asked when one looks wrong.
-        who = ""
-        try:
-            from flask import session as _sess
-            who = str(_sess.get("user") or "")
-        except Exception:
-            who = ""
-        decision = {
-            "action": "update", "price": round(price, 2),
-            "quantity": None, "lead_days": None, "source_id": None,
-            "manual": True, "manual_by": who,
-            "reason": ("Manual: %s%s set by %s"
-                       % (("%.2f -> " % float(was)) if was is not None else "",
-                          "%.2f" % price, who or "hand")),
-            "blocked_by": "", "rejections": [], "inputs_age_mins": None,
-        }
-        _repo.record_action(CONFIG_PATH, wsid, mkt, sku, decision,
-                            current=cur, applied=1,
-                            at=_dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        # AND THE APP'S OWN RECORD OF WHAT IT IS SELLING FOR. Without this the
-        # next decision compares the supplier against the OLD price, so a hand
-        # raise would immediately read as "too dear, cut it" -- which is the
-        # opposite of "the repricer respects the manual change".
-        try:
-            from domain import live_snapshots as _ls
-            _ls.set_price(CONFIG_PATH, wsid, mkt, sku, round(price, 2))
-        except Exception:
-            pass
+        # go to, and the app's own record of the price updated -- one helper
+        # for every manual price path (domain/source_apply.record_manual_price).
+        # A price that moved with no entry beside it is a price nobody can
+        # account for later, and "who changed this" is the first question asked
+        # when one looks wrong.
+        from domain import source_apply as _sapply
+        _sapply.record_manual_price(CONFIG_PATH, wsid, mkt, sku, price,
+                                    was=was, current=cur)
         return jsonify({"ok": True, "price": round(price, 2), "was": was,
-                        "submission_id": res.get("submission_id"),
+                        "submission_id": submission_id,
                         "note": ("Amazon has it as %.2f. It can take a few "
                                  "minutes to show on the listing." % price)})
 
@@ -1588,7 +1560,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
              **vals})
         m_pct = merged.get("target_margin_pct")
         if m_pct is not None:
-            room = (1.0 - float(merged["referral_rate"])) * 100.0
+            # AFTER VAT, the same limit the pricing itself works to: margin is a
+            # share of the price after VAT, so on a VAT-registered account the
+            # room is 1 - rate / (1/(1+VAT)), not 1 - rate. Without this a
+            # target could be saved that no price can meet.
+            from listing import pricing as _pricing
+            _k = _pricing._kept(merged.get("vat_rate"))
+            room = (1.0 - float(merged["referral_rate"]) / _k) * 100.0
             if float(m_pct) >= room - 1:
                 return jsonify({"ok": False, "error": (
                     "Amazon takes %.0f%% of the sale, so a MARGIN target has to "

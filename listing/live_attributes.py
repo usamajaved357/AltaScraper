@@ -17,8 +17,9 @@ This file is that function's inverse. If the two are not EXACT inverses, a value
 read off Amazon and saved back lands in a different field than it came from --
 silently, with no error, and only visible once Amazon rejects the listing or
 quietly stores the number under the wrong key. test_live_attributes.py therefore
-does not test this file against a copy of _renest; it loads the REAL _renest out
-of the generator and round-trips through it, so the day somebody edits _renest,
+does not test this file against a copy of _renest; it loads the REAL _renest
+(listing/attributes_helpers.py, which the generator imports) and round-trips
+through it, so the day somebody edits _renest,
 this file's test is what fails.
 
 WHERE THE "COLLAPSE" RULE COMES FROM -- NOT FROM ME

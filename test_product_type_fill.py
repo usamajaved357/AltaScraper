@@ -61,9 +61,17 @@ check("  the old callers still get HOME",
 print("\n== only type names Amazon has actually given this app a schema for ==")
 # CLAUDE.md Rule 4: do not guess what Amazon calls something. The evidence is
 # the schema_cache table -- 96 names Amazon returned a definition for.
-import sqlite3                                                       # noqa: E402
-conn = sqlite3.connect(os.path.join(HERE, "altascraper.db"))
-known = {r[0] for r in conn.execute("select distinct product_type from schema_cache")}
+# THE RUN'S OWN DATABASE (data/db honours ALTASCRAPER_DB), never
+# <repo>/altascraper.db: in the main checkout that is the owner's real
+# database, and anywhere else sqlite3.connect() created an empty file in the
+# repo (Milestone 10, 28 Sep 2026).
+from data import db as _db                                           # noqa: E402
+try:
+    conn = _db.get_db()
+    known = {r[0] for r in conn.execute("select distinct product_type from schema_cache")}
+except Exception:
+    known = set()
+_have_cache = bool(known)
 known |= {"HOME"}
 try:
     import json as _json
@@ -76,8 +84,14 @@ unknown = sorted({t for _pat, t in G._PT_INFER_RULES} - known)
 # fetched on this machine. What must hold is that nothing ADDED here is
 # invented -- MACHINE_LUBRICANT is in the cache, which is why it is the only
 # one of the four measured gaps that got a rule.
-check("MACHINE_LUBRICANT is a name Amazon has confirmed",
-      "MACHINE_LUBRICANT" in known, True)
+if _have_cache:
+    check("MACHINE_LUBRICANT is a name Amazon has confirmed",
+          "MACHINE_LUBRICANT" in known, True)
+else:
+    # The evidence is a cache of Amazon's replies, which only a database that
+    # has talked to Amazon holds -- not a safe test run's empty one.
+    print("  (not checked: this database has no schema cache -- the evidence "
+          "that Amazon confirmed MACHINE_LUBRICANT lives in the owner's)")
 yes("  and it is the rule that was added", "MACHINE_LUBRICANT" in gen)
 yes("  the three that could not be confirmed are named, not guessed",
     "no confirmed name" in gen)

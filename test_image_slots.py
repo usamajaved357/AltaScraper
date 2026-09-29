@@ -6,8 +6,13 @@ the rules are: a lifestyle shot is fine as PT3 and gets the listing SUPPRESSED a
 MAIN. So the slot has to be chosen deliberately, and the choice has to say what
 it means.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -155,7 +160,7 @@ image slots. Every product type, every listing, every time.
 A test of slots_from_schema alone could never catch that, because the fault was
 in what the caller passed. So this checks the caller.
 """
-_DASH = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+_DASH = open(_os_repo.path.join(_REPO, r"dashboard.py"), encoding="utf-8").read()
 _i = _DASH.find("def _variation_schema")
 _body = _DASH[_i:_DASH.find("\ndef ", _i + 10)]
 truthy("the cached schema keeps variation_theme", '"variation_theme"' in _body)
@@ -183,7 +188,7 @@ Sending to an occupied slot replaces its image and Amazon keeps no copy. Saying
 "empty" about a slot that has one would have let someone destroy an image
 without ever being asked.
 """
-_VR = open(r"D:\AltaScraper\routes\variations_routes.py", encoding="utf-8").read()
+_VR = open(_os_repo.path.join(_REPO, r"routes\variations_routes.py"), encoding="utf-8").read()
 truthy("the flattener knows the image wrapper's key",
        '"media_location"' in _VR)
 truthy("  and the keys are declared once, not per branch",

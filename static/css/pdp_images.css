@@ -49,7 +49,7 @@
 /* A filled slot is solid; an empty one keeps the dashes, so "what is left to
    do" is legible without reading a single word. */
 .pdpi-slot.filled{ border-style:solid; background:var(--pdp-line2); }
-.pdpi-slot.over{ border-color:var(--pdp-link); background:#042C5322; }
+.pdpi-slot.over{ border-color:var(--pdp-link); background:color-mix(in srgb, var(--as-lit-042c53-bg) 13.3%, transparent); }
 .pdpi-slotimg{
   height:76px; display:flex; align-items:center; justify-content:center;
   overflow:hidden; border-radius:5px; margin-bottom:6px;
@@ -67,7 +67,7 @@
   background:#0009; color:#fff; font-size:11px; line-height:1;
   display:flex; align-items:center; justify-content:center;
 }
-.pdpi-slotx:hover{ background:#c0392b; }
+.pdpi-slotx:hover{ background:var(--as-lit-c0392b-bg); }
 
 /* ---- the owner's redesign (26 Sep 2026) -------------------------------
 
@@ -86,7 +86,7 @@
 .pdpi-status{
   display:flex; align-items:center; gap:8px; margin-bottom:10px;
   padding:7px 10px; border-radius:6px; font-size:11px;
-  color:var(--pdp-link); background:#042C5318; border:1px solid #042C5340;
+  color:var(--pdp-link); background:color-mix(in srgb, var(--as-lit-042c53-bg) 9.4%, transparent); border:1px solid color-mix(in srgb, var(--as-lit-042c53-bd) 25.1%, transparent);
 }
 .pdpi-status > .ti{ font-size:13px; }
 .pdpi-grow{ flex:1; }
@@ -105,7 +105,7 @@
   font:inherit; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;
   background:transparent; color:var(--pdp-dim); border:1px solid var(--pdp-line2);
 }
-.pdpi-tab.on{ color:var(--pdp-link); border-color:var(--pdp-link); background:#042C5318; }
+.pdpi-tab.on{ color:var(--pdp-link); border-color:var(--pdp-link); background:color-mix(in srgb, var(--as-lit-042c53-bg) 9.4%, transparent); }
 .pdpi-tabn{ opacity:.75; margin-left:2px; }
 
 .pdpi-strip{ display:flex; gap:6px; overflow-x:auto; padding:2px 0 6px; }
@@ -125,7 +125,7 @@
   display:none; align-items:center; justify-content:center;
 }
 .pdpi-thumb:hover .pdpi-del{ display:flex; }
-.pdpi-del:hover{ background:#c0392b; }
+.pdpi-del:hover{ background:var(--as-lit-c0392b-bg); }
 .pdpi-hint{ font-size:10px; color:var(--pdp-dim); margin-top:2px; }
 
 /* ---- Image Studio presets (pdp_imagegen.js) ----------------------------- */
@@ -155,12 +155,12 @@
 .pdpig-sub{ font-size:10px; color:var(--pdp-dim); margin-top:3px; }
 .pdpig-model{
   display:flex; align-items:center; gap:5px; margin-top:10px; padding:5px 8px;
-  border-radius:5px; font-size:10.5px; color:var(--pdp-ok, #2dd4a8);
-  border:1px solid #2dd4a833; background:#2dd4a80d;
+  border-radius:5px; font-size:10.5px; color:var(--pdp-ok, var(--as-lit-2dd4a8-fg));
+  border:1px solid color-mix(in srgb, var(--as-lit-2dd4a8-bd) 20%, transparent); background:color-mix(in srgb, var(--as-lit-2dd4a8-bg) 5.1%, transparent);
 }
 .pdpig-status{ font-size:11px; margin-top:6px; color:var(--pdp-ink3); }
-.pdpig-status .ok{ color:var(--pdp-ok, #2dd4a8); }
-.pdpig-status .bad{ color:var(--pdp-bad, #f87171); }
+.pdpig-status .ok{ color:var(--pdp-ok, var(--as-lit-2dd4a8-fg)); }
+.pdpig-status .bad{ color:var(--pdp-bad, var(--as-lit-f87171-fg)); }
 
 @media (max-width:720px){
   .pdpi-slots{ grid-template-columns:repeat(2, minmax(0, 1fr)); }

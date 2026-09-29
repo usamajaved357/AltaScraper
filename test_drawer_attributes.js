@@ -29,6 +29,8 @@ function truthy(label, got){ check(label, !!got, true); }
 
 // ---- the globals the module leans on, as the page provides them -----------
 globalThis.window = globalThis;
+// The page's own jsArg (users.js); handlers use it since Milestone 2.
+globalThis.jsArg = require("./test_helpers.js").jsArg;
 globalThis.esc = s => String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 // Both from reqscope.js, which the page loads before this module.

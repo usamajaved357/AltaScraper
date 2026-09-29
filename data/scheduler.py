@@ -203,6 +203,9 @@ def start(workspace_ids=None):
     every deploy.
     """
     global _scheduler
+    from config import background as _bg
+    if not _bg.enabled():
+        return {"ok": False, "error": _bg.refusal("job timers")}
     if not HAVE_APSCHEDULER:
         return {"ok": False,
                 "error": "APScheduler is not installed -- jobs can still be run "
@@ -287,7 +290,10 @@ def catalog_sync(workspace_id=None):
     app, config_path, cfg = _need("app", "config_path", "cfg")
     st = _ref.status()
     if not st.get("running"):
-        _ref.start(app, cfg, config_path)
+        res = _ref.start(app, cfg, config_path) or {}
+        if not res.get("ok"):
+            # e.g. ALTASCRAPER_BACKGROUND=off: say so rather than claim a start.
+            raise RuntimeError(res.get("error") or "the live refresher did not start")
         return {"started_refresher": True}
     target = _ref._stalest(cfg, config_path, only_account=workspace_id)
     if not target:
@@ -307,9 +313,17 @@ def asin_monitor_check(workspace_id=None):
     which is precisely the bug the throttle was added for.
     """
     from monitor import checker as _checker
+    from monitor import schedule as _sched
     _, config_path, cfg = _need("app", "config_path", "cfg")
-    res = _checker.check_all(cfg() if callable(cfg) else cfg, config_path,
-                             log=lambda m: None)
+    _cfg_now = cfg() if callable(cfg) else cfg
+    # THE OWNER'S CLOCK, NOT THIS ONE. monitor/schedule.py says automatic
+    # checking is OFF unless someone turns it on (the owner, 18 Aug 2026: "i
+    # dont want the asin monitor to be working always"), and its header names
+    # this job as one of the two things that must obey it. It did not: it swept
+    # every 4 hours whatever the setting said (known-issues #3; Milestone 3).
+    if not _sched.is_on(_cfg_now):
+        return {"skipped": "automatic checking is off (monitor schedule)"}
+    res = _checker.check_all(_cfg_now, config_path, log=lambda m: None)
     return res if isinstance(res, dict) else {"result": str(res)[:400]}
 
 
@@ -476,16 +490,13 @@ def sourcing_apply(workspace_id=None):
     them by coming in through the timer.
     """
     from domain import source_apply as _sapply
-    from domain import accounts as _acc
     app, config_path, cfg = _need("app", "config_path", "cfg")
     c = cfg() if callable(cfg) else cfg
 
     def creds_for(ws, mkt):
-        for a in (c.get("accounts") or []):
-            if str(a.get("id")) == str(ws):
-                return (_acc.account_creds(a), _acc.marketplace_id(mkt),
-                        str(a.get("seller_id") or ""))
-        raise RuntimeError("no account called %s" % ws)
+        # The one lookup (domain/source_apply.seller_creds), on the settings
+        # read once at the start of this run, as before.
+        return _sapply.seller_creds(c, ws, mkt)
 
     return _sapply.run_live(config_path, cfg, creds_for, workspace_id=workspace_id)
 
@@ -745,7 +756,8 @@ def register_jobs(app, workspace_ids=None, config_path=None, cfg=None):
     # generator carried them (listing/suppliers.run_row_supplier_repair_once).
     # In a thread, so a large store never slows the app coming up, and never
     # fatal -- it runs again on the next start if it did not finish.
-    if config_path:
+    from config import background as _bg
+    if config_path and _bg.enabled():
         import threading
 
         def _repair():

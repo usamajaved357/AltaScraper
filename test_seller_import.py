@@ -11,8 +11,13 @@ And a failed check read as a pass. Every screen returns None for "could not
 tell", and None must become UNKNOWN, never CLEAR -- otherwise a blocked product
 reaches the submit queue with the AI spend already gone.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -445,7 +450,7 @@ truthy("but it does say its copy has not been written yet",
        _clear["notes"].startswith("COPY NOT WRITTEN YET"))
 truthy("  and how to write it", "Regenerate copy" in _clear["notes"])
 
-_js = open(r"D:\AltaScraper\static\js\sellerimport.js", encoding="utf-8").read()
+_js = open(_os_repo.path.join(_REPO, r"static\js\sellerimport.js"), encoding="utf-8").read()
 truthy("the screen keeps the summary instead of toasting it",
        "SIMP.screenSummary" in _js)
 truthy("  and every verdict opens its own reasons in place",

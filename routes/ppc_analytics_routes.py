@@ -34,30 +34,11 @@ import domain.request_account as _req_acct
 def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
 
     def _scope():
-        """Which account, marketplace and window this request is about."""
-        aid = _req_acct.named(request)
-        if not aid:
-            aid = str((_state or {}).get("active_account_id", "") or "")
-        if not aid:
-            try:
-                aid = str((_active_account() or {}).get("id") or "")
-            except Exception:
-                aid = ""
-        mkt = (request.args.get("marketplace")
-               or _state.get("active_marketplace") or "").upper()
-        if aid and (not mkt or mkt == "__ALL__"):
-            # Advertising belongs to ONE marketplace -- an advertising profile
-            # is one advertiser in one marketplace -- so "all marketplaces"
-            # cannot be answered and the account's own default is used.
-            for a in ((_cfg() or {}).get("accounts") or []):
-                if str(a.get("id") or "") == aid:
-                    mkt = str(a.get("default_marketplace") or "").upper()
-                    if not mkt:
-                        ms = [str(m).upper() for m in (a.get("marketplaces") or [])
-                              if str(m).upper() != "__ALL__"]
-                        mkt = ms[0] if ms else ""
-                    break
-        return aid, mkt
+        """Which account, marketplace and window this request is about.
+        The one copy: routes/scope.ads_account (shared with live_tracker_routes)."""
+        from routes import scope as _scope_mod
+        return _scope_mod.ads_account(request, state=_state, active_account=_active_account,
+                                      cfg=_cfg, req_acct=_req_acct)
 
     def _avail(aid, mkt):
         """What each panel can be filled from, PLUS whether Advertising is even
@@ -206,7 +187,8 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             # period dont change the data".
             "trail": _pa.trail(CONFIG_PATH, aid, mkt, 7, start=start, end=end),
             "per_click": _pa.per_click_trend(days, rates.get("fee_rate"),
-                                             rates.get("cogs_rate")),
+                                             rates.get("cogs_rate"),
+                                             rates.get("vat_share") or 0.0),
             "efficiency": _pa.efficiency_trend(
                 days, rates.get("breakeven_acos_pct")),
             # With the brand words, so the panel can name what it matched on.
@@ -379,7 +361,8 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             # can be compared rather than silently disagreeing.
             "by_match_type": _pt.by_match_type(
                 CONFIG_PATH, aid, mkt, start, end,
-                rates.get("fee_rate"), rates.get("cogs_rate")),
+                rates.get("fee_rate"), rates.get("cogs_rate"),
+                rates.get("vat_share") or 0.0),
             "by_match_type_terms": _pa.by_group(terms, "match_type"),
             # The stacked area: one column per day, one lane per match type,
             # in the shape the app's own chart engine already takes.

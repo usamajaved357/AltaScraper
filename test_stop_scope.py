@@ -18,9 +18,14 @@ And /run/health reported the process-wide flag, so the generation bar appeared
 in accounts that had started nothing -- offering a Stop button for somebody
 else's work.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import sys
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 def check(l, g, w):
@@ -79,14 +84,14 @@ print("\n=== image batches carry their account ===")
 import inspect as _i
 GEN = _i.getsource(D._new_img_job)
 truthy("a new batch records which account it belongs to", '"account"' in GEN)
-GSRC = open(r"D:\AltaScraper\routes\genimage_routes.py", encoding="utf-8").read()
+GSRC = open(_os_repo.path.join(_REPO, r"routes\genimage_routes.py"), encoding="utf-8").read()
 truthy("the progress list filters by account", "j_acct != _acct" in GSRC)
 truthy("  and says how many run elsewhere rather than hiding them",
        "elsewhere" in GSRC)
 truthy("Stop-all is scoped to this account", "left_running_elsewhere" in GSRC)
 truthy("  and there is still a way to stop ONE batch",
        "genimage/stop_job" in GSRC)
-JS = open(r"D:\AltaScraper\static\js\settings.js", encoding="utf-8").read()
+JS = open(_os_repo.path.join(_REPO, r"static\js\settings.js"), encoding="utf-8").read()
 truthy("the bar offers stopping just the batch it is showing",
        "function stopThisGeneration" in JS)
 truthy("  and Stop-all says it is limited to this account",
@@ -121,7 +126,7 @@ else:
 
 # CAUSE 1: the process was never attached to the slot, so Stop removed the slot
 # and terminated nothing -- Stop reported success while the run kept spending.
-LR = open(r"D:\AltaScraper\routes\listing_routes.py", encoding="utf-8").read()
+LR = open(_os_repo.path.join(_REPO, r"routes\listing_routes.py"), encoding="utf-8").read()
 truthy("the generate run attaches its process to its slot",
        "_SLOTS_ATTACH.attach(" in LR)
 
@@ -139,22 +144,43 @@ check("  but one belonging to another account is not",
 SLOTS._slots.clear()
 
 # And the whole tree, not just the child: the generator launches a browser.
-RS = open(r"D:\AltaScraper\domain\run_slots.py", encoding="utf-8").read()
+RS = open(_os_repo.path.join(_REPO, r"domain\run_slots.py"), encoding="utf-8").read()
 truthy("stopping ends the process GROUP, not only the child", "killpg" in RS)
 truthy("  and escalates to SIGKILL if it ignores the first ask", "SIGKILL" in RS)
 truthy("  with taskkill /T on Windows", "taskkill" in RS)
-SP = open(r"D:\AltaScraper\routes\stream_pump.py", encoding="utf-8").read()
+SP = open(_os_repo.path.join(_REPO, r"routes\stream_pump.py"), encoding="utf-8").read()
 truthy("every run is spawned into its own group so it CAN be",
        "start_new_session" in SP)
 
 # The fallback used to require the slots to be idle, which skipped it in exactly
 # the case it existed for.
-UI = open(r"D:\AltaScraper\routes\ui_routes.py", encoding="utf-8").read()
+UI = open(_os_repo.path.join(_REPO, r"routes\ui_routes.py"), encoding="utf-8").read()
 check("the fallback kill is no longer blocked by other runs existing",
       "if not stopped and not _SLOTS.busy():" in UI, False)
 
+# A15: the legacy single-proc handle holds whichever run started LAST. With
+# Nestwell's run in it and nothing of Jack's running, Stop pressed on Jack must
+# not reach it through the fallback.
+SLOTS._slots.clear()
+_ok, _kn = SLOTS.acquire("nestwell_goods", "SKU-N", owner="")
+_pn = _Proc()
+SLOTS.attach(_kn, _pn)
+check("another account's process is recognised as theirs",
+      SLOTS.belongs_elsewhere(_pn, "jack_uk"), True)
+check("  but not by its own account", SLOTS.belongs_elsewhere(_pn, "nestwell_goods"), False)
+check("  an unattached process belongs to nobody",
+      SLOTS.belongs_elsewhere(_Proc(), "jack_uk"), False)
+SLOTS._slots.clear()
+truthy("the /stop fallback asks before ending the shared handle",
+       "_SLOTS.belongs_elsewhere(p, acct)" in UI)
+truthy("  and Stop acts for the account the TAB names, not the global",
+       "_req_acct.named(request)" in UI.split('def stop(')[1].split("\n    @app")[0])
+HW = open(_os_repo.path.join(_REPO, r"static\js\howworks.js"), encoding="utf-8").read()
+truthy("  which the Stop button sends", 'fetch("/stop",{method:"POST",headers' in HW
+       and "acctBody(" in HW.split('fetch("/stop"')[1][:200])
+
 print("\n=== /stop reports what it deliberately left alone ===")
-USRC = open(r"D:\AltaScraper\routes\ui_routes.py", encoding="utf-8").read()
+USRC = open(_os_repo.path.join(_REPO, r"routes\ui_routes.py"), encoding="utf-8").read()
 truthy("it passes the account to the slots", "account=(acct or None)" in USRC)
 truthy("  and returns what was left running elsewhere",
        "left_running_elsewhere" in USRC)

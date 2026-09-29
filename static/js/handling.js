@@ -306,6 +306,9 @@ async function setHandlingFromBox(sku, id){
 // something sells.
 
 async function bulkQuantity(){
+  // The account this was opened for, noted BEFORE the dialog below: if it
+  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
+  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
   const inp = document.getElementById("stockqty");
   const raw = inp ? String(inp.value||"").trim() : "";
   if(raw===""){ toast("Enter a stock quantity first"); if(inp) inp.focus(); return; }
@@ -327,6 +330,11 @@ async function bulkQuantity(){
   const btn = document.getElementById("stockbtn");
   if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Updating…"; }
   const _done=()=>{ if(btn){ btn.disabled=false; btn.textContent=btn.dataset._t||"Set stock"; } };
+  if(typeof acctId === "function" && acctId() !== _pinAcct){
+    if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+    _done();
+    return;
+  }
   const post = (body)=> fetch("/stock/bulk_update",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify(Object.assign(_handlingScope(), body))}).then(r=>r.json());

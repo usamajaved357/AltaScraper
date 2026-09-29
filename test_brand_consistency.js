@@ -32,7 +32,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
+const read = p => fs.readFileSync((__dirname + "/") + p, "utf8");
 const HTML = read("templates/dashboard.html");
 const CSS  = read("static/css/dashboard.css");
 
@@ -46,15 +46,18 @@ function section(id){
 
 console.log("=== every screen introduces itself the same way ===");
 // The five that set the pattern, and the ones brought into line with it.
+// "generate" left this list on 28 Sep 2026: the Generate & submit screen was
+// retired on 26 Sep (562b4d8, docs/changelog.md) -- the generation flow moved
+// onto the Listings page. See the block further down that pins it stays gone.
 const SCREENS = ["sales", "traffic", "returns", "aiusage", "hourly",
-                 "generate", "monitor", "sellerimport", "sourcing"];
+                 "monitor", "sellerimport", "sourcing"];
 SCREENS.forEach(function(id){
   const s = section(id);
   truthy("  " + id.padEnd(13) + " has a header", /wstoolbar|panelsub/.test(s));
 });
 
 console.log("\n=== an icon and a sentence, not a bare word ===");
-["traffic", "returns", "aiusage", "hourly", "generate", "monitor",
+["traffic", "returns", "aiusage", "hourly", "monitor",
  "sellerimport", "sourcing"].forEach(function(id){
   const s = section(id);
   truthy("  " + id.padEnd(13) + " names itself with an icon",
@@ -95,7 +98,7 @@ truthy("  and no longer sets the size by hand",
  * into one size is a change across thirty-nine screens that nobody has asked
  * for; it is recorded here rather than made silently.
  */
-["generate", "monitor", "sellerimport", "sourcing"].forEach(function(id){
+["monitor", "sellerimport", "sourcing"].forEach(function(id){
   const s = section(id);
   truthy("  " + id.padEnd(13) + " takes its title from a shared header",
          /class="pagehead"/.test(s) || /class="wstoolbar/.test(s));
@@ -119,16 +122,13 @@ truthy("  and one of them can be the primary action", /\.db-chip\.primary\{/.tes
 truthy("a disabled chip looks disabled", /\.db-chip\[disabled\]\{/.test(CSS));
 truthy("a modal's title sits with its icon", /\.modal \.paneltitle\{/.test(CSS));
 
-console.log("\n=== Generate & submit is chips, not bare buttons ===");
-const gen = section("generate");
-truthy("its actions are chips", /class="db-chip/.test(gen));
-truthy("  and none of them is a bare <button class=\"primary\">",
-       !/<button class="primary"/.test(gen));
-truthy("  nor a bare <button class=\"danger\">", !/<button class="danger"/.test(gen));
-truthy("the row selector is a card, not an inline border",
-       /id="genselectwrap" class="panelcard/.test(gen));
-truthy("  and its fields use the app's own field class",
-       /id="gensel_value" class="ed"/.test(gen) && /id="gensel_type" class="ed"/.test(gen));
+// RE-PINNED 28 Sep 2026 (Milestone 1). This block checked the Generate &
+// submit screen's chips and selector card. That screen was RETIRED on 26 Sep
+// (562b4d8, recorded in docs/changelog.md and known-issues): its flow moved onto
+// the Listings page. What is worth pinning now is that it stays retired, rather
+// than a half-screen coming back with bare buttons.
+console.log("\n=== the retired Generate & submit screen stays retired ===");
+truthy("there is no separate Generate screen", section("generate") === "");
 
 console.log("\n=== the modals do not change key ===");
 // The Image Studio is no longer a modal -- it is its own screen, asked for as
@@ -153,10 +153,14 @@ truthy("its upload control is not a raw browser file button",
 truthy("  and the input is still reachable by keyboard",
        /\.visually-hidden\{/.test(CSS) && !/\.visually-hidden\{[^}]*display:none/.test(CSS));
 
-console.log("\n=== the queue's add-form does not outshout the screen ===");
+// RE-PINNED 28 Sep 2026. The "Add a product" form this checked was removed on
+// the owner's request (5e78d3e, docs/decisions.md 27 Sep); inputqueue.js keeps a
+// note where it was. Pinned: it has not come back with its old accent outline.
+console.log("\n=== the queue's add-form stays removed ===");
 const iq = read("static/js/inputqueue.js");
-truthy("it uses the brand card", /class="panelcard"/.test(iq));
-truthy("  not a full accent outline", !/border:1px solid var\(--accent\)/.test(iq));
+truthy("no full accent outline is drawn", !/border:1px solid var\(--accent\)/.test(iq));
+truthy("  and the removal is recorded where the form was",
+       /THE "ADD A PRODUCT" FORM WAS HERE/.test(iq));
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

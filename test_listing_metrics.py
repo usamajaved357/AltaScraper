@@ -24,13 +24,18 @@ listing done". Every way it can go wrong is silent:
 Everything runs against a temporary database built here, so it tests the SQL
 rather than whatever happens to be in the real one.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import os
 import sqlite3
 import sys
 import tempfile
 import time
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 fails = []
 

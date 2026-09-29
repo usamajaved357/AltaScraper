@@ -6,8 +6,10 @@
 //   * Ad spend reads "not connected" rather than 0.00. Nothing writes to
 //     ads_daily yet, and a zero would inflate every advertised product's
 //     contribution by exactly what you are spending on it — convincingly.
-//   * A product with any uncosted unit shows no contribution at all, because a
-//     partial cost only ever makes a product look better than it is.
+//   * A product with uncosted units IS shown, flagged "N uncosted" -- its
+//     figure counts that stock as free, so it is too high. The owner's rule:
+//     "if no cogs are added show profit as wrong ... the user should know he
+//     needs to add cogs". Only a product whose FEE is unknown shows nothing.
 // Both are stated on screen rather than left for the reader to notice.
 
 let FIN = {rows: [], totals: {}, sort: "revenue", desc: true,
@@ -182,10 +184,18 @@ async function financeLoad(){
   // basis from the one the toggle is showing.
   qs.push("basis=" + encodeURIComponent(FIN.basis || "orders"));
   let j;
+  // ONLY THE NEWEST REQUEST, AND ONLY FOR THE ACCOUNT STILL ON SCREEN. There
+  // was no guard at all: two preset clicks raced and the slower reply won, and
+  // a reply landing after an account switch painted the old account's rows on
+  // the new account's screen -- measured in the master audit (S5).
+  const _seq = (FIN._seq = (FIN._seq || 0) + 1);
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  const _stale = () => _seq !== FIN._seq || (_sc && !screenStillIn(_sc));
   try{ j = await (await fetch("/finance/contribution"+(qs.length?"?"+qs.join("&"):""))).json(); }
-  catch(err){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load: '+_fesc(String(err))+'</div>'; return; }
+  catch(err){ if(_stale()) return; body.innerHTML = uiError("Finance could not be loaded", String(err), "financeLoad", "finance"); return; }
+  if(_stale()) return;
   if(!j || !j.ok){
-    body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_fesc((j&&j.error)||"Could not load")+'</div>';
+    body.innerHTML = uiError("Finance could not be loaded", (j&&j.error)||"no reason given", "financeLoad", "finance");
     return;
   }
   FIN.rows = j.rows || [];
@@ -241,7 +251,10 @@ function _finMatching(f){
 // MONEY, not counts, is a separate list because only money gets rounded to
 // pence at the end; rounding a unit count is meaningless and rounding it twice
 // is how a count of 3 becomes 2.999999.
-const FIN_MONEY = ["revenue", "vat", "fees", "cogs", "refunds", "promos"];
+// net_revenue is summed because margin is worked out over it -- sales after
+// VAT, the same denominator as every other profit screen.
+const FIN_MONEY = ["revenue", "vat", "net_revenue", "fees", "cogs", "refunds",
+                   "promos"];
 const FIN_COUNTS = ["units", "uncosted_units"];
 const FIN_SUM = FIN_MONEY.concat(FIN_COUNTS);
 
@@ -270,8 +283,9 @@ function _finRollup(rows){
   return order.map(function(k){
     const g = out[k];
     if(g._blank) g.contribution = null;
-    g.margin_pct = (g.contribution !== null && g.revenue)
-                 ? Number((g.contribution / g.revenue * 100).toFixed(2)) : null;
+    // Over sales AFTER VAT, as the server and every other screen do.
+    g.margin_pct = (g.contribution !== null && g.net_revenue)
+                 ? Number((g.contribution / g.net_revenue * 100).toFixed(2)) : null;
     if(g._isGroup) g.title = (g.title || "") + " (" + g._n + " children)";
     return g;
   });
@@ -335,8 +349,9 @@ function _finTotals(rows){
   });
   if(!anyAds) t.ad_spend = null;
   if(blank) t.contribution = null;
-  t.margin_pct = (t.contribution !== null && t.revenue)
-               ? Number((t.contribution / t.revenue * 100).toFixed(2)) : null;
+  // Over sales AFTER VAT, as the server and every other screen do.
+  t.margin_pct = (t.contribution !== null && t.net_revenue)
+               ? Number((t.contribution / t.net_revenue * 100).toFixed(2)) : null;
   FIN_MONEY.forEach(function(k){ t[k] = Number(t[k].toFixed(2)); });
   if(t.contribution !== null) t.contribution = Number(t.contribution.toFixed(2));
   return t;
@@ -366,9 +381,21 @@ function financeBasisToggle(){
      && t.revenue) {
     const est = Number(t.estimated_revenue || 0);
     const pct = t.revenue ? Math.round(100 * est / t.revenue) : 0;
-    cover = " " + pct + "% of the revenue here has not settled yet, so its "
-          + "fees are charged at " + ((Number(t.fee_rate) || 0) * 100).toFixed(2)
-          + "%.";
+    // NO RATE IS NOT A 0% RATE. With nothing settled to measure from, the
+    // unsettled revenue carries no fee at all -- saying "charged at 0.00%"
+    // read as though Amazon had charged nothing (Milestone 1 review).
+    const unpriced = Number(t.unpriced_fee_revenue || 0);
+    cover = " " + pct + "% of the revenue here has not settled yet, so ";
+    if(t.fee_rate) {
+      cover += "its fees are charged at "
+             + (Number(t.fee_rate) * 100).toFixed(2) + "%";
+      cover += unpriced > 0
+        ? ", except where no rate could be measured — those carry no fee yet."
+        : ".";
+    } else {
+      cover += "no fee rate could be measured for it yet — it carries no fee "
+             + "until Amazon settles it.";
+    }
   }
   return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;'
     + 'margin:0 0 8px">'
@@ -488,10 +515,12 @@ function financeRender(){
   //
   // The level comes from the server (domain/contribution.NOTE_*). A plain string
   // is still accepted and treated as a warning, so an older response renders.
+  // The shared status colours (owner, 29 Sep 2026: hard-coded colours onto the
+  // shared ones, so these notes follow the light theme too).
   const FIN_NOTE_STYLE = {
-    bad:  {border: '#5c2b2b', bg: '#2a1414', icon: 'ti-alert-triangle', fg: '#ffb4b4'},
-    warn: {border: '#3a3320', bg: '#241f10', icon: 'ti-info-circle',    fg: ''},
-    info: {border: '#2a3446', bg: '#161c26', icon: 'ti-info-circle',    fg: ''},
+    bad:  {border: 'var(--as-danger-border)',  bg: 'var(--as-danger-bg)',  icon: 'ti-alert-triangle', fg: 'var(--as-danger)'},
+    warn: {border: 'var(--as-warning-border)', bg: 'var(--as-warning-bg)', icon: 'ti-info-circle',    fg: ''},
+    info: {border: 'var(--as-neutral-border)', bg: 'var(--as-neutral-bg)', icon: 'ti-info-circle',    fg: ''},
   };
   ((FIN.meta && FIN.meta.notes) || []).forEach(function(n){
     const text = (typeof n === 'string') ? n : (n && n.text) || '';
@@ -591,13 +620,17 @@ function financeRender(){
     {label: "What it cost", value: _fmoney(t.fees + t.cogs, ""),
      note: "Amazon " + _fmoney(t.fees, "") + " · stock " + _fmoney(t.cogs, "")},
     {label: "Contribution", value: _fmoney(t.contribution, ""),
-     // Withheld, not zero. A blank contribution means a product has no cost
-     // recorded, and printing 0 there would read as "it earned nothing".
-     tone: (t.contribution === null) ? "warn"
+     // Withheld, not zero, when a product's FEE is unknown. Uncosted stock is
+     // shown and flagged instead -- the owner's rule -- so the card says the
+     // figure is too high rather than hiding it.
+     tone: (t.contribution === null || t.uncosted_units) ? "warn"
            : (t.contribution < 0 ? "bad" : "good"),
      note: (t.contribution === null)
-           ? "withheld - a product has no cost recorded"
-           : "after fees, stock, refunds and promotions"},
+           ? "withheld - Amazon's fee on a product could not be worked out"
+           : (t.uncosted_units
+              ? "TOO HIGH - " + t.uncosted_units + " unit"
+                + (t.uncosted_units === 1 ? "" : "s") + " have no cost recorded"
+              : "after fees, stock, refunds and promotions")},
     {label: "Margin", value: _fpct(t.margin_pct),
      tone: (t.margin_pct === null || t.margin_pct === undefined) ? ""
            : (t.margin_pct < 0 ? "bad" : (t.margin_pct < 10 ? "warn" : "good")),
@@ -645,7 +678,9 @@ function financeRender(){
           : '<code style="font-size:11.5px">'+_fesc(v)+'</code>';
         if(r.uncosted_units){
           cell += '<span class="cc" style="font-size:10px;color:var(--warn);margin-left:6px" '
-                + 'title="These units have no cost recorded, so no contribution is shown">'
+                + 'title="These units have no cost recorded, so nothing was subtracted '
+                + 'for them and this product\'s contribution is HIGHER than the truth. '
+                + 'Set a cost, then press Sync.">'
                 + r.uncosted_units+' uncosted</span>';
         }
       } else if(c.kind === "int"){

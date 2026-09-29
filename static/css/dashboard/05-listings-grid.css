@@ -1,0 +1,371 @@
+/* static/css/dashboard/05-listings-grid.css -- the gallery grid of listing cards. Cut from dashboard.css in load order (Milestone 4, 28 Sep 2026): every piece loads right after it, in number order, so each rule keeps its place in the cascade. Do not reorder. */
+  /* ---- GALLERY GRID ---- */
+  main#grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:none;align-content:start}
+  /* Flat, like .wscard -- teal border on hover, no lift. */
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+        display:flex;flex-direction:column;transition:border-color .12s}
+  .tile:hover{border-color:var(--accent)}
+  .tile.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  /* The flag borders keep their own hue and must SURVIVE hover -- a blocked
+     listing turning teal because the mouse passed over it would hide the one
+     thing the border exists to say. Declared after :hover so they win. */
+  .tile.flag,.tile.flag:hover{border-color:var(--red-line)}       /* prohibited / blocker */
+  .tile.flagamber,.tile.flagamber:hover{border-color:var(--warn-line)}  /* restricted-needs-docs */
+  /* A SQUARE BOX, THE SAME ON EVERY CARD.
+     It was height:180px on a column whose WIDTH changes with the window, so the
+     picture area was a different shape on a wide screen from a narrow one, and
+     two cards side by side in different-width grids never matched. A ratio is
+     the same shape at every size, which is what "all cards look alike" needs. */
+  .tileimg{position:relative;aspect-ratio:1/1;background:var(--panel2);display:flex;align-items:center;
+           justify-content:center;cursor:pointer;overflow:hidden}
+  /* THE IMAGE FILLS THE SQUARE AND IS LETTERBOXED INSIDE IT.
+     `background:#fff` is gone from here. It was on the <img>, which was
+     width:100%;height:100%, so the ELEMENT was a white square and the photo sat
+     letterboxed inside a white rectangle on a charcoal card.
+     AND IT KEEPS 100%/100% RATHER THAN AUTO SIZING. Measured in a browser: with
+     `width:auto;height:auto;max-width:100%`, an <img> that has not loaded yet
+     has no intrinsic size, so it lays out at 0x0 -- two of the first eight
+     tiles rendered with a zero-size image, which is the "broken on the first
+     few cards" complaint in a new form. 100% gives it the box whether or not
+     the bytes have arrived, and object-fit:contain still means nothing is ever
+     cropped or stretched. The surround is .tileimg's panel colour. */
+  .tileimg img{width:100%;height:100%;object-fit:contain}
+  .tileimg.noimg{color:var(--ink4);font-size:34px;flex-direction:column;gap:4px}
+  /* "No image" said in words as well as an icon: a lone grey glyph on a grey
+     square reads as an image that failed to load, which is a different problem
+     from one that was never added. */
+  .tileimg.noimg::after{content:"No image";font-size:10px;letter-spacing:.02em}
+  /* The live tile draws its own worded placeholder ("No image uploaded"), which
+     says the same thing at more length. One caption, not two stacked. */
+  .tileimg.noimg:has(.noimgmsg)::after{content:none}
+
+  /* .tilewarn was here -- the warning-count badge, top-right of the picture.
+     Removed with _warnChip: "i dont want this symbol at all, i already have 3
+     symbols for restricted compliance and claims risk". The three that stay are
+     .tileflag (restricted), .tileclaim (claims risk) and .tileviab, and unlike
+     the count they each name what is wrong. */
+  .tiledot{position:absolute;top:8px;left:8px;width:10px;height:10px;border-radius:50%;border:2px solid var(--panel)}
+  .tilesel{position:absolute;top:8px;right:8px;width:22px;height:22px;cursor:pointer;accent-color:var(--accent);z-index:5;background:color-mix(in srgb, var(--as-bg-shell) 60%, transparent);border-radius:5px;box-shadow:0 0 0 2px color-mix(in srgb, var(--as-lit-ffffff-ov) 15%, transparent)}
+  .tile:hover .tilesel{box-shadow:0 0 0 2px var(--accent)}
+  .tileflag{position:absolute;bottom:8px;right:8px;color:var(--warn);background:rgba(0,0,0,.55);
+            border-radius:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .tileflag.red{color:var(--red)}    /* prohibited / blocker */
+  .tileflag.amber{color:var(--warn)}  /* restricted-needs-docs */
+  /* Compliance-requirements badge (sourcing viability): the count of documents
+     Amazon can demand later. Sits immediately LEFT of .tileflag -- bottom-right is
+     taken by the restricted flag and bottom-left by .tileclaim, so a third badge
+     needs its own lane or it lands on top of one of them. */
+  .tiledocs{position:absolute;bottom:8px;right:36px;display:flex;align-items:center;gap:3px;
+            height:22px;padding:0 7px;border-radius:11px;font-size:12px;font-weight:700;
+            cursor:pointer;z-index:6;line-height:1;background:rgba(0,0,0,.55);border:1px solid var(--line)}
+  .tiledocs i{font-size:12px}
+  .tiledocs.red{color:var(--red);border-color:var(--red-line)}
+  .tiledocs.amber{color:var(--warn);border-color:var(--warn-line)}
+  /* A DRAFT WHOSE COPY HAS NOT BEEN WRITTEN. Top-left, which is the only corner
+     the other three badges do not use: .tileflag is bottom-right, .tiledocs sits
+     beside it, .tileclaim is bottom-left. Quiet -- this is a stage of the
+     pipeline, not a fault -- but present, because a row with a title and nothing
+     else under the same status as a finished one looks broken rather than
+     unfinished. */
+  .tilecopy{position:absolute;top:8px;left:8px;display:flex;align-items:center;
+            height:22px;width:22px;justify-content:center;border-radius:11px;
+            cursor:pointer;z-index:6;line-height:1;background:rgba(0,0,0,.55);
+            border:1px solid var(--warn-line);color:var(--warn)}
+  .tilecopy i{font-size:12px}
+  /* Category-aware claim-risk badge (task #18). RED = loud; AMBER deliberately quieter
+     so a soft superlative never screams as loud as a pesticide claim. Absent on clean
+     listings, so those tiles look exactly as before. */
+  .tileclaim{position:absolute;bottom:8px;left:8px;display:flex;align-items:center;gap:3px;
+             height:22px;padding:0 7px;border-radius:11px;font-size:12px;font-weight:700;
+             cursor:pointer;z-index:6;line-height:1}
+  .tileclaim i{font-size:12px}
+  .tileclaim.red{background:var(--as-lit-c0392b-bg);color:#fff;border:1px solid var(--as-lit-e05a4b-bd);box-shadow:0 1px 6px color-mix(in srgb, var(--as-lit-c0392b) 55%, transparent)}
+  .tileclaim.amber{background:color-mix(in srgb, var(--as-lit-5a4a16-bg) 85%, transparent);color:var(--as-lit-f0cf8c-fg);border:1px solid var(--as-lit-7a641f-bd);box-shadow:none}
+  /* In-copy highlight of the offending word(s). */
+  mark.claimhit{padding:0 2px;border-radius:3px;font-weight:700}
+  mark.claimhit.red{background:var(--as-lit-5c1f1a-bg);color:var(--as-lit-ffb4a8-fg);box-shadow:inset 0 0 0 1px var(--as-lit-9c3a30)}
+  mark.claimhit.amber{background:var(--as-lit-4a3d13-bg);color:var(--as-lit-f0cf8c-fg);box-shadow:inset 0 0 0 1px var(--as-lit-7a641f)}
+  /* Claim-risk panel in the drawer. */
+  .claimsbox .claimlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .claimrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
+  .claimrow.red{background:var(--redbg);border-color:var(--red-line)}
+  .claimrow.amber{background:var(--amberbg);border-color:var(--warn-line)}
+  .claimhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px}
+  .claimsev{font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;letter-spacing:.03em}
+  .claimsev.red{background:var(--as-lit-c0392b-bg);color:#fff}
+  .claimsev.amber{background:var(--as-lit-7a641f-bg);color:#fff}
+  .claimtext{margin-top:5px;font-size:12px;line-height:1.5;color:var(--fg)}
+  .rewrite{margin-top:6px;border-top:1px dashed var(--line);padding-top:6px}
+  .rwrow{display:flex;gap:8px;align-items:flex-start;margin-bottom:4px}
+  .rwlbl{flex:0 0 46px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;padding-top:2px}
+  .rwbefore,.rwafter{flex:1;font-size:12px;line-height:1.5}
+  .rwafter{color:var(--ok)}
+  .rwacts{display:flex;align-items:center;gap:10px;margin-top:4px}
+  .linkbtn.ok{color:var(--ok);font-weight:700}
+  .tilebody{padding:11px 13px 6px;cursor:pointer;flex:1;display:flex;flex-direction:column;gap:2px}
+  .tiletitle{font-size:13px;font-weight:600;line-height:1.4;min-height:38px;overflow:hidden;
+             display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .tilemeta{display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px}
+  .fmode{font-size:10px;padding:1px 7px;border-radius:999px;font-weight:700;border:1px solid var(--line)}
+  .shipline{font-size:11px;line-height:1.4}
+  /* Gold marks MONEY. See the .financial note near the status pills. This class
+     is shared by the draft tiles (listings.js) and the live tiles
+     (miles_template.js), so both get it from one place. */
+  .tileprice{font-size:12px;font-weight:600;color:var(--gold);
+             font-variant-numeric:tabular-nums}
+  /* A live price is a control, not a label: it says so on hover and carries a
+     pencil, because an editable thing that looks identical to a read-only one
+     is not discoverable. Drafts keep the plain .tileprice -- there is no price
+     on Amazon to change yet. */
+  .pricehot{cursor:pointer;border-bottom:1px dashed transparent;transition:border-color .12s,color .12s}
+  .pricehot i{font-size:10px;opacity:0;margin-left:3px;transition:opacity .12s}
+  .pricehot:hover{border-bottom-color:var(--gold)}
+  .pricehot:hover i{opacity:.75}
+  /* The competitor ASIN a draft was researched from. Deliberately dim and
+     never a link -- it is not our listing, and the whole bug it replaces was
+     it looking like one. */
+  .srcasin{font-family:ui-monospace,Consolas,monospace;opacity:.7}
+  .tilesku{font-size:10px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+  /* The two facts every card now states outright: brand and handling time.
+     Deliberately quiet -- they are context for the title, not status. */
+  .tilefacts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:5px}
+  .tilefact{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--muted)}
+  .tilefact i{font-size:12px}
+  .brandfact{color:var(--ink2)}
+  /* Amazon's own handling time, as opposed to the one we hold for a draft. */
+  .handlive{color:var(--accent)}
+  /* Your OWN live ASIN chip (from the live catalogue, matched by SKU) */
+  .tileasin{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:10px;
+            color:var(--ok);font-family:ui-monospace,Consolas,monospace}
+  .tileasin i{font-size:12px}
+  .tileasin a{color:var(--ok);text-decoration:none}
+  .tileasin a:hover{text-decoration:underline}
+  /* Multi-tab: neutral tab tag on a card (which tab it lives on). NOT coloured —
+     colour stays reserved for status. */
+  .tiletab{display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:10px;
+           padding:2px 8px;border-radius:999px;color:var(--muted);
+           background:var(--panel2);border:1px solid var(--line);
+           max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tiletab i{font-size:11px;opacity:.75}
+  /* Multi-tab: the tab filter row (All tabs + one pill per tab). Same family as the
+     status pills but neutral. */
+  .tabfilter{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px}
+  .tabfilter .tablabel{font-size:11px;color:var(--muted);display:inline-flex;
+                       align-items:center;gap:4px;margin-right:2px;text-transform:uppercase;
+                       letter-spacing:.04em}
+  .tabpill{font-size:12px;padding:4px 10px;border-radius:999px;cursor:pointer;
+           background:var(--panel2);border:1px solid var(--line);color:var(--ink2);
+           display:inline-flex;align-items:center;gap:6px;line-height:1.2}
+  .tabpill:hover{border-color:var(--as-neutral-border);color:var(--ink)}
+  .tabpill.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent2);font-weight:600}
+  .tabpill .tabcount{font-size:10px;padding:0 6px;border-radius:999px;
+                     background:color-mix(in srgb, var(--as-lit-ffffff-ov) 6%, transparent);color:var(--muted);
+                     font-variant-numeric:tabular-nums}
+  .tabpill.active .tabcount{background:color-mix(in srgb, var(--as-lit-ffffff-ov) 14%, transparent);color:var(--as-lit-dfe7f5-fg)}
+  /* Duplicates toggle pill — amber, so it reads as a data-hygiene warning, distinct
+     from the neutral tab pills and from the red restricted flag. */
+  .tabpill.dup{color:var(--warn);border-color:var(--warn-line)}
+  .tabpill.dup:hover{border-color:var(--as-lit-7a642f-bd);color:var(--as-lit-f0c987-fg)}
+  .tabpill.dup.active{background:color-mix(in srgb, var(--as-lit-e3b768-bg) 16%, transparent);border-color:var(--as-lit-c79a4a-bd);color:var(--as-lit-ffe0a6-fg)}
+  .tabpill.dup .tabcount{background:color-mix(in srgb, var(--as-lit-e3b768-bg) 18%, transparent);color:var(--as-lit-f0c987-fg)}
+  /* Clickable "N duplicate SKUs" note in the summary line */
+  .dupsum{color:var(--warn);cursor:pointer;border-bottom:1px dotted color-mix(in srgb, var(--as-lit-e3b768-bd) 50%, transparent)}
+  .dupsum:hover{color:var(--as-lit-f0c987-fg)}
+  /* Duplicate card: subtle amber outline (colour reserved for status stays untouched) */
+  .tile.dup{outline:1px dashed color-mix(in srgb, var(--as-lit-e3b768-bd) 55%, transparent);outline-offset:-1px}
+  /* The duplicate chip on a card: label + a delete-this-copy button */
+  .tiledup{display:flex;align-items:center;justify-content:space-between;gap:8px;
+           margin:6px 9px 0;padding:5px 8px;border-radius:8px;font-size:10px;
+           color:var(--warn);background:color-mix(in srgb, var(--as-lit-e3b768-bg) 10%, transparent);border:1px solid color-mix(in srgb, var(--as-lit-e3b768-bd) 30%, transparent)}
+  .tiledup-lbl{display:inline-flex;align-items:center;gap:5px;min-width:0;
+               overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tiledup-lbl i{font-size:12px;flex:0 0 auto}
+  .tiledup-del{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+               font-size:10px;padding:3px 8px;border-radius:6px;
+               color:var(--red);background:transparent;border:1px solid var(--red-line)}
+  .tiledup-del:hover{background:color-mix(in srgb, var(--as-lit-ff5050-bg) 10%, transparent);color:var(--as-lit-ffb0b0-fg)}
+  .tiledup-del:disabled{opacity:.5;cursor:default}
+  /* "Actual on Amazon" read-only mirror panel in the drawer */
+  .mirbox{margin:12px 0 4px;border:1px solid var(--ok-line);border-radius:10px;background:color-mix(in srgb, var(--as-lit-123021-bg) 28%, transparent)}
+  .mirsum{cursor:pointer;padding:9px 12px;font-weight:600;color:var(--ok);display:flex;align-items:center;gap:6px;list-style:none}
+  .mirsum::-webkit-details-marker{display:none}
+  .mirbox .mirbody{padding:2px 12px 12px}
+  .mirimgs{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+  .mirimgs img{width:64px;height:64px;object-fit:cover;border-radius:7px;border:1px solid var(--line);background:var(--panel)}
+  .mirrow{display:flex;gap:10px;padding:5px 0;border-top:1px solid color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent);font-size:12px}
+  .mirrow .mirk{flex:0 0 130px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding-top:2px}
+  .mirdesc{white-space:pre-wrap;max-height:160px;overflow:auto}
+  .mirbul{margin:0;padding-left:18px}
+  .mirbul li{margin:2px 0}
+  /* ASIN Monitor section */
+  .bulkfilter{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:4px 0 8px}
+  /* top summary bar: is anyone sitting on my listings */
+  .monsum{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:10px 12px;margin:0 0 12px;
+          border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:13px}
+  .monsum b{color:var(--ink)}
+  .monsum-ok b{color:var(--ok)}
+  .monsum-warn{color:var(--warn)}
+  .monsum-warn b{color:var(--warn)}
+  /* per-ASIN block */
+  .monasin-block{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+  .monasin-block.warn{border-color:var(--warn-line);background:color-mix(in srgb, var(--as-lit-e3b768-bg) 5%, transparent)}
+  .monasin-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .monmkt-list{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+  /* A `display` rule beats the hidden ATTRIBUTE -- the browser's own
+     [hidden]{display:none} is the weakest rule there is, so a folded market
+     list stayed fully laid out and the page stayed forty screens tall. Measured
+     after adding the fold: 48,840px, i.e. taller than before. */
+  .monmkt-list[hidden]{display:none}
+  .monmkt-row{font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+              padding:3px 0;border-top:1px solid var(--line)}
+  .monmkt-ts{white-space:nowrap;margin-left:auto}
+  .monmkt-row.skipped{opacity:.5}
+  /* NEW-account marker on an unknown seller (0 feedback = classic new-hijacker signature) */
+  .newacct{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;
+           border-radius:5px;background:var(--red-bg);color:var(--red);vertical-align:middle}
+  .fbnote{font-size:10px;color:var(--muted)}
+  /* "Third parties on your listings" list */
+  .monunk{border:1px solid var(--warn-line);border-radius:12px;background:color-mix(in srgb, var(--as-lit-e3b768-bg) 6%, transparent);padding:10px 12px;margin:0 0 12px}
+  .monunk-h{font-size:13px;color:var(--warn);font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+  .monunk .montable td{vertical-align:middle}
+  .monunk .newrow td{background:color-mix(in srgb, var(--as-lit-e3b768-bg) 8%, transparent)}
+  .monunk .hirow td{background:color-mix(in srgb, var(--as-lit-e0696b-bg) 14%, transparent)}
+  /* HIGH RISK + multi-account badges */
+  .hirisk{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;
+          border-radius:5px;background:var(--red-bg);color:var(--red);vertical-align:middle}
+  .multiacct{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:5px;
+             background:var(--accent-bg,color-mix(in srgb, var(--as-lit-4f8cff-bg) 18%, transparent));color:var(--accent2);vertical-align:middle}
+  .monsum-hi{color:var(--red);font-weight:600}
+  .monsum-hi b{color:var(--red)}
+  /* per-marketplace unknown breakdown (Belgium hotspot) */
+  .monsum-bm{font-size:12px;color:var(--muted);margin:-6px 0 12px;padding:0 2px;display:flex;gap:10px;flex-wrap:wrap}
+  .monsum-bm .hot{color:var(--warn);font-weight:600}
+  .monlabelbtn{display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;
+               padding:3px 9px;border-radius:7px;color:var(--ink2);background:transparent;border:1px solid var(--line);white-space:nowrap}
+  .monlabelbtn:hover{border-color:var(--accent);color:var(--ink)}
+  /* seller chips, coloured by identity (colour reserved for the ONE thing that matters: unknown) */
+  .sellerchip{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;
+              border-radius:999px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+  .sellerchip.me  {color:var(--ok);border-color:var(--ok-line);background:var(--ok-bg)}   /* teal = you */
+  .sellerchip.amz {color:var(--muted);border-color:var(--line)}                        /* neutral = Amazon */
+  .sellerchip.auth{color:var(--accent2);border-color:var(--line2)}                                  /* authorised reseller */
+  .sellerchip.unk {color:var(--warn);border-color:var(--warn-line);background:color-mix(in srgb, var(--as-lit-e3b768-bg) 12%, transparent)} /* amber = threat */
+  .sellerchip.unk a{color:var(--warn);text-decoration:none}
+  .sellerchip.unk a:hover{text-decoration:underline}
+  .sellerchip .bbstar{color:var(--warn)}
+  .monchip.warn{color:var(--warn);border-color:var(--warn-line);background:color-mix(in srgb, var(--as-lit-e3b768-bg) 12%, transparent)}
+  .monchip.ok{color:var(--ok);border-color:var(--ok-line);background:color-mix(in srgb, var(--as-lit-123021-bg) 22%, transparent)}
+  .monalertbar{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .monalert{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;margin:6px 0;
+            border:1px solid var(--line);border-left-width:3px;border-radius:10px;background:var(--panel2)}
+  .monalert.read{opacity:.62}
+  .monalert.na{border-left-color:var(--red)}   /* new seller -> red (the one that matters most) */
+  .monalert.sr{border-left-color:var(--ink3)}   /* seller removed -> grey */
+  .monalert.pc{border-left-color:var(--warn)}   /* price change -> amber */
+  .monalert.bb{border-left-color:var(--accent2)}   /* buy box change -> blue */
+  .monalert .ma-ic{flex:0 0 auto;font-size:16px;color:var(--ink2);margin-top:1px}
+  .monalert.na .ma-ic{color:var(--red)}
+  .ma-body{flex:1;min-width:0}
+  .ma-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px}
+  .ma-top .spacer{flex:1}
+  .ma-asin{font-family:ui-monospace,Consolas,monospace;color:var(--accent2)}
+  .ma-ts{font-size:11px;white-space:nowrap}
+  .ma-mid{font-size:12px;margin-top:3px}
+  .ma-mid a{color:var(--accent2);text-decoration:none}
+  .ma-mid a:hover{text-decoration:underline}
+  .ma-det{font-size:12px;margin-top:2px}
+  .monadd{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--panel2)}
+  .monrow{display:flex;gap:12px;flex-wrap:wrap}
+  .monfield{display:flex;flex-direction:column}
+  .monlbl{font-size:12px;color:var(--muted);margin-bottom:5px}
+  .monin{background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:8px;
+         padding:8px 10px;font-size:13px;box-sizing:border-box}
+  .monin:focus{outline:none;border-color:var(--accent)}
+  .monmkts{display:flex;flex-wrap:wrap;gap:6px}
+  .monmkt{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink2);cursor:pointer;
+          padding:4px 9px;border-radius:999px;background:var(--panel);border:1px solid var(--line);user-select:none}
+  .monmkt input{margin:0;cursor:pointer}
+  .montable{width:100%;border-collapse:collapse;font-size:13px}
+  .montable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+               color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line)}
+  .montable td{padding:8px 10px;border-bottom:1px solid color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent);vertical-align:middle}
+  .monasin{color:var(--accent2);text-decoration:none;font-family:ui-monospace,Consolas,monospace;font-weight:600}
+  .monasin:hover{text-decoration:underline}
+  /* --ink, not --muted: the chip sits on ROWS TINTED red or amber by their
+     risk, and on those the muted grey measured 4.09:1 where it clears 5.2 on
+     a plain panel. A marketplace code says which country the seller was found
+     in -- it is not decoration. */
+  .monchip{display:inline-block;font-size:10px;padding:1px 7px;border-radius:999px;
+           background:color-mix(in srgb, var(--as-lit-ffffff-ov) 6%, transparent);color:var(--ink);border:1px solid var(--line)}
+  .monchip.all{color:var(--ok);border-color:var(--ok-line);background:color-mix(in srgb, var(--as-lit-123021-bg) 28%, transparent)}
+  .monrm{background:transparent;border:1px solid var(--red-line);color:var(--red);border-radius:7px;
+         height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .monrm:hover{background:color-mix(in srgb, var(--as-lit-ff5050-bg) 10%, transparent)}
+  .monhist{background:transparent;border:1px solid var(--line);color:var(--ink2);border-radius:7px;
+           height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .monhist:hover{border-color:var(--accent);color:var(--ink)}
+  /* Offer history modal */
+  .monhist-mkt{margin:14px 0}
+  .monhist-h{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .monhisttable{width:100%;border-collapse:collapse;font-size:12px}
+  .monhisttable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+                   color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .monhisttable td{padding:6px 8px;border-bottom:1px solid color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent);vertical-align:top}
+  .monhisttable a{color:var(--accent2);text-decoration:none}
+  .monhisttable a:hover{text-decoration:underline}
+  .monhs{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;margin:1px 0;
+         background:color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent);border:1px solid var(--line);color:var(--muted);
+         font-family:ui-monospace,Consolas,monospace;max-width:130px;overflow:hidden;
+         text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+  .monhs.bb{color:var(--ok);border-color:var(--ok-line);background:color-mix(in srgb, var(--as-lit-123021-bg) 28%, transparent)}
+  /* Paste-a-listing modal form */
+  .pl-grid{display:flex;flex-direction:column;gap:5px}
+  .pl-lbl{font-size:12px;color:var(--muted);margin-top:8px}
+  .pl-in{width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:8px;
+         padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box}
+  .pl-in:focus{outline:none;border-color:var(--accent)}
+  textarea.pl-in{resize:vertical;line-height:1.5}
+  .pl-img{display:flex;gap:8px;align-items:center}
+  .pl-img .pl-in{flex:1}
+  .pl-preview{margin-top:8px;min-height:0}
+  .pl-preview img{max-height:150px;max-width:100%;border-radius:8px;border:1px solid var(--line);background:var(--panel)}
+  .pl-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  /* Bulk handling-time control in the selection bar */
+  .handlingwrap{display:inline-flex;align-items:center;gap:6px;padding-left:8px;margin-left:2px;
+                border-left:1px solid var(--line)}
+  .handlingwrap>i{color:var(--muted);font-size:15px}
+  .handlingdays{width:62px;background:var(--panel);color:var(--ink);border:1px solid var(--line2);
+                border-radius:7px;padding:5px 8px;font-size:13px}
+  .handlingdays:focus{outline:none;border-color:var(--accent)}
+  /* PINNED TO THE BOTTOM, whatever the body above it holds. .tilebody already
+     has flex:1, which does this while the card is stretched by the grid --
+     margin-top:auto also does it when it is not, and the two together mean the
+     buttons line up across a row whether or not every card filled its height.
+     The rule above keeps them visually separate from the facts. */
+  .tileacts{display:flex;gap:3px;padding:7px 9px 9px;margin-top:auto;
+            border-top:1px solid var(--line)}
+  .tileacts .ib{flex:1}
+  /* Review + "···" (rowActions): Review takes the width, the menu button is square. */
+  .tileacts .ib.more{flex:0 0 34px}
+  .tileacts .ib.review{font-size:12px;font-weight:600;background:var(--as-action);
+    color:var(--as-action-fg);border-color:var(--as-action)}
+  .tileacts .ib.review:hover{background:var(--as-action-hover);color:var(--as-action-fg)}
+
+  /* The margin/ROI/profit chip is .profchip, shared with the live tile -- see
+     _econLine in listings.js for why a second look would have made the
+     "inconsistently formatted" complaint worse rather than better. */
+  .ib{height:30px;padding:0;display:flex;align-items:center;justify-content:center;
+      background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--ink2);
+      cursor:pointer;font-size:14px;text-decoration:none}
+  .ib:hover{border-color:var(--as-neutral-border);color:var(--as-lit-ffffff-fg)}
+  .ib.gen{color:var(--ai);border-color:var(--ai-line)}
+  .ib.del:hover,.ib.more:hover{color:var(--as-lit-ffffff-fg)}
+  /* tile context menu */
+  .tilemenu{position:fixed;z-index:85;background:var(--panel);border:1px solid var(--line);
+            border-radius:9px;padding:5px;min-width:170px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .tilemenu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+                   background:transparent;border:none;color:var(--ink);font-size:12px;padding:8px 10px;border-radius:6px;cursor:pointer}
+  .tilemenu button:hover{background:var(--panel2)}
+  .tilemenu button.danger{color:var(--red)}
+  .tilemenu .ti{font-size:15px}
+  .tilemenu .tmsep{height:1px;background:var(--line);margin:4px 2px}

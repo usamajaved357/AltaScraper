@@ -27,7 +27,7 @@ function check(label, got, want){
 }
 function truthy(label, got){ check(label, !!got, true); }
 
-const S = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
+const S = fs.readFileSync((__dirname + "/static/js/sales.js"), "utf8");
 
 function fnBody(src, name){
   const m = new RegExp("\\bfunction\\s+" + name + "\\s*\\(").exec(src);

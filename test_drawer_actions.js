@@ -39,9 +39,9 @@ function check(label, got, want) {
 function truthy(l, g) { check(l, !!g, true); }
 function falsy(l, g) { check(l, !!g, false); }
 
-const RAW = fs.readFileSync("D:/AltaScraper/static/js/listings.js", "utf8");
+const RAW = fs.readFileSync((__dirname + "/static/js/listings.js"), "utf8");
 const L = stripJsComments(RAW);
-const CSS = fs.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
+const CSS = fs.readFileSync((__dirname + "/static/css/dashboard.css"), "utf8");
 
 function fnBody(src, name) {
   const m = new RegExp("\\bfunction\\s+" + name + "\\s*\\(").exec(src);
@@ -102,7 +102,7 @@ console.log("\n=== the one that was deleted, and why it could be ===");
 falsy("Suggest missing fields is gone from the drawer",
       /onclick="suggestFields\(/.test(SH + D));
 // It is not dead: auto-fix is the thing that calls it now.
-const AF = stripJsComments(fs.readFileSync("D:/AltaScraper/static/js/autofix.js", "utf8"));
+const AF = stripJsComments(fs.readFileSync((__dirname + "/static/js/autofix.js"), "utf8"));
 truthy("  because Auto-fix calls it", /suggestFields\(/.test(AF));
 truthy("  and then applies the result", /\/edit|_afApply|applyOne/.test(AF));
 
@@ -139,8 +139,8 @@ console.log("\n=== status: one control, and it never lies ===");
 // existed is unchanged: Approve and Hold are one choice, and the half that is
 // already true has to show as true rather than as a button you might press
 // again. Same rule, two buttons that light instead of two halves of one.
-truthy("Approve and Hold both set the status", /setStatus\('\$\{esc\(r\.sku\)\}','APPROVED'/.test(SH)
-       && /setStatus\('\$\{esc\(r\.sku\)\}','NEEDS_REVIEW'/.test(SH));
+truthy("Approve and Hold both set the status", /setStatus\((?:'\$\{esc\(r\.sku\)\}'|\$\{jsArg\(r\.sku\)\}),'APPROVED'/.test(SH)
+       && /setStatus\((?:'\$\{esc\(r\.sku\)\}'|\$\{jsArg\(r\.sku\)\}),'NEEDS_REVIEW'/.test(SH));
 truthy("  the one that is true is lit", /on-approve/.test(SH) && /on-hold/.test(SH));
 truthy("  and says so rather than offering it again",
        /Already approved/.test(SH) && /Already held/.test(SH));
@@ -189,8 +189,8 @@ truthy("a phone gets it unstuck and stacked",
        /\.dwbar\{position:static;flex-direction:column/.test(CSS.replace(/\s+/g, " ")));
 
 console.log("\n=== nothing that was demoted lost its function ===");
-const ALL = fs.readdirSync("D:/AltaScraper/static/js").filter(f => f.endsWith(".js"))
-  .map(f => fs.readFileSync("D:/AltaScraper/static/js/" + f, "utf8")).join("\n");
+const ALL = fs.readdirSync((__dirname + "/static/js")).filter(f => f.endsWith(".js"))
+  .map(f => fs.readFileSync((__dirname + "/static/js/") + f, "utf8")).join("\n");
 for (const f of ["refreshSchemaFor", "pullLiveRow", "pushImageLive",
                  "uploadMainImage", "suggestFields", "openImageLibrary"]) {
   truthy("  " + f + " still exists", new RegExp("function\\s+" + f + "\\s*\\(").test(ALL));
@@ -199,7 +199,7 @@ for (const f of ["refreshSchemaFor", "pullLiveRow", "pushImageLive",
 // stopped being true the demotion would have quietly removed the only way in.
 truthy("the Image Library really does offer upload",
        /uploadMainImage\(/.test(fs.readFileSync(
-         "D:/AltaScraper/static/js/listingimages.js", "utf8")));
+         (__dirname + "/static/js/listingimages.js"), "utf8")));
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

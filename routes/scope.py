@@ -48,7 +48,7 @@ def workspace_id(*, state=None, account=None, asked=None):
     return ""
 
 
-def marketplace(*, state=None, account=None, asked=None, with_data=None):
+def marketplace(*, state=None, account=None, asked=None, with_data=None, wsid=None):
     """Which marketplace, by the order above. "" means genuinely unknown.
 
     `with_data` is an optional callable taking the workspace id and returning a
@@ -88,6 +88,12 @@ def marketplace(*, state=None, account=None, asked=None, with_data=None):
     sells_in = {str(m or "").strip().upper()
                 for m in (acc.get("marketplaces") or []) if str(m or "").strip()}
     selected = str((state or {}).get("active_marketplace") or "").strip().upper()
+    # "__all__" is the UI's word for every marketplace, not a country; stored
+    # as the selection it must not come back as one (Milestone 3 review).
+    if selected == "__ALL__":
+        selected = ""
+    if str(asked or "").strip().upper() == "__ALL__":
+        asked = ""
     if selected and sells_in and selected not in sells_in:
         selected = ""
     # An account that lists no marketplaces but HAS named a default has still
@@ -101,7 +107,12 @@ def marketplace(*, state=None, account=None, asked=None, with_data=None):
         if s:
             return s
     if with_data:
-        wsid = workspace_id(state=state, account=account)
+        # The account being answered for. resolve() passes it: with a named
+        # account it could not find, `account` is {} and workspace_id() would
+        # fall back to the OPEN account -- pairing the named id with another
+        # account's marketplace (batch 1 review).
+        if wsid is None:
+            wsid = workspace_id(state=state, account=account)
         if wsid:
             try:
                 return str(with_data(wsid) or "").strip().upper()
@@ -137,11 +148,74 @@ def resolve(*, state=None, account=None, asked_id=None, asked_marketplace=None,
             found = load_account(asked)
         except Exception:
             found = None
-        if found:
-            acc = found
+        # NOT FOUND IS NOT "USE THE OPEN ONE". Keeping the open account's record
+        # here paired the NAMED id with ANOTHER account's credentials -- a pull
+        # would read one seller and file it under another (Milestone 3 review).
+        # No record means the route's own "no account" path refuses.
+        acc = found or {}
     mkt = marketplace(state=state, account=acc, asked=asked_marketplace,
-                      with_data=with_data)
+                      with_data=with_data, wsid=wsid)
     return acc, wsid, mkt
+
+
+def for_request(request, *, state, active_account, cfg, config_path,
+                with_data=None):
+    """resolve() for a Flask request, with the account the PAGE named.
+
+    The three things every screen route needs and kept assembling by hand:
+    the account the page named (`account`, `account_id`, or the legacy `id`),
+    its marketplace (never "__all__", which is not a country), and a loader so
+    the account RECORD -- credentials included -- follows the id (see resolve).
+    Two routes (hourly, traffic) read only the server's open account and so
+    answered for whatever it held (master audit S8, Milestone 3).
+    """
+    from domain import request_account as _req_acct
+    from domain import accounts as _acc_mod
+
+    def _load(aid):
+        try:
+            return _acc_mod.get_account(cfg() if callable(cfg) else (cfg or {}),
+                                        aid, config_path)
+        except Exception:
+            return None
+    asked_mkt = (request.args.get("marketplace") or "").strip()
+    if not asked_mkt:
+        # A POST names its marketplace in the body, as it names its account.
+        try:
+            asked_mkt = str(_req_acct._json_body(request).get("marketplace")
+                            or "").strip()
+        except Exception:
+            asked_mkt = ""
+    if asked_mkt.lower() == "__all__":
+        asked_mkt = ""
+    try:
+        acc = active_account() or {}
+    except Exception:
+        acc = {}
+    return resolve(state=state, account=acc,
+                   asked_id=_req_acct.named_any(request),
+                   asked_marketplace=asked_mkt, with_data=with_data,
+                   load_account=_load)
+
+
+def pair(request, *, state, active_account, cfg, config_path, last_resort=""):
+    """(workspace_id, marketplace) for a Flask request -- for_request() without
+    the account record, for the screens that only read stored data.
+
+    THE MARKETPLACE FOLLOWS THE ACCOUNT THE PAGE NAMED. Ten route files each
+    had their own copy of this, and every copy filled a missing marketplace
+    from the server's OPEN account: ?account=sheelady_us with jack_uk open in
+    another tab was answered on jack's default, UK. That is the wrong-country
+    answer this module exists to prevent (CLAUDE.md Rule 12).
+
+    `last_resort` is what those copies fell back to when nothing at all
+    resolved ("UK" for most). Kept as an explicit argument so the guess is
+    visible at the call site rather than buried here; "" is the honest answer.
+    """
+    _acc, wsid, mkt = for_request(request, state=state,
+                                  active_account=active_account, cfg=cfg,
+                                  config_path=config_path)
+    return wsid, (mkt or last_resort)
 
 
 # What a screen should SAY when it still has nothing. One sentence, in the same
@@ -153,3 +227,59 @@ NO_MARKETPLACE = ("No marketplace could be worked out for this account. Pick one
 
 NO_ACCOUNT = ("No account is open. Choose one at the top of the screen — this "
               "screen is per account, because the figures are.")
+
+def page_account(request, *, state, active_account, get_account, req_acct):
+    """(account, workspace id, marketplace) for a screen that reads its data.
+
+    ONE COPY of the resolver the Sales and Ads routes each carried as `_scope`,
+    line for line (architecture guard, duplicate-function, 29 Sep 2026): the
+    account the PAGE named first, else the open one; the marketplace by
+    marketplace() above. `get_account` finds a named id; `req_acct` is
+    domain.request_account (passed in so this module stays Flask-free to test).
+    """
+    aid, acc = req_acct.for_read(request, state, get_account=get_account)
+    if acc is None:
+        # No account named by the page (an older screen, or a background job
+        # with no page behind it) -- fall back to the global, as before.
+        try:
+            acc = active_account()
+        except Exception:
+            acc = None
+    wsid = str(aid or (acc or {}).get("id")
+               or state.get("active_account_id", "") or "") or "_no_account"
+    mkt = marketplace(
+        state=state, account=(acc or {}),
+        asked=(request.args.get("marketplace")
+               or (request.get_json(silent=True) or {}).get("marketplace")))
+    return acc, wsid, mkt
+
+
+def ads_account(request, *, state, active_account, cfg, req_acct):
+    """(account id, marketplace) for an advertising screen.
+
+    ONE COPY of the resolver the PPC Analytics and Live Tracker routes each
+    carried as `_scope`, line for line (architecture guard, 29 Sep 2026).
+    Advertising belongs to ONE marketplace -- an advertising profile is one
+    advertiser in one marketplace -- so "all marketplaces" cannot be answered
+    and the account's own default is used.
+    """
+    aid = req_acct.named(request)
+    if not aid:
+        aid = str((state or {}).get("active_account_id", "") or "")
+    if not aid:
+        try:
+            aid = str((active_account() or {}).get("id") or "")
+        except Exception:
+            aid = ""
+    mkt = (request.args.get("marketplace")
+           or state.get("active_marketplace") or "").upper()
+    if aid and (not mkt or mkt == "__ALL__"):
+        for a in ((cfg() or {}).get("accounts") or []):
+            if str(a.get("id") or "") == aid:
+                mkt = str(a.get("default_marketplace") or "").upper()
+                if not mkt:
+                    ms = [str(m).upper() for m in (a.get("marketplaces") or [])
+                          if str(m).upper() != "__ALL__"]
+                    mkt = ms[0] if ms else ""
+                break
+    return aid, mkt

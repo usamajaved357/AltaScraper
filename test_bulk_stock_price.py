@@ -243,8 +243,10 @@ truthy("  including what each is now and becomes",
 truthy("apply reads the figures it is given", 'b.get("rows")' in _ap)
 truthy("  and does NOT re-apply the percentage",
        "_pct_new_price" not in _ap)
+# Validated by the shared rule since 29 Sep 2026 (listing.pricing.usable_price):
+# `p > 0` let infinity through.
 truthy("  it still validates each one rather than trusting the browser",
-       "p > 0" in _ap)
+       "usable_price(" in _ap)
 # Rule 12: the floor, the offer builder and the read-failure wording are the
 # single-listing route's, not a second opinion about what a safe price is.
 truthy("the floor is the same one the single listing uses", "_floor_for(" in _ap)

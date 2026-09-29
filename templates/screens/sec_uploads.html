@@ -1,0 +1,11 @@
+    <div id="sec_uploads" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-file-upload"></i> Upload history</h2>
+        <div class="sub">Every file uploaded to this account &mdash; the original file and what it did, row by row.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select id="uph_kind" aria-label="Which uploads" class="ed" style="width:auto" onchange="uploadsLoad()"><option value="">All uploads</option></select>
+          <button class="db-chip" onclick="uploadsLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+      </div>
+      <div id="uph_body"></div>
+    </div>

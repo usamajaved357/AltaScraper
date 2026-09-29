@@ -19,7 +19,8 @@ function _hEsc(s){
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function hourlyOnOpen(){ if(!HRLY.data) hourlyLoad(); else hourlyRender(); }
+// An error reply is not data: coming back retries it (audit S9, batch 1 review).
+function hourlyOnOpen(){ if(!HRLY.data || HRLY.data.error) hourlyLoad(); else hourlyRender(); }
 function hourlySetDays(d){ HRLY.days = d; hourlyLoad(); }
 function hourlySetMetric(m){ HRLY.metric = m; hourlyLoad(); }
 function hourlyToggle(asin){
@@ -31,6 +32,10 @@ function _hQuery(){
   const q = ["days=" + HRLY.days, "metric=" + encodeURIComponent(HRLY.metric)];
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
     q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+  // AND THE ACCOUNT (audit S8): this sent the marketplace alone, so the
+  // server answered for whichever account it had open.
+  if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+    q.push("account=" + encodeURIComponent(CUR_ACCOUNT.id));
   return q.join("&");
 }
 
@@ -41,15 +46,20 @@ async function hourlyLoad(){
   if(host && host.innerHTML.trim()) host.style.opacity = ".45";
   else if(host) host.innerHTML = '<div class="cc" style="padding:18px">'
     + '<span class="genspin"></span> Reading order times…</div>';
+  const sc = (typeof screenScope === "function") ? screenScope() : null;         // the account this reply is for (audit S5)
   try{
-    HRLY.data = await (await fetch("/hourly/summary?" + _hQuery())).json();
+    const j = await (await fetch("/hourly/summary?" + _hQuery())).json();
+    if(sc && !screenStillIn(sc)) return;
+    HRLY.data = j;
     hourlyRender();
   }catch(e){
-    if(host) host.innerHTML = '<div class="empty">Could not load: '
-      + _hEsc(String(e)) + '</div>';
+    if(sc && !screenStillIn(sc)) return;
+    // A failure, not "no data" (uiError, pageui.js).
+    if(host) host.innerHTML = uiError("Hourly sales could not be loaded", String(e), "hourlyLoad", "hourly");
   }finally{
-    HRLY.busy = false;
-    if(host) host.style.opacity = "";
+    // Only THIS request's own state: after a switch the new account's request
+    // owns the busy flag and the panel (Milestone 3 review, known-issues #5).
+    if(!sc || screenStillIn(sc)){ HRLY.busy = false; if(host) host.style.opacity = ""; }
   }
 }
 
@@ -60,7 +70,9 @@ async function hourlyFetch(btn){
   const st = document.getElementById("hrly_status");
   if(st) st.textContent = "Asking Amazon for orders, then for what was in each one…";
   try{
+    const sc = (typeof screenScope === "function") ? screenScope() : null;
     const j = await (await fetch("/hourly/fetch?" + _hQuery(), {method: "POST"})).json();
+    if(sc && !screenStillIn(sc)) return;
     if(!j || !j.ok){
       if(st) st.innerHTML = '<span style="color:var(--red)">'
         + _hEsc((j && j.error) || "failed") + '</span>';
@@ -106,7 +118,10 @@ function hourlyRender(){
   if(!host) return;
   const d = HRLY.data;
   if(!d || !d.ok){
-    host.innerHTML = '<div class="empty">' + _hEsc((d && d.error) || "No data") + '</div>';
+    // A refusal from the server is an error; no reply at all is "no data".
+    host.innerHTML = (d && d.error)
+      ? uiError("Hourly sales could not be loaded", d.error, "hourlyLoad", "hourly")
+      : '<div class="empty">No data</div>';
     return;
   }
   const cur = d.currency || "";

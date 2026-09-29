@@ -39,6 +39,11 @@ list gets NO CPSR flag -- a false negative on a legal requirement, which is the
 one direction this must not fail in. The blacklist reaches the same result for
 the case reported (a tripod stops getting cosmetics rules) without that risk.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import io
 import json
 import os
@@ -81,7 +86,10 @@ RULES = json.loads(rd("compliance_rules.json"))
 # rich and sp_api and a great deal else that a test has no business loading.
 _ns = {}
 _i = GEN.index("def _product_type_allows(")
-_j = GEN.index("def check_compliance(")
+# To the next top-level def: since Milestone 4 the function lives in
+# listing/product_type_rules.py (moved word for word), no longer next to
+# check_compliance, and GEN is the engine's whole feature (tests_support).
+_j = GEN.index("\ndef ", _i + 1)
 exec(GEN[_i:_j], _ns)
 allows = _ns["_product_type_allows"]
 
@@ -214,7 +222,7 @@ print("\n== NO PRODUCT TYPE: the check still runs ==")
 import json as _json                                          # noqa: E402
 import amazon_listing_generator as _g                          # noqa: E402
 
-_RULES = _json.load(open(r"D:\AltaScraper\compliance_rules.json", encoding="utf-8"))
+_RULES = _json.load(open(_os_repo.path.join(_REPO, r"compliance_rules.json"), encoding="utf-8"))
 _LED = {"bullets": [], "description": ""}
 _TITLE = "LED Strip Light 240v Mains Powered"
 

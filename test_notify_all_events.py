@@ -22,13 +22,18 @@ NOTHING IS SENT BY THIS TEST. It runs against its own temporary notify store
 and asserts on the ROUTING decision -- wants() and the filter inside send() --
 never on a webhook. The one place a post could happen is stubbed.
 """
+# THE TREE THIS TEST LIVES IN. It used to name the main checkout outright, so
+# run from any other checkout it silently tested THAT checkout's code
+# (Milestone 1, 28 Sep 2026: 141 files did this).
+import os as _os_repo
+_REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
 import json
 import os
 import shutil
 import sys
 import tempfile
 
-sys.path.insert(0, r"D:\AltaScraper")
+sys.path.insert(0, _REPO)
 
 FAILS = []
 
@@ -119,7 +124,7 @@ falsy("switched off means off, whatever it subscribed to",
       N.wants(CFG, N.PRICE_CHANGE))
 
 print("\n=== the screen can turn it on ===")
-JS = open(os.path.join(r"D:\AltaScraper", "static", "js", "notify.js"),
+JS = open(os.path.join(_REPO, "static", "js", "notify.js"),
           encoding="utf-8").read()
 truthy("there is a control", "function ntfAll(" in JS)
 truthy("  which sends the marker the server reads", '["*"]' in JS)
@@ -128,7 +133,7 @@ truthy("  through the route that already sets a channel's events",
        '"/notify/channel"' in JS)
 truthy("the column stops calling the default 'everything'",
        "the usual alerts" in JS)
-NT = open(os.path.join(r"D:\AltaScraper", "domain", "notify.py"),
+NT = open(os.path.join(_REPO, "domain", "notify.py"),
           encoding="utf-8").read()
 truthy("the volume warning is kept as the reason for the default",
        "applied to volume instead of repetition" in NT

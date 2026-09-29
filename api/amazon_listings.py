@@ -30,18 +30,11 @@ GONE   = "gone"        # Amazon does not have this SKU
 FAILED = "failed"
 
 
-def _enum(marketplace):
-    from sp_api.base import Marketplaces
-    code = str(marketplace or "UK").upper()
-    if code == "US":
-        return Marketplaces.US
-    return getattr(Marketplaces, code, Marketplaces.UK)
-
-
 def _client(creds, marketplace, timeout=60):
     from sp_api.api import ListingsItemsV20210801
-    return ListingsItemsV20210801(credentials=creds, marketplace=_enum(marketplace),
-                                  timeout=timeout)
+    from api import sp_client as _sp
+    return _sp.client(ListingsItemsV20210801, creds, marketplace, rule=_sp.API,
+                      timeout=timeout)
 
 
 def get_item(creds, marketplace, seller_id, sku, marketplace_id,
@@ -450,3 +443,19 @@ def patch(creds, marketplace, seller_id, sku, marketplace_id, product_type,
     if out["status"] != OK and not out["error"]:
         out["error"] = "Amazon answered %s" % (out["amazon_status"] or "nothing")
     return out
+
+def refusal_text(res, default, width=140, count=3):
+    """A refused put/patch in words: the error, else `default`, then Amazon's own
+    issue messages -- the first `count`, each cut at `width` characters.
+
+    ONE wording for every write that reports a refusal (price sends, image
+    pushes, variation families), each keeping its own default, width and count
+    so no message changed when they were joined (29 Sep 2026). Amazon's words,
+    never a paraphrase (Rule 4).
+    """
+    res = res or {}
+    why = res.get("error") or default
+    issues = res.get("issues") or []
+    if issues:
+        why += " -- " + "; ".join(str(i.get("message") or "")[:width] for i in issues[:count])
+    return why
