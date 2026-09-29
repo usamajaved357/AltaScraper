@@ -678,6 +678,14 @@ works is in CLAUDE.md Rule 19; these are the genuine remaining limits.
 
 ## Tests
 
+**Baseline on 29 Sep 2026 (evening, cd57c4a): 429 files, 427 passed, 0 failed,
+2 could not run** (test_library, test_mockup_match -- below). The seven that
+needed the owner's data build their own fixtures now, so a clean worktree has
+no failures. Browser checks (not in run_tests.py): tools/browser_smoke.py, 47
+screens x 2 accounts x 2 tabs, desktop 1440 and phone 390: no page/console
+errors, no 5xx, no cross-account markers, no sideways overflow;
+tools/browser_dispatch_check.py 51 checks.
+
 **Baseline at the end of the 28 Sep 2026 run (Milestones 1-12), `py -3.11
 run_tests.py` in this worktree: 371 files, 362 passed, 7 failed, 2 could not
 run.** (After Milestones 1-2 it was 367/353/12/2.) Every test runs
