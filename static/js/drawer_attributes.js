@@ -437,13 +437,10 @@ async function lvFillEmpty(sku){
  * as "N differ" all along -- so the information was on screen and there was
  * nothing to do with it. This is that count, made actionable.
  *
- * IT PUSHES ONLY WHAT DIFFERS, and names every field before it sends. A patch
- * is not reversible by sending it again; it is reversible only by knowing what
- * the old value was, so the confirmation lists both.
- *
- * /optimize/push is the existing gated patch path (Rule 12): it takes a map of
- * approved fields, builds the JSON Patch, and reports Amazon's own verdict
- * rather than assuming success. Nothing new talks to Amazon here.
+ * IT NAMES EVERY FIELD THAT DIFFERS before anything goes, Amazon's value and
+ * ours, so the change can be undone by knowing the old value. Since 30 Sep 2026
+ * the send is a SUBMIT of the whole listing (see lvPushChanges for why the
+ * field-by-field patch it used could never work).
  */
 function lvDiffFields(sku){
   const L = lvGet(sku);
@@ -462,62 +459,54 @@ function lvDiffFields(sku){
 }
 
 async function lvPushChanges(sku){
-  // The account this was opened for, noted BEFORE the dialog below: if it
-  // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
-  const _pinAcct = (typeof acctId === "function") ? acctId() : "";
+  // IT NEVER SENT ANYTHING. This posted the bare attribute names to
+  // /optimize/push, whose patch builder only takes title / description /
+  // bullets / price / main_image / "attr:<name>" -- so it built no patch, the
+  // route answered 400, and the screen said "Amazon refused the change" for a
+  // call Amazon never received (review of the All Listings page, 30 Sep 2026).
+  // Prefixing the names would send a value SHAPE nobody checked against
+  // Amazon's schema (Rule 4: measurements need units, most text needs a
+  // language tag). The path that builds every attribute from this product
+  // type's own schema is Submit, so that is what this now does -- with its own
+  // checks and its own "publish" confirmation after this one.
+  // THE ACCOUNT AND MARKETPLACE THIS WAS PRESSED IN, before the dialog below:
+  // submitOne pins its own only after it, so a switch while this dialog was
+  // open published the OTHER account's same-SKU listing (scope review).
+  const _pin = (typeof screenScope === "function") ? screenScope() : null;
   sku = String(sku);
   const L = lvGet(sku);
   const r = (typeof ROWS !== "undefined" && ROWS.find)
     ? ROWS.find(x => String(x.sku) === String(sku)) : null;
   if(!L || !r) return;
+  // MINIMAL MODE SENDS ONLY THE REQUIRED FIELDS, so an optional one listed
+  // below would be promised and not sent (payload review).
+  if(typeof MINIMAL_MODE_ON !== "undefined" && MINIMAL_MODE_ON){
+    await uiAlert("Minimal mode is on, so optional fields would not be sent. "
+      + "Turn minimal mode off first, then try again. Nothing was sent.");
+    return;
+  }
   const todo = lvDiffFields(sku);
-  if(!todo.length){ toast("Nothing to send — Amazon already has these values."); return; }
+  if(!todo.length){ toast("Nothing to send \u2014 Amazon already has these values."); return; }
+  if(typeof submitOne !== "function"){ toast("Submit isn't available on this page, so nothing was sent."); return; }
 
   const a = r.attributes || {};
   const lines = todo.slice(0, 12).map(k =>
-    "  • " + k + ":  " + String((L.values||{})[k] == null ? "—" : (L.values||{})[k])
-    + "  →  " + String(a[k]));
-  const more = todo.length > 12 ? ("\n  …and " + (todo.length - 12) + " more") : "";
+    "  \u2022 " + k + ":  " + String((L.values||{})[k] == null ? "\u2014" : (L.values||{})[k])
+    + "  \u2192  " + String(a[k]));
+  const more = todo.length > 12 ? ("\n  \u2026and " + (todo.length - 12) + " more") : "";
   if(!await uiConfirm(
-      "Send " + todo.length + " change(s) to Amazon for " + sku + "?\n\n"
-      + "Amazon's value → yours:\n" + lines.join("\n") + more
-      + "\n\nThis changes the LIVE listing. Amazon publishes in its own time, "
-      + "usually within 5–30 minutes.")) return;
-
-  const changes = {};
-  todo.forEach(k => { changes[k] = a[k]; });
-  try{
-    if(typeof acctId === "function" && acctId() !== _pinAcct){
-        if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
-        return;
-      }
-    const body = (typeof acctBody === "function")
-      ? acctBody({sku: sku, changes: changes, confirmed: true,
-                  product_type: L.product_type || r.product_type || "",
-                  marketplace: (typeof rowMkt === "function") ? rowMkt(r) : ""})
-      : {sku: sku, changes: changes, confirmed: true};
-    // /optimize/push reads the account from `id`, not `account`.
-    if(body.account && !body.id) body.id = body.account;
-    const j = await (await fetch("/optimize/push", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(body)})).json();
-    if(j && j.ok){
-      toast("Amazon accepted " + todo.length + " change(s)");
-      // WHAT AMAZON HOLDS HAS CHANGED, so the comparison this bar is built on
-      // is now stale. Re-read rather than assuming it took: ACCEPTED means
-      // Amazon received the patch, not that it has published it.
-      lvRefresh(sku);
-    }else if(j && j.unknown){
-      await uiAlert("Amazon replied, but not with a verdict this app could read.\n\n"
-        + "Nothing here claims it worked. Press Sync in a few minutes — that "
-        + "reads the listing back from Amazon and is the only thing that settles it.");
-    }else{
-      const iss = ((j && j.issues) || []).slice(0, 5)
-        .map(i => "  – " + (i.message || i.code || "")).join("\n");
-      await uiAlert("Amazon refused the change:\n\n"
-        + ((j && j.error) || "no reason given") + (iss ? ("\n\n" + iss) : ""));
-    }
-  }catch(e){ toast("Could not send: " + e); }
+      todo.length + " value(s) here differ from the LIVE listing " + sku + ":\n\n"
+      + "Amazon's value \u2192 yours:\n" + lines.join("\n") + more
+      + "\n\nThey reach Amazon by SUBMITTING this listing: the whole listing is "
+      + "sent from this app's values (the Submit button's path, built from "
+      + "Amazon's own rules for this product type), not only these fields. "
+      + "The publish confirmation comes next.")) return;
+  if(_pin && typeof screenStillIn === "function" && !screenStillIn(_pin)){
+    toast("The account or marketplace changed while this was open, so nothing was sent.");
+    return;
+  }
+  // submitOne then pins them again for its own confirmations.
+  await submitOne(sku);
 }
 
 /* The strip above the attribute grid: where these values came from, how they
@@ -572,9 +561,12 @@ function lvBanner(r){
     // there was no way to send the other way, so an edit to a live listing sat
     // in this app indefinitely with nothing saying so.
     + (_unsent ? '<button class="lv-push" onclick="lvPushChanges(' + jsArg(sku) + ')"'
-              + ' title="Patch these fields on the live Amazon listing. Only the '
-              + 'ones that differ are sent, and you see each one before it goes.">'
-              + 'Send ' + _unsent + ' change(s) to Amazon</button>' : "")
+              // SAYS WHAT IT DOES: the listing is submitted (every field), not
+              // patched field by field (30 Sep 2026; see lvPushChanges).
+              + ' title="Submit this listing to Amazon so these ' + _unsent
+              + ' value(s) go live. The whole listing is sent from this app\'s '
+              + 'values; you see each difference, then confirm the publish.">'
+              + 'Submit to send ' + _unsent + ' change(s)</button>' : "")
     + '<button class="lv-refresh" onclick="lvRefresh(' + jsArg(sku) + ')">refresh</button>'
     + '</div>'
     + lvShapeBar(L)

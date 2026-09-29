@@ -99,7 +99,10 @@ function _peKey(ev){
 async function priceEdit(sku, current, title){
   if(!sku){ toast("No SKU for that row."); return; }
   _PE = {sku: sku, current: (current === undefined ? null : current),
-         title: title || "", preview: null, busy: false};
+         title: title || "", preview: null, busy: false,
+         // The account and marketplace it was opened in: a switch while it is
+         // open must not send this SKU's price to the other account (scope review).
+         scope: (typeof screenScope === "function") ? screenScope() : null};
   _peDraw();
   _peHost().classList.add("open");
   document.addEventListener("keydown", _peKey);
@@ -125,8 +128,12 @@ function _peDraw(){
     +   _peEsc(_PE.sku) + '</span></div>'
 
     + '<div style="display:flex;gap:14px;align-items:flex-end;margin-bottom:4px">'
-    +   '<div><div class="cc" style="font-size:11px;margin-bottom:4px">Sells for now</div>'
-    +   '<div style="font-size:19px;font-variant-numeric:tabular-nums">'
+    // ON AMAZON NOW, from the preview's live read. This printed the app's own
+    // stored price as "Sells for now" (review of All Listings, 30 Sep 2026);
+    // until the live read lands it says it is the app's record.
+    +   '<div><div class="cc" id="pe_now_k" style="font-size:11px;margin-bottom:4px">'
+    +     'In this app (checking Amazon\u2026)</div>'
+    +   '<div id="pe_now" style="font-size:19px;font-variant-numeric:tabular-nums">'
     +   _peEsc(sym) + _peMoney(_PE.current) + '</div></div>'
     +   '<div style="color:var(--ink3);font-size:19px;padding-bottom:2px">&rarr;</div>'
     +   '<div style="flex:1"><label class="cc" for="pe_price" '
@@ -156,6 +163,9 @@ function _peDraw(){
       // Debounced: the preview reads the listing live from Amazon, so one call
       // per keystroke would be a call per keystroke to a rate-limited API.
       clearTimeout(t);
+      // THE LAST PREVIEW IS FOR THE OLD FIGURE. Enter used to send it within
+      // the debounce -- a different price from the one typed (review, 30 Sep).
+      if(_PE) _PE.preview = null;
       t = setTimeout(_pePreview, 450);
       _peResult('<span class="cc">…</span>', true);
     });
@@ -208,7 +218,14 @@ async function _pePreview(){
               + '</span>', true);
     return;
   }
+  // A reply for a figure no longer in the box is not this preview.
+  if(_peTyped() !== price) return;
   _PE.preview = j;
+  if(j.current !== null && j.current !== undefined){
+    const k = document.getElementById("pe_now_k"), v = document.getElementById("pe_now");
+    if(k) k.textContent = "On Amazon now";
+    if(v) v.textContent = _peSym() + _peMoney(j.current);
+  }
   _peResult(_peResultHtml(j), false);
 }
 
@@ -285,11 +302,18 @@ function _peArm(){
 async function priceEditSend(){
   if(!_PE || !_PE.preview || _PE.busy) return;
   const j = _PE.preview;
+  if(_peTyped() !== j.new){ _PE.preview = null; _pePreview(); return; }
   const below = (j.floor !== null && j.floor !== undefined && j.new < j.floor);
   const box = document.getElementById("pe_below");
   if(below && !(box && box.checked)) return;
 
+  if(_PE.scope && typeof screenStillIn === "function" && !screenStillIn(_PE.scope)){
+    priceEditClose();
+    toast("The account or marketplace changed while this was open, so nothing was sent.");
+    return;
+  }
   _PE.busy = true;
+  const _sc = _PE.scope;
   const b = document.getElementById("pe_send");
   if(b){ b.disabled = true; b.textContent = "Sending…"; }
   const sku = _PE.sku, price = j.new;
@@ -304,6 +328,11 @@ async function priceEditSend(){
       return;
     }
     priceEditClose();
+    // THE NEW PRICE ON SCREEN NOW, not after a reload that does not change the
+    // app's column (review, 30 Sep 2026): the live catalogue row takes it.
+    if(typeof applyPushedLocally === "function" && r.now !== undefined && r.now !== null
+       && !(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)))
+      applyPushedLocally([sku], null, {price: r.now});
     toast("Price sent for " + sku + " — " + _peMoney(r.was) + " → "
           + _peMoney(r.now) + ". " + (r.note||""));
     if(typeof loadRows === "function") loadRows();

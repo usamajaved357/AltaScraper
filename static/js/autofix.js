@@ -1265,11 +1265,23 @@ async function saveEdit(el,sku,target,key){
   const j = await editField(sku, target, key, value);
   el.classList.remove("saving");
   if(j.ok){
-    el.classList.add("saved"); toast("Saved ✓");
+    // SAYS WHERE IT WENT. On a listing that is live on Amazon, "Saved ✓" read
+    // as the live listing having changed; it is this app's copy, and Amazon
+    // gets it on the next Submit (review of All Listings, 30 Sep 2026).
+    let _live = false;
+    try{
+      const _r = (typeof ROWS !== "undefined" && ROWS && ROWS.find)
+        ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+      _live = !!(_r && typeof isAmazonLive === "function" && isAmazonLive(_r));
+    }catch(e){ _live = false; }
+    el.classList.add("saved");
+    toast(_live ? "Saved in this app ✓ — not sent to Amazon yet; the live listing changes when you Submit it"
+                : "Saved ✓");
     setTimeout(()=>el.classList.remove("saved"),1000);
   } else {
     el.classList.add("err"); toast("Save failed: "+(j.error||""));
   }
+  return j;
 }
 
 // ============================================================================

@@ -95,10 +95,10 @@ function _handlingScope(){
   };
 }
 
-async function _handlingPost(body){
+async function _handlingPost(body, scope){
   const res = await fetch("/handling/bulk_update",{method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(Object.assign(_handlingScope(), body))});
+    body:JSON.stringify(Object.assign(scope || _handlingScope(), body))});
   return res.json();
 }
 
@@ -122,6 +122,10 @@ async function bulkHandling(){
   // bar. This is the last moment before it reaches Amazon, so it is said here.
   const _scope = (!usingAll && typeof selectionScopeNote === "function")
     ? selectionScopeNote("sending this to Amazon") : "";
+  // THE ACCOUNT AND MARKETPLACE THIS WAS PRESSED IN, taken before the dialog:
+  // read after it, a switch meanwhile sent the change to the other account's
+  // same-SKU listings (review of All Listings, 30 Sep 2026).
+  const _pin = _handlingScope();
   if(!await uiConfirm(`Set handling time to ${days} day(s) on ${skus.length} ${usingAll?'listing(s) in this view':'selected listing(s)'}?\n\n`
              + _scope
              +`This saves it here AND pushes the change live to Amazon. Any listing Amazon refuses is reported on its own; the rest still go.`)) return;
@@ -131,8 +135,13 @@ async function bulkHandling(){
   const _done=()=>{ if(btn){ btn.disabled=false; btn.textContent=btn.dataset._t||"Set handling time"; } };
 
   try{
+    const _now = _handlingScope();
+    if(_now.id !== _pin.id || _now.marketplace !== _pin.marketplace){
+      toast("The account or marketplace changed while this was open, so nothing was sent.");
+      _done(); return;
+    }
     toast(`Updating handling time on ${skus.length} listing(s)…`);
-    const j = await _handlingPost({skus, days, push:true, sheet:true});
+    const j = await _handlingPost({skus, days, push:true, sheet:true}, _pin);
     if(!j || j.ok===false && !j.push_results){ toast("Update failed: "+((j&&j.error)||"unknown")); _done(); return; }
 
     const savedSkus = j.sheet_updated||[];
@@ -151,7 +160,9 @@ async function bulkHandling(){
     // live = 46, and neither pair matched the 36 on the tile he had just used.
     // Saying the total makes both lines readable and makes a stale selection
     // visible at the one moment it matters.
-    let msg = `Handling time set to ${days} day(s) on ${skus.length} listing(s).`;
+    // THE HEADLINE IS WHAT AMAZON TOOK. It said "set on N" when every one had
+    // been refused (review, 30 Sep 2026).
+    let msg = `Handling time ${days} day(s): changed on Amazon for ${okN} of ${skus.length} listing(s).`;
     msg += `\n\nOn Amazon — this is the number buyers see:`;
     msg += `\n• Changed: ${okN}`;
     if(notLive) msg += `\n• Not on Amazon yet, so it will apply on submit: ${notLive}`;
@@ -309,6 +320,8 @@ async function bulkQuantity(){
   // The account this was opened for, noted BEFORE the dialog below: if it
   // changed meanwhile (back/forward), nothing is sent (confirm-then-write audit).
   const _pinAcct = (typeof acctId === "function") ? acctId() : "";
+  // And the marketplace: a change of it during the dialog sent the stock there.
+  const _pinMkt = _handlingScope().marketplace;
   const inp = document.getElementById("stockqty");
   const raw = inp ? String(inp.value||"").trim() : "";
   if(raw===""){ toast("Enter a stock quantity first"); if(inp) inp.focus(); return; }
@@ -330,8 +343,9 @@ async function bulkQuantity(){
   const btn = document.getElementById("stockbtn");
   if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Updating…"; }
   const _done=()=>{ if(btn){ btn.disabled=false; btn.textContent=btn.dataset._t||"Set stock"; } };
-  if(typeof acctId === "function" && acctId() !== _pinAcct){
-    if(typeof toast === "function") toast("The account changed while this was open, so nothing was done.");
+  if((typeof acctId === "function" && acctId() !== _pinAcct)
+     || _handlingScope().marketplace !== _pinMkt){
+    if(typeof toast === "function") toast("The account or marketplace changed while this was open, so nothing was done.");
     _done();
     return;
   }
@@ -342,13 +356,19 @@ async function bulkQuantity(){
   try{
     toast(`Setting stock on ${skus.length} listing(s)…`);
     const j = await post({skus, qty});
+    // REFUSED AS A WHOLE (no marketplace, no account, read-only): say why. It
+    // read "Stock set to N ... Changed on Amazon: 0" with no reason.
+    if(!j || (j.ok === false && !(j.push_results || []).length)){
+      await uiAlert("Nothing was sent to Amazon:\n\n" + ((j && j.error) || "the request was refused"));
+      _done(); return;
+    }
     const okN = (j && j.pushed_ok) || 0;
     const results = ((j && j.push_results)||[]);
     const failArr = results.filter(r=>!r.ok);
     const fba = failArr.filter(r=>/no seller-fulfilled stock/i.test(r.error||"")).length;
     const notLive = failArr.filter(r=>/no listing with this sku|not_found/i.test(r.error||"")).length;
     const realFail = failArr.length - fba - notLive;
-    let msg = `Stock set to ${qty} unit(s).`;
+    let msg = `Stock ${qty} unit(s): changed on Amazon for ${okN} of ${skus.length} listing(s).`;
     msg += `\n• Changed on Amazon: ${okN}`;
     if(fba)     msg += `\n• FBA — stock is in Amazon's warehouse, not ours to set: ${fba}`;
     if(notLive) msg += `\n• Not live on Amazon yet: ${notLive}`;
@@ -405,7 +425,10 @@ async function bulkPricePercent(){
   const _done=()=>{ if(btn){ btn.disabled=false; btn.textContent=btn.dataset._t||"Change price %"; } };
   // The same scope the other two now send -- one definition (Rule 12). This was
   // the copy they were missing; it is no longer a copy.
-  const body = _handlingScope;
+  // Taken ONCE, before any dialog (review, 30 Sep 2026): read after the
+  // confirmation, a switch meanwhile repriced the other account's listings.
+  const _pinScope = _handlingScope();
+  const body = () => Object.assign({}, _pinScope);
 
   try{
     toast(`Reading the current price of ${skus.length} listing(s) from Amazon…`);
@@ -459,7 +482,11 @@ async function bulkPricePercent(){
         rows: rows.map(r=>({sku:r.sku, new:r.new})),
         percent: pct, confirmed: true, below_floor_ok: allowBelow}))}).then(r=>r.json());
 
-    let msg = `Price changed by ${_pctFmt(pct)}.`;
+    if(!j || (j.ok === false && !((j.failures || []).length) && !j.changed)){
+      await uiAlert("Nothing was sent to Amazon:\n\n" + ((j && j.error) || "the request was refused"));
+      _done(); return;
+    }
+    let msg = `Price change ${_pctFmt(pct)}: changed on Amazon for ${(j&&j.changed)||0} of ${rows.length} listing(s).`;
     msg += `\n• Changed on Amazon: ${(j&&j.changed)||0}`;
     const fails = (j && j.failures) || [];
     if(fails.length){

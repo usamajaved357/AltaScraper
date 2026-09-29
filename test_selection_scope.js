@@ -77,7 +77,9 @@ truthy("  and each names its own action",
   && G.indexOf('selectionScopeNote("declaring this")') >= 0);
 
 console.log("\n=== the reply states the total it acted on ===");
-truthy("the count comes first", H.indexOf("on ${skus.length} listing(s).") >= 0);
+// Re-pinned 30 Sep 2026: the headline is now "changed on Amazon for N of
+// TOTAL listing(s)" -- the total is still stated, beside what Amazon took.
+truthy("the count comes first", H.indexOf("of ${skus.length} listing(s).") >= 0);
 // Two questions, two headings: what Amazon now holds, and what this app
 // recorded. They are different numbers for a real reason -- 33 of those
 // listings have no row here at all -- and stacking them as one list is what

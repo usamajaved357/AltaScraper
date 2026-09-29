@@ -43,9 +43,11 @@ function identifierPanel(r){
   const box =
     '<label class="idexempt" title="Apply for GTIN exemption. Tells Amazon this '
     + 'product has no barcode. Only tick it if that is true &mdash; '
-    + 'it is a declaration, not a workaround.">'
+    + 'it is a declaration, not a workaround. Nothing is sent when you tick '
+    + 'it: it is claimed when the listing is submitted, and only if there is no '
+    + 'valid barcode in the box (a valid barcode is sent instead).">'
     + '<input type="checkbox" ' + (id.exemption ? "checked" : "")
-    + ' onchange="setGtinExemption(' + _sarg2(r.sku) + ', this.checked)">'
+    + ' onchange="setGtinExemption(' + _sarg2(r.sku) + ', this.checked, this)">'
     + ' GTIN exempt</label>';
 
   // Every other listing carrying this barcode -- drafts as well as live ones.

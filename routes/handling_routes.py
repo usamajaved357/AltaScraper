@@ -241,6 +241,15 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
 
         out = {"ok": True, "days": days, "count": len(skus)}
 
+        # A PUSH THAT WILL BE REFUSED IS REFUSED FIRST. The local column was
+        # written, then the push refused for want of a marketplace -- the
+        # screen said "failed" while the app's value had changed (review of All
+        # Listings, 30 Sep 2026).
+        if do_push:
+            _pacc, _pmkt, _pbad = _push_target()
+            if _pbad:
+                return _pbad
+
         # --- 1) record it here ---
         if do_sheet:
             skus_set = set(skus)

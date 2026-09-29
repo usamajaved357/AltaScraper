@@ -121,7 +121,7 @@ function _rqFinish(st, P, sku, mode){
     return;
   }
   if(verdict.kind==="ok_preview"){
-    P.verdict.innerHTML='<div class="rgood">✓ Amazon accepted this listing — no missing or invalid fields.</div>'
+    P.verdict.innerHTML='<div class="rgood">✓ Amazon’s check passed — no missing or invalid fields. Nothing was sent: Submit publishes it.</div>'
       +(warnings?('<div class="rwarn">Non-blocking warnings: '+esc(warnings)+'</div>'):'<div class="rmsg">No extra boxes need filling. It’s ready to submit.</div>');
     return;
   }
