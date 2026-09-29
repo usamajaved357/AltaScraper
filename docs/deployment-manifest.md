@@ -122,7 +122,13 @@ open page (miles_template.js every 10 min, autoverify.js `/run/api_verify`).
   set, files present, data store, duplicate sellers, recent faults.
 - `/run/health`, `/live/refresher`, `/auth/diagnose` — feature health.
 - Logs: stdout only (`print`) → the platform's log viewer. Boot prints a
-  deploy-check banner.
+  deploy-check banner (domain/deploy_check.py) naming every missing required
+  item: data folder, persistent disk, APP_SECRET_KEY, APP_PASSWORD,
+  ALTA_TOKEN_KEY when OAuth accounts exist, the AI key, and whether background
+  work is on or off -- names only, never a value (test_deploy_check_required.py).
+- Startup safety of a test copy is proven automatically:
+  test_startup_side_effects.py (ALTASCRAPER_BACKGROUND=off -> no outbound
+  connection, no background thread; negative control reaches api.amazon.com).
 
 ## 8. Startup procedure (new server or new service)
 
