@@ -805,6 +805,11 @@ def _supervisor(app, cfg_fn, config_path, log=None):
 
 def start(app, cfg_fn, config_path, log=None):
     """Start the refresher. Safe to call twice; the second call does nothing."""
+    from config import background as _bg
+    if not _bg.enabled():
+        if log:
+            log(_bg.refusal("live refresher"))
+        return {"ok": False, "error": _bg.refusal("live refresher")}
     with _LOCK:
         if _STATE["running"]:
             return {"ok": True, "already_running": True}

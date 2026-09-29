@@ -203,6 +203,9 @@ def start(workspace_ids=None):
     every deploy.
     """
     global _scheduler
+    from config import background as _bg
+    if not _bg.enabled():
+        return {"ok": False, "error": _bg.refusal("job timers")}
     if not HAVE_APSCHEDULER:
         return {"ok": False,
                 "error": "APScheduler is not installed -- jobs can still be run "
@@ -287,7 +290,10 @@ def catalog_sync(workspace_id=None):
     app, config_path, cfg = _need("app", "config_path", "cfg")
     st = _ref.status()
     if not st.get("running"):
-        _ref.start(app, cfg, config_path)
+        res = _ref.start(app, cfg, config_path) or {}
+        if not res.get("ok"):
+            # e.g. ALTASCRAPER_BACKGROUND=off: say so rather than claim a start.
+            raise RuntimeError(res.get("error") or "the live refresher did not start")
         return {"started_refresher": True}
     target = _ref._stalest(cfg, config_path, only_account=workspace_id)
     if not target:
@@ -753,7 +759,8 @@ def register_jobs(app, workspace_ids=None, config_path=None, cfg=None):
     # generator carried them (listing/suppliers.run_row_supplier_repair_once).
     # In a thread, so a large store never slows the app coming up, and never
     # fatal -- it runs again on the next start if it did not finish.
-    if config_path:
+    from config import background as _bg
+    if config_path and _bg.enabled():
         import threading
 
         def _repair():

@@ -692,6 +692,10 @@ def start_scheduler(cfg_getter, config_path, interval=None, initial_delay=25):
     global _SCHED_STARTED
     if _SCHED_STARTED:
         return
+    from config import background as _bg
+    if not _bg.enabled():
+        print("[asin-monitor] " + _bg.refusal("monitor loop"), flush=True)
+        return
     _SCHED_STARTED = True
     forced = int(interval) if interval else 0
     if forced:

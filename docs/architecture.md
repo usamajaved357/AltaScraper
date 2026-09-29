@@ -186,7 +186,9 @@ On an app row, `r.asin` is the **competitor reference** parsed from the SKU
 - **JSON files beside config.json:** users.json, app_state.json,
   cogs_overrides.json, live_snapshots.json, notify.json, trackers.json,
   categories.json, compliance_scans.json, asin_monitor*.json, miles_bundles*.json,
-  run_status.json, image_url_key and others. Some are written atomically
+  image_url_key and others (full list: docs/deployment-manifest.md §5;
+  run_status.json is NOT here -- it sits in the code folder,
+  listing/run_status.py). Some are written atomically
   (`domain/jsonstore.write_json_atomic`); several are truncated then rewritten.
 - **config.json:** `config/settings.py` `read_raw` / `write_raw` (atomic) is the
   single writer (the last direct writers -- accounts, known sellers, brand
@@ -382,11 +384,11 @@ only, never PUTs a listing.
 - Render deploys **origin/main**. A push to origin/main is the deploy; a new
   build is live within about a minute. `/healthz` returns a bare `ok` and cannot
   show which build is live: confirm by polling a changed or new static file.
-- Environment variables: CONFIG_PATH, PORT, APP_SECRET_KEY, APP_PASSWORD,
-  ALTASCRAPER_DB, ALTA_DATA_BACKEND, ALTA_READ_SHEETS, ALTA_LWA_CLIENT_ID,
-  ALTA_LWA_CLIENT_SECRET, ALTA_TOKEN_KEY, ALTA_OAUTH_REDIRECT_URI,
-  ALTA_RUNS_PER_ACCOUNT, ALTA_RUNS_TOTAL, ALTA_IMG_WORKERS, ALTA_IMG_BATCH,
-  MONITOR_INTERVAL_S, AWS_SQS_QUEUE_URL, PUBLIC_BASE_URL, APP_BASE_URL.
+- Environment variables, persistent files, secrets, background work, health,
+  startup and rollback: **docs/deployment-manifest.md** (the authoritative
+  list, 29 Sep 2026). `ALTASCRAPER_BACKGROUND=off` (config/background.py) stops
+  every background starter for a test/parallel copy. Backup and parallel-test
+  steps: docs/runbooks/backup-and-parallel-test.md.
 
 ### Running locally for a visual check (no credentials)
 - The app needs only a `config.json` at `$CONFIG_PATH` (`build_app()` reads

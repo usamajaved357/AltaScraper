@@ -107,7 +107,9 @@ Left open (READ by the reviewers, not fixed):
 - Permission badges are `db-chip`, so mobile.css gives them a 34px min height on
   phones (older code; not visually verified).
 
-## Wrong "who did it" (found 29 Sep 2026 while designing the activity log)
+## Wrong "who did it" — FIXED on the development branch (7458fa4), not in production
+(found 29 Sep 2026 while designing the activity log; all three now use
+`domain/job_owner.label`; test_who_labels.py)
 - `routes/drppc_console_routes.py:63-69` `_who()` calls `auth.guard.current_user()`,
   which does not exist; the except swallows it, so Dr PPC settings/plans/rules/
   events store who = "". CONFIRMED by reading.
@@ -116,7 +118,14 @@ Left open (READ by the reviewers, not fixed):
 - `dashboard.py:237` reads `session.get("email")`, never set; the selfcheck error
   log falls back to the uid. CONFIRMED by reading.
 The central activity log (Employee Performance) resolves the actor one way for all
-(`domain/job_owner.person`); these three still need moving onto it.
+(`domain/job_owner.person` / `label`).
+
+## Deployment — found in the 29 Sep 2026 audit
+- `run_status.json`: the generator writes it in the CODE folder
+  (listing/run_status.py:48; amazon_listing_generator.py passes no app_dir) but
+  routes/listing_routes.py reads it from the CONFIG folder. On the server (/app
+  vs /data) the reader may never see what the writer wrote. READ, not traced.
+- `/healthz` checks nothing; `requirements.txt` is unpinned (manifest §10).
 
 ## Activity log — left open (29 Sep 2026 reviews)
 - Some callers post a catalogued write naming NO account (`autofix.js` /edit,

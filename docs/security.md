@@ -9,7 +9,7 @@ this file. Claude updates it after a `security-review`; the owner reviews change
 
 | Secret | Where | Committed? |
 |---|---|---|
-| SP-API client id/secret, refresh tokens, Anthropic / OpenRouter keys, eBay keys, 17TRACK key, Slack webhook | `config.json` beside the database (`$CONFIG_PATH`; Render: `/data/config.json`, seeded from a Render Secret File) | never (gitignored `config.json*`) |
+| SP-API client id/secret, refresh tokens, Anthropic / OpenRouter keys, eBay keys, 17TRACK key (Slack webhooks: `notify.json` in the same folder, domain/notify.py) | `config.json` beside the database (`$CONFIG_PATH`; Render: `/data/config.json`, seeded from a Render Secret File) | never (gitignored `config.json*`) |
 | Google service account | `service_account.json` | never |
 | Session signing key | env `APP_SECRET_KEY` (render.yaml `generateValue`); falls back to a random key per boot | env only |
 | Shared bootstrap password | env `APP_PASSWORD` | env only |

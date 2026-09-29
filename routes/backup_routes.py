@@ -46,7 +46,11 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
         st["ok"] = True
         # Said in words, because "last_ok: 0" is not something to read at a
         # glance and this is a screen you look at when you are worried.
-        if not st.get("last_ok"):
+        from config import background as _bg
+        if not st.get("last_ok") and not _bg.enabled():
+            st["says"] = ("No automatic backup runs in this copy of the app: "
+                          "%s=off (a test or parallel copy)." % _bg.ENV)
+        elif not st.get("last_ok"):
             st["says"] = ("No backup has run yet in this process. One runs "
                           "automatically within a couple of minutes of the app "
                           "starting, and daily after that.")
