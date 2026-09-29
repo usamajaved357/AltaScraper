@@ -200,11 +200,25 @@ change needs it, via register injection.
   Deliberate: an unreadable table should not stop someone recording a purchase.
   The cost is a possible second record on an order already recorded; Remove
   undoes it.
-- **"Which marketplace is this account's" has a third copy** in
-  routes/order_purchase_routes._marketplace (beside orders_routes._marketplace,
-  tracking_routes._account_marketplace and routes/scope.marketplace). Its
-  fallback is the same as orders_routes'; it adds "the asked marketplace must
-  be one of the account's own". One shared helper is the fix; not done here.
+- **"Which marketplace is this account's" still has copies.** The Orders
+  WRITES share domain/order_scope.py (purchases, dispatch); it sits beside
+  orders_routes._marketplace, tracking_routes._account_marketplace and
+  routes/scope.marketplace. Its fallback equals orders_routes'; it adds "the
+  asked marketplace must be one of the account's own". Folding the other three
+  onto it is the remaining fix (tracking_routes also falls back to the open
+  account, which order_scope never does).
+- **Dispatch to Amazon (/orders/ship/confirm) is built and OFF.** Turning it on
+  or off is the owner's: config `ship_confirm_enabled: true` (read fresh on
+  every send; no restart). Never sent for real yet; every carrier goes as
+  carrierCode "Other" + carrierName until a code is seen accepted
+  (domain/ship_confirm.py). Whole unshipped orders only (a partly shipped one
+  would need a second packageReferenceId, not yet seen); Transparency items are
+  refused. Still to capture on the first real send: Amazon's reply, whether
+  "Other" is accepted, and the UK carrier-code list.
+- **getOrderItems is read in four places** (domain/orders_live.order_items, two
+  in routes/orders_routes, api/amazon_orders_ship.order_items). The last is the
+  only one that follows NextToken pages and keeps OrderItemId; folding the
+  others onto one reader is the fix.
 - **Times from tracking are stored without a time zone** (domain/tracking.add),
   so the browser may show them an hour out in British Summer Time on a UTC
   server. Purchase records store UTC with its offset.

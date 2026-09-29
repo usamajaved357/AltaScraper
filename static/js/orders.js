@@ -1460,9 +1460,92 @@ function ordParcelPanel(r){
       +  'press <b>Check parcels</b>, and only once a tracking service is set '
       +  'up in Settings. Until then it reads “Not checked” rather than showing '
       +  'a status nobody asked anyone about.</div>'
+      +  _ordShipBox(r)
       +  '</div>';
   }
   return h;
+}
+
+/* TELL AMAZON IT IS DISPATCHED -- previewed here, sent only when switched on.
+ *
+ * One Amazon call does both "mark dispatched" and "upload tracking" (its
+ * schema requires the tracking), so this uses the tracking number and carrier
+ * typed in the boxes just above. Preview reads the order's lines from Amazon
+ * and sends nothing; the server says whether sending is switched on, and only
+ * then is a Send button drawn (domain/ship_confirm.py). FBM orders still to
+ * post only. */
+function _ordShipBox(r){
+  if(!r || !r.order_id) return "";
+  if(String(r.fulfilment || "").toUpperCase() === "AFN") return "";
+  if(typeof _ordUnshipped === "function" && !_ordUnshipped(r)) return "";
+  return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 3px">'
+    + '<button class="ghost" onclick="ordShipPreview(' + jsArg(r.order_id) + ','
+    + jsArg(r.account_id || "") + ',' + jsArg(r.marketplace || "") + ',this)"'
+    + ' title="Shows what Amazon would be told. Sends nothing.">'
+    + '<i class="ti ti-eye"></i> Preview dispatch to Amazon</button>'
+    + '</div><div id="ordship_out" class="cc"></div>';
+}
+
+function _ordShipBody(orderId, accountId, marketplace){
+  const v = function(id){ return ((document.getElementById(id) || {}).value || "").trim(); };
+  return {account: accountId || "", marketplace: marketplace || "", order_id: orderId,
+          tracking_number: v("ordtrk_num"), carrier: v("ordtrk_car")};
+}
+
+async function ordShipPreview(orderId, accountId, marketplace, btn){
+  const out = document.getElementById("ordship_out");
+  if(btn){ if(btn.disabled) return; btn.disabled = true; }
+  if(out) out.textContent = "Asking Amazon for this order's lines…";
+  try{
+    const j = await (await fetch("/orders/ship/preview", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(_ordShipBody(orderId, accountId, marketplace))})).json();
+    if(!out) return;
+    if(!j || !j.ok){
+      ORD.shipPreview = null;
+      out.textContent = "Not ready to send: " + ((j && j.error) || "unknown");
+      return;
+    }
+    // WHAT WAS PREVIEWED IS WHAT IS SENT: kept here, and Send refuses if the
+    // boxes have changed since (review finding).
+    ORD.shipPreview = {order_id: orderId, body: _ordShipBody(orderId, accountId, marketplace),
+                       summary: j.summary || ""};
+    let h = _oEsc(j.summary || "");
+    if(j.switched_on){
+      h += ' <button class="ghost" onclick="ordShipConfirm(' + jsArg(orderId) + ','
+        + jsArg(accountId) + ',' + jsArg(marketplace) + ',this)">'
+        + '<i class="ti ti-truck-delivery"></i> Send to Amazon</button>';
+    }else{
+      h += '<br>' + _oEsc(j.why_off || "Sending is switched off.");
+    }
+    out.innerHTML = h;
+  }catch(e){
+    if(out) out.textContent = "Could not preview that: " + e;
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function ordShipConfirm(orderId, accountId, marketplace, btn){
+  if(btn){ if(btn.disabled) return; btn.disabled = true; }
+  const pv = ORD.shipPreview;
+  const now = _ordShipBody(orderId, accountId, marketplace);
+  if(!pv || pv.order_id !== orderId || JSON.stringify(pv.body) !== JSON.stringify(now)){
+    const out = document.getElementById("ordship_out");
+    if(out) out.textContent = "The tracking or carrier changed since the preview. "
+                            + "Press Preview again so what is sent is what you saw.";
+    return;
+  }
+  const msg = pv.summary + " The buyer is told it is on its way, and it cannot "
+            + "be taken back from here. Send it?";
+  const yes = (typeof uiConfirm === "function") ? await uiConfirm(msg) : false;
+  if(!yes){ if(btn) btn.disabled = false; return; }
+  const res = await _ordWriteThenReload("/orders/ship/confirm", pv.body, orderId, accountId,
+    "Sent.", "Not sent to Amazon: ");
+  ORD.shipPreview = null;
+  // Free the button ONLY after a clear refusal. After no reply, or an answer
+  // that says the result is not known, it stays off: it may have been sent.
+  if(btn && res && !res.ok && !res.uncertain) btn.disabled = false;
 }
 
 /* Record or forget ONE order's tracking number.
@@ -1506,15 +1589,17 @@ async function _ordTrackWrite(body, orderId, accountId, okMsg){
  * optimistic: the row and panel are rebuilt from what the server now holds, so
  * a refused save cannot look like a successful one. The reply's `note`, if
  * any, is added to the message. */
-async function _ordWriteThenReload(url, body, orderId, accountId, okMsg){
+async function _ordWriteThenReload(url, body, orderId, accountId, okMsg, failWord){
+  // -> the server's reply ({ok, ...}), or null when no reply could be read.
+  const fail = failWord || "Could not save that: ";
   try{
     const j = await (await fetch(url, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)})).json();
     if(!j || !j.ok){
       if(typeof toast === "function")
-        toast("Could not save that: " + ((j && j.error) || "unknown"));
-      return;
+        toast(fail + ((j && j.error) || "unknown"));
+      return j || null;
     }
     if(typeof toast === "function")
       toast(okMsg + (j.note ? " " + j.note : ""));
@@ -1528,9 +1613,10 @@ async function _ordWriteThenReload(url, body, orderId, accountId, okMsg){
       ? String(ACTIVE_WS.key) : "";
     if(!accountId || !nowWs || nowWs === String(accountId))
       ordersToggle(orderId, accountId || "");
-    return true;
+    return j;
   }catch(e){
-    if(typeof toast === "function") toast("Could not save that: " + e);
+    if(typeof toast === "function") toast(fail + e);
+    return null;
   }
 }
 
@@ -1611,13 +1697,13 @@ async function ordRecordPurchase(orderId, accountId, marketplace, url, btn){
   // came with -- a changed name with the old link would point at the wrong shop.
   const keepUrl = url && supplier && document.getElementById("ordbuy_sup")
     && supplier === String(document.getElementById("ordbuy_sup").defaultValue || "");
-  const ok = await _ordWriteThenReload("/orders/purchase",
+  const res = await _ordWriteThenReload("/orders/purchase",
     {account: accountId || "", marketplace: marketplace || "", order_id: orderId,
      supplier: supplier, supplier_url: keepUrl ? url : "",
      supplier_ref: v("ordbuy_ref"), note: v("ordbuy_note")},
     orderId, accountId, "Recorded as bought.");
   // Refused: the panel was not redrawn, so the same button is pressable again.
-  if(!ok && btn) btn.disabled = false;
+  if(!(res && res.ok) && btn) btn.disabled = false;
 }
 
 async function ordRemovePurchase(orderId, id, accountId, marketplace){

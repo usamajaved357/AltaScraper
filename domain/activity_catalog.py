@@ -124,6 +124,8 @@ CATALOG = [
     # A record that a PERSON bought it from the supplier; the app buys nothing.
     (W, "/orders/purchase/remove",  "=", "orders", "order.purchase_remove", "Removed a supplier-purchase record", "order"),
     (W, "/orders/purchase",         "=", "orders", "order.purchase", "Recorded buying an order from the supplier", "order"),
+    # A real change on Amazon; /orders/ship/preview only reads and is not listed.
+    (W, "/orders/ship/confirm",     "=", "amazon", "amazon.ship_confirm", "Confirmed an order as dispatched on Amazon", "order"),
 
     # ---- costs ----
     (W, "/cogs/set",                "=", "costs", "cost.set", "Set a product cost", "sku"),

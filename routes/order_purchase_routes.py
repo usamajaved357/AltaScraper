@@ -8,59 +8,27 @@ person buys on the supplier's own site and says so here. The rules live in
 domain/order_purchases.py.
 
 THE ACCOUNT MUST BE NAMED. Unlike the older tracking routes, these never fall
-back to the server's open account -- that belongs to whichever browser tab
-switched last, and a record filed there would sit on another company's order
-(CLAUDE.md Rule 14). The guard (auth/guard.py) has already checked the signed-in
-person may use the account named.
+back to the server's open account (domain/order_scope.py, shared with the
+dispatch routes; CLAUDE.md Rule 14). The guard (auth/guard.py) has already
+checked the signed-in person may use the account named.
 """
 from flask import jsonify, request
 
+from domain import order_scope as _osc
 from domain import request_account as _req_acct
 
 
 def register(app, *, CONFIG_PATH, _cfg):
     """Attach /orders/purchase* to the app."""
 
-    def _account(aid):
-        cfg = (_cfg() if callable(_cfg) else _cfg) or {}
-        return next((a for a in (cfg.get("accounts") or [])
-                     if str(a.get("id") or "") == aid), None)
-
-    def _marketplace(acc, asked):
-        """The marketplace the page named, else the account's own default --
-        where its orders come from, never a guess -- and only one of the
-        account's own marketplaces."""
-        own = [str(m).strip().upper() for m in (acc.get("marketplaces") or [])
-               if str(m).strip()]
-        dflt = str(acc.get("default_marketplace") or "").strip().upper()
-        if dflt and dflt not in own:
-            own.append(dflt)
-        asked = str(asked or "").strip().upper()
-        if asked:
-            return asked if asked in own else ""
-        return dflt or (own[0] if own else "")
-
     def _scope(b, what):
         """(account_id, marketplace, order_id, None) or (.., refusal)."""
-        aid = _req_acct.named_now()
-        oid = str(b.get("order_id") or "").strip()
-        if not aid:
-            return "", "", "", (jsonify({"ok": False, "error": (
-                "Which account? The request did not name one, so nothing was "
-                "%s. Reload the Orders page and try again." % what)}), 400)
-        acc = _account(aid)
-        if acc is None:
-            return "", "", "", (jsonify({"ok": False, "error": (
-                "There is no account called %r in this app." % aid)}), 404)
-        mkt = _marketplace(acc, b.get("marketplace"))
-        if not mkt:
-            return "", "", "", (jsonify({"ok": False, "error": (
-                "That marketplace is not one of %s's, so nothing was %s."
-                % (acc.get("label") or aid, what))}), 400)
-        if not oid:
-            return "", "", "", (jsonify({"ok": False, "error": (
-                "No order number came with the request.")}), 400)
-        return aid, mkt, oid, None
+        try:
+            acc, mkt, oid = _osc.resolve(_cfg, _req_acct.named_now(),
+                                         b.get("marketplace"), b.get("order_id"), what)
+        except _osc.ScopeError as e:
+            return "", "", "", (jsonify({"ok": False, "error": str(e)}), e.status)
+        return str(acc.get("id")), mkt, oid, None
 
     @app.route("/orders/purchase", methods=["POST"])
     def orders_purchase():

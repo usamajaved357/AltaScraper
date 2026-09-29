@@ -269,6 +269,11 @@ RULES = [
     # forgets only that note, so both are ordinary editing (30 Sep 2026).
     ("/orders/purchase/remove",         "edit"),
     ("/orders/purchase",                "edit"),
+    # Telling Amazon an order shipped is a real, buyer-visible change that
+    # Amazon's dispatch metrics count: publishing. The preview only READS the
+    # order's lines and sends nothing, so it needs what editing needs.
+    ("/orders/ship/confirm",            "publish"),
+    ("/orders/ship/preview",            "edit"),
 
     # -- returns. Reading is read-only; uploading a file only parses it and
     #    stores nothing, so it needs no more than seeing the figures does.

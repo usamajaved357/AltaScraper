@@ -3015,6 +3015,8 @@ def build_app(backend=None):
                               _state=_state, _active_account=_active_account)
     import routes.order_purchase_routes as _order_purchase_routes
     _order_purchase_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
+    import routes.order_ship_routes as _order_ship_routes
+    _order_ship_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
     import routes.asin_charges_routes as _asin_charges_routes
     _asin_charges_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                   _state=_state, _active_account=_active_account)
