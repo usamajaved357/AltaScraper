@@ -132,9 +132,9 @@ def fetch_ranks(creds, asins, marketplace, log=print):
         log("tracker_fetch: catalog unavailable: %s" % str(e)[:120])
         return out
     mid = _mid(marketplace)
-    mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.UK
+    from api import sp_client as _sp             # 4E: the "upper_or_uk" rule
     try:
-        cat = CatalogItems(credentials=creds, marketplace=mkt, timeout=30)
+        cat = _sp.client(CatalogItems, creds, marketplace, rule=_sp.UPPER_OR_UK, timeout=30)
     except Exception as e:
         log("tracker_fetch: catalog client failed: %s" % str(e)[:120])
         return out

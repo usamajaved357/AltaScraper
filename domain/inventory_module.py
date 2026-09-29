@@ -153,9 +153,12 @@ def fetch_fba_inventory(creds, marketplace: str, marketplace_id: str,
         return {"rows": [], "report_source": "error",
                 "error": f"sp_api Inventories not available: {e}"}
 
-    mkt_enum = getattr(Marketplaces, marketplace, None) or Marketplaces.UK
+    # 4E: the "as_given_or_uk" rule from api/sp_client. Resolved HERE, outside
+    # the try, exactly as before: a missing marketplace still raises to the caller.
+    from api import sp_client as _sp
+    _sp.marketplace_enum(marketplace, _sp.AS_GIVEN_OR_UK)
     try:
-        client = Inventories(credentials=creds, marketplace=mkt_enum, timeout=30)
+        client = _sp.client(Inventories, creds, marketplace, rule=_sp.AS_GIVEN_OR_UK, timeout=30)
     except Exception as e:
         return {"rows": [], "report_source": "error",
                 "error": f"Inventories client init failed: {str(e)[:200]}"}

@@ -30,11 +30,6 @@ the stock and nothing happened" is worse than being told why.
 """
 
 
-def _marketplace_enum(mkt):
-    from sp_api.base import Marketplaces
-    return getattr(Marketplaces, mkt, None) or Marketplaces.UK
-
-
 def push_handling_time(cfg, acc, sku, days, marketplace):
     """Set lead_time_to_ship_max_days = `days` on ONE live listing.
 
@@ -100,7 +95,8 @@ def _patch_fulfillment(cfg, acc, sku, marketplace, changes, read_back,
     locale = "en_US" if mkt == "US" else "en_GB"
     seller = acc.get("seller_id", "")
     try:
-        li = LI(credentials=_acc.account_creds(acc), marketplace=_marketplace_enum(mkt), timeout=60)
+        from api import sp_client as _sp
+        li = _sp.client(LI, _acc.account_creds(acc), mkt, rule=_sp.AS_GIVEN_OR_UK, timeout=60)
     except Exception as e:
         out["error"] = f"could not init client: {str(e)[:160]}"; return out
 

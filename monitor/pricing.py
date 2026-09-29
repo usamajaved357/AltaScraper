@@ -9,11 +9,6 @@ import time
 from domain import amazon_flags as _flags
 
 
-def _mk_enum(mkt):
-    from sp_api.base import Marketplaces
-    return getattr(Marketplaces, str(mkt).upper(), None) or Marketplaces.UK
-
-
 # ---- how hard we push, and how we back off -------------------------------
 #
 # getItemOffersBatch has one of the tightest limits Amazon publishes, and a run
@@ -124,7 +119,8 @@ def fetch_offers_batch(creds, requests, condition="New", log=print):
                      "method": "GET", "MarketplaceId": mid,
                      "ItemCondition": r.get("condition") or condition})
     # one client; region is the same for all EU marketplaces so any EU enum works for the endpoint
-    prods = Products(credentials=creds, marketplace=_mk_enum(reqs[0]["marketplace"]), timeout=90)
+    from api import sp_client as _sp
+    prods = _sp.client(Products, creds, reqs[0]["marketplace"], rule=_sp.UPPER_OR_UK, timeout=90)
     resp = None
     # WAITING IS CHEAPER THAN FAILING.
     #

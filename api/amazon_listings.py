@@ -30,18 +30,11 @@ GONE   = "gone"        # Amazon does not have this SKU
 FAILED = "failed"
 
 
-def _enum(marketplace):
-    from sp_api.base import Marketplaces
-    code = str(marketplace or "UK").upper()
-    if code == "US":
-        return Marketplaces.US
-    return getattr(Marketplaces, code, Marketplaces.UK)
-
-
 def _client(creds, marketplace, timeout=60):
     from sp_api.api import ListingsItemsV20210801
-    return ListingsItemsV20210801(credentials=creds, marketplace=_enum(marketplace),
-                                  timeout=timeout)
+    from api import sp_client as _sp
+    return _sp.client(ListingsItemsV20210801, creds, marketplace, rule=_sp.API,
+                      timeout=timeout)
 
 
 def get_item(creds, marketplace, seller_id, sku, marketplace_id,

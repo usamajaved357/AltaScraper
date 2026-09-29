@@ -80,10 +80,6 @@ def _last_complete_week():
 # =============================================================================
 # Core report runner: create -> poll -> download -> bytes
 # =============================================================================
-def _marketplace_enum(marketplace: str):
-    return Marketplaces.US if str(marketplace).upper() == "US" else Marketplaces.UK
-
-
 def _run_report(creds: dict, marketplace: str, report_type: str,
                 report_options: dict | None, start_iso: str, end_iso: str,
                 log=print, poll_timeout=300):
@@ -92,8 +88,11 @@ def _run_report(creds: dict, marketplace: str, report_type: str,
     if not _SP_OK:
         raise RuntimeError(f"python-amazon-sp-api not available: {_SP_IMPORT_ERROR}")
 
-    mkt = _marketplace_enum(marketplace)
-    rep = Reports(credentials=creds, marketplace=mkt)
+    # 4E: the "us_or_uk" rule (only US or UK) from api/sp_client; the same
+    # member builds the client AND names the marketplace in the report request.
+    from api import sp_client as _sp
+    mkt = _sp.marketplace_enum(marketplace, _sp.US_OR_UK)
+    rep = _sp.client(Reports, creds, marketplace, rule=_sp.US_OR_UK)
 
     body = {
         "reportType": report_type,

@@ -81,9 +81,8 @@ def actions_for(creds, marketplace, order_id):
     """
     try:
         from sp_api.api import Messaging
-        from sp_api.base import Marketplaces
-        enum = getattr(Marketplaces, str(marketplace).upper(), Marketplaces.UK)
-        got = Messaging(credentials=creds, marketplace=enum) \
+        from api import sp_client as _sp            # 4E: one construction path
+        got = _sp.client(Messaging, creds, marketplace, rule=_sp.UPPER_OR_UK) \
             .get_messaging_actions_for_order(str(order_id))
         payload = got.payload if hasattr(got, "payload") else got
     except Exception as e:
@@ -188,9 +187,8 @@ def send(creds, marketplace, order_id, action, values):
 
     try:
         from sp_api.api import Messaging
-        from sp_api.base import Marketplaces
-        enum = getattr(Marketplaces, str(marketplace).upper(), Marketplaces.UK)
-        client = Messaging(credentials=creds, marketplace=enum)
+        from api import sp_client as _sp            # 4E: one construction path
+        client = _sp.client(Messaging, creds, marketplace, rule=_sp.UPPER_OR_UK)
         fn = getattr(client, method_name)
         res = fn(order_id, body=body)
         payload = res.payload if hasattr(res, "payload") else res
