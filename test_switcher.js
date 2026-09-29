@@ -255,7 +255,11 @@ console.log("\n=== there is no home page left ===");
   const css2 = fs2.readFileSync((__dirname + "/static/css/dashboard.css"), "utf8");
 
   check("the home screen markup is gone", /<div id="home"/.test(tpl), false);
-  check("  and the Home button with it", /ti-home/.test(tpl), false);
+  // The old Home BUTTON (top bar) stays gone. Home itself is back as a screen
+  // in the sidebar since 29 Sep 2026 (owner: the app opens on Home), so the
+  // icon is looked for in the top bar only.
+  const _appbar = tpl.slice(tpl.indexOf('<div class="appbar">'), tpl.indexOf('<div class="modalwrap" id="wsmodal">'));
+  check("  and the Home button with it", /ti-home/.test(_appbar), false);
   check("  and the All-workspaces backlink", /All workspaces<\/div>/.test(tpl), false);
   check("nothing reaches for the element that no longer exists",
         /getElementById\("home"\)/.test(shell), false);

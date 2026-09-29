@@ -249,6 +249,31 @@ function neutralFilter(){
 function passFilter(r){
   if(!matchesSearch(r)) return false;
   if(DUP_ONLY && !isDuplicate(r)) return false; // "Duplicates only" toggle
+  return listFilterMatch(r, FILTER);
+}
+
+/* HOW MANY DRAFTS THE DRAFTS TABLE WOULD SHOW FOR QUEUE f, with no search
+ * typed and "Duplicates only" off -- the rows render() and summary() keep on
+ * the Drafts view: not blank, not already published (lsIsPublished), not
+ * deleted on Amazon. Home's listing cards are this number (Rule 12), and
+ * homeGo clears the search and the duplicates toggle so the table shows the
+ * same rows. */
+function listQueueCount(f){
+  if(typeof ROWS === "undefined" || !ROWS) return 0;
+  return ROWS.filter(function(r){
+    if(typeof isEmptyRow === "function" && isEmptyRow(r)) return false;
+    if(typeof isPublishedRow === "function" && isPublishedRow(r)) return false;
+    if(typeof isDeletedOnAmazon === "function" && isDeletedOnAmazon(r)) return false;
+    return listFilterMatch(r, f);
+  }).length;
+}
+
+/* DOES ROW r BELONG TO QUEUE f -- the filter's own question, with the queue
+ * passed in. Split out of passFilter (29 Sep 2026) so the Home screen counts
+ * its cards with the very test the table filters by (Rule 12): a Home card
+ * saying 4 lands on a table showing 4. The parameter keeps the name FILTER so
+ * every line below reads exactly as it did inside passFilter. */
+function listFilterMatch(r, FILTER){
   if(FILTER==="all")return true;
   if(FILTER==="review")return r.status==="NEEDS_REVIEW";
   if(FILTER==="holds")return isHold(r.status);          // both, for the tile

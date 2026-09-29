@@ -137,7 +137,7 @@ function can(perm){
 // the area it used to name (auth/users.py FEATURE_PARENT), so an account with
 // nothing set behaves exactly as it did before.
 const SECTION_FEATURE = {
-  listings:"listings", generate:"generate", sync:"sync", variations:"variations",
+  home:"listings", listings:"listings", generate:"generate", sync:"sync", variations:"variations",
   sellerimport:"sellerimport", miles:"miles",
   imagestudio:"imagestudio", imagerefs:"imagerefs", imagelib:"imagelib",
   inventory:"inventory", sourcing:"repricer",

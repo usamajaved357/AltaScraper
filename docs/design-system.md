@@ -77,7 +77,7 @@ drawer before it can be finished.
 `genui.css` → `repricer.css` → `inputupload.css` → `genflow.css` → `drawer.css`
 → `drawer_attributes.css` → `draftsources.css` → `pdp.css` → `pdp_images.css` →
 `listrow_detailed.css` → `listrow_edit.css` → `revenue.css` → `pnl.css` →
-`orders_panel.css` → `ppc.css` → `drppc.css` → `mobile.css` → **`floating.css`
+`orders_panel.css` → `ppc.css` → `drppc.css` → `navrail.css` → `mobile.css` → **`floating.css`
 (last)**. drawer.css overrides `.drawer`; pdp.css must beat drawer.css;
 listrow_edit.css must beat listrow_detailed.css; floating.css owns the
 bottom-right corner and must win. Each `<link>` carries its reason.
@@ -118,6 +118,7 @@ bottom-right corner and must win. Each `<link>` carries its reason.
 
 ## 7. Layers (z-index)
 
+Icon rail 19 (under the app bar and every overlay); its group menu 85.
 Package order: base 0 · sticky 10 · shell 20 · dropdown 30 · assistant 40 ·
 mobile nav 45 · drawer 50 · modal/PDP 60 · toast 70 · tooltip 80 (`--as-z-*`).
 The app's **measured** order, which is what the code guarantees and must not be
@@ -167,14 +168,21 @@ until scrolled into view (motion.js). Durations and easing are tokens.
   PPC/Campaign Analytics concepts, Search terms (design-base-liked-pages).
 - Sales preset segmented control is gold.
 - Listings toolbar consolidation (Costs ▾) is the owner's own earlier redesign.
-- **Navigation is an overlay sidebar at every width** ("i want sidebar overlay",
-  recorded in sidebar.js). The package's always-visible icon rail is NOT built:
-  it would reverse that decision. Owner question.
-- The detailed Listings view keeps its own "···" (drawerMore) and no Review
-  button; the row itself opens the product page.
-- Search terms badge colours (Broad orange, Phrase green, Exact cyan) are left
-  as they were although Campaign Analytics now uses the viz tokens — an owner
-  question.
+- **Navigation [decided 29 Sep 2026]: an always-visible 64px icon rail**
+  (prototype A; navrail.js / navrail.css) above 860px, hideable (`alta_navrail`,
+  brought back by "Show icon bar" in the menu). It is built from the sidebar:
+  Home plus one button per `.navgroup[data-rail]`, each opening a menu of that
+  group's screens that presses the sidebar's own items. The overlay sidebar
+  stays as the full menu (rail "Menu", the hamburger, Ctrl+B) and is the only
+  navigation on a phone.
+- **The app opens on Home [decided 29 Sep 2026]** (home.js): prototype A's
+  queue board (`.hm-card`: count, title, one line; amber/red when non-zero),
+  then today's sales, then the daily round. Counts come from the owning screen
+  (`listQueueCount`, `_ordTabCounts`); unknown shows a dash, never 0.
+- The detailed Listings view has Review + its own "···" (drawerMore) since
+  29 Sep 2026 (owner).
+- Search terms badges use Campaign Analytics' match-type colours
+  (`--as-viz-*`) since 29 Sep 2026 (owner).
 
 ## 13. Icons and fonts
 

@@ -132,7 +132,7 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
         try:
             stamp = os.path.getmtime(_TPL)
         except OSError:
-            return _sec_cache["secs"] or ("listings",)
+            return _sec_cache["secs"] or ("home", "listings")
         if _sec_cache["stamp"] != stamp:
             import re as _re
             try:
@@ -144,14 +144,14 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
                 found = ()
             # Never end up with nothing: an unreadable template would otherwise
             # 404 the whole app, including the screen it is trying to serve.
-            _sec_cache["secs"] = found or ("listings",)
+            _sec_cache["secs"] = found or ("home", "listings")
             _sec_cache["stamp"] = stamp
         return _sec_cache["secs"]
 
     @app.route("/w/<ws>")
     def workspace_root(ws):
-        """A workspace with no section named opens on its listings."""
-        return redirect("/w/" + quote(ws, safe="") + "/listings")
+        """A workspace with no section named opens on Home (owner, 29 Sep 2026)."""
+        return redirect("/w/" + quote(ws, safe="") + "/home")
 
     @app.route("/w/<ws>/listing/<path:sku>")
     def workspace_listing(ws, sku):

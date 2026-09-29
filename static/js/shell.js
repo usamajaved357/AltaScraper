@@ -26,7 +26,7 @@ function storeFrom(){
 let VIEWS = [];        // [{key,label,brand,marketplace,sheet,tab}]
 let ACTIVE_WS = null;  // currently-open workspace member (a view)
 let CUR_GROUP = null;  // currently-open workspace group (brand across marketplaces)
-let CUR_SEC = "listings";
+let CUR_SEC = "home";      // the app opens on Home (owner, 29 Sep 2026)
 
 // Which spreadsheet + tab the OPEN workspace actually reads and writes.
 // {out_id,out_gid,out_tab,in_id,in_gid,missing:[]} -- or null for Dropshipping.
@@ -439,6 +439,7 @@ async function enterAccount(accountId){
   // previous account's "loaded" would let the new account's empty grid claim
   // "no listings" before a single row had been asked for.
   if(typeof ROWS_LOADED !== "undefined") ROWS_LOADED = false;
+  window.ROWS_ERR = "";           // the last account's failure is not this one's
   if(typeof DUP_INDEX!=="undefined" && DUP_INDEX && DUP_INDEX.clear) DUP_INDEX.clear();
   var _g=document.getElementById("grid"); if(_g) _g.innerHTML="";
   var _sm=document.getElementById("summary"); if(_sm) _sm.innerHTML="";
@@ -551,7 +552,9 @@ async function enterAccount(accountId){
   if(typeof renderSwitchRows === "function") renderSwitchRows();
   // Remembered so the next visit opens here instead of a grid of cards.
   try{ localStorage.setItem("alta_last_account", String(a.id || "")); }catch(e){}
-  navTo("listings");
+  // THE APP OPENS ON HOME (owner, 29 Sep 2026: "yes app should ope on the new
+  // home screen"). It was Listings.
+  navTo("home");
   altaSyncUrl();
   // Start the background refresh as soon as a CONNECTED workspace is open, not
   // only once someone has visited the Live tab. That is what makes switching to
@@ -1130,7 +1133,7 @@ async function enterWorkspace(key){
   if(_gs){
     _gs.textContent = (v.label? "\u201c"+v.label+"\u201d" : "this workspace\u2019s");
   }
-  navTo("listings");
+  navTo("home");      // opening a workspace lands on Home, as enterAccount does
   altaSyncUrl();
   loadRows();
   loadViews();   // keep legacy view <select> in sync if present
@@ -1328,6 +1331,10 @@ function navTo(sec){
   if(typeof bmkRender==="function") bmkRender();
     _mark();
   }
+  // HOME REDRAWS ON EVERY VISIT, not only when it is stale: its counts change
+  // the moment something is approved or sent elsewhere. Cheap -- what it asks
+  // Amazon for is cached or already held (static/js/home.js).
+  if(sec==="home"){ if(typeof homeOnOpen==="function") homeOnOpen(); }
   altaSyncUrl();
 }
 async function loadTargetAccount(){
@@ -1396,7 +1403,7 @@ function enterWorkspaceBlank(){
 // /w/<ws>/generate resolving to a section that no longer exists in the markup,
 // which shows as a blank page rather than as a wrong address -- and an old
 // bookmark to it now falls through to the default section instead.
-const ALTA_SECTIONS = ["listings","imagerefs","setup",
+const ALTA_SECTIONS = ["home","listings","imagerefs","setup",
                        "sales","traffic","hourly","ppc","inventory","sync","monitor","miles",
                        "weekly","daily","orders","returns","variations","sellerimport",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
@@ -1475,7 +1482,7 @@ function altaCurrentPath(){
     if(pp) return pp;
   }
   const slug = String(ACTIVE_WS.key || "") || "default";
-  const sec  = (ALTA_SECTIONS.indexOf(CUR_SEC) >= 0) ? CUR_SEC : "listings";
+  const sec  = (ALTA_SECTIONS.indexOf(CUR_SEC) >= 0) ? CUR_SEC : "home";
   let p = "/w/" + encodeURIComponent(slug) + "/" + sec;
   // Drafts is the default so it stays out of the address; Live and All are worth
   // recording, because landing back on Drafts after a refresh is the annoyance.
@@ -1557,8 +1564,8 @@ async function altaRouteFromUrl(){
     return;
   }
   const ws  = decodeURIComponent(m[1] || "");
-  let   sec = m[2] || "listings";
-  if(ALTA_SECTIONS.indexOf(sec) < 0) sec = "listings";
+  let   sec = m[2] || "home";
+  if(ALTA_SECTIONS.indexOf(sec) < 0) sec = "home";
   let src = "";
   try{ src = new URLSearchParams(location.search).get("src") || ""; }catch(e){}
 

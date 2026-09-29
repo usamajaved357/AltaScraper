@@ -1,4 +1,4 @@
-﻿// ===================== ORDERS, ACROSS EVERY ACCOUNT =====================
+// ===================== ORDERS, ACROSS EVERY ACCOUNT =====================
 // One list, newest first, with the account each order belongs to — so seeing
 // what sold does not mean opening each Amazon account in turn. Click an order
 // number to open its lines.
@@ -286,6 +286,7 @@ async function ordersLoad(){
   // one the person is actually looking at.
   const mine = ORD.loadId = (ORD.loadId || 0) + 1;
   ORD.busy = true;
+  ORD.err = "";
   body.innerHTML = '<div class="cc" style="padding:18px"><span class="genspin"></span> '
     + 'Asking every account for its orders…</div>';
   // Built once, OUTSIDE the try, because the second pass below is handed this
@@ -320,11 +321,15 @@ async function ordersLoad(){
       ? String(ACTIVE_WS.key) : "";
     if(askedFor && nowWs && askedFor !== nowWs) return;
     if(j && j.account_mismatch){
+      ORD.err = j.error || "That is not the account that is open.";
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _oEsc(j.error || "That is not the account that is open.") + '</div>';
       return;
     }
     if(!j || !j.ok){
+      // Remembered, so Home can say the orders could not be read rather than
+      // count an empty list as zero orders.
+      ORD.err = (j&&j.error)||"Could not load orders";
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _oEsc((j&&j.error)||"Could not load orders") + '</div>';
       return;
@@ -338,9 +343,12 @@ async function ordersLoad(){
     // Stamped with WHOSE rows these are, so ordersOnOpen can tell a redraw of
     // the right list from a redraw of the last one.
     ORD.rowsFor = nowWs || askedFor;
+    ORD.loadedFor = ORD.rowsFor;   // read successfully, for this account (Home)
+    ORD.err = "";
     ordersRender();
   }catch(e){
     if(mine === ORD.loadId){
+      ORD.err = String(e);
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _oEsc(String(e)) + '</div>';
     }

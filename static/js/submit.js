@@ -462,6 +462,7 @@ async function loadRows(){
   const reqAccount = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
                      ? String(CUR_ACCOUNT.id || "") : "";
   const token = ++_ROWS_SEQ;
+  window.ROWS_ERR = "";          // a new attempt: the last failure is no longer the news
   const stillMine = function(){
     if(token !== _ROWS_SEQ) return false;                  // a newer request exists
     const now = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
@@ -514,6 +515,8 @@ async function loadRows(){
       }
     }catch(e){}
     if(!j || j._failed){
+      // Remembered for Home, whose listing cards would otherwise wait for ever.
+      window.ROWS_ERR = (j&&j.error)||"timed out";
       const _g=document.getElementById("grid");
       // A failure, with Try again (uiError, pageui.js) -- not the "no data" style.
       if(_g) _g.innerHTML=uiError("Listings could not be loaded", (j&&j.error)||"timed out", "loadRows", "listings");
@@ -524,6 +527,7 @@ async function loadRows(){
       // This workspace has no sheet/tab configured. The app deliberately refuses to
       // fall back to the shared default tab (it holds another account's listings), so
       // say so plainly and send the user to the one place that fixes it.
+      window.ROWS_ERR = j.error || "the listings could not be read";   // for Home
       if(j.sheet_scope_error){
         ROWS=[];
         const g=document.getElementById("grid");
@@ -543,6 +547,7 @@ async function loadRows(){
     // The answer has arrived. From here an empty ROWS really does mean "this
     // account has no drafts", and the screen may say so.
     ROWS_LOADED = true;
+  window.ROWS_ERR = "";
     // WHICH STORE THESE CAME FROM. Kept so the screen can say when some of
     // these listings are still only in the spreadsheet, and offer to bring them
     // in -- the app is mid-migration and that is the fact that keeps surfacing

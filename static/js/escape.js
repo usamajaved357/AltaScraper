@@ -64,6 +64,11 @@ function _escOpenLayers(){
       });
     });
   }catch(e){}
+  // The icon rail's group menu (navrail.js), which may not hold focus.
+  try{
+    const fly = document.getElementById("nrfly");
+    if(fly && typeof navRailClose === "function") add(fly, navRailClose);
+  }catch(e){}
   seen.sort(function(a, b){ return b.z - a.z; });
   return seen;
 }

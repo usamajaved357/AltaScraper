@@ -64,6 +64,7 @@ const SCREEN_BODIES = {
   hourly:       ["hrlybody"],
   traffic:      ["trafbody"],
   daily:        ["dy_body"],
+  home:         ["home_body"],
   weekly:       ["wk_body"],
   leading:      ["ld_body"],
   catalog:      ["catp_body"],
@@ -171,7 +172,8 @@ function _screenResetHeld(){
     o.plan = null; o.perf = null; o.act = null; o.draft = null; o.history = [];
     o.detail = {}; o.openCamp = null; o.loading = false;
     const m = document.getElementById("drpc_main"); if(m && m.remove) m.remove(); });
-  if(typeof DAILY !== "undefined") T(DAILY, o => { o.data = null; o.loading = false; });
+  if(typeof DAILY !== "undefined") T(DAILY, o => { o.data = null; o.loading = false; o.note = ""; });
+  if(typeof HOME !== "undefined")  T(HOME, o => { o.sales = null; o.salesErr = ""; o.dailyAsked = ""; o.gen = (o.gen || 0) + 1; });
   // The shared PRODUCT PICKER (Image library, Image studio) fetched once and
   // kept the list forever -- so B's Image library listed A's products. Found by
   // the seeded-marker check in tools/browser_smoke.py (28 Sep 2026).
@@ -288,6 +290,10 @@ function screenForgetAll(){
     ORD.details = {}; ORD.open = ""; ORD.account = "";
     ORD.sel = new Set();                     // ticked orders were that account's
     ORD.loadId = (ORD.loadId || 0) + 1;      // abandon any load in flight
+    // ...and what was said about it: whose rows were loaded, whether it failed,
+    // whether one is running. Left behind, Home read an emptied list as a real
+    // "0 orders", and an abandoned load's busy flag was never cleared.
+    ORD.rowsFor = null; ORD.loadedFor = ""; ORD.err = ""; ORD.busy = false;
     const _oa = document.getElementById("ord_account");
     if(_oa) _oa.value = "";
   }

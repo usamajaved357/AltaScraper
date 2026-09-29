@@ -127,6 +127,8 @@
 <link rel="stylesheet" href="/static/css/revenue.css?v={{ ASSET_V }}">
 <!-- The plain-language Profit & Loss tiles and cost rows (pnl.js). -->
 <link rel="stylesheet" href="/static/css/pnl.css?v={{ ASSET_V }}">
+<!-- The Home screen's queue board (owner, 29 Sep 2026). -->
+<link rel="stylesheet" href="/static/css/home.css?v={{ ASSET_V }}">
 <!-- The compact expanded-order panel: the Sourcing page's bar, cards and pills
      applied to an order -- see static/js/orders_panel.js. -->
 <link rel="stylesheet" href="/static/css/orders_panel.css?v={{ ASSET_V }}">
@@ -137,6 +139,9 @@
      by accident. Scoped under .ppc-page, so it cannot reach another screen. -->
 <link rel="stylesheet" href="/static/css/ppc.css?v={{ ASSET_V }}">
 <link rel="stylesheet" href="/static/css/drppc.css?v={{ ASSET_V }}">
+<!-- The always-visible icon rail (owner, 29 Sep 2026). Before mobile.css, which
+     owns the phone layout; the rail is drawn only above the phone breakpoint. -->
+<link rel="stylesheet" href="/static/css/navrail.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -294,6 +299,10 @@
   </div>
 </div>
 
+<!-- THE ICON RAIL (static/js/navrail.js fills it from the sidebar below; each
+     group's data-rail is its short name there). -->
+<nav class="navrail" id="navrail" aria-label="Main"></nav>
+
 <!-- ============ WORKSPACE SCREEN ============ -->
 <div id="workspace">
   <div class="sidebar">
@@ -306,6 +315,9 @@
             title="Hide the menu (Ctrl+B)">
       <i class="ti ti-menu-2"></i><span>Hide menu</span>
     </button>
+    <!-- Brings back the icon rail after "Hide" on it; shown only while hidden. -->
+    <div class="navitem" id="railshow" onclick="navRailSetHidden(false)" role="button" tabindex="0"
+         style="display:none" title="Show the icon bar on the left again"><i class="ti ti-arrow-bar-to-right"></i> Show icon bar</div>
     <div class="wsident">
       <div class="ic" id="ws_ic">··</div>
       <div><div class="nm pii" id="ws_nm">Workspace</div><div class="sub cc pii" id="ws_sub"></div></div>
@@ -362,15 +374,17 @@
          Every navitem keeps its data-sec and its onclick exactly as it was, so
          navTo, the URL routing and the active-item highlight are untouched. -->
     <div class="slbl">Operations</div>
+    <!-- HOME: what needs you today; the screen the app opens on (owner, 29 Sep 2026). -->
+    <a class="navitem active" data-sec="home" href="#" onclick="return navGo(event,'home')" title="Your queues, today's sales so far and what the daily round found"><i class="ti ti-home"></i> Home</a>
 
-    <div class="navgroup" data-grp="catalogue">
+    <div class="navgroup" data-grp="catalogue" data-rail="Listings">
       <div class="navitem navmaster" onclick="navGroupToggle('catalogue')">
         <i class="ti ti-list"></i> <span class="nmlbl">Manage catalogue</span>
         <span class="navmbadge" id="grpbadge_catalogue"></span>
         <i class="ti ti-chevron-right chev navchev"></i>
       </div>
       <div class="navkids">
-        <a class="navitem active" data-sec="listings" href="#" onclick="return navGo(event,'listings')"><i class="ti ti-list"></i> All listings</a>
+        <a class="navitem" data-sec="listings" href="#" onclick="return navGo(event,'listings')"><i class="ti ti-list"></i> All listings</a>
         <a class="navitem" data-sec="catalog" href="#" onclick="return navGo(event,'catalog')" title="Every product ranked by revenue, with concentration, dead stock and the tail"><i class="ti ti-package-import"></i> Product Catalog</a>
         <a class="navitem" data-sec="categories" href="#" onclick="return navGo(event,'categories')" title="Which Amazon categories your products are ranked in"><i class="ti ti-sitemap"></i> Category Explorer</a>
         <a class="navitem" data-sec="variations" href="#" onclick="return navGo(event,'variations')"><i class="ti ti-binary-tree"></i> Variations</a>
@@ -388,7 +402,7 @@
       </div>
     </div>
 
-    <div class="navgroup" data-grp="images">
+    <div class="navgroup" data-grp="images" data-rail="Images">
       <div class="navitem navmaster" onclick="navGroupToggle('images')">
         <i class="ti ti-photo"></i> <span class="nmlbl">Images</span>
         <span class="navmbadge" id="grpbadge_images"></span>
@@ -404,7 +418,7 @@
       </div>
     </div>
 
-    <div class="navgroup" data-grp="inventory">
+    <div class="navgroup" data-grp="inventory" data-rail="Inventory">
       <div class="navitem navmaster" onclick="navGroupToggle('inventory')">
         <i class="ti ti-package"></i> <span class="nmlbl">Inventory</span>
         <span class="navmbadge" id="grpbadge_inventory"></span>
@@ -418,7 +432,7 @@
       </div>
     </div>
 
-    <div class="navgroup" data-grp="orders">
+    <div class="navgroup" data-grp="orders" data-rail="Orders">
       <div class="navitem navmaster" onclick="navGroupToggle('orders')">
         <i class="ti ti-receipt"></i> <span class="nmlbl">Orders</span>
         <span class="navmbadge" id="grpbadge_orders"></span>
@@ -435,7 +449,7 @@
 
     <div class="slbl">Analytics</div>
 
-    <div class="navgroup" data-grp="reports">
+    <div class="navgroup" data-grp="reports" data-rail="Reports">
       <div class="navitem navmaster" onclick="navGroupToggle('reports')">
         <i class="ti ti-chart-line"></i> <span class="nmlbl">Reports</span>
         <span class="navmbadge" id="grpbadge_reports"></span>
@@ -473,7 +487,7 @@
       </div>
     </div>
 
-    <div class="navgroup" data-grp="advertising">
+    <div class="navgroup" data-grp="advertising" data-rail="Ads">
       <div class="navitem navmaster" onclick="navGroupToggle('advertising')">
         <i class="ti ti-target"></i> <span class="nmlbl">Advertising</span>
         <span class="navmbadge" id="grpbadge_advertising"></span>
@@ -493,7 +507,7 @@
       </div>
     </div>
 
-    <div class="navgroup" data-grp="watch">
+    <div class="navgroup" data-grp="watch" data-rail="Watch">
       <div class="navitem navmaster" onclick="navGroupToggle('watch')">
         <i class="ti ti-radar"></i> <span class="nmlbl">Monitoring</span>
         <span class="navmbadge" id="grpbadge_watch"></span>
@@ -518,7 +532,7 @@
     <div class="slbl">Tools</div>
     <div class="navitem" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</div>
 
-    <div class="navgroup" data-grp="settings">
+    <div class="navgroup" data-grp="settings" data-rail="Settings">
       <div class="navitem navmaster" onclick="navGroupToggle('settings')">
         <i class="ti ti-settings"></i> <span class="nmlbl">Settings</span>
         <span class="navmbadge" id="grpbadge_settings"></span>
@@ -700,6 +714,7 @@
          The looking is what a computer should do; the only output that matters
          is the short list of what is wrong today. -->
 {% include "screens/sec_daily.html" %}
+{% include "screens/sec_home.html" %}
 
     <!-- THE FOUR TRACKERS, on one screen with a tab each.
          Orbit lists them as five separate menu items (All Trackers, BSR, Buy
@@ -1080,6 +1095,9 @@
      this is the one that decides what is revealed inside it; loaded BEFORE
      shell.js so navTo can call navGroupSyncActive the first time it runs. -->
 <script src="/static/js/navgroups.js?v={{ ASSET_V }}"></script>
+<!-- The icon rail, built from the sidebar above (after navgroups.js: it asks
+     navGroupOf which group holds the open screen). -->
+<script src="/static/js/navrail.js?v={{ ASSET_V }}"></script>
 <!-- Which account and marketplace a request is about. Loaded EARLY, before any
      screen that calls it: four screens had grown their own copy and two of them
      had drifted into reading a variable nothing defines. One builder now. -->
@@ -1228,6 +1246,8 @@
 <script src="/static/js/sales_campaigns.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sales_live.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sales_cards.js?v={{ ASSET_V }}"></script>
+<!-- Home: after the sales, orders and daily files, whose counts and loaders it asks. -->
+<script src="/static/js/home.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sales_grid.js?v={{ ASSET_V }}"></script>
 <!-- The stock-cost bar under the Profit card. AFTER sales.js: it uses _sFetch
      and _sAcct, and is drawn from salesDrawCards. -->

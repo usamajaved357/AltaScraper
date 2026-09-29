@@ -70,7 +70,7 @@ truthy("  cached on the template's modification time", "getmtime" in U)
 truthy("  so a local edit takes effect without a restart",
        "without a restart" in U)
 truthy("an unreadable template still serves something",
-       'found or ("listings",)' in U)
+       'found or ("home", "listings")' in U)   # Home first since 29 Sep 2026 (owner: the app opens on Home)
 truthy("it is still not a catch-all", "Unknown section" in U)
 
 print("\n== the menu and the browser's own list agree ==")

@@ -32,7 +32,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SANDBOX = os.path.join(os.path.dirname(ROOT), "claude-environment-devdata", "sandbox")
 
-SCREENS = ("listings sales traffic hourly orders returns finance inventory weekly "
+SCREENS = ("home listings sales traffic hourly orders returns finance inventory weekly "
            "daily sourcing catalog categories compliance leading sqp kwspy kwasin "
            "kwhistory ranktracker trackers alerts monitor ppc ppcanalytics ppcterms "
            "ppccampaigns ppclive drppc drppcconsole asinstudio imagelib imagerefs "
