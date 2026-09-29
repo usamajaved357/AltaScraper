@@ -1234,7 +1234,11 @@ async function lrSaveRule(sku, key, el){
   try{
     const j = await (await fetch("/sourcing/rules", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify((typeof _srcBody === "function") ? _srcBody(body) : body)
+      // _srcBody ALREADY returns the JSON text (sourcing.js); stringifying it
+      // again sent a quoted string, which /sourcing/rules could not read, so
+      // every Min/Max typed on this row failed to save (front-end review,
+      // 29 Sep 2026).
+      body: (typeof _srcBody === "function") ? _srcBody(body) : JSON.stringify(body)
     })).json();
     if(!j || !j.ok){ toast("Could not save: " + ((j && j.error) || "")); return; }
     const rule = lrRule(sku);

@@ -43,11 +43,41 @@ def truthy(label, got):
 
 JSDIR = os.path.join(HERE, "static", "js")
 
-# A top-level `function name(` -- column zero, so a nested one does not count --
-# and a top-level `window.name = function`.
-TOP_FN = re.compile(r"^function\s+([A-Za-z_$][\w$]*)\s*\(", re.M)
-WIN_FN = re.compile(r"window\.([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function", re.M)
+# A top-level `function name(` or `async function name(` -- column zero, so a
+# nested one does not count -- and any `window.name =` assignment (a function,
+# an arrow, or an alias). WIDENED 29 Sep 2026 (front-end review): 435 top-level
+# async functions and every arrow/alias on window were invisible to this test.
+TOP_FN = re.compile(r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(", re.M)
+# A FUNCTION put on window -- `function`, `async function`, or an arrow. Plain
+# `window.X = value` is shared STATE written from several places on purpose
+# (RUN_STREAMING, LOGIC_VISIBLE) or navigation (window.location), not a clash.
+WIN_FN = re.compile(r"window\.([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?"
+                    r"(?:function|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)", re.M)
 TOP_LET = re.compile(r"^(?:let|var|const)\s+([A-Za-z_$][\w$]*)", re.M)
+# Every name on a multi-name declaration line: `let A = [], B = "x", C;`
+TOP_LET_LINE = re.compile(r"^(?:let|var|const)\s+(.+?);?\s*$", re.M)
+
+
+def _declared_names(line):
+    """Names declared by one top-level let/var/const line, commas at depth 0."""
+    depth, cur, parts = 0, "", []
+    for ch in line:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur)
+    out = []
+    for p in parts:
+        m = re.match(r"\s*([A-Za-z_$][\w$]*)\s*(=|$)", p)
+        if m:
+            out.append(m.group(1))
+    return out
 
 
 def owners():
@@ -68,6 +98,9 @@ def owners():
         for rx in (TOP_FN, WIN_FN, TOP_LET):
             for m in rx.finditer(src):
                 out.setdefault(m.group(1), set()).add(f)
+        for m in TOP_LET_LINE.finditer(src):
+            for name in _declared_names(m.group(1)):
+                out.setdefault(name, set()).add(f)
     return {k: sorted(v) for k, v in out.items() if len(v) > 1}
 
 

@@ -127,6 +127,17 @@ The central activity log (Employee Performance) resolves the actor one way for a
   vs /data) the reader may never see what the writer wrote. READ, not traced.
 - `/healthz` checks nothing; `requirements.txt` is unpinned (manifest §10).
 
+## dashboard.py — remaining feature code (4D review, 29 Sep 2026): intentional debt
+3,737 lines; build_app (839) is composition and stays. The largest feature
+blocks -- _resolve_fields (416), _save_miles_templates (310), _load_schema (238),
+the Google Drive group (_drive_service/_drive_upload_image/_drive_map_*,
+~150), _variation_schema (131), _fetch_fba_inventory_via_spapi (121, dead by
+owner rule) -- each read app state (_cfg, _state, SCOPES, the media-root helpers)
+through 3-10 module globals (AST scan). Moving them is an injection redesign, not
+a verbatim move (refactor-move step 2), with no behaviour gained; the master
+brief says not to chase line count. Left in place; move one only when a feature
+change needs it, via register injection.
+
 ## Money formulas — audited 29 Sep 2026 (active/map-4H-vat.md)
 - The VAT-out formula `gross*r/(1+r)` is the same everywhere (rounding differs:
   per order vs per window -- pennies). Fixed: the account form saving an

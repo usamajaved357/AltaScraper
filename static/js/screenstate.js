@@ -229,6 +229,13 @@ function _screenResetHeld(){
   if(typeof LR_ASKED    !== "undefined") T(LR_ASKED,    o => o.clear());
   if(typeof LR_ERRORS   !== "undefined") T(LR_ERRORS,   o => { for(const k in o) delete o[k]; });
   if(typeof LR_COVERAGE !== "undefined") T(LR_COVERAGE, o => { for(const k in o) delete o[k]; });
+  // A draft's suppliers and profit (draftsources.js), and Amazon's image slots
+  // (amazonimages.js): keyed by SKU alone and never re-asked once held, so B's
+  // same-SKU draft showed A's suppliers, and UK's showed after a switch to US
+  // (front-end review, 29 Sep 2026).
+  if(typeof DRAFT_SRC   !== "undefined") T(DRAFT_SRC,   o => { for(const k in o) delete o[k]; });
+  if(typeof AIMG        !== "undefined") T(AIMG,        o => { o.sku = ""; o.state = "";
+    o.data = null; o.err = ""; o.justSent = ""; });
   // `let` scalars in another file: assignable from here (one global scope).
   if(typeof LR_LOADING  !== "undefined") { try{ LR_LOADING = false; }catch(e){} }
   if(typeof LR_ANSWERED !== "undefined") { try{ LR_ANSWERED = false; }catch(e){} }
