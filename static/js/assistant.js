@@ -120,7 +120,7 @@ function asEmpty() {
        'Anything I need to do today?']
       .map(function (q) {
         return '<button onclick="asAsk(this.textContent)" style="background:'
-          + '#16203a;border:1px solid var(--accent-line);color:var(--accent2);border-radius:14px;'
+          + 'var(--as-lit-16203a-bg);border:1px solid var(--accent-line);color:var(--accent2);border-radius:14px;'
           + 'padding:5px 11px;cursor:pointer;font-size:11.5px">'
           + asEsc(q) + '</button>';
       }).join('')
@@ -148,7 +148,7 @@ function asRender() {
     }
     if (m.role === 'error') {
       return '<div style="margin:0 0 12px;background:var(--red-bg);border:1px solid '
-        + '#5c2a33;border-radius:10px;padding:9px 11px;color:var(--red)">'
+        + 'var(--as-lit-5c2a33-bd);border-radius:10px;padding:9px 11px;color:var(--red)">'
         + asEsc(m.text) + '</div>';
     }
     var trace = '';

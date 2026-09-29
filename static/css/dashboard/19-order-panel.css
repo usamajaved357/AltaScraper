@@ -76,7 +76,7 @@
   border:1px solid var(--line); white-space:nowrap;
 }
 .odp-state.warn{ color:var(--warn); border-color:var(--warn-line); }
-.odp-state.bad { color:#fca5a5;     border-color:var(--red-line); }
+.odp-state.bad { color:var(--as-lit-fca5a5-fg);     border-color:var(--red-line); }
 .odp-state.ok  { color:var(--ok);   border-color:var(--ok-line, var(--line)); }
 .odp-why{
   grid-column:1 / -1; margin-top:4px; font-size:11px; color:var(--ink3);

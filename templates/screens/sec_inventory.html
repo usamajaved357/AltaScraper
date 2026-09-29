@@ -36,22 +36,22 @@
           <div>
             <label class="cc" style="font-size:11px">Target normal FBA DOS</label>
             <input id="inv2_normal" type="number" value="85" min="0" max="365"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+              style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px">
           </div>
           <div>
             <label class="cc" style="font-size:11px">Reorder cycle days</label>
             <input id="inv2_reorder" type="number" value="5" min="0" max="90"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+              style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px">
           </div>
           <div>
             <label class="cc" style="font-size:11px">Long-horizon 3PL DOS</label>
             <input id="inv2_long" type="number" value="110" min="0" max="365"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+              style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px">
           </div>
           <div>
             <label class="cc" style="font-size:11px">Sales window (days)</label>
             <input id="inv2_window" type="number" value="30" min="7" max="180"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+              style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px">
           </div>
         </div>
 
@@ -59,7 +59,7 @@
           <div>
             <label class="cc" style="font-size:11px">3PL stock CSV (optional) — matches your existing sheet columns</label>
             <input type="file" id="inv2_3pl" accept=".csv,.tsv,.txt"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+              style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px">
             <div class="cc" style="font-size:10px;margin-top:2px;opacity:.65">
               Cols: Natural SKUs · SKUs · Product Name · ASIN · 3PL Stock · In-Transit · Ordered Qty
             </div>
@@ -67,7 +67,7 @@
           <div>
             <label class="cc" style="font-size:11px">Cache lifetime (hours) — protects Seller Central from report spam</label>
             <input id="inv2_cache" type="number" value="6" min="0" max="72"
-              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+              style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px">
             <div class="cc" style="font-size:10px;margin-top:2px;opacity:.65">
               6h = at most 4 reports/day per account. Set to 0 to always fetch fresh (creates a Seller Central report each run).
             </div>
@@ -82,7 +82,7 @@
         </div>
         <div id="inv2_result" style="margin-top:12px"></div>
 
-        <div style="margin-top:14px;padding:10px;border:1px solid #263145;border-radius:8px;background:#0d1220;font-size:11px;line-height:1.6;opacity:.8">
+        <div style="margin-top:14px;padding:10px;border:1px solid var(--as-lit-263145-bd);border-radius:8px;background:var(--as-lit-0d1220-bg);font-size:11px;line-height:1.6;opacity:.8">
           <b>How it works:</b> Fetches FBA inventory via the SP-API <code>GET_FBA_MYI_ALL_INVENTORY_DATA</code> report (cached 6h by default). Fetches sales velocity per SKU via the Orders API over the sales window. Classifies each SKU as <b>ACTIVE</b> (has sales), <b>NEW_LAUNCH</b> (0 sales but &lt;60 days old), <b>DORMANT</b> (0 sales, 60-365 days), or <b>DEAD</b> (0 sales &gt;365 days or Discontinued). Only ACTIVE and NEW_LAUNCH SKUs get reorder recommendations. The red badge in the sidebar shows count of SKUs needing reorder.
         </div>
       </div>

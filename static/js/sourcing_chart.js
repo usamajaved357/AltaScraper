@@ -217,7 +217,7 @@ function srcChart(title, json, anchor){
     const v = lo0 + (hi0 - lo0) * (k / 2);
     const y = Y(v).toFixed(1);
     grid += '<line x1="' + PAD.l + '" y1="' + y + '" x2="' + (W - PAD.r)
-         +  '" y2="' + y + '" stroke="rgba(255,255,255,.06)" stroke-width="1"/>';
+         +  '" y2="' + y + '" class="spc-grid" stroke-width="1"/>';
     yl += '<text x="' + (PAD.l - 6) + '" y="' + (+y + 3.5)
        +  '" text-anchor="end" class="rp-ax">' + _sesc(_smoney(v)) + '</text>';
   }
@@ -271,8 +271,8 @@ function srcChart(title, json, anchor){
     + '<path d="' + area + '" fill="url(#' + gid + ')"/>'
     + '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="2" '
     + 'stroke-linecap="round" stroke-linejoin="round"/>'
-    + '<line class="rp-cross" x1="0" y1="' + PAD.t + '" x2="0" y2="'
-    + (PAD.t + ih) + '" stroke="rgba(255,255,255,.22)" stroke-width="1" '
+    + '<line class="rp-cross spc-axis" x1="0" y1="' + PAD.t + '" x2="0" y2="'
+    + (PAD.t + ih) + '" stroke-width="1" '
     + 'style="display:none"/>'
     + dots + yl + xl
     + '<rect class="rp-hit" x="' + PAD.l + '" y="' + PAD.t + '" width="' + iw

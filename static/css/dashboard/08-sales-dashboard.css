@@ -55,7 +55,7 @@
      A row per product: its name, a 24-cell strip of its day, and the window
      totals. Measured off Orbit's: cells 33x20 on rgb(45,50,66), gold at
      varying alpha for volume. */
-  #sec_hourly{ padding:32px; background:rgb(26,29,41);
+  #sec_hourly{ padding:32px; background:var(--as-bg-canvas);
                max-width:1464px; margin-left:auto; margin-right:auto; }
   .hrlywrap{ border:1px solid var(--line); border-radius:10px;
              background:var(--panel); overflow:auto; }
@@ -66,10 +66,10 @@
   }
   .hrlyhead{ position:sticky; top:0; z-index:2; background:var(--panel2);
              font-size:10px; font-weight:600; letter-spacing:.04em;
-             text-transform:uppercase; color:rgb(156,163,175); }
+             text-transform:uppercase; color:var(--as-lit-9ca3af-fg); }
   .hrlyrow{ cursor:pointer; }
-  .hrlyrow:hover{ background:rgba(255,255,255,.03); }
-  .hrlyrow.open{ background:rgba(251,191,36,.06); }
+  .hrlyrow:hover{ background:color-mix(in srgb, var(--as-lit-ffffff-ov) 3%, transparent); }
+  .hrlyrow.open{ background:color-mix(in srgb, var(--as-lit-fbbf24-bg) 6%, transparent); }
   .hrlyname{ min-width:0; font-size:12px; }
   .hrlyname code{ font-size:10px; display:block; }
   .hrlytitle{ display:block; overflow:hidden; text-overflow:ellipsis;
@@ -77,7 +77,7 @@
   /* 24 equal columns -- one per hour. The header labels sit in the same grid,
      so 12AM lines up with the first cell and 11PM with the last. */
   .hrlystrip{ display:grid; grid-template-columns:repeat(24,1fr); gap:1px;
-              font-size:10px; color:rgb(156,163,175); }
+              font-size:10px; color:var(--as-lit-9ca3af-fg); }
   .hrlycell{ height:20px; border-radius:2px; display:block; }
   .hrlytot{ font-size:11px; text-align:right; white-space:nowrap;
             font-variant-numeric:tabular-nums; }
@@ -88,8 +88,8 @@
     display:grid; grid-template-columns:44px repeat(24,1fr); gap:1px;
     align-items:center; margin-bottom:1px;
   }
-  .hrlygridhead{ font-size:10px; color:rgb(156,163,175); margin-bottom:4px; }
-  .hrlydow{ font-size:10px; color:rgb(156,163,175); }
+  .hrlygridhead{ font-size:10px; color:var(--as-lit-9ca3af-fg); margin-bottom:4px; }
+  .hrlydow{ font-size:10px; color:var(--as-lit-9ca3af-fg); }
   @media (max-width:860px){
     #sec_hourly{ padding:12px; max-width:none; }
     .hrlyhead, .hrlyrow{ grid-template-columns:150px minmax(360px,1fr) 96px;
@@ -99,7 +99,7 @@
   /* ---- Traffic & Conversions -------------------------------------------
      Its tiles, tables and pills reuse the Sales screen's classes; only the
      three things that screen does not have are defined here. */
-  #sec_traffic{ padding:32px; background:rgb(26,29,41);
+  #sec_traffic{ padding:32px; background:var(--as-bg-canvas);
                 max-width:1464px; margin-left:auto; margin-right:auto; }
   /* The donut sits beside the daily split, and drops under it on a narrow
      screen rather than squeezing both. */
@@ -117,7 +117,7 @@
   .trafbar-track{ height:9px; border-radius:5px; background:var(--panel2);
                   overflow:hidden; }
   .trafbar-fill{ display:block; height:100%; border-radius:5px;
-                 background:#22c55e; }
+                 background:var(--as-lit-22c55e-bg); }
   .trafbar-val{ text-align:right; font-variant-numeric:tabular-nums;
                 font-weight:600; }
   .trafbar-sub{ font-size:11px; text-align:right; }
@@ -140,22 +140,22 @@
      text; buttons 10px/500 on a 6px radius. */
   .gtools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
   .gtools .glbl,.gcogs .glbl{font-size:11px;font-weight:600;letter-spacing:.04em;
-       text-transform:uppercase;color:rgb(156,163,175)}
+       text-transform:uppercase;color:var(--as-lit-9ca3af-fg)}
   .gtools .gspacer{flex:1}
-  .gtools .glast{font-size:11px;color:rgb(156,163,175);white-space:nowrap}
+  .gtools .glast{font-size:11px;color:var(--as-lit-9ca3af-fg);white-space:nowrap}
   .gbtn{font-size:10px;font-weight:500;padding:4px 12px;border-radius:6px;
         background:transparent;color:var(--ink2);border:1px solid var(--line);
         cursor:pointer;white-space:nowrap}
   .gbtn:hover{border-color:var(--accent);color:var(--ink)}
   .gbtn.wide{font-size:13px;font-weight:400;padding:7px 12px;border-radius:8px;
-             background:rgb(45,50,66);max-width:230px;overflow:hidden;
+             background:var(--as-surface-3);max-width:230px;overflow:hidden;
              text-overflow:ellipsis}
-  .gpills{display:inline-flex;gap:2px;background:rgb(45,50,66);
-          border:1px solid rgb(75,85,99);border-radius:6px;padding:2px}
+  .gpills{display:inline-flex;gap:2px;background:var(--as-surface-3);
+          border:1px solid var(--as-lit-4b5563-bd);border-radius:6px;padding:2px}
   .gpill{font-size:10px;font-weight:500;padding:4px 10px;border-radius:4px;
          background:transparent;color:var(--ink2);border:0;cursor:pointer}
   .gpill:hover{color:var(--ink)}
-  .gpill.on{background:#fbbf24;color:#0f172a;font-weight:600}
+  .gpill.on{background:var(--as-lit-fbbf24-bg);color:var(--as-lit-0f172a-fg);font-weight:600}
 
   /* The COGS strip under the toolbar. */
   .gcogs{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;
@@ -167,7 +167,7 @@
   .gtie{border-left:2px solid var(--muted);padding-left:8px}
   /* "There is nothing here" said out loud. Not an error colour: an account that
      was not trading yet is a fact about the business, not a fault in the app. */
-  .gnodata{border-left:2px solid var(--accent2,#6ac7e8);padding-left:8px;
+  .gnodata{border-left:2px solid var(--accent2,var(--as-lit-6ac7e8-bd));padding-left:8px;
            display:block;line-height:1.5}
   .gnodata .glbl{margin-right:6px}
   .glink{background:none;border:0;padding:0;font-size:12px;font-weight:500;
@@ -183,16 +183,16 @@
   .metricpick.open{display:block}
   .metricpick-head{display:flex;align-items:center;gap:8px;font-size:11px;
                    font-weight:600;text-transform:uppercase;letter-spacing:.04em;
-                   color:rgb(156,163,175);padding:2px 4px 8px}
+                   color:var(--as-lit-9ca3af-fg);padding:2px 4px 8px}
   .metricpick-head .glink{margin-left:auto;font-size:11px}
   .metricpick-head .glink + .glink{margin-left:0}
   .metricpick-sec{font-size:10px;font-weight:600;text-transform:uppercase;
-                  letter-spacing:.05em;color:rgb(156,163,175);
+                  letter-spacing:.05em;color:var(--as-lit-9ca3af-fg);
                   padding:8px 4px 3px;border-top:1px solid var(--line);margin-top:4px}
   .metricpick-sec:first-of-type{border-top:0;margin-top:0}
   .metricpick-row{display:flex;align-items:center;gap:7px;font-size:12px;
                   padding:4px 4px;border-radius:5px;cursor:pointer}
-  .metricpick-row:hover{background:rgba(255,255,255,.04)}
+  .metricpick-row:hover{background:color-mix(in srgb, var(--as-lit-ffffff-ov) 4%, transparent)}
 
   /* Sends the eye to the product filter at the top of the screen rather than
      giving the grid a second one that could disagree with it. */
@@ -200,15 +200,15 @@
               transition:outline-color .2s}
 
   .salesgrid tr.gsec th.mcol,
-  .salesgrid tr.gsec td{background:rgb(45,50,66);padding:4px 10px;height:24px}
-  .salesgrid tr.gsec th.mcol{font-size:10px;font-weight:600;color:rgb(243,244,246);
+  .salesgrid tr.gsec td{background:var(--as-surface-3);padding:4px 10px;height:24px}
+  .salesgrid tr.gsec th.mcol{font-size:10px;font-weight:600;color:var(--as-lit-f3f4f6-fg);
                              text-transform:uppercase;letter-spacing:.05em}
   /* No hover lift on a heading, and it never shades: it has no numbers in it. */
   .salesgrid tbody tr.gsec:hover td{box-shadow:none}
   /* A hairline one shade off the surface -- never dashed, never heavy. */
   .salesgrid tbody tr:last-child td,
   .salesgrid tbody tr:last-child th{border-bottom:none}
-  .salesgrid tbody tr:hover td{box-shadow:inset 0 0 0 9999px rgba(255,255,255,.02)}
+  .salesgrid tbody tr:hover td{box-shadow:inset 0 0 0 9999px color-mix(in srgb, var(--as-lit-ffffff-ov) 2%, transparent)}
 
   /* Today so far -- a live figure, from a different measurement than the grid.
      Set apart deliberately: a quiet strip above the cards, not a fifth card,
@@ -229,16 +229,23 @@
   .todaystrip{display:flex;flex-wrap:nowrap;align-items:center;gap:18px;
               padding:10px 14px;margin:0 0 14px;border-radius:8px;
               min-height:46px;box-sizing:border-box;
-              background:rgba(255,255,255,.02);
+              background:color-mix(in srgb, var(--as-lit-ffffff-ov) 2%, transparent);
               border:1px solid var(--line)}
   .todaylead{font-size:11px;letter-spacing:.06em;text-transform:uppercase;
              color:var(--muted);font-weight:600}
   .todaybit{white-space:nowrap}
   .todaybit b{font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
-  .todaybit .good{color:var(--green,#2dd4a8);font-size:12px}
-  .todaybit .bad{color:var(--red,#f87171);font-size:12px}
+  .todaybit .good{color:var(--green,var(--as-text-link));font-size:12px}
+  .todaybit .bad{color:var(--red,var(--as-lit-f87171-fg));font-size:12px}
   /* min-width:0 is what lets the ellipsis happen at all -- a flex item will
      not shrink below its content without it, and the note would push the row
      wider instead of truncating. */
   .todaynote{margin-left:auto;font-size:10px;min-width:0;
              white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* THE SALES CHARTS' GRIDLINES AND TICK TEXT (salescharts.js), as classes so
+   they follow the theme (owner, 29 Sep 2026). Dark values are Orbit's measured
+   rgb(55,65,81) dashed rule and rgb(156,163,175) 11px ticks. */
+:root{ --sc-grid-line:var(--as-neutral-border); --sc-tick-text:var(--as-lit-9ca3af-fg); }
+.sc-grid{ stroke:var(--sc-grid-line); }
+.sc-tick{ fill:var(--sc-tick-text); }

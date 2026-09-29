@@ -22,14 +22,14 @@
   white-space:nowrap;
 }
 .navitem.switchrow .chev{ font-size:12px; opacity:.55; }
-.navitem.switchrow.gold{ color:rgb(251,191,36); }
+.navitem.switchrow.gold{ color:var(--as-lit-fbbf24-fg); }
 
 /* The list that drops out of either row. */
 .switchmenu{
   position:fixed;
   z-index:80;
-  background:rgb(45,50,66);
-  border:1px solid rgb(75,85,99);
+  background:var(--as-surface-3);
+  border:1px solid var(--as-lit-4b5563-bd);
   border-radius:8px;
   padding:4px;
   box-shadow:0 8px 24px rgba(0,0,0,.45);
@@ -47,23 +47,23 @@
   border:0;
   border-radius:6px;
   background:transparent;
-  color:rgb(243,244,246);
+  color:var(--as-lit-f3f4f6-fg);
   font-size:13px;
   text-align:left;
   cursor:pointer;
 }
-.switchopt:hover{ background:rgba(255,255,255,.06); }
-.switchopt.on{ color:rgb(251,191,36); }
+.switchopt:hover{ background:color-mix(in srgb, var(--as-lit-ffffff-ov) 6%, transparent); }
+.switchopt.on{ color:var(--as-lit-fbbf24-fg); }
 .switchopt .ic{ width:18px; text-align:center; flex-shrink:0; }
 .switchopt .lbl{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* "draft-only", "default", "slower" -- the thing worth knowing BEFORE choosing,
    rather than after switching and finding half the screens empty. */
 .switchopt .note{
   font-size:10px;
-  color:rgb(156,163,175);
+  color:var(--as-lit-9ca3af-fg);
   white-space:nowrap;
 }
-.switchempty{ padding:10px 12px; font-size:12px; color:rgb(156,163,175); }
+.switchempty{ padding:10px 12px; font-size:12px; color:var(--as-lit-9ca3af-fg); }
 
 /* THE MENU HAS TWO LEVELS NOW: accounts, then the marketplaces of ONE of them.
    The heading is what makes the second level readable -- "United Kingdom /
@@ -75,8 +75,8 @@
   font-weight:600;
   letter-spacing:.05em;
   text-transform:uppercase;
-  color:rgb(156,163,175);
-  border-bottom:1px solid rgba(255,255,255,.07);
+  color:var(--as-lit-9ca3af-fg);
+  border-bottom:1px solid color-mix(in srgb, var(--as-lit-ffffff-ov) 7%, transparent);
   margin-bottom:3px;
   white-space:nowrap;
   overflow:hidden;

@@ -56,16 +56,16 @@ function _logLineEl(d){
   div.textContent=s;
   div.style.whiteSpace="pre-wrap"; div.style.padding="1px 0";
   if(/\[E\]|NOT live|invalid attribute value|does not match any ASIN|not in the catalog|cannot be added|\b\d+\s+(?:error|issue)\(s\)/i.test(s)){
-    div.style.color="#ff6b6b"; div.style.fontWeight="700"; div.style.borderLeft="3px solid #ff6b6b";
-    div.style.paddingLeft="8px"; div.style.margin="6px 0"; div.style.background="rgba(255,107,107,.07)";
+    div.style.color="var(--red)"; div.style.fontWeight="700"; div.style.borderLeft="3px solid var(--red)";
+    div.style.paddingLeft="8px"; div.style.margin="6px 0"; div.style.background="var(--red-bg)";
   } else if(/\[W\]|We are ignoring|warning/i.test(s)){
     div.style.color="var(--warn)";
   } else if(/\[start\]|\[done\]|API mode:|seller:|fetching schema|MODE:|Listing Generator|complete --/i.test(s)){
-    div.style.color="#7f8ea3";
+    div.style.color="var(--ink3)";
   } else if(/LIVE \(|Amazon accepted|no missing|accepted this listing|Published live/i.test(s)){
-    div.style.color="#5fd08a"; div.style.fontWeight="600";
+    div.style.color="var(--ok)"; div.style.fontWeight="600";
   } else {
-    div.style.color="#cfe0ff";
+    div.style.color="var(--ink)";     // shared tokens: the log reads in both themes (29 Sep 2026)
   }
   return div;
 }
@@ -531,7 +531,7 @@ async function loadRows(){
       if(j.sheet_scope_error){
         ROWS=[];
         const g=document.getElementById("grid");
-        if(g) g.innerHTML=`<div class="empty" style="border:1px solid var(--red-line);border-radius:10px;background:rgba(255,80,80,.05)">
+        if(g) g.innerHTML=`<div class="empty" style="border:1px solid var(--red-line);border-radius:10px;background:color-mix(in srgb, var(--as-lit-ff5050-bg) 5%, transparent)">
           <div style="color:var(--red);font-weight:600;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> This workspace has no sheet configured</div>
           <div class="cc" style="max-width:620px;margin:0 auto 12px;line-height:1.5">${esc(j.error||"")}</div>
           <button class="mktbtn on" onclick="openCurrentAccountSettings()">Open Account settings</button></div>`;

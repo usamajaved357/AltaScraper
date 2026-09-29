@@ -37,7 +37,7 @@
   table td{font-variant-numeric:tabular-nums}
   table th{text-transform:uppercase;letter-spacing:.03em;font-weight:600}
   table tr{transition:background-color .12s ease}
-  table tbody tr:hover > td{background:rgba(255,255,255,.03)}
+  table tbody tr:hover > td{background:color-mix(in srgb, var(--as-lit-ffffff-ov) 3%, transparent)}
 
   /* -- 4. STAT CARDS (new, unused until a screen adopts them) ------------ */
   .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));

@@ -53,7 +53,7 @@ function _sAdFooter(j, whenLabel){
     return '<div class="adfooter">'
       + '<span class="lbl">Ad spend ' + _sEsc(whenLabel) + '</span> '
       + '<b>' + _sEsc(conn.ok === false ? "not connected" : "none") + '</b>'
-      + '<span style="color:rgb(156,163,175)"> — ' + _sEsc(why) + '.</span>'
+      + '<span style="color:var(--as-lit-9ca3af-fg)"> — ' + _sEsc(why) + '.</span>'
       + '</div>';
   }
 

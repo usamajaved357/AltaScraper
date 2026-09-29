@@ -660,12 +660,12 @@ function salesChart(points, opts){
   [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
     const v = lo + span * f, yy = y(v);
     grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
-                   stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"/>`
+                   class="sc-grid" stroke-width="1" stroke-dasharray="3 3"/>`
          +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
-                fill="rgb(156,163,175)">${_scEsc(_scAxis(v, o.kind, o.currency, span))}</text>`;
+                class="sc-tick">${_scEsc(_scAxis(v, o.kind, o.currency, span))}</text>`;
   });
   grid += `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}"
-                 stroke="rgb(55,65,81)" stroke-width="1"/>`;
+                 class="sc-grid" stroke-width="1"/>`;
 
   // The line, BROKEN wherever a day has no data. Each run of real values is its
   // own path, so nothing is drawn across the gap and nothing implies a zero.
@@ -857,7 +857,7 @@ function salesChart(points, opts){
   points.forEach(function(p, i){
     if(i % step) return;
     xl += `<text x="${x(i)}" y="${padT + ih + 8}" text-anchor="middle" font-size="11"
-                 fill="rgb(156,163,175)">${_scEsc(_scXLabel(p.label, o.xLabel))}</text>`;
+                 class="sc-tick">${_scEsc(_scXLabel(p.label, o.xLabel))}</text>`;
   });
 
   const missing = points.filter(p => _scNum(p.value) === null).length;
@@ -961,7 +961,7 @@ function salesChartKey(o){
   };
   const item = function(col, w, dash, text, dim, tip){
     return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px'
-         + (dim ? ';color:rgb(156,163,175)' : '') + '"'
+         + (dim ? ';color:var(--as-lit-9ca3af-fg)' : '') + '"'
          + (tip ? ' title="' + _scEsc(tip) + '"' : "") + '>'
          + mark(col, w, dash) + _scEsc(text) + '</span>';
   };
@@ -1253,18 +1253,18 @@ function salesCombo(o){
   [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
     const yy = padT + ih - f * ih;
     grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
-                   stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"/>`
+                   class="sc-grid" stroke-width="1" stroke-dasharray="3 3"/>`
          // The left axis is not always money. The Traffic screen puts sessions
          // and page views on it, and conversion and buy box as percentages --
          // labelling a session count "£522" is a plain lie, and it is the kind
          // that goes unnoticed because the shape of the line still looks right.
          +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
-                  fill="rgb(156,163,175)">${_scEsc(_scAxis(mLo + mSpan * f, o.kind || "money", o.currency, mSpan))}</text>`;
+                  class="sc-tick">${_scEsc(_scAxis(mLo + mSpan * f, o.kind || "money", o.currency, mSpan))}</text>`;
     // The right-hand count axis is only drawn when something is counted on it.
     // An axis labelled 0-1-2-3-4 beside a chart with no bars is furniture.
     if(barsOn){
       grid += `<text x="${W - padR + 8}" y="${yy + 4}" text-anchor="start" font-size="11"
-                  fill="rgb(156,163,175)">${_scEsc(String(Math.round(bHi * f)))}</text>`;
+                  class="sc-tick">${_scEsc(String(Math.round(bHi * f)))}</text>`;
     }
   });
 
@@ -1387,7 +1387,7 @@ function salesCombo(o){
   cols.forEach(function(c, i){
     if(i % step) return;
     xl += `<text x="${x(i)}" y="${padT + ih + 16}" text-anchor="middle" font-size="11"
-                 fill="rgb(156,163,175)">${_scEsc(_scXLabel(c, o.xLabel))}</text>`;
+                 class="sc-tick">${_scEsc(_scXLabel(c, o.xLabel))}</text>`;
   });
 
   // Hover: one readout for every series at that column, which is the whole

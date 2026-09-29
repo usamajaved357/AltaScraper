@@ -515,10 +515,12 @@ function financeRender(){
   //
   // The level comes from the server (domain/contribution.NOTE_*). A plain string
   // is still accepted and treated as a warning, so an older response renders.
+  // The shared status colours (owner, 29 Sep 2026: hard-coded colours onto the
+  // shared ones, so these notes follow the light theme too).
   const FIN_NOTE_STYLE = {
-    bad:  {border: '#5c2b2b', bg: '#2a1414', icon: 'ti-alert-triangle', fg: '#ffb4b4'},
-    warn: {border: '#3a3320', bg: '#241f10', icon: 'ti-info-circle',    fg: ''},
-    info: {border: '#2a3446', bg: '#161c26', icon: 'ti-info-circle',    fg: ''},
+    bad:  {border: 'var(--as-danger-border)',  bg: 'var(--as-danger-bg)',  icon: 'ti-alert-triangle', fg: 'var(--as-danger)'},
+    warn: {border: 'var(--as-warning-border)', bg: 'var(--as-warning-bg)', icon: 'ti-info-circle',    fg: ''},
+    info: {border: 'var(--as-neutral-border)', bg: 'var(--as-neutral-bg)', icon: 'ti-info-circle',    fg: ''},
   };
   ((FIN.meta && FIN.meta.notes) || []).forEach(function(n){
     const text = (typeof n === 'string') ? n : (n && n.text) || '';

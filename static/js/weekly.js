@@ -678,7 +678,7 @@ function _wkWeeksTable(){
   ws.forEach(function(w){
     const k = w.kpis || {};
     const on = WK.week && w.week_start === WK.week.week_start;
-    h += '<tr' + (on ? ' style="background:rgba(45,212,168,.06)"' : '') + '>'
+    h += '<tr' + (on ? ' style="background:color-mix(in srgb, var(--as-action) 6%, transparent)"' : '') + '>'
       + '<td>' + _wkEsc(_wkDate(w.week_start)) + '</td>'
       + '<td class="r stk-num">' + _wkMoney(k.total_sales) + '</td>'
       + '<td class="r stk-num">' + _wkNum(k.sessions) + '</td>'

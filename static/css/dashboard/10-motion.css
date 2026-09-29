@@ -197,7 +197,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 }
 .sc-key:hover{ opacity:.75; }
 .sc-key:focus-visible{
-  outline:2px solid var(--accent, #6ac7e8); outline-offset:2px; border-radius:3px;
+  outline:2px solid var(--accent, var(--as-lit-6ac7e8-bd)); outline-offset:2px; border-radius:3px;
 }
 /* SWITCHED OFF. Dimmed, and the name struck through: dimming alone is how a
    DISABLED control looks, and these are never disabled -- clicking one brings

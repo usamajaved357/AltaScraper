@@ -128,7 +128,7 @@ function syncOpenModal(mode, sku, stored, amazon, meta){
     var src=(mode==='pull'?amazon:stored)[f]||'';
     var tgt=(mode==='pull'?stored:amazon)[f]||'';
     var diff=(src!==tgt);
-    h+='<tr style="'+(diff?'background:rgba(110,168,254,.06)':'')+'">';
+    h+='<tr style="'+(diff?'background:color-mix(in srgb, var(--as-lit-6ea8fe-bg) 6%, transparent)':'')+'">';
     if(mode==='pull') h+='<td>'+(diff?'<input type="checkbox" class="sync_apply" data-f="'+f+'">':'')+'</td>';
     h+='<td class="cc" style="font-size:11px">'+esc(lbl)+(diff?' <span style="color:var(--accent)">●</span>':'')+'</td>'
       +'<td style="font-size:11px;word-break:break-word">'+esc(String(src).slice(0,300))+'</td>'

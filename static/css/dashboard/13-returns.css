@@ -18,3 +18,7 @@
 }
 @media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
 @media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
+
+/* The daily chart's plot area (returns.js), as a class so it follows the theme. */
+:root{ --ri-plot-bg:var(--as-lit-0d1220-bg); --ri-plot-line:var(--as-border-subtle); }
+.ri-plot{ fill:var(--ri-plot-bg); stroke:var(--ri-plot-line); }

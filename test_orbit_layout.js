@@ -145,7 +145,8 @@ check("it is focus-VISIBLE, not focus",
       /\*:focus-visible\{outline:var\(--as-focus-w\) solid var\(--as-focus-ring\)/.test(css), true);
 check("  so a mouse click leaves no glow", /\*:focus\{/.test(css), false);
 check("the accent stays teal, not the audit's gold",
-      /rgba\(45,212,168/.test(css), true);
+      // the teal washes are the action token since 29 Sep 2026 (light mode)
+      /rgba\(45,212,168|color-mix\(in srgb, var\(--as-(action|text-link)\) \d+%, transparent\)/.test(css), true);
 
 console.log("\n=== 7. drawer: only what was missing ===");
 check("the shadow was added", /\.drawer\{box-shadow:-8px 0 32px rgba\(0,0,0,\.5\)\}/.test(css), true);

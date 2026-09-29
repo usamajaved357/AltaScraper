@@ -67,7 +67,7 @@
   cursor:pointer;transition:background-color .1s}
 .rp-tbl tr.rp-row:hover>td, .lt tbody tr:hover td,
 .stk-table tbody tr:hover td, .dt-tbl tbody tr:hover td{
-  background:rgba(255,255,255,.03)}
+  background:color-mix(in srgb, var(--as-lit-ffffff-ov) 3%, transparent)}
 
 /* Right-aligned numeric columns, which the Catalog already used. */
 .stk-table th.r, .stk-table td.r, .dt-tbl th.r, .dt-tbl td.r{text-align:right}

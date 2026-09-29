@@ -104,7 +104,7 @@
     --accent-bg:var(--as-action-subtle);  --accent-line:var(--as-action-subtle-border);
 
     /* Financial -- gold. Price, profit, margin, ROI, ACOS. */
-    --gold:#f0b429;  --gold-bg:#2a2310;  --gold-line:#4a3d1a;
+    --gold:var(--as-lit-f0b429);  --gold-bg:var(--as-lit-2a2310-bg);  --gold-line:var(--as-lit-4a3d1a-bd);
 
     /* AI / A+ content -- violet. NOT part of the Orbit spec: this is a
        deliberate addition, kept because it marks a category (A+ content, the
@@ -112,10 +112,10 @@
        into teal would give a stricter palette at the cost of losing that
        category at a glance. Named here so it is an explicit part of the system
        instead of a dozen stray hexes that look like something I missed. */
-    --ai:#c8b6ff;         --ai-strong:#e8e0ff;
-    --ai-bg:#1b1530;      --ai-bg2:#3a2d5e;
-    --ai-line:#4a3a7a;    --ai-line2:#5a4a8a;
-    --ai-tint:rgba(120,90,200,.10);
+    --ai:var(--as-lit-c8b6ff);         --ai-strong:var(--as-lit-e8e0ff);
+    --ai-bg:var(--as-lit-1b1530-bg);      --ai-bg2:var(--as-lit-3a2d5e-bg);
+    --ai-line:var(--as-lit-4a3a7a-bd);    --ai-line2:var(--as-lit-5a4a8a-bd);
+    --ai-tint:color-mix(in srgb, var(--as-lit-785ac8-bg) 10%, transparent);
 
     /* Status */
     --ok:var(--as-success);    --ok-bg:var(--as-success-bg);    --ok-line:var(--as-success-border);
@@ -133,7 +133,7 @@
        view all need real white rather than --ink, which is #e8eaed. It was
        written as #ffffff in seven JavaScript files; login.css already had the
        name, so the same name is defined here and those seven now use it. */
-    --paper:#ffffff;
+    --paper:var(--as-lit-ffffff-bg);
 
     /* WHERE ONE UNIT'S MONEY WENT. Three colours, used by every stacked bar in
        the app -- the order panel, the repricer's price bar and the fee panel:
@@ -150,7 +150,7 @@
        a quantity, not a verdict. */
     --bar-cost:var(--as-viz-supplier);   /* what the stock cost you */
     --bar-fee:var(--as-viz-referral);    /* what Amazon took (referral) */
-    --bar-fee2:#c9694f;                  /* a second fee beside it (closing) -- no token */
+    --bar-fee2:var(--as-lit-c9694f);                  /* a second fee beside it (closing) -- no token */
     --bar-profit:var(--as-viz-profit);   /* what is left */
 
     /* ---- compatibility aliases (see the note above) ---- */

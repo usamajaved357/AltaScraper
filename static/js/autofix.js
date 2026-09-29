@@ -2231,7 +2231,7 @@ function _fullDataParts(r){
   // Amazon messages that don't name a real schema attribute (catalogue-conflict prose,
   // "The Listing data...", "Your offer...") -> shown as plain text, NEVER as input fields.
   const plainNoteBlock=(_plainNotes&&_plainNotes.length)
-    ? `<div class="amzprose" style="margin:6px 0;padding:8px 10px;border:1px solid var(--bd,#555);border-radius:6px">
+    ? `<div class="amzprose" style="margin:6px 0;padding:8px 10px;border:1px solid var(--bd,var(--as-lit-555555-bd));border-radius:6px">
          <b>Amazon message</b> <span class="cc">(not an editable field — no attribute to fix here)</span><br>
          ${_plainNotes.map(esc).join("<br>")}</div>`
     : "";

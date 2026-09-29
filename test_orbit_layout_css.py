@@ -73,7 +73,9 @@ yes("headers are uppercase and tracked",
     "table th{text-transform:uppercase;letter-spacing:.03em;font-weight:600}" in LIVE)
 yes("one row hover, with a transition",
     "table tr{transition:background-color .12s ease}" in LIVE
-    and "table tbody tr:hover > td{background:rgba(255,255,255,.03)}" in LIVE)
+    # The same 3% wash, as a palette variable since 29 Sep 2026 (light mode:
+    # white lifts the dark theme, ink tints the light one).
+    and "table tbody tr:hover > td{background:color-mix(in srgb, var(--as-lit-ffffff-ov) 3%, transparent)}" in LIVE)
 # The brief said "Remove any conflicting row hover styles". They are left: a
 # working style removed to satisfy a general one is how a screen that was fine
 # ends up looking wrong. The generic rule is deliberately weak so those win.

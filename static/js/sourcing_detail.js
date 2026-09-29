@@ -521,8 +521,8 @@ function _statCards(j){
       + '<div class="rp-mc-n ' + (tone || '') + '">' + n + '</div>'
       + '<div class="rp-mc-l">' + label + '</div>'
       + '<div class="rp-mc-bar" style="width:' + pct(bar) + '%;background:'
-      + (tone === 'rp-g' ? '#22c55e' : tone === 'rp-y' ? '#f0b429'
-         : tone === 'rp-r' ? '#ef4444' : 'var(--line2)') + '"></div></button>';
+      + (tone === 'rp-g' ? 'var(--as-lit-22c55e-bg)' : tone === 'rp-y' ? 'var(--as-lit-f0b429-bg)'
+         : tone === 'rp-r' ? 'var(--as-lit-ef4444-bg)' : 'var(--line2)') + '"></div></button>';
   };
   return '<div class="rp-met">'
     // "Tracked" is the whole set, so it is the way OFF a filter rather than a

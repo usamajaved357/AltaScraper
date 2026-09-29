@@ -23,13 +23,13 @@
   /* Falls back to the same colour where no second accent is themed, so the
      tile is flat rather than broken. */
   .appbar .brandmark .amark .g1{stop-color:var(--accent2,var(--accent))}
-  .appbar .brandmark .amark .glyph{stroke:#0a1628}
+  .appbar .brandmark .amark .glyph{stroke:var(--as-lit-0a1628-fg)}
   /* A hair of lift on hover, so it reads as the app's own mark rather than a
      button. It is deliberately not clickable. */
   .appbar .brandmark:hover .amark{filter:drop-shadow(0 2px 5px rgba(0,0,0,.45))}
   /* Kept: other screens (login, the print header) still use the lettered tile. */
   .appbar .brandmark .dot{width:22px;height:22px;border-radius:var(--radius-sm);background:var(--accent);
-        display:flex;align-items:center;justify-content:center;color:#0a1628;
+        display:flex;align-items:center;justify-content:center;color:var(--as-lit-0a1628-fg);
         font-size:13px;font-weight:700}
   .appbar .spacer{flex:1}
   .appbar .barbtn{font-size:13px;color:var(--ink2);background:transparent;border:1px solid transparent;
@@ -46,18 +46,18 @@
   .appbar .hb.bad{background:var(--red-bg);border-color:var(--red-line);color:var(--red)}
   .appbar .hb.bad .dot{background:var(--red)}
   .appbar .barbtn:hover{background:var(--panel2);color:var(--ink)}
-  .barbtn.privon{color:var(--warn);border-color:#5a4a1e;background:#2a2310}
+  .barbtn.privon{color:var(--warn);border-color:var(--as-lit-5a4a1e-bd);background:var(--as-lit-2a2310-bg)}
   /* visual zone editor boxes */
   .zebox{position:absolute;border:2px dashed var(--accent);background:var(--accent-bg);cursor:move;box-sizing:border-box;display:flex;align-items:center;overflow:hidden}
-  .zebox.sel{border-style:solid;box-shadow:0 0 0 2px rgba(255,255,255,.3)}
-  .zelbl{position:absolute;top:-16px;left:-2px;font-size:9px;font-weight:700;color:#0a0e14;padding:1px 5px;border-radius:3px;white-space:nowrap;z-index:2}
-  .zetext{color:#fff;font-size:13px;padding:0 6px;pointer-events:none;text-transform:uppercase;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
-  .zegrip{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:#fff;border:2px solid var(--accent);border-radius:2px;cursor:nwse-resize;z-index:2}
-  .zeerase{position:absolute;background:rgba(0,0,0,.78);border:1px solid #ff6b6b;box-sizing:border-box}
-  .zeerase .zex{position:absolute;top:-9px;right:-6px;background:#ff6b6b;color:#fff;border-radius:50%;width:16px;height:16px;font-size:12px;line-height:16px;text-align:center;cursor:pointer}
+  .zebox.sel{border-style:solid;box-shadow:0 0 0 2px color-mix(in srgb, var(--as-lit-ffffff-ov) 30%, transparent)}
+  .zelbl{position:absolute;top:-16px;left:-2px;font-size:9px;font-weight:700;color:var(--as-lit-0a0e14-fg);padding:1px 5px;border-radius:3px;white-space:nowrap;z-index:2}
+  .zetext{color:var(--as-lit-ffffff-fg);font-size:13px;padding:0 6px;pointer-events:none;text-transform:uppercase;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+  .zegrip{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:var(--as-lit-ffffff-bg);border:2px solid var(--accent);border-radius:2px;cursor:nwse-resize;z-index:2}
+  .zeerase{position:absolute;background:rgba(0,0,0,.78);border:1px solid var(--as-lit-ff6b6b-bd);box-sizing:border-box}
+  .zeerase .zex{position:absolute;top:-9px;right:-6px;background:var(--as-lit-ff6b6b-bg);color:#fff;border-radius:50%;width:16px;height:16px;font-size:12px;line-height:16px;text-align:center;cursor:pointer}
   .crumbs{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
   .dwhl{margin:2px 0 8px;font-size:13px;color:var(--ink);line-height:1.4}
-  .dwhl-lbl{display:inline-block;background:#2a3a52;color:var(--accent2);font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:6px;text-transform:uppercase;letter-spacing:.04em}
+  .dwhl-lbl{display:inline-block;background:var(--as-lit-2a3a52-bg);color:var(--accent2);font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:6px;text-transform:uppercase;letter-spacing:.04em}
   .crumbs .sep{opacity:.5}
   .crumbs .here{color:var(--ink);font-weight:600}
 
@@ -87,9 +87,9 @@
     display:flex;position:absolute;top:6px;right:6px;z-index:6;
     width:26px;height:26px;align-items:center;justify-content:center;
     border-radius:7px;cursor:pointer;
-    background:rgba(10,14,20,.82);color:var(--warn);border:1px solid #5a4a1e;
+    background:color-mix(in srgb, var(--as-bg-shell) 82%, transparent);color:var(--warn);border:1px solid var(--as-lit-5a4a1e-bd);
   }
-  body.privacy-on .peek:hover{background:rgba(20,28,40,.95)}
+  body.privacy-on .peek:hover{background:color-mix(in srgb, var(--as-bg-canvas) 95%, transparent)}
   body.privacy-on .peek .ti{font-size:15px;pointer-events:none}
 
 
@@ -146,7 +146,7 @@
   .rc-match.gated,.rc-match.restricted{background:var(--amberbg);border-color:var(--warn-line)}
   .rc-clear{background:var(--greenbg);border:1px solid var(--ok-line);color:var(--ok);border-radius:10px;padding:11px 13px}
   .rc-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.03em}
-  .rc-badge.prohibited{background:#c0392b;color:#fff} .rc-badge.gated,.rc-badge.restricted{background:#7a641f;color:#fff}
+  .rc-badge.prohibited{background:var(--as-lit-c0392b-bg);color:#fff} .rc-badge.gated,.rc-badge.restricted{background:var(--as-lit-7a641f-bg);color:#fff}
   .rc-src{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 5px;margin-left:6px}
   /* Orbit cards are FLAT: the hover cue is a teal border, not a lift. The
      translateY(-1px) is gone deliberately -- "no box-shadow, Orbit is flat, not
@@ -369,15 +369,15 @@
   .rh_why{margin-left:auto;padding:4px 10px;font-size:12px;cursor:pointer;
        border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit}
   .rh_why:hover{border-color:var(--warn);color:var(--warn)}
-  .rh-running .rh_dot{background:var(--ok);box-shadow:0 0 0 3px rgba(127,209,160,.18)}
+  .rh-running .rh_dot{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb, var(--as-lit-7fd1a0) 18%, transparent)}
   .rh-running .rh_state{color:var(--ok)}
-  .rh-stalled .rh_dot{background:var(--warn);box-shadow:0 0 0 3px rgba(227,183,104,.20)}
+  .rh-stalled .rh_dot{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb, var(--as-lit-e3b768) 20%, transparent)}
   .rh-stalled .rh_state{color:var(--warn)}
-  .rh-stopped .rh_dot{background:#ff8585}
-  .rh-stopped .rh_state{color:#ff8585}
+  .rh-stopped .rh_dot{background:var(--as-lit-ff8585-bg)}
+  .rh-stopped .rh_state{color:var(--as-lit-ff8585-fg)}
   .rh-idle    .rh_dot{background:var(--ink3)}
   .rh-idle    .rh_state{color:var(--ink3)}
-  #log{display:none;margin:0;padding:8px 10px;background:var(--bg);color:#cbd3e1;
+  #log{display:none;margin:0;padding:8px 10px;background:var(--bg);color:var(--as-lit-cbd3e1-fg);
        border-bottom:1px solid var(--line);max-height:230px;overflow:auto;
        font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
   #log .l{opacity:.92}
@@ -415,7 +415,7 @@
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
         padding:14px 16px;display:flex;flex-direction:column;gap:10px}
-  .card.flag{border-color:#5a2230}
+  .card.flag{border-color:var(--as-lit-5a2230-bd)}
 
   /* ---- A WIDE TABLE SCROLLS; IT DOES NOT GET CUT OFF ----
      Reported as "the page cutting my visuals and getting out of the screen
@@ -466,11 +466,11 @@
             padding:8px 10px;font-size:12px;color:var(--red);white-space:pre-wrap}
   .findings .h{font-weight:700;color:var(--red);margin-bottom:2px}
   .errlist{display:flex;flex-direction:column;gap:5px;white-space:normal}
-  .erritem{background:#2a1414;border:1px solid var(--red-line);border-radius:6px;padding:6px 9px;
+  .erritem{background:var(--as-lit-2a1414-bg);border:1px solid var(--red-line);border-radius:6px;padding:6px 9px;
            font-size:12px;color:var(--red);line-height:1.35}
-  .erritem.w{background:#2a2414;border-color:#5c5024;color:#e8d9a8}
-  .errfield{font-weight:700;color:#ffb4b4;font-family:ui-monospace,Menlo,monospace;font-size:12px}
-  .erritem.w .errfield{color:#ffe08a}
+  .erritem.w{background:var(--as-lit-2a2414-bg);border-color:var(--as-lit-5c5024-bd);color:var(--as-lit-e8d9a8-fg)}
+  .errfield{font-weight:700;color:var(--as-lit-ffb4b4-fg);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .erritem.w .errfield{color:var(--as-lit-ffe08a-fg)}
   details summary{cursor:pointer;color:var(--muted);font-size:12px}
   ul.bul{margin:6px 0 0;padding-left:18px;color:var(--ink);font-size:12px}
   ul.bul li{margin:2px 0}
@@ -500,7 +500,7 @@
   .hold{background:transparent}
   .empty{color:var(--muted);padding:40px;text-align:center;grid-column:1/-1}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
-         background:#222a36;border:1px solid var(--line);color:var(--ink);
+         background:var(--as-surface-1);border:1px solid var(--line);color:var(--ink);
          padding:9px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;
          /* ABOVE EVERY OVERLAY: at 80 a toast raised from inside a dialog
             (z 9600) or the repricer's modal (9000) was drawn underneath it and
@@ -525,11 +525,11 @@
   table.kv td.v{color:var(--ink);width:62%;word-break:break-word;overflow-wrap:anywhere}
   .kvsec{margin-top:10px;color:var(--accent2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
   pre.raw{display:none;margin:8px 0 0;padding:8px;background:var(--bg);border:1px solid var(--line);
-          border-radius:6px;font:11.5px/1.45 ui-monospace,Consolas,monospace;color:#cbd3e1;
+          border-radius:6px;font:11.5px/1.45 ui-monospace,Consolas,monospace;color:var(--as-lit-cbd3e1-fg);
           white-space:pre-wrap;max-height:280px;overflow:auto}
   .rawtoggle{margin-top:8px;color:var(--accent);cursor:pointer;font-size:12px;display:inline-block}
   .payloadbox{margin-top:10px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--panel)}
-  .payloadbox>summary{color:#8fd0ff;font-size:12px}
+  .payloadbox>summary{color:var(--as-lit-8fd0ff-fg);font-size:12px}
   .payloadnote{color:var(--ink3);font-size:11px;margin:6px 0;line-height:1.5}
   pre.payloadraw{display:block;max-height:340px}
   /* Fields sit on --bg, DARKER than the --panel they are drawn on, so an input
@@ -554,22 +554,22 @@
   select.ed{cursor:pointer}
   /* Full editor: field delete + bullet controls */
   .bctls{display:inline-flex;gap:2px;margin-left:6px;vertical-align:middle}
-  .bctl{background:var(--panel2);border:1px solid var(--line2);color:#cfe0ff;cursor:pointer;font-size:11px;
+  .bctl{background:var(--panel2);border:1px solid var(--line2);color:var(--as-lit-cfe0ff-fg);cursor:pointer;font-size:11px;
     line-height:1;padding:2px 6px;border-radius:5px}
-  .bctl:hover{background:#213555;color:#fff}
+  .bctl:hover{background:var(--as-lit-213555-bg);color:var(--as-lit-ffffff-fg)}
   .bctl.del{color:var(--red);border-color:var(--red-line)}
-  .bctl.del:hover{background:var(--red-bg);color:#fff}
+  .bctl.del:hover{background:var(--red-bg);color:var(--as-lit-ffffff-fg)}
   .bctl.dis,.bctl:disabled{opacity:.35;cursor:default}
-  .cdel{background:none;border:none;color:#c98a8a;cursor:pointer;font-size:12px;padding:0 4px;border-radius:4px}
-  .cdel:hover{background:var(--red-bg);color:#fff}
-  .cdel.dis,.cdel:disabled{color:#5b6472;cursor:not-allowed}
-  .cdel.dis:hover,.cdel:disabled:hover{background:none;color:#5b6472}
-  .addbulletbtn{background:#12233b;border:1px dashed #2c4a6e;color:var(--accent2);cursor:pointer;
+  .cdel{background:none;border:none;color:var(--as-lit-c98a8a-fg);cursor:pointer;font-size:12px;padding:0 4px;border-radius:4px}
+  .cdel:hover{background:var(--red-bg);color:var(--as-lit-ffffff-fg)}
+  .cdel.dis,.cdel:disabled{color:var(--as-lit-5b6472-fg);cursor:not-allowed}
+  .cdel.dis:hover,.cdel:disabled:hover{background:none;color:var(--as-lit-5b6472-fg)}
+  .addbulletbtn{background:var(--as-lit-12233b-bg);border:1px dashed var(--as-info-border);color:var(--accent2);cursor:pointer;
     font-size:12px;padding:5px 10px;border-radius:7px;margin-top:2px}
-  .addbulletbtn:hover{background:#16304e;color:#fff}
+  .addbulletbtn:hover{background:var(--as-info-bg);color:var(--as-lit-ffffff-fg)}
   td.k{padding-top:9px;white-space:nowrap}
   .ro{color:var(--muted)}
-  .safe{background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:8px;padding:8px 10px;font-size:12px;color:#9fe0b8}
+  .safe{background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--as-lit-9fe0b8-fg)}
   td.wcell{padding:6px 8px}
   /* Label above a field, per Orbit: 11px, --ink3. */
   .wlab{color:var(--ink3);font-size:11px;margin-bottom:4px}

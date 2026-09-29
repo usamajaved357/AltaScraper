@@ -13,16 +13,16 @@
 
 .ds-head{
   display:flex; align-items:center; gap:8px;
-  font-size:11px; color:#c8c7cc; margin:0 0 6px;
+  font-size:11px; color:var(--as-lit-c8c7cc-fg); margin:0 0 6px;
 }
-.ds-head b{ font-size:11.5px; color:#eeedf0; font-weight:600; }
+.ds-head b{ font-size:11.5px; color:var(--as-text-primary); font-weight:600; }
 
 .ds-refresh{
-  margin-left:auto; background:none; border:1px solid #3a3a45; border-radius:4px;
-  color:#c8c7cc; font-family:inherit; font-size:10px; padding:2px 7px;
+  margin-left:auto; background:none; border:1px solid var(--as-lit-3a3a45-bd); border-radius:4px;
+  color:var(--as-lit-c8c7cc-fg); font-family:inherit; font-size:10px; padding:2px 7px;
   cursor:pointer; line-height:1.5;
 }
-.ds-refresh:hover{ background:#2a2a35; color:#eeedf0; }
+.ds-refresh:hover{ background:var(--as-lit-2a2a35-bg); color:var(--as-text-primary); }
 
 /* NOT TRACKED YET. Said in the panel because a supplier list on a draft reads
    as "this is being watched", and it is not: the repricer and the order panel
@@ -30,8 +30,8 @@
    listing buyable. */
 .ds-note{
   display:flex; gap:6px; align-items:flex-start;
-  font-size:10.5px; line-height:1.5; color:#85B7EB;
-  background:#16202c; border:1px solid #24384f; border-radius:5px;
+  font-size:10.5px; line-height:1.5; color:var(--as-lit-85b7eb-fg);
+  background:var(--as-bg-canvas); border:1px solid var(--as-lit-24384f-bd); border-radius:5px;
   padding:6px 8px; margin:0 0 8px;
 }
 .ds-note i{ margin-top:1px; }
@@ -39,6 +39,6 @@
 .ds-wait, .ds-none, .ds-err{
   font-size:11px; line-height:1.55; padding:8px 10px; border-radius:5px;
 }
-.ds-wait{ color:#9a99a3; background:#1e1e26; }
-.ds-none{ color:#9a99a3; background:#1e1e26; }
-.ds-err { color:#EF9F27; background:#2a2118; border:1px solid #4a3a20; }
+.ds-wait{ color:var(--as-lit-9a99a3-fg); background:var(--as-bg-canvas); }
+.ds-none{ color:var(--as-lit-9a99a3-fg); background:var(--as-bg-canvas); }
+.ds-err { color:var(--as-warning); background:var(--as-lit-2a2118-bg); border:1px solid var(--as-lit-4a3a20-bd); }

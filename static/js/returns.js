@@ -469,7 +469,7 @@ function _riDailyChart(days, daily, dmax){
     + ' data-l="' + L + '" data-r="' + R + '" data-w="' + W + '"'
     + ' data-days="' + _rEsc(days.join(",")) + '">'
     + '<rect x="' + L + '" y="' + T + '" width="' + iw + '" height="' + ih
-    + '" fill="#0d1220" stroke="#1e2733"/>'
+    + '" class="ri-plot"/>'
     + grid + bars + ticks
     + '<rect id="ri_drag" x="0" y="' + T + '" width="0" height="' + ih
     + '" fill="rgba(79,140,255,.22)" stroke="#4f8cff" stroke-width="1"'

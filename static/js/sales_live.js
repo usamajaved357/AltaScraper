@@ -246,7 +246,7 @@ async function salesLoadHourly(){
   const _liveConn = (SALES._lastSeries && SALES._lastSeries.ads) || {};
   const adsFoot = '<div class="adfooter">'
     + '<span class="lbl">Ad spend today</span> <b>—</b>'
-    + '<span style="color:rgb(156,163,175)"> — '
+    + '<span style="color:var(--as-lit-9ca3af-fg)"> — '
     + (_liveConn.ok === false
        ? 'advertising needs its own Amazon login, separate from the selling one'
        : 'Amazon reports advertising about two days behind, so there is no '

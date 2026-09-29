@@ -31,7 +31,7 @@ table.ordtable th{
   white-space:nowrap;
   vertical-align:top;
   background:rgba(0,0,0,.16);
-  border-bottom:1px solid rgb(55,65,81);
+  border-bottom:1px solid var(--as-neutral-border);
   position:sticky;                /* the headings stay while a long list scrolls */
   top:0;
   z-index:1;
@@ -43,7 +43,7 @@ table.ordtable th{
 table.ordtable td{
   padding:7px 10px;
   vertical-align:middle;          /* .kv aligns top, which floats a 34px image */
-  border-bottom:1px solid rgba(55,65,81,.55);
+  border-bottom:1px solid color-mix(in srgb, var(--as-neutral-border) 55%, transparent);
 }
 /* The sub-line under a heading. Same class and same shape as the listings
    table's, defined here too because this table is styled in dashboard.css and
@@ -60,16 +60,16 @@ table.ordtable tbody tr:last-child > td{ border-bottom:0; }
 /* The row a click would open. Colour is reserved for status, so this is only
    a lift in the background. */
 table.ordtable tbody tr.ordrow{ cursor:pointer; transition:background .12s; }
-table.ordtable tbody tr.ordrow:hover{ background:rgba(255,255,255,.035); }
-table.ordtable tbody tr.ordrow.isopen{ background:rgba(255,255,255,.05); }
+table.ordtable tbody tr.ordrow:hover{ background:color-mix(in srgb, var(--as-lit-ffffff-ov) 3.5%, transparent); }
+table.ordtable tbody tr.ordrow.isopen{ background:color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent); }
 /* Small print under a main line, in every cell that has any. Without this the
    two lines sit on top of each other at these font sizes. */
 table.ordtable td .cc{ margin-top:3px; line-height:1.35; }
 /* The opened detail row is part of the order above it, not a row of its own. */
 table.ordtable tbody tr.orddetail > td{
   padding:0 12px 12px;
-  border-bottom:1px solid rgba(55,65,81,.55);
-  background:rgba(255,255,255,.05);
+  border-bottom:1px solid color-mix(in srgb, var(--as-neutral-border) 55%, transparent);
+  background:color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent);
 }
 
 /* CHIPS THAT SAY WHAT THEY DO. `.db-chip` had one appearance, so a screen
@@ -79,14 +79,14 @@ table.ordtable tbody tr.orddetail > td{
    toolbar of six solid buttons has no first among them. */
 .db-chip.go{ border-color:var(--accent-line); color:var(--accent); }
 .db-chip.go:hover{ border-color:var(--accent); background:var(--accent-bg); }
-.db-chip.risk{ border-color:var(--red-line); color:#fca5a5; }
+.db-chip.risk{ border-color:var(--red-line); color:var(--as-lit-fca5a5-fg); }
 .db-chip.risk:hover{ border-color:var(--red); background:var(--red-bg); }
 .db-chip[disabled]{ opacity:.45; cursor:not-allowed; }
 .db-chip[disabled]:hover{ border-color:var(--line); background:var(--panel2); }
 
 /* The one solid chip a screen is allowed, for the action it exists for. */
 .db-chip.primary{
-  background:var(--accent); border-color:var(--accent); color:#06231b; font-weight:600;
+  background:var(--accent); border-color:var(--accent); color:var(--as-lit-06231b-fg); font-weight:600;
 }
 .db-chip.primary:hover{ filter:brightness(1.07); }
 

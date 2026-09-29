@@ -79,27 +79,27 @@ function _oWhen(iso){
  *   d     what to do about it, when there is something to do
  */
 const _ORD_STATUS = {
-  Shipped: {c:"#8fd694", t:"Shipped", tone:"ok",
+  Shipped: {c:"var(--ok)", t:"Shipped", tone:"ok",
     m:"You have dispatched it and told Amazon. Nothing further is needed."},
-  Unshipped: {c:"#e8c66a", t:"Not shipped yet", tone:"warn",
+  Unshipped: {c:"var(--warn)", t:"Not shipped yet", tone:"warn",
     m:"The buyer has paid and it is waiting for you to send it.",
     d:"Post it before the ship-by date below, or Amazon counts it late."},
-  PartiallyShipped: {c:"#e8c66a", t:"Partly shipped", tone:"warn",
+  PartiallyShipped: {c:"var(--warn)", t:"Partly shipped", tone:"warn",
     m:"Some of the items have gone and some have not.",
     d:"Send the rest before the ship-by date below."},
-  Pending: {c:"#8b949e", t:"Payment not cleared", tone:"",
+  Pending: {c:"var(--ink3)", t:"Payment not cleared", tone:"",
     m:"Amazon is still taking the buyer's payment. The address and the items "
      + "are not final yet, and the order can still disappear.",
     d:"Do not buy stock for it or post it until it turns to Unshipped."},
-  Canceled: {c:"#e88a8a", t:"Cancelled", tone:"bad",
+  Canceled: {c:"var(--red)", t:"Cancelled", tone:"bad",
     m:"The order is off. No money will arrive for it.",
     d:"If you have already posted it, claim it back through Amazon."},
-  Cancelled: {c:"#e88a8a", t:"Cancelled", tone:"bad",
+  Cancelled: {c:"var(--red)", t:"Cancelled", tone:"bad",
     m:"The order is off. No money will arrive for it.",
     d:"If you have already posted it, claim it back through Amazon."},
-  InvoiceUnconfirmed: {c:"#8b949e", t:"Awaiting invoice", tone:"",
+  InvoiceUnconfirmed: {c:"var(--ink3)", t:"Awaiting invoice", tone:"",
     m:"Shipped, but Amazon is waiting for the invoice for a business buyer."},
-  Unfulfillable: {c:"#e88a8a", t:"Cannot be fulfilled", tone:"bad",
+  Unfulfillable: {c:"var(--red)", t:"Cannot be fulfilled", tone:"bad",
     m:"Amazon cannot fulfil it from your stock — usually there is none in the "
      + "warehouse, or the item is not sellable."},
 };
@@ -115,24 +115,24 @@ const _ORD_STATUS = {
  * The server owns the words (domain/tracking.STATUS_LABEL); this owns only how
  * they look, so the two can never drift into naming a status differently. */
 const _ORD_PARCEL = {
-  pre_transit:        {c:"#8b949e", i:"ti-tag",
+  pre_transit:        {c:"var(--ink3)", i:"ti-tag",
     m:"A label exists. The carrier has not had the parcel yet."},
-  collected:          {c:"#7fb4e0", i:"ti-package",
+  collected:          {c:"var(--as-info)", i:"ti-package",
     m:"The carrier has it."},
-  in_transit:         {c:"#7fb4e0", i:"ti-truck",
+  in_transit:         {c:"var(--as-info)", i:"ti-truck",
     m:"On its way."},
-  out_for_delivery:   {c:"#e8c66a", i:"ti-truck-delivery",
+  out_for_delivery:   {c:"var(--warn)", i:"ti-truck-delivery",
     m:"Out with the driver today."},
-  awaiting_collection:{c:"#e8c66a", i:"ti-building-store",
+  awaiting_collection:{c:"var(--warn)", i:"ti-building-store",
     m:"At a pickup point, waiting for the buyer to collect it."},
-  delivered:          {c:"#8fd694", i:"ti-circle-check",
+  delivered:          {c:"var(--ok)", i:"ti-circle-check",
     m:"The carrier says it has been delivered."},
-  exception:          {c:"#e88a8a", i:"ti-alert-triangle",
+  exception:          {c:"var(--red)", i:"ti-alert-triangle",
     m:"Something went wrong — a failed delivery, a hold, or a return."},
-  not_found:          {c:"#e88a8a", i:"ti-help-circle",
+  not_found:          {c:"var(--red)", i:"ti-help-circle",
     m:"The carrier was asked and has no record of this number. It is usually "
      + "mistyped, or belongs to a different order."},
-  unknown:            {c:"#8b949e", i:"ti-clock",
+  unknown:            {c:"var(--ink3)", i:"ti-clock",
     m:"Nobody has asked the carrier about this one yet."},
 };
 

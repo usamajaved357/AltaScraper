@@ -25,8 +25,8 @@
   margin-bottom:16px;
 }
 .stat-card{
-  background:rgb(45,50,66);
-  border:1px solid rgb(55,65,81);
+  background:var(--as-surface-3);
+  border:1px solid var(--as-neutral-border);
   border-radius:8px;
   padding:12px;
   display:flex;
@@ -40,7 +40,7 @@
 /* Orbit's own cards do not lift on hover -- measured transition-duration 0s.
    Ours do, very slightly, because they are clickable filters on some screens
    and a control that cannot be felt reads as decoration. */
-.stat-card:hover{ border-color:rgb(75,85,101); }
+.stat-card:hover{ border-color:var(--as-lit-4b5565-bd); }
 
 /* Label first in the DOM, so it sits above the number as Orbit's does. */
 .stat-card .stat-label{
@@ -48,7 +48,7 @@
   font-size:12px;
   font-weight:500;
   line-height:18px;
-  color:rgb(156,163,175);
+  color:var(--as-lit-9ca3af-fg);
   text-transform:none;      /* Orbit's are sentence case, not caps */
   letter-spacing:normal;
   margin:0;
@@ -58,7 +58,7 @@
   font-size:20px;
   font-weight:600;
   line-height:30px;
-  color:rgb(243,244,246);
+  color:var(--as-lit-f3f4f6-fg);
   letter-spacing:normal;
   font-variant-numeric:tabular-nums;
   margin:0;
@@ -68,7 +68,7 @@
   font-size:12px;
   font-weight:400;
   line-height:18px;
-  color:rgb(156,163,175);
+  color:var(--as-lit-9ca3af-fg);
   margin:0;
 }
 /* The +5.2% chip. Orbit renders it inline after the comparison figure, in

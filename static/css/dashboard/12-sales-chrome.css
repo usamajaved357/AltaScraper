@@ -68,11 +68,11 @@
    The design package's selected segment is teal; where the two conflict the
    owner's existing look wins (design migration map, 28 Sep 2026). */
 .seg > button.on{
-  background:#fbbf24;
-  color:rgb(26,29,41);
+  background:var(--as-lit-fbbf24-bg);
+  color:var(--as-lit-1a1d29-fg);
   font-weight:600;
 }
-.seg > button.on:hover{ background:#fbbf24; }
+.seg > button.on:hover{ background:var(--as-lit-fbbf24-bg); }
 
 /* The ⓘ beside a panel's subtitle, as Orbit has it: an 18px circle, not an
    icon font, so it lines up with the text at any size. */
@@ -81,11 +81,11 @@
   align-items:center;
   justify-content:center;
   width:14px;height:14px;
-  border:1px solid rgb(107,114,128);
+  border:1px solid var(--as-lit-6b7280-bd);
   border-radius:50%;
   font-size:9px;
   line-height:1;
-  color:rgb(156,163,175);
+  color:var(--as-lit-9ca3af-fg);
   margin-left:4px;
   cursor:help;
   vertical-align:middle;
@@ -123,8 +123,8 @@
   transform:translateX(-50%) translateY(3px);
   min-width:180px; max-width:340px; width:max-content;
   padding:8px 10px; border-radius:6px;
-  background:var(--panel2,#1f242c); color:var(--text,#e6e9ef);
-  border:1px solid var(--line,#333a45);
+  background:var(--panel2,var(--as-lit-1f242c-bg)); color:var(--text,var(--as-text-primary));
+  border:1px solid var(--line,var(--as-lit-333a45-bd));
   box-shadow:0 6px 20px rgba(0,0,0,.35);
   font-size:11.5px; font-weight:400; line-height:1.5; text-align:left;
   white-space:pre-line;          /* the statements contain real newlines */
@@ -138,9 +138,9 @@
 [data-tip]::before{
   content:""; position:absolute; bottom:calc(100% + 3px); left:50%;
   width:9px; height:9px; transform:translateX(-50%) rotate(45deg) translateY(3px);
-  background:var(--panel2,#1f242c);
-  border-right:1px solid var(--line,#333a45);
-  border-bottom:1px solid var(--line,#333a45);
+  background:var(--panel2,var(--as-lit-1f242c-bg));
+  border-right:1px solid var(--line,var(--as-lit-333a45-bd));
+  border-bottom:1px solid var(--line,var(--as-lit-333a45-bd));
   opacity:0; visibility:hidden; pointer-events:none;
   transition:opacity .12s ease, transform .12s ease;
   z-index:9999;
@@ -165,7 +165,7 @@
    and easy to read as punctuation. */
 .infodot[data-tip], .ppc-i[data-tip], .ppc-q[data-tip]{ opacity:.85; }
 .infodot[data-tip]:hover, .ppc-i[data-tip]:hover, .ppc-q[data-tip]:hover{
-  opacity:1; color:var(--accent,#2dd4a8); border-color:var(--accent,#2dd4a8); }
+  opacity:1; color:var(--accent,var(--as-text-link)); border-color:var(--accent,var(--as-action)); }
 
 /* On a touch screen there is no hover. Tapping focuses it instead, which the
    :focus rules above already handle -- this makes the mark focusable-looking
@@ -188,10 +188,10 @@
   height:24px;
   padding:0 8px;
   margin:0 4px 0 0;
-  border:1px solid rgb(55,65,81);
+  border:1px solid var(--as-neutral-border);
   border-radius:6px;
-  background:rgb(45,50,66);
-  color:rgb(209,213,219);
+  background:var(--as-surface-3);
+  color:var(--as-lit-d1d5db-fg);
   font-size:11px;
   font-weight:500;
   line-height:1;
@@ -200,15 +200,15 @@
 }
 .wscard .mktflag span{ letter-spacing:.02em; }
 .wscard .mktflag:hover{
-  border-color:#fbbf24;
-  background:rgb(55,60,78);
+  border-color:var(--as-lit-fbbf24-bd);
+  background:var(--as-lit-373c4e-bg);
   transform:translateY(-1px);
 }
 /* The account's own default, marked so the card says which one a plain click
    will open -- otherwise the flags look like the only way in. */
 .wscard .mktflag.on{
-  border-color:#fbbf24;
-  color:rgb(243,244,246);
+  border-color:var(--as-lit-fbbf24-bd);
+  color:var(--as-lit-f3f4f6-fg);
 }
 .wscard .stats{ flex-wrap:wrap; row-gap:6px; }
 
@@ -232,11 +232,11 @@
   pointer-events:none;          /* never eat a drag-to-zoom */
   z-index:5;
   min-width:160px;
-  background:rgb(45,50,66);
-  border:1px solid rgb(75,85,99);
+  background:var(--as-surface-3);
+  border:1px solid var(--as-lit-4b5563-bd);
   border-radius:6px;
   padding:8px 12px;
-  box-shadow:rgba(251,191,36,.3) 0 4px 6px 0;
+  box-shadow:color-mix(in srgb, var(--as-lit-fbbf24) 30%, transparent) 0 4px 6px 0;
   opacity:0;
   transition:transform .4s ease, opacity .15s ease;
   will-change:transform;
@@ -247,7 +247,7 @@
   font-size:12px;
   font-weight:600;
   line-height:18px;
-  color:rgb(243,244,246);
+  color:var(--as-lit-f3f4f6-fg);
 }
 .charttip-row{
   display:flex;
@@ -264,7 +264,7 @@
   margin-left:auto;
   font-size:12px;
   font-weight:600;
-  color:rgb(243,244,246);
+  color:var(--as-lit-f3f4f6-fg);
   font-variant-numeric:tabular-nums;
   white-space:nowrap;
 }
@@ -307,7 +307,7 @@
    here needs 1400 + 32 + 32. */
 #sec_sales{
   padding:32px;
-  background:rgb(26,29,41);
+  background:var(--as-bg-canvas);
   max-width:1464px;
   margin-left:auto;
   margin-right:auto;
@@ -378,7 +378,7 @@
 /* Gold only when it is saying something is MISSING. The same slot also carries
    the hourly card's timezone, which is a fact rather than a warning and must
    not be dressed as one. */
-.panelnote.warn{ color:rgb(251,191,36); }
+.panelnote.warn{ color:var(--as-lit-fbbf24-fg); }
 
 /* The key in the header row, beside the change badge, as Orbit has it. Centred
    against the title rather than against the top of the two-line header block,
@@ -388,7 +388,7 @@
 
 /* "Pacific Time (PDT): 5:14 PM" -- measured at 12px on Orbit's Live Sales
    header, the zone name muted and the time in the reading colour. */
-.panelclock{ font-size:12px; color:rgb(243,244,246); white-space:nowrap; }
+.panelclock{ font-size:12px; color:var(--as-lit-f3f4f6-fg); white-space:nowrap; }
 .panelclock:empty{ display:none; }
 
 /* Five stat cards across, 12px apart -- measured pitch 247.8 on a 235.8 card. */
@@ -410,7 +410,7 @@
   padding:4px 0 0;
   font-size:12px;
   line-height:18px;
-  color:rgb(209,213,219);
+  color:var(--as-lit-d1d5db-fg);
 }
 #sec_sales .adfooter b{ font-weight:600; }
 #sec_sales .adfooter .lbl{
@@ -419,6 +419,6 @@
   line-height:15px;
   letter-spacing:.4px;
   text-transform:uppercase;
-  color:rgb(156,163,175);
+  color:var(--as-lit-9ca3af-fg);
 }
 

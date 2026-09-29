@@ -87,11 +87,11 @@
   transition:border-color .15s ease, background .15s ease;
 }
 .brandopt:hover{ border-color:var(--accent); }
-.brandopt.on{ border-color:var(--accent); background:rgba(45,212,168,.07); }
+.brandopt.on{ border-color:var(--accent); background:color-mix(in srgb, var(--as-action) 7%, transparent); }
 .brandopt input{ margin-top:2px; flex:0 0 auto; }
 .brandopt .cc{ font-size:11px; }
 .brandchip.on{ border-color:var(--accent); color:var(--accent);
-               background:rgba(45,212,168,.09); }
+               background:color-mix(in srgb, var(--as-action) 9%, transparent); }
 
 /* ---- the weekly KPI pack ------------------------------------------------
    Replaces a spreadsheet. Cards for the headline figures, each carrying its
@@ -108,7 +108,7 @@
   gap:10px; margin-bottom:10px;
 }
 .wk-card{
-  background:rgba(12,18,31,.56); border:1px solid var(--line);
+  background:color-mix(in srgb, var(--as-lit-0c121f-bg) 56%, transparent); border:1px solid var(--line);
   border-radius:8px; padding:14px 15px; min-width:0;
 }
 .wk-card .lbl{
@@ -122,7 +122,7 @@
 .wk-d{ font-size:11px; font-weight:600; margin-left:5px;
        font-variant-numeric:tabular-nums; }
 .wk-d.wk-up{ color:var(--ok); }
-.wk-d.wk-down{ color:#fca5a5; }
+.wk-d.wk-down{ color:var(--as-lit-fca5a5-fg); }
 
 /* The twelve-week trend's metric chips. Small, because there are nine of them
    and they sit on the card's own header line rather than taking a row to
@@ -130,7 +130,7 @@
    alone is what made the listings filter buttons look like three were on. */
 .wk-tchip{ padding:3px 9px; font-size:11px; }
 .wk-tchip.on{ background:var(--accent); border-color:var(--accent);
-              color:#04140f; font-weight:700; }
+              color:var(--as-action-fg); font-weight:700; }
 
 /* ---- parent and child, the way Seller Central draws it ------------------
    "ALSO I WANT MY APP TO SHOW the parents and child relation like we have in
@@ -144,7 +144,7 @@
   border:1px solid var(--line); border-radius:8px;
   background:var(--panel); margin-bottom:7px; overflow:hidden;
 }
-.varfam.orphan{ border-color:var(--warn-line, #5c4528); }
+.varfam.orphan{ border-color:var(--warn-line, var(--as-lit-5c4528-bd)); }
 .varfam-p{
   display:flex; align-items:center; gap:10px; padding:9px 11px;
   cursor:pointer; min-height:46px;
@@ -219,7 +219,7 @@
 }
 .monsched-t:hover, .monsched-h:hover{ border-color:var(--accent); color:var(--ink); }
 .monsched-t.on, .monsched-h.on{
-  border-color:var(--accent); color:var(--accent); background:rgba(45,212,168,.09);
+  border-color:var(--accent); color:var(--accent); background:color-mix(in srgb, var(--as-action) 9%, transparent);
 }
 .monsched-h{ padding:5px 8px; font-variant-numeric:tabular-nums; }
 .monsched-chips{ display:flex; gap:5px; flex-wrap:wrap; }
@@ -243,15 +243,15 @@
   border-radius:8px; padding:11px 13px; margin:6px 0; font-size:12px;
   line-height:1.5;
 }
-.srcalert.bad{ border:1px solid #5c2b2b; background:#2a1414; color:#ffb4b4; }
-.srcalert.dunno{ border:1px solid #3a3320; background:#241f10; color:#e8d3a0; }
+.srcalert.bad{ border:1px solid var(--as-lit-5c2b2b-bd); background:var(--as-lit-2a1414-bg); color:var(--as-lit-ffb4b4-fg); }
+.srcalert.dunno{ border:1px solid var(--as-lit-3a3320-bd); background:var(--as-lit-241f10-bg); color:var(--as-lit-e8d3a0-fg); }
 .srcalert-h{ font-weight:600; margin-bottom:5px; display:flex; gap:6px;
              align-items:baseline; }
 /* The shared explanation. Set apart from the list so the eye can skip it once
    it has been read, rather than re-reading it on every row. */
 .srcalert-why{
   opacity:.85; margin-bottom:8px; padding-bottom:8px;
-  border-bottom:1px solid currentColor; border-bottom-color:rgba(255,255,255,.09);
+  border-bottom:1px solid currentColor; border-bottom-color:color-mix(in srgb, var(--as-lit-ffffff-ov) 9%, transparent);
 }
 /* A column of SKUs, not a paragraph. Tabular figures so the prices inside the
    SKU names line up down the page. */
@@ -355,7 +355,7 @@
 }
 .ri-comment.quality { border-left-color:var(--red); }
 .ri-comment.listing { border-left-color:var(--warn); }
-.ri-comment.shipping{ border-left-color:#a78bfa; }
+.ri-comment.shipping{ border-left-color:var(--as-lit-a78bfa-bd); }
 .ri-comment.customer{ border-left-color:var(--accent2); }
 .ri-comment-meta{ font-size:10px; color:var(--ink3); margin-top:6px; }
 
@@ -472,7 +472,7 @@
    the surrounding text instead of drawing a band. */
 .ri-chartwrap{ user-select:none; -webkit-user-select:none; }
 .ri-chartwrap svg{ border-radius:8px; }
-.ri-dbar:hover{ fill:#ff7b78; }
+.ri-dbar:hover{ fill:var(--as-lit-ff7b78-fg); }
 .ri-charthint{
   display:flex; align-items:center; gap:12px; flex-wrap:wrap;
   margin-top:8px; font-size:11px;
@@ -517,7 +517,7 @@
 }
 .ri-tag.quality { background:var(--red-bg);  color:var(--red); }
 .ri-tag.listing { background:var(--warn-bg); color:var(--warn); }
-.ri-tag.shipping{ background:rgba(167,139,250,.15); color:#a78bfa; }
+.ri-tag.shipping{ background:color-mix(in srgb, var(--as-lit-a78bfa-bg) 15%, transparent); color:var(--as-lit-a78bfa-fg); }
 .ri-tag.customer{ background:var(--accent-bg); color:var(--accent2); }
 
 /* PLACEHOLDER FIGURES. The layout is shown before the data exists so the

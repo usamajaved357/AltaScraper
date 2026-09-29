@@ -26,14 +26,14 @@
 
 :root{
   /* The light panel, from the spec's own table. */
-  --drp-light-bg:     #ffffff;
-  --drp-light-field:  #f0f2f5;   /* inputs -- grey, NOT white */
-  --drp-light-sub:    #f6f8fa;   /* the toggle row's ground */
-  --drp-light-border: #d1d9e0;
-  --drp-light-text:   #1f2328;
-  --drp-light-muted:  #656d76;
-  --drp-gold:         #e8b923;   /* Save, and a toggle that is ON */
-  --drp-gold-dark:    #c99f12;
+  --drp-light-bg:     var(--as-lit-ffffff-bg);
+  --drp-light-field:  var(--as-lit-f0f2f5-bg);   /* inputs -- grey, NOT white */
+  --drp-light-sub:    var(--as-lit-f6f8fa);   /* the toggle row's ground */
+  --drp-light-border: var(--as-lit-d1d9e0-bd);
+  --drp-light-text:   var(--as-lit-1f2328-fg);
+  --drp-light-muted:  var(--as-lit-656d76-fg);
+  --drp-gold:         var(--as-lit-e8b923);   /* Save, and a toggle that is ON */
+  --drp-gold-dark:    var(--as-lit-c99f12);
 }
 
 /* ---- the console shell ----------------------------------------------------
@@ -71,7 +71,7 @@
 }
 .drp-avatar{
   width: 36px; height: 36px; border-radius: 50%;
-  background: linear-gradient(135deg, #103c33, #2d8f7b);
+  background: linear-gradient(135deg, var(--as-lit-103c33-bg), var(--as-lit-2d8f7b-bg));
   display: flex; align-items: center; justify-content: center;
   font-size: 17px; margin-bottom: 9px;
 }
@@ -97,8 +97,8 @@
 .drp-nav a:hover{ color: var(--ppc-text); }
 .drp-nav a.on{
   border-left-color: var(--ppc-cyan);
-  color: #fff; font-weight: 600;
-  background: rgba(255,255,255,0.06);
+  color: var(--as-lit-ffffff-fg); font-weight: 600;
+  background: color-mix(in srgb, var(--as-lit-ffffff-ov) 6%, transparent);
 }
 .drp-nav a.soon{ opacity: .45; cursor: default; }
 .drp-nav .ic{ font-size: 15px; width: 17px; text-align: center; }
@@ -237,14 +237,14 @@
   font-size: 12px; color: var(--drp-light-muted); line-height: 1.4; margin-top: 6px;
 }
 .drp-sw{
-  width: 42px; height: 22px; border-radius: 11px; background: #bbb;
+  width: 42px; height: 22px; border-radius: 11px; background: var(--as-lit-bbbbbb-bg);
   position: relative; flex: 0 0 42px; cursor: pointer; border: 0; padding: 0;
   transition: background .15s;
 }
 .drp-sw:after{
   content: ""; position: absolute; top: 2px; left: 2px;
   width: 18px; height: 18px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  background: var(--as-lit-ffffff-bg); box-shadow: 0 1px 3px rgba(0,0,0,.3);
   transition: transform .15s;
 }
 .drp-sw.on{ background: var(--drp-gold); }        /* GOLD, not green */
@@ -259,16 +259,16 @@
   display: flex; gap: 10px; padding: 10px; border-radius: 6px;
   align-items: flex-start;
 }
-.drp-check.hl{ background: rgba(45,212,191,0.08); }
+.drp-check.hl{ background: color-mix(in srgb, var(--as-lit-2dd4bf-bg) 8%, transparent); }
 .drp-ring{
   width: 24px; height: 24px; border-radius: 50%; flex: 0 0 24px;
-  border: 2px solid #4a4f57; display: flex;
+  border: 2px solid var(--as-lit-4a4f57-bd); display: flex;
   align-items: center; justify-content: center;
   font-size: 13px; color: transparent;
 }
 .drp-ring.ok{
-  border-color: var(--ppc-green); background: rgba(63,185,80,0.12);
-  color: #fff;
+  border-color: var(--ppc-green); background: color-mix(in srgb, var(--as-lit-3fb950-bg) 12%, transparent);
+  color: var(--as-lit-ffffff-fg);
 }
 .drp-check .ct{ font-size: 14px; font-weight: 600; }
 .drp-check .cn{ font-size: 12px; color: var(--ppc-muted); margin-top: 2px;
@@ -309,17 +309,17 @@
 .drp-note{
   border-radius: 6px; padding: 10px 13px; font-size: 12.5px; line-height: 1.55;
   margin-top: 10px; color: var(--ppc-muted);
-  background: rgba(255,255,255,0.02); border: 1px solid var(--ppc-border);
+  background: color-mix(in srgb, var(--as-lit-ffffff-ov) 2%, transparent); border: 1px solid var(--ppc-border);
 }
-.drp-note.good{ background: rgba(63,185,80,0.06); color: var(--ppc-green);
+.drp-note.good{ background: color-mix(in srgb, var(--as-lit-3fb950-bg) 6%, transparent); color: var(--ppc-green);
                 border-color: transparent; }
-.drp-note.bad{ background: rgba(248,81,73,0.06);
-               border: 1px solid rgba(248,81,73,0.25); color: var(--ppc-text); }
+.drp-note.bad{ background: color-mix(in srgb, var(--as-lit-f85149-bg) 6%, transparent);
+               border: 1px solid color-mix(in srgb, var(--as-lit-f85149-bd) 25%, transparent); color: var(--ppc-text); }
 .drp-note.bad b{ display: block; margin-bottom: 4px; }
 .drp-empty{
   border: 1px solid var(--ppc-border); border-radius: 6px;
   padding: 22px; text-align: center; font-size: 13px; color: var(--ppc-muted);
-  background: rgba(255,255,255,0.015);
+  background: color-mix(in srgb, var(--as-lit-ffffff-ov) 1.5%, transparent);
 }
 .drp-light .drp-empty{
   border-color: var(--drp-light-border); background: var(--drp-light-sub);
@@ -394,7 +394,7 @@
 }
 .drp-table tbody tr{ border-bottom: 1px solid var(--ppc-border); }
 .drp-table tbody tr.row{ cursor: pointer; }
-.drp-table tbody tr.row:hover{ background: rgba(255,255,255,0.02); }
+.drp-table tbody tr.row:hover{ background: color-mix(in srgb, var(--as-lit-ffffff-ov) 2%, transparent); }
 .drp-table td.mono{
   font-family: "SF Mono", Consolas, "Courier New", monospace; font-size: 12.5px;
 }
@@ -404,15 +404,15 @@
   display: inline-block; border-radius: 4px; padding: 2px 8px;
   font-size: 11px; font-weight: 600;
 }
-.drp-tag.sp{ background: var(--ppc-gold-bg); color: #f0c000; }
+.drp-tag.sp{ background: var(--ppc-gold-bg); color: var(--as-lit-f0c000-fg); }
 .drp-tag.sb{ background: var(--ppc-blue-bg); color: var(--ppc-blue); }
-.drp-tag.sd{ background: rgba(188,140,255,0.18); color: var(--ppc-purple); }
+.drp-tag.sd{ background: color-mix(in srgb, var(--as-lit-bc8cff-bg) 18%, transparent); color: var(--ppc-purple); }
 .drp-tag.enabled{ background: var(--ppc-green-bg); color: var(--ppc-green); }
 .drp-tag.paused{ background: var(--ppc-orange-bg); color: var(--ppc-orange); }
-.drp-tag.archived{ background: rgba(255,255,255,0.06); color: var(--ppc-dim); }
+.drp-tag.archived{ background: color-mix(in srgb, var(--as-lit-ffffff-ov) 6%, transparent); color: var(--ppc-dim); }
 
 .drp-detail{
-  background: rgba(255,255,255,0.02);
+  background: color-mix(in srgb, var(--as-lit-ffffff-ov) 2%, transparent);
   border: 1px solid var(--ppc-border); border-radius: 8px;
   padding: 16px 20px; margin: 4px 0 10px;
 }
@@ -492,7 +492,7 @@
 .drp-state.ok{   background: var(--ppc-green-bg);  color: var(--ppc-green); }
 .drp-state.warn{ background: var(--ppc-orange-bg); color: var(--ppc-orange); }
 .drp-state.bad{  background: var(--ppc-red-bg);    color: var(--ppc-red); }
-.drp-state.dim{  background: rgba(255,255,255,0.05); color: var(--ppc-dim); }
+.drp-state.dim{  background: color-mix(in srgb, var(--as-lit-ffffff-ov) 5%, transparent); color: var(--ppc-dim); }
 
 .drp-good{ color: var(--ppc-green); }
 .drp-bad{  color: var(--ppc-red); }

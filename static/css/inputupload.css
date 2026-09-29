@@ -17,28 +17,28 @@
 /* ---- the drop zone ------------------------------------------------------ */
 
 .iup-zone{
-  border:1.5px dashed var(--line2,#363b45);
+  border:1.5px dashed var(--line2,var(--as-lit-363b45-bd));
   border-radius:10px;
-  background:var(--panel,#1e2128);
+  background:var(--panel,var(--as-bg-canvas));
   padding:22px 16px;
   text-align:center;
   cursor:pointer;
   transition:border-color .12s ease, background .12s ease;
 }
 .iup-zone:hover{
-  border-color:var(--ink3,#949aa5);
-  background:var(--panel2,#252930);
+  border-color:var(--ink3,var(--as-lit-949aa5-bd));
+  background:var(--panel2,var(--as-lit-252930-bg));
 }
 /* Dragging over it. Strong enough to be unmistakable while a file is hovering
  * -- this is the one moment the zone should dominate the screen. */
 .iup-zone.iup-over{
-  border-color:var(--ok,#4ade80);
-  background:var(--ok-bg,#0f1f14);
+  border-color:var(--ok,var(--as-lit-4ade80-bd));
+  background:var(--ok-bg,var(--as-lit-0f1f14-bg));
   border-style:solid;
 }
-.iup-ico{ font-size:26px; color:var(--ink3,#949aa5); line-height:1; margin-bottom:7px; }
-.iup-zone.iup-over .iup-ico{ color:var(--ok,#4ade80); }
-.iup-big{ font-size:14px; font-weight:600; color:var(--ink,#e8eaed); }
+.iup-ico{ font-size:26px; color:var(--ink3,var(--as-lit-949aa5-fg)); line-height:1; margin-bottom:7px; }
+.iup-zone.iup-over .iup-ico{ color:var(--ok,var(--as-lit-4ade80-fg)); }
+.iup-big{ font-size:14px; font-weight:600; color:var(--ink,var(--as-text-primary)); }
 
 /* ONE HORIZONTAL LINE (the owner's instruction, 27 Sep 2026): icon, words and
    the template link in a row, at half the old vertical padding (22px -> 11px). */
@@ -46,44 +46,44 @@
   display:flex; align-items:center; gap:9px; text-align:left;
   padding:11px 14px;
 }
-.iup-line .iup-lico{ font-size:18px; color:var(--ink3,#949aa5); }
-.iup-zone.iup-over .iup-lico{ color:var(--ok,#4ade80); }
+.iup-line .iup-lico{ font-size:18px; color:var(--ink3,var(--as-lit-949aa5-fg)); }
+.iup-zone.iup-over .iup-lico{ color:var(--ok,var(--as-lit-4ade80-fg)); }
 .iup-line .iup-big{ font-size:13px; }
 .iup-grow{ flex:1; }
 .iup-line .iup-link{ white-space:nowrap; }
-.iup-sub{ font-size:12px; color:var(--ink2,#9aa3b2); margin-top:4px; line-height:1.6; }
+.iup-sub{ font-size:12px; color:var(--ink2,var(--as-lit-9aa3b2-fg)); margin-top:4px; line-height:1.6; }
 
 .iup-foot{
   display:flex; align-items:center; gap:12px; flex-wrap:wrap;
   margin-top:7px; font-size:12px;
 }
-.iup-link{ color:var(--ink2,#9aa3b2); text-decoration:none; }
-.iup-link:hover{ color:var(--ink,#e8eaed); text-decoration:underline; }
-.iup-hint{ color:var(--ink3,#949aa5); }
+.iup-link{ color:var(--ink2,var(--as-lit-9aa3b2-fg)); text-decoration:none; }
+.iup-link:hover{ color:var(--ink,var(--as-text-primary)); text-decoration:underline; }
+.iup-hint{ color:var(--ink3,var(--as-lit-949aa5-fg)); }
 
 /* ---- the result card ---------------------------------------------------- */
 
 .iup-card{
   margin-top:10px; padding:11px 13px;
-  border:1px solid var(--line,#2a2e36);
+  border:1px solid var(--line,var(--as-lit-2a2e36-bd));
   border-left-width:3px;
   border-radius:8px;
-  background:var(--panel,#1e2128);
+  background:var(--panel,var(--as-bg-canvas));
   font-size:12px; line-height:1.65;
 }
-.iup-ok  { border-left-color:var(--ok,#4ade80);   background:var(--ok-bg,#0f1f14); }
+.iup-ok  { border-left-color:var(--ok,var(--as-lit-4ade80-bd));   background:var(--ok-bg,var(--as-lit-0f1f14-bg)); }
 /* Parsed, but nothing usable came out of it. Not a failure and not a success,
  * and the one case where a green tick would actively mislead. */
-.iup-warn{ border-left-color:var(--warn,#f59e0b); background:var(--warn-bg,#241a05); }
-.iup-bad { border-left-color:var(--red,#f27272);  background:var(--red-bg,#2a0f0f); }
-.iup-working{ border-left-color:var(--ink3,#949aa5); }
+.iup-warn{ border-left-color:var(--warn,var(--as-lit-f59e0b-bd)); background:var(--warn-bg,var(--as-lit-241a05-bg)); }
+.iup-bad { border-left-color:var(--red,var(--as-danger));  background:var(--red-bg,var(--as-lit-2a0f0f-bg)); }
+.iup-working{ border-left-color:var(--ink3,var(--as-lit-949aa5-bd)); }
 
-.iup-head{ font-weight:600; color:var(--ink,#e8eaed); margin-bottom:5px; }
-.iup-ok   .iup-head i{ color:var(--ok,#4ade80); }
-.iup-warn .iup-head i{ color:var(--warn,#f59e0b); }
-.iup-bad  .iup-head i{ color:var(--red,#f27272); }
-.iup-line{ color:var(--ink2,#9aa3b2); margin:3px 0; }
-.iup-dim{ color:var(--ink3,#949aa5); }
+.iup-head{ font-weight:600; color:var(--ink,var(--as-text-primary)); margin-bottom:5px; }
+.iup-ok   .iup-head i{ color:var(--ok,var(--as-lit-4ade80-fg)); }
+.iup-warn .iup-head i{ color:var(--warn,var(--as-lit-f59e0b-fg)); }
+.iup-bad  .iup-head i{ color:var(--red,var(--as-danger)); }
+.iup-line{ color:var(--ink2,var(--as-lit-9aa3b2-fg)); margin:3px 0; }
+.iup-dim{ color:var(--ink3,var(--as-lit-949aa5-fg)); }
 
 /* ---- which columns were understood -------------------------------------- */
 
@@ -91,12 +91,12 @@
 .iup-tag{
   display:inline-block; padding:1px 7px; border-radius:99px;
   font-size:10px; white-space:nowrap;
-  border:1px solid var(--line2,#363b45);
+  border:1px solid var(--line2,var(--as-lit-363b45-bd));
 }
-.iup-tag-on { color:var(--ok,#4ade80);   border-color:var(--ok-line,#1a4a28); }
+.iup-tag-on { color:var(--ok,var(--as-lit-4ade80-fg));   border-color:var(--ok-line,var(--as-lit-1a4a28-bd)); }
 /* Grey, not red: a column we ignored is information, not a fault. Most files
  * carry a few of their own that mean nothing here. */
-.iup-tag-off{ color:var(--ink3,#949aa5); }
+.iup-tag-off{ color:var(--ink3,var(--as-lit-949aa5-fg)); }
 
 /* ---- preview of what was added ------------------------------------------ */
 
@@ -106,12 +106,12 @@
   table-layout:fixed;
 }
 .iup-table th{
-  text-align:left; font-weight:600; color:var(--ink3,#949aa5);
-  padding:3px 7px 3px 0; border-bottom:1px solid var(--line,#2a2e36);
+  text-align:left; font-weight:600; color:var(--ink3,var(--as-lit-949aa5-fg));
+  padding:3px 7px 3px 0; border-bottom:1px solid var(--line,var(--as-lit-2a2e36-bd));
 }
 .iup-table td{
-  padding:3px 7px 3px 0; color:var(--ink2,#9aa3b2);
-  border-bottom:1px solid var(--line,#2a2e36);
+  padding:3px 7px 3px 0; color:var(--ink2,var(--as-lit-9aa3b2-fg));
+  border-bottom:1px solid var(--line,var(--as-lit-2a2e36-bd));
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .iup-table tr:last-child td{ border-bottom:0; }
@@ -119,7 +119,7 @@
 .iup-errs{
   margin:7px 0 2px; padding:7px 9px;
   border-radius:6px; background:rgba(0,0,0,.18);
-  font-size:11px; color:var(--red,#f27272);
+  font-size:11px; color:var(--red,var(--as-danger));
   max-height:150px; overflow:auto;
 }
 

@@ -10,7 +10,7 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <input type="file" id="miles_file" aria-label="Item-number file (CSV or Excel)" accept=".csv,.xlsx,.xls" onchange="milesPickFile(this)"
-                 style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+                 style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,var(--as-bg-shell));color:inherit">
           <span id="miles_filestatus" style="font-size:12px;opacity:.7"></span>
         </div>
         <div id="miles_items" style="font-size:12px;opacity:.6;margin-top:8px"></div>
@@ -22,11 +22,11 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <input type="text" id="miles_sheet" placeholder="Output Sheet ID or URL" onchange="milesSavePref()"
-                 style="flex:1;min-width:260px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+                 style="flex:1;min-width:260px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,var(--as-bg-shell));color:inherit">
           <input type="text" id="miles_tab" placeholder="Tab name (e.g. Sheet2)" onchange="milesSavePref()"
-                 style="width:180px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+                 style="width:180px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,var(--as-bg-shell));color:inherit">
           <input type="number" id="miles_limit" min="1" placeholder="How many? (blank = all)"
-                 style="width:170px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+                 style="width:170px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,var(--as-bg-shell));color:inherit">
         </div>
         <div style="font-size:11px;opacity:.6;margin-top:8px">
           Columns written: SKU, Title, Bullet Point 1-5, Description, Backend Keywords, Compliance Report, Uploaded. Enter a number (e.g. 5) to generate just that many this run.
@@ -56,9 +56,9 @@
         <button class="browsemodels sm" onclick="milesClearHistory()" title="Forget which items were harvested so they can run again">Clear harvested history</button>
       </div>
 
-      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid #2c4a6b;border-radius:8px;background:var(--accent-bg);font-size:13px"></div>
+      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid var(--as-info-border);border-radius:8px;background:var(--accent-bg);font-size:13px"></div>
 
-      <pre id="miles_log" style="display:none;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;margin:8px 0"></pre>
+      <pre id="miles_log" style="display:none;background:var(--as-lit-0a0d12-bg);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;margin:8px 0"></pre>
 
       <div id="miles_runs_panel" style="margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">

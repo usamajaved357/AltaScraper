@@ -215,7 +215,7 @@ function _pvChange(metric){
   const arrow = c.change_pct > 0 ? "▲" : "▼";
   const prev = j.compared_with || {};
   return '<span style="font-size:12px;font-weight:600;margin-left:7px;color:'
-    + (good ? "var(--ok)" : "#f87171") + '" title="'
+    + (good ? "var(--ok)" : "var(--red)") + '" title="'
     + _pvEsc("Was " + c.before + " in the previous report"
              + (prev.date_to ? " (to " + prev.date_to + ")" : "") + ". "
              + (good ? "This is the better direction for this metric."
