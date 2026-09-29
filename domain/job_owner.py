@@ -68,20 +68,28 @@ def label(config_path, uid=None):
     return p["email"] or p["name"] or p["id"]
 
 
-def _is_manager(config_path):
-    """Can the caller manage users? They see everything."""
+def holds(config_path, perm):
+    """Does the signed-in person hold permission `perm`? The ONE lookup for a
+    route that must ask this itself (Rule 12; tracking's remove used a copy).
+
+    No user id means the shared-password owner (or the open local app), who
+    holds everything -- the guard clears a session with no uid once real
+    accounts exist. Any failure answers False: fail closed."""
     try:
         from auth import users
         uid = current()
         if not uid:
-            # The shared-password owner is the only user, so nothing is hidden
-            # from them either.
             return True
         u = users.get_user(config_path, uid)
-        return bool(u and users.has_permission(u, "manage_users"))
+        return bool(u and users.has_permission(u, perm))
     except Exception:
-        # Never let a permissions lookup failure hide someone's own work.
         return False
+
+
+def _is_manager(config_path):
+    """Can the caller manage users? They see everything. (Through holds();
+    a lookup failure still answers False, as it always did.)"""
+    return holds(config_path, "manage_users")
 
 
 def may_see(job, config_path=None):

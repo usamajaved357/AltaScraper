@@ -3027,11 +3027,22 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         # last process started may be another account's, so the pid comes from
         # this account's own heartbeat and nothing else (account-scope review,
         # 29 Sep 2026).
+        # The account must be NAMED -- the server's open one belongs to whichever
+        # tab switched last (security review, 29 Sep 2026); reqscope.js names it.
+        _acct = _rqa.named_now()
+        if not _acct:
+            return jsonify({"ok": False, "error": (
+                "Which account? The request did not name one, so no process was "
+                "inspected.")}), 400
         info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)),
-                                   account=_rqa.current(_state))
+                                   account=_acct)
         pid = info.get("pid") if info.get("state") in ("RUNNING", "STALLED") else None
-        if not pid:
-            return jsonify({"ok": False, "error": "no run process to inspect"})
+        # And only a process this app can PROVE is that run: the handle it
+        # started, when its pid is the heartbeat's. A pid read from a file alone
+        # may since have been reused by an unrelated process.
+        proc = _running.get("proc")
+        if not (pid and proc is not None and proc.pid == pid and proc.poll() is None):
+            return jsonify({"ok": False, "error": "no run process of this account to inspect"})
 
         exe = os.path.join(os.path.dirname(sys.executable), "Scripts", "py-spy.exe")
         if not os.path.exists(exe):

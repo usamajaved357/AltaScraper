@@ -67,20 +67,38 @@ this file. Claude updates it after a `security-review`; the owner reviews change
 - One table: `auth/guard.py` `RULES`, first prefix match wins. Unlisted GET =
   any signed-in user; unlisted write = "edit".
 - Roles: owner (all), manager (edit, upload_images, approve_delete, publish,
-  ppc), lister (edit, upload_images), viewer (none). Feature areas per page with
-  none/view/edit levels.
+  ppc, view_activity), lister (edit, upload_images), viewer (none). Feature
+  areas per page with none/view/edit levels. `view_activity` (PERMS_VERSION 3)
+  gates `/activity/*` (Employee Performance); rows are limited to the reader's
+  accounts, and rows naming no account only to someone who may open every one.
 - Publishing paths needing `publish`: `/submit` (precheck), `/optimize/push`,
   `/sync/push`, `/listing/push_image`, `/listing/image_push`,
   `/handling/bulk_update`, `/stock/bulk_update`, `/listing/price/apply`,
-  `/listing/price/percent_apply`, `/variations/apply`, `/sourcing`.
+  `/listing/price/percent_apply`, `/variations/apply`, `/sourcing`,
+  `/orders/ship/confirm` (dispatch to Amazon; also refused while the owner's
+  switch `ship_confirm_enabled` is off, and once per order -- a claim is
+  recorded before the send). Removing a tracking number that records such a
+  send (`/tracking/set` with `remove`) also needs `publish`: it is what allows
+  another send.
+- Orders writes needing `edit` (explicit RULES entries): `/orders/purchase`,
+  `/orders/purchase/remove`, `/orders/ship/preview` (reads Amazon, sends
+  nothing). They and `/tracking/*` act only for the account the request NAMES
+  (domain/order_scope.py), never the server's open one.
+- `/run/stack` (py-spy dump of a stuck run) needs `edit`, a named account, and
+  dumps only a process the app started whose pid is that account's heartbeat.
 - Submitting needs `publish` whichever way it is started: `/run/api_submit`
   (RULES) and `/preview/enqueue` with `mode: api_submit` (BODY_RULES). Closed in
   Milestone 2 (was known-issues #1).
 - Work done over GET (`WORK_OVER_GET`, the streamed `/run/*`) is judged as a
   write: a view-only user cannot start one.
 - `WRITE_RULES`: `/ai/settings` and `/admin/logic_settings` may be read by
-  anyone signed in, changed only with `manage_accounts`. `/jobs/run/*` and
-  `/media/recover/move` need `manage_accounts`.
+  anyone signed in, changed only with `manage_accounts`; so may
+  `/brand/connection` (the brand panel's app-wide Google settings, 29 Sep 2026).
+  `/jobs/run/*` and `/media/recover/move` need `manage_accounts`.
+- The brand run (`/brand/run/*`) and the Miles streams (`/miles/run`,
+  `/miles/generate`, `/miles/optimize`) start paid AI work over GET, so they are
+  `WORK_OVER_GET` (a view-only user and a link from another site are refused);
+  the brand run needs `edit`.
 - Preview jobs: `/preview/job` shows only jobs the caller may see and, by SKU,
   only the open account's; `/preview/stop` stops only the caller's own.
 

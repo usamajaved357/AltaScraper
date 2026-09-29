@@ -66,6 +66,12 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             return aid, ""
         return aid, mkt
 
+    def _may_publish():
+        """Does the signed-in person hold `publish`? (domain/job_owner.holds,
+        the one lookup; the shared-password owner does; failure = no.)"""
+        from domain import job_owner as _jo
+        return _jo.holds(CONFIG_PATH, "publish")
+
     def _need(aid, mkt, what="that"):
         from flask import g
         if getattr(g, "trk_refused", None):
@@ -252,6 +258,17 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             return jsonify({"ok": False,
                             "error": "no tracking number was sent"}), 400
         if b.get("remove"):
+            # A NUMBER THAT RECORDS A SEND TO AMAZON is also the once-per-order
+            # lock on dispatch (domain/ship_confirm.already_sent); removing it
+            # is what allows another send, so it needs what sending needs
+            # (security review, 29 Sep 2026). Ordinary numbers: as before.
+            from domain import ship_confirm as _sc
+            held = [t for t in (_tr.for_orders(CONFIG_PATH, aid, mkt, [oid]).get(oid) or [])
+                    if t.get("tracking_number") == tn and t.get("source") in (_sc.SENT, _sc.UNSURE)]
+            if held and not _may_publish():
+                return jsonify({"ok": False, "error": (
+                    "That number records a dispatch sent to Amazon. Removing it allows "
+                    "another send, so it needs the permission to publish.")}), 403
             n = _tr.remove(CONFIG_PATH, aid, mkt, oid, tn)
             return jsonify({"ok": True, "removed": n})
 

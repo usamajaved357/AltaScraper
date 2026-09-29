@@ -110,6 +110,9 @@ const ACCT_SCOPED_PATHS = [
   // applying a compliance rescan, approving from the "how it works" panel,
   // auto-fix's own edits, and a brand's save/list.
   "/clear_empty", "/rescan/", "/approve", "/edit", "/brand/",
+  // Added 29 Sep 2026 (security review): the "why is it stuck" stack dump,
+  // which the server refuses without a named account.
+  "/run/stack",
 ];
 /* ...and the tab's MARKETPLACE with it, unless the url already names one. The
  * server otherwise uses the marketplace last picked in ANY tab: the account

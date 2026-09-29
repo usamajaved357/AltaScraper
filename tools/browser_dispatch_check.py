@@ -73,7 +73,16 @@ def main(argv):
 
     AOS.order_items, AOS.confirm_shipment = fake_items, fake_confirm
     ACC.can_publish = lambda acc: True
-    ACC.account_creds = lambda acc: {}
+    ACC.account_creds = lambda acc: {"refresh_token": "fake-browser-check-not-a-token"}
+    # NO AMAZON CLIENT CAN BE BUILT in this process (security review, 29 Sep
+    # 2026): every account is let publish above, so any server call this check
+    # does not fake would otherwise be free to try the network. It fails loudly.
+    from sp_api.base import Client as _SpClient
+
+    def _no_amazon(self, *a, **k):
+        raise RuntimeError("browser_dispatch_check: an Amazon client was built -- blocked")
+
+    _SpClient.__init__ = _no_amazon
     srv, base = bs._serve(tmp)
     cfgp = os.environ["CONFIG_PATH"]
 

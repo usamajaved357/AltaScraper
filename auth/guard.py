@@ -321,7 +321,9 @@ RULES = [
     # -- work that happens over GET, so the default read rule would let it
     #    through. Listed explicitly so it needs "edit" like any other mutation.
     ("/run/health",                     None),          # diagnostics only
-    ("/run/stack",                      None),
+    # Starts a py-spy process (up to 60 s) against a run: work, not a read
+    # (security review, 29 Sep 2026). Still exempt from WORK_OVER_GET below.
+    ("/run/stack",                      "edit"),
     # SUBMITTING IS PUBLISHING, whichever door it goes through. /run/api_submit
     # (and /preview/enqueue with mode api_submit, BODY_RULES below) needed only
     # "edit", so a Lister could create listings on Amazon: _require_publish()
@@ -355,7 +357,10 @@ WORK_OVER_GET = ("/run/",
                  # could (4G account-scope review, 29 Sep 2026).
                  "/brand/run/", "/miles/run", "/miles/generate", "/miles/optimize")
 # ...except the ones under them that only report.
-WORK_OVER_GET_EXCEPT = ("/run/health", "/run/stack",
+# /run/stack is NOT here (29 Sep 2026): it starts a py-spy process, so it is
+# work -- and while it was listed, its RULES "edit" was never consulted (the
+# read shortcut returned first; found by the security fix re-check).
+WORK_OVER_GET_EXCEPT = ("/run/health",
                         "/run/plan",     # a plan: spends and writes nothing
                         "/miles/run_log", "/miles/run_csv", "/miles/runs",
                         "/miles/run_active", "/miles/run_tail")

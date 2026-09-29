@@ -211,19 +211,89 @@ TR.remove(_CFG, "ts_a", "UK", "203-3", "RM123456789GB")
 r = c.post("/orders/ship/confirm", json=dict(BODY, order_id="203-3"))
 check("  removing that number allows it again", r.status_code, 200)
 
-_real_add = TR.add
+_real_settle = TR.settle_send
 
 
-def _broken_add(*a, **k):
+def _broken_settle(*a, **k):
     raise RuntimeError("disk full")
 
 
-TR.add = _broken_add
+TR.settle_send = _broken_settle
 r = c.post("/orders/ship/confirm", json=dict(BODY, order_id="203-4"))
 j = r.get_json() or {}
-TR.add = _real_add
-check("saved locally fails AFTER Amazon accepted -> still reported SENT",
-      (r.status_code, j.get("ok"), "could not be saved" in (j.get("note") or "")), (200, True, True))
+TR.settle_send = _real_settle
+check("the record fails to update AFTER Amazon accepted -> still reported SENT",
+      (r.status_code, j.get("ok"), "could not be updated" in (j.get("note") or "")), (200, True, True))
+got = TR.for_orders(_CFG, "ts_a", "UK", ["203-4"]).get("203-4") or []
+check("  and the claim still blocks a resend (on record as unsure)", [t["source"] for t in got], ["amazon_unsure"])
+
+print("== the number was already saved in the app (security review) ==")
+TR.add(_CFG, "ts_a", "UK", "203-7", "RM123456789GB", carrier="Royal Mail", source="upload")
+calls.clear()
+r = c.post("/orders/ship/confirm", json=dict(BODY, order_id="203-7"))
+check("sent", r.status_code, 200)
+got = TR.for_orders(_CFG, "ts_a", "UK", ["203-7"]).get("203-7") or []
+check("  the stored number is now marked as sent to Amazon", [t["source"] for t in got], ["amazon"])
+r = c.post("/orders/ship/confirm", json=dict(BODY, order_id="203-7"))
+check("  so a second send IS refused", (r.status_code, (r.get_json() or {}).get("already_sent"), n_sent()), (409, True, 1))
+TR.add(_CFG, "ts_a", "UK", "203-8", "RM123456789GB", carrier="Royal Mail", source="upload")
+state["mode"] = "refuse"
+r = c.post("/orders/ship/confirm", json=dict(BODY, order_id="203-8"))
+state["mode"] = "ok"
+got = TR.for_orders(_CFG, "ts_a", "UK", ["203-8"]).get("203-8") or []
+check("a refusal puts a stored number back exactly as it was -- source and carrier",
+      (r.status_code, [(t["source"], t["carrier"]) for t in got]), (502, [("upload", "Royal Mail")]))
+TR.add(_CFG, "ts_a", "UK", "203-10", "RM123456789GB", carrier="Evri", source="upload")
+state["mode"] = "refuse"
+c.post("/orders/ship/confirm", json=dict(BODY, order_id="203-10"))
+state["mode"] = "ok"
+got = TR.for_orders(_CFG, "ts_a", "UK", ["203-10"]).get("203-10") or []
+check("  even when the send named another carrier (Royal Mail vs the stored Evri)",
+      [(t["source"], t["carrier"]) for t in got], [("upload", "Evri")])
+
+print("== the claim removed while Amazon was answering ==")
+_orig_confirm = AOS.confirm_shipment
+
+
+def _confirm_while_removed(creds, enum, oid, body):
+    TR.remove(_CFG, "ts_a", "UK", oid, body["packageDetail"]["trackingNumber"])
+    return _orig_confirm(creds, enum, oid, body)
+
+
+AOS.confirm_shipment = _confirm_while_removed
+r = c.post("/orders/ship/confirm", json=dict(BODY, order_id="203-11"))
+AOS.confirm_shipment = _orig_confirm
+got = TR.for_orders(_CFG, "ts_a", "UK", ["203-11"]).get("203-11") or []
+check("a sent order is ALWAYS left on record (so it cannot be sent twice)",
+      (r.status_code, [t["source"] for t in got]), (200, ["amazon"]))
+
+print("== two presses at the same moment reach Amazon once ==")
+import threading                               # noqa: E402
+import time as _time                           # noqa: E402
+calls.clear()
+_slow_real = AOS.confirm_shipment
+
+
+def _slow(creds, enum, oid, body):
+    _time.sleep(0.4)
+    return _slow_real(creds, enum, oid, body)
+
+
+AOS.confirm_shipment = _slow
+codes = []
+
+
+def _press():
+    with app.test_client() as cc:
+        codes.append(cc.post("/orders/ship/confirm", json=dict(BODY, order_id="203-9")).status_code)
+
+
+ts = [threading.Thread(target=_press) for _ in range(2)]
+[t.start() for t in ts]
+[t.join() for t in ts]
+AOS.confirm_shipment = _slow_real
+check("  one sent, one refused", sorted(codes), [200, 409])
+check("  Amazon told once", n_sent(), 1)
 
 r = c.post("/orders/ship/confirm", json=dict(BODY, order_id="203-5", tracking_number=""))
 check("switched on, but no tracking -> refused before sending", r.status_code, 400)

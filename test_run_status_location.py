@@ -57,8 +57,28 @@ try:
     check("  and trusts the process handle only if it is that run's",
           "proc.pid == _hb_pid" in LR, True)
     stack = LR.split("def run_stack(")[1].split("\n    @app.route")[0]
-    check("/run/stack inspects only the asking account's run", "account=_rqa.current(_state)" in stack, True)
-    check("  never simply the last process started", "_running.get(\"proc\")" in stack, False)
+    # Re-pinned (security review, 29 Sep 2026): the account must be NAMED, and
+    # only a process the app started AND whose pid is that heartbeat's is dumped.
+    check("/run/stack needs a NAMED account (never the open one)",
+          "_acct = _rqa.named_now()" in stack and "account=_acct" in stack, True)
+    check("  and inspects only a process it can prove is that run",
+          "proc.pid == pid and proc.poll() is None" in stack, True)
+    RQS = open(os.path.join(HERE, "static", "js", "reqscope.js"), encoding="utf-8").read()
+    check("  the browser names the account on /run/stack", '"/run/stack"' in RQS, True)
+    sys.path.insert(0, HERE)
+    from auth import guard as _G
+    check("  and it needs edit (it starts a py-spy process)", _G.required_permission("/run/stack", "GET"), "edit")
+    # THE REAL GATE, not just the table (security re-check, 29 Sep 2026): while
+    # /run/stack was a listed read, check() waved it through before RULES.
+    viewer = {"id": "u_v", "role": "viewer", "active": True, "permissions": [],
+              "features": {"generate": "view"}, "workspaces": ["*"], "perms_version": 99}
+    editor = dict(viewer, permissions=["edit"], features={"generate": "edit"})
+    ok_v, _w = _G.check("/run/stack", "GET", viewer, None, {"account": "acct_a"})
+    ok_e, _w = _G.check("/run/stack", "GET", editor, None, {"account": "acct_a"})
+    check("  a view-only user is REFUSED by guard.check itself", ok_v, False)
+    check("  an editor is allowed", ok_e, True)
+    check("  and a link from another site is refused",
+          bool(_G.cross_site_refusal("GET", "app.example", "https://evil.example", "", "cross-site", "/run/stack")), True)
     GEN = open(os.path.join(HERE, "amazon_listing_generator.py"), encoding="utf-8").read()
     check("the generator names its account when the run starts",
           'run_status.start(total=total, mode=mode, account=str(config.get("_account_id") or ""))' in GEN, True)

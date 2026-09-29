@@ -74,17 +74,16 @@ def register(app, *, CONFIG_PATH, _cfg):
         return {"acc": acc, "aid": aid, "mkt": mkt, "oid": oid, "enum": enum,
                 "creds": creds, "payload": payload, "problems": problems}, None
 
-    def _remember(ctx, source):
-        """Record the number sent; a failure here must not hide that it was sent."""
+    def _settle(ctx, claim, **kw):
+        """Finish the claim; a failure here must not hide what Amazon said."""
         from domain import tracking as _tr
-        d = ctx["payload"]["packageDetail"]
         try:
-            _tr.add(CONFIG_PATH, ctx["aid"], ctx["mkt"], ctx["oid"], d["trackingNumber"],
-                    carrier=d.get("carrierName") or d.get("carrierCode"), source=source)
+            _tr.settle_send(CONFIG_PATH, ctx["aid"], ctx["mkt"], ctx["oid"],
+                            claim["tn"], prior=claim["prior"], carrier=claim["carrier"], **kw)
             return ""
         except Exception as e:
-            return (" The tracking number could not be saved in this app (%s); add it "
-                    "by hand so it is not sent again." % str(e)[:120])
+            return (" The record of this send could not be updated in this app (%s); "
+                    "check the order's tracking before sending again." % str(e)[:120])
 
     @app.route("/orders/ship/preview", methods=["POST"])
     def orders_ship_preview():
@@ -113,6 +112,21 @@ def register(app, *, CONFIG_PATH, _cfg):
         if ctx["problems"]:
             return jsonify({"ok": False, "problems": ctx["problems"],
                             "error": " ".join(ctx["problems"])}), 400
+        # CLAIM BEFORE SENDING (security review, 29 Sep 2026). One locked write
+        # records this send as UNSURE and refuses if the order already has a
+        # send on record -- so two presses cannot both reach Amazon, and a send
+        # whose answer never comes back is on record from the start.
+        from domain import tracking as _tr
+        d = ctx["payload"]["packageDetail"]
+        ok, prior = _tr.claim_for_send(CONFIG_PATH, ctx["aid"], ctx["mkt"], ctx["oid"],
+                                       d["trackingNumber"], d.get("carrierName") or d.get("carrierCode"),
+                                       _sc.UNSURE, (_sc.SENT, _sc.UNSURE))
+        if not ok:
+            return jsonify({"ok": False, "already_sent": True, "error": (
+                "This app has already told Amazon about this order (or is telling it "
+                "now). Check it in Seller Central.")}), 409
+        claim = {"tn": d["trackingNumber"], "prior": prior,
+                 "carrier": d.get("carrierName") or d.get("carrierCode")}
         try:
             from sp_api.base import SellingApiException as _Refused
         except Exception:                                  # pragma: no cover
@@ -121,17 +135,17 @@ def register(app, *, CONFIG_PATH, _cfg):
             _aos.confirm_shipment(ctx["creds"], ctx["enum"], ctx["oid"], ctx["payload"])
         except _Refused as e:
             # Amazon answered with its errors: a refusal, in its own words
-            # (Rule 4). Nothing is recorded, so it can be corrected and sent.
+            # (Rule 4). The claim is undone, so it can be corrected and sent.
+            note = _settle(ctx, claim, undo=True)
             return jsonify({"ok": False, "error": (
-                "Amazon refused the dispatch confirmation: %s" % str(e)[:500])}), 502
+                "Amazon refused the dispatch confirmation: %s%s" % (str(e)[:500], note))}), 502
         except Exception as e:
             # No clear answer (timeout, dropped connection, a reply with no
-            # status). It may have landed, so it is recorded as UNSURE, which
+            # status). It may have landed, so the claim STAYS as UNSURE, which
             # blocks a second send until someone has looked.
-            note = _remember(ctx, _sc.UNSURE)
             return jsonify({"ok": False, "uncertain": True, "error": (
                 "It is not known whether Amazon received this (%s). Check the order "
-                "in Seller Central before trying again.%s" % (str(e)[:200], note))}), 502
-        note = _remember(ctx, _sc.SENT)
+                "in Seller Central before trying again." % str(e)[:200])}), 502
+        note = _settle(ctx, claim, source=_sc.SENT)
         return jsonify({"ok": True, "sent": True, "summary": _sc.describe(ctx["payload"]),
                         "note": "Amazon now shows this order as dispatched." + note})

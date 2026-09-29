@@ -1053,7 +1053,7 @@ function _ordSourcesHtml(block, forTitle, view){
       +  (o.cheapest ? 'best' : (dead ? '—' : (unknown ? '?' : rank)))
       +  '</div>'
       +  '<div class="' + cls.trim() + '"><a class="odp-link" target="_blank" '
-      +  'rel="noopener" href="' + _oEsc(o.url) + '">'
+      +  'rel="noopener noreferrer" href="' + _oEsc(o.url) + '">'
       +  _oEsc(o.label || o.url) + '</a></div>'
       // LANDED COST -- the item plus its postage, which is what leaves the bank.
       // data-lbl carries the column heading down onto the cell. On a phone the
@@ -1663,7 +1663,7 @@ function ordPurchasePanel(r, best, fresh){
   (recs || []).forEach(function(p){
     const who = p.bought_by ? " by " + p.bought_by : "";
     const sup = p.supplier_url
-      ? '<a class="link" target="_blank" rel="noopener" href="' + _oEsc(p.supplier_url)
+      ? '<a class="link" target="_blank" rel="noopener noreferrer" href="' + _oEsc(p.supplier_url)
         + '">' + _oEsc(p.supplier || "supplier") + '</a>'
       : _oEsc(p.supplier || "supplier not named");
     h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0">'

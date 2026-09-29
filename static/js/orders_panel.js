@@ -278,7 +278,7 @@ function _opActions(r, d, items){
   const best = _opBestSource(d, items);
   if(best && best.url){
     btns.push('<a class="o-btn" href="' + _oEsc(best.url) + '" target="_blank"'
-      + ' rel="noopener" onclick="event.stopPropagation()"'
+      + ' rel="noopener noreferrer" onclick="event.stopPropagation()"'
       + ' title="Buy this from ' + _oEsc(best.label || "the cheapest supplier")
       + '"><i class="ti ti-shopping-cart"></i> Buy from supplier</a>');
   }

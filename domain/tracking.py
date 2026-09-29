@@ -300,6 +300,97 @@ def add(config_path, workspace_id, marketplace, order_id, tracking_number,
     return 1
 
 
+def claim_for_send(config_path, workspace_id, marketplace, order_id, tracking_number,
+                   carrier, claimed, blocking):
+    """Claim ONE order for a send to Amazon, atomically. -> (ok, prior source).
+
+    Before anything is sent the number is recorded with source `claimed`, in
+    one locked write that also checks no row of this order already carries a
+    `blocking` source -- so two presses (two tabs, two people) cannot both
+    pass, and a send whose answer never comes back is still on record.
+    `prior` is the number's source before the claim (None if it was not
+    stored), so a refused send can put it back exactly (security review,
+    29 Sep 2026: a number already stored as 'upload' kept that source after a
+    send, and the once-per-order lock never saw it).
+    """
+    tn = str(tracking_number or "").strip()
+    oid = str(order_id or "").strip()
+    if not (oid and tn):
+        return False, None
+    conn = _db.get_db(config_path)
+    if conn.in_transaction:
+        # Something on this thread left a transaction open. Its half-finished
+        # work is dropped, never committed as a side effect of claiming.
+        conn.rollback()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        marks = ",".join("?" * len(blocking))
+        hit = conn.execute(
+            "SELECT 1 FROM order_tracking WHERE workspace_id=? AND marketplace=? "
+            "AND order_id=? AND source IN (%s) LIMIT 1" % marks,
+            [workspace_id, marketplace, oid] + list(blocking)).fetchone()
+        if hit:
+            conn.rollback()
+            return False, None
+        row = conn.execute(
+            "SELECT source, carrier, carrier_code FROM order_tracking WHERE workspace_id=? "
+            "AND marketplace=? AND order_id=? AND tracking_number=?",
+            (workspace_id, marketplace, oid, tn)).fetchone()
+        # Everything the claim changes, so an undo can put it ALL back.
+        prior = {"source": row[0], "carrier": row[1], "carrier_code": row[2]} if row else None
+        if row:
+            conn.execute(
+                "UPDATE order_tracking SET source=?, carrier=?, carrier_code=? "
+                "WHERE workspace_id=? AND marketplace=? AND order_id=? AND tracking_number=?",
+                (claimed, str(carrier or "").strip(), carrier_code(carrier),
+                 workspace_id, marketplace, oid, tn))
+        else:
+            conn.execute(
+                "INSERT INTO order_tracking (workspace_id, marketplace, order_id, sku, "
+                "carrier, carrier_code, tracking_number, status, source, added_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (workspace_id, marketplace, oid, "", str(carrier or "").strip(),
+                 carrier_code(carrier), tn, UNKNOWN, claimed,
+                 _dt.datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+        return True, prior
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def settle_send(config_path, workspace_id, marketplace, order_id, tracking_number,
+                source=None, prior=None, undo=False, carrier=""):
+    """Finish a claim: `source` sets the outcome (sent / still unsure); `undo`
+    (a clear refusal) puts the number back exactly as it was -- its prior
+    source and carrier, or no row at all when it was not stored before.
+
+    A SENT outcome always leaves a record: if the claim's row was removed while
+    Amazon was answering, it is written again, because a send with no record
+    is a send the once-per-order lock cannot see."""
+    tn = str(tracking_number or "").strip()
+    oid = str(order_id or "").strip()
+    conn = _db.get_db(config_path)
+    key = (workspace_id, marketplace, oid, tn)
+    if undo and prior is None:
+        conn.execute("DELETE FROM order_tracking WHERE workspace_id=? AND marketplace=? "
+                     "AND order_id=? AND tracking_number=?", key)
+    elif undo:
+        conn.execute("UPDATE order_tracking SET source=?, carrier=?, carrier_code=? "
+                     "WHERE workspace_id=? AND marketplace=? AND order_id=? AND tracking_number=?",
+                     (prior.get("source"), prior.get("carrier"), prior.get("carrier_code")) + key)
+    else:
+        cur = conn.execute("UPDATE order_tracking SET source=? WHERE workspace_id=? AND "
+                           "marketplace=? AND order_id=? AND tracking_number=?", (source,) + key)
+        if not cur.rowcount:
+            conn.execute(
+                "INSERT INTO order_tracking (workspace_id, marketplace, order_id, sku, carrier, "
+                "carrier_code, tracking_number, status, source, added_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (workspace_id, marketplace, oid, "", str(carrier or "").strip(), carrier_code(carrier),
+                 tn, UNKNOWN, source, _dt.datetime.now().isoformat(timespec="seconds")))
+    conn.commit()
+
+
 def remove(config_path, workspace_id, marketplace, order_id, tracking_number):
     """Forget one tracking number. One number, named explicitly.
 

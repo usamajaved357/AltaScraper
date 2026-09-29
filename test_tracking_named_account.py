@@ -73,6 +73,32 @@ check("an account this app does not have -> refused", r.status_code in (403, 404
 r = c.get("/tracking/summary?account=__all__&marketplace=UK")
 check("the all-accounts placeholder is not an account", r.status_code in (403, 404), True)
 
+print("== a number that records a send to Amazon needs publish to remove ==")
+from domain import job_owner as JO             # noqa: E402
+from auth import users as U                    # noqa: E402
+TR.add(_CFG, "tk_a", "UK", "444-1", "RM111111111GB", carrier="RM", source="amazon")
+TR.add(_CFG, "tk_a", "UK", "444-1", "RM222222222GB", carrier="RM", source="upload")
+_real_current, _real_get = JO.current, U.get_user
+JO.current = lambda: "u_lister"
+U.get_user = lambda cp, uid: {"id": uid, "role": "custom", "active": True, "permissions": ["edit"],
+                              "features": {}, "workspaces": ["*"], "perms_version": 99}
+try:
+    r = c.post("/tracking/set", json={"account": "tk_a", "order_id": "444-1",
+                                      "tracking_number": "RM111111111GB", "remove": True})
+    check("without publish: the Amazon-send record cannot be removed", r.status_code, 403)
+    check("  and it is still there", len(TR.for_orders(_CFG, "tk_a", "UK", ["444-1"])["444-1"]), 2)
+    r = c.post("/tracking/set", json={"account": "tk_a", "order_id": "444-1",
+                                      "tracking_number": "RM222222222GB", "remove": True})
+    check("  an ordinary number can be, as before", (r.status_code, (r.get_json() or {}).get("removed")), (200, 1))
+    U.get_user = lambda cp, uid: {"id": uid, "role": "custom", "active": True,
+                                  "permissions": ["edit", "publish"], "features": {},
+                                  "workspaces": ["*"], "perms_version": 99}
+    r = c.post("/tracking/set", json={"account": "tk_a", "order_id": "444-1",
+                                      "tracking_number": "RM111111111GB", "remove": True})
+    check("with publish: it can be removed (to allow a resend)", (r.status_code, (r.get_json() or {}).get("removed")), (200, 1))
+finally:
+    JO.current, U.get_user = _real_current, _real_get
+
 SRC = open(os.path.join(HERE, "routes", "tracking_routes.py"), encoding="utf-8").read()
 code = "\n".join(l for l in SRC.splitlines() if not l.lstrip().startswith("#"))
 check("the route reads no open-account or open-marketplace selection",
