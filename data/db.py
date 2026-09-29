@@ -1529,6 +1529,13 @@ _ADDED_COLUMNS = [
     # unknown for those windows rather than as nought.
     ("finance_daily", "promo_fees", "REAL"),
     ("order_fees", "promo_fees", "REAL"),
+    # THE REST OF THE ACCOUNT'S MONEY (owner, 30 Sep 2026). Amazon Ads invoices
+    # (ex-VAT and the VAT on them) and every other posting, signed. NULL on rows
+    # synced before: those windows had none of this read, and 0.00 would claim
+    # it was measured at nothing.
+    ("finance_daily", "ads_charged", "REAL"),
+    ("finance_daily", "ads_charged_tax", "REAL"),
+    ("finance_daily", "adjustments", "REAL"),
     ("sourcing_sources", "shipping_override", "REAL"),
     # The percentage profit target. In SCHEMA too, for databases created after
     # this; here so the ones that already exist gain it without being rebuilt.

@@ -103,7 +103,10 @@ def parse_by_order(payload):
                 r["promos"] += -_fd._amt(p.get("PromotionAmount"))
 
     # ---- refunds: money going back, against the order it came from ---------
-    for s in (ev.get("RefundEventList") or []):
+    # Chargebacks and A-to-z guarantee claims take the money back the same way
+    # (same shape), so they count against the order too (30 Sep 2026).
+    for s in ((ev.get("RefundEventList") or []) + (ev.get("ChargebackEventList") or [])
+              + (ev.get("GuaranteeClaimEventList") or [])):
         oid = str(s.get("AmazonOrderId") or "")
         posted = _fd._day(s.get("PostedDate"))
         if not oid or not posted:
@@ -120,15 +123,21 @@ def parse_by_order(payload):
                 amt = -_fd._amt(ch.get("ChargeAmount"))
                 if t in _fd._TAX_TYPES:
                     r["refund_tax"] += amt
-                elif t in _fd._REVENUE_TYPES:
+                elif t in _fd._REVENUE_TYPES or t in ("returnshipping", "restockingfee"):
+                    # Return postage / restocking go with the refund they belong to.
                     r["refunds"] += amt
+            # The discount you funded, posted back on a refund: it comes off
+            # this order's promotions cost (finance_data reads it the same way).
+            for p in (it.get("PromotionAdjustmentList") or []):
+                r["promos"] += -_fd._amt(p.get("PromotionAmount"))
             for f in (it.get("ItemFeeAdjustmentList") or []):
                 # The part of the fee Amazon hands back with a refund.
                 r["refund_fees_returned"] += _fd._amt(f.get("FeeAmount"))
 
     # ---- everything with no order: counted, never guessed onto one ---------
     for k, v in ev.items():
-        if k in ("ShipmentEventList", "RefundEventList"):
+        if k in ("ShipmentEventList", "RefundEventList", "ChargebackEventList",
+                 "GuaranteeClaimEventList"):
             continue
         if isinstance(v, list):
             skipped += sum(1 for x in v
