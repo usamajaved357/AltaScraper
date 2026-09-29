@@ -135,7 +135,16 @@ function _pdpigConceptJobs(r, ref, concepts, kind, instr){
 async function pdpImgGenRun(preset){
   const r = (typeof pdpRow === "function") ? pdpRow() : null;
   if(!r) return;
-  if(PDPIG.running){ toast("A generation is already running for this listing."); return; }
+  // ONE RUN PER LISTING, not one for the whole app: the flag was shared, so a
+  // batch on one listing (or account) blocked every other, and it was only set
+  // after the planning call, so a second click while planning started a second
+  // paid run (PDP review, 30 Sep 2026).
+  const _key = String(r.sku) + "|" + ((typeof pdpContext === "function") ? pdpContext() : "");
+  if(PDPIG.busy && PDPIG.busy[_key]){ toast("A generation is already running for this listing."); return; }
+  PDPIG.busy = PDPIG.busy || {};
+  PDPIG.busy[_key] = true;
+  let _started = false;
+  try{
   // The reference picture, found the way Image Studio finds it.
   const ref = (typeof _refImgForItem === "function") ? _refImgForItem(r) : "";
   if(!ref){
@@ -195,6 +204,7 @@ async function pdpImgGenRun(preset){
   }catch(e){ _pdpigSay('<span class="bad">Could not start: ' + esc(String(e)) + '</span>'); return; }
   if(!resp || !resp.ok){ _pdpigSay('<span class="bad">' + esc((resp && resp.error) || "failed to start") + '</span>'); return; }
 
+  _started = true;
   PDPIG.running = true; PDPIG.sku = sku; PDPIG.job = resp.job;
   // The pictures are filed under the batch's account by the server; they are
   // only PLACED into slots if the screen is still on it -- the same SKU in
@@ -212,7 +222,7 @@ async function pdpImgGenRun(preset){
       // polling forever left PDPIG.running set, which blocked every later run.
       if(_r.status === 404){
         clearInterval(t);
-        PDPIG.running = false;
+        PDPIG.running = false; delete PDPIG.busy[_key];
         _pdpigSetBusy(false);
         _pdpigSay('<span class="bad">This batch can no longer be followed (the app may have restarted). '
           + 'Images that finished were saved to the Library.</span>');
@@ -225,7 +235,7 @@ async function pdpImgGenRun(preset){
         return;
       }
       clearInterval(t);
-      PDPIG.running = false;
+      PDPIG.running = false; delete PDPIG.busy[_key];
       _pdpigSetBusy(false);
       const okN = (st.results || []).filter(function(x){ return x.ok; }).length;
       const placed = _moved() ? 0 : await _pdpigPlace(sku, preset, before);
@@ -236,6 +246,10 @@ async function pdpImgGenRun(preset){
     }catch(e){}
     finally{ polling = false; }
   }, 2000);
+  }finally{
+    // Planning refused, cancelled or failed to start: the listing is free again.
+    if(!_started) delete PDPIG.busy[_key];
+  }
 }
 
 function _pdpigSetBusy(on){

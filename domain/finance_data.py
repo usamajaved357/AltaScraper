@@ -80,7 +80,21 @@ _KNOWN_OTHER = ("subscription", "digitalservicesfee", "csbafee", "shippinghb")
 #   DebtRecoveryEventList       -- Amazon recovering a balance already charged
 #                                  elsewhere. Counting it charges you twice.
 _IGNORED_EVENTS = ("AdhocDisbursementEventList", "DebtRecoveryEventList",
-                   "FailedAdhocDisbursementEventList", "LoanServicingEventList")
+                   "FailedAdhocDisbursementEventList", "LoanServicingEventList",
+                   # Amazon Pay (a different business), and the shipment-settle /
+                   # trial lists that repeat what ShipmentEventList already holds.
+                   "PayWithAmazonEventList", "ShipmentSettleEventList",
+                   "TrialShipmentEventList")
+
+# Read in the body of parse_events, each by its own shape. Anything else that
+# carries money lands in `adjustments` (signed) through the catch-all, and is
+# NAMED in the notes -- so a charge Amazon starts sending tomorrow reaches the
+# profit instead of vanishing (owner, 30 Sep 2026: every transaction counted).
+_READ_EVENTS = ("ShipmentEventList", "RefundEventList", "ChargebackEventList",
+                "GuaranteeClaimEventList", "ServiceFeeEventList", "AdjustmentEventList",
+                "ProductAdsPaymentEventList", "CouponPaymentEventList",
+                "SellerDealPaymentEventList", "RemovalShipmentEventList",
+                "RetrochargeEventList")
 
 
 def _amt(node):
@@ -140,6 +154,12 @@ def _blank(date, asin):
     return {"date": date, "asin": asin, "currency": "",
             "referral_fees": 0.0, "fba_fees": 0.0, "other_fees": 0.0,
             "promo_fees": 0.0,
+            # Amazon Ads invoices charged to this account (ProductAdsPaymentEventList):
+            # the ex-VAT amount and the VAT on it, apart -- a VAT-registered seller
+            # reclaims the second, anyone else pays it.
+            "ads_charged": 0.0, "ads_charged_tax": 0.0,
+            # Every other money movement, SIGNED: + money to you, - a cost.
+            "adjustments": 0.0,
             "refunds": 0.0, "refund_units": 0, "refund_fees_returned": 0.0,
             "reimbursements": 0.0, "promos": 0.0, "principal": 0.0, "tax": 0.0, "refund_tax": 0.0,
             "units": 0, "cogs": 0.0, "cogs_units": 0}
@@ -297,7 +317,10 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
                         _cur(pr.get("PromotionAmount")))
 
     # ---- refunds: principal back to the buyer, and the fee Amazon returns ----
-    for rf in (ev.get("RefundEventList") or []):
+    # A chargeback and an A-to-z guarantee claim take the money back the same
+    # way, in the same shape, so they are read as refunds.
+    for rf in ((ev.get("RefundEventList") or []) + (ev.get("ChargebackEventList") or [])
+               + (ev.get("GuaranteeClaimEventList") or [])):
         d = _day(rf.get("PostedDate"))
         for item in (rf.get("ShipmentItemAdjustmentList") or []):
             sku = item.get("SellerSKU")
@@ -308,18 +331,35 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
                     acc.add(d, sku, "refunds", abs(_amt(ch.get("ChargeAmount"))),
                             _cur(ch.get("ChargeAmount")), units=units)
                     units = 0          # count the units once, not per charge line
+                elif _ct in ("returnshipping", "return shipping", "restockingfee", "restocking fee"):
+                    # Postage and restocking on a return go with the refund they
+                    # belong to (measured: ReturnShipping -0.01 on nestwell, 30
+                    # Sep) -- the same bucket the per-order parser uses.
+                    acc.add(d, sku, "refunds", -_amt(ch.get("ChargeAmount")),
+                            _cur(ch.get("ChargeAmount")))
                 elif _ct in _TAX_TYPES:
                     # VAT handed back with the refund. Tracked apart from the tax
                     # collected so neither is quietly netted into the other -- the
                     # two belong to different VAT returns.
                     acc.add(d, sku, "refund_tax", abs(_amt(ch.get("ChargeAmount"))),
                             _cur(ch.get("ChargeAmount")))
+            # THE DISCOUNT YOU FUNDED, REVERSED. Amazon posts it back with the
+            # refund (+3.25 on nestwell, 90 days): the buyer got the price LESS
+            # the discount back, so the refund is that much smaller. Kept in
+            # `refunds` so it stays on the refund's date on both calendars --
+            # in `promos` it moved the order's month (review, 30 Sep 2026).
+            for pr in (item.get("PromotionAdjustmentList") or []):
+                acc.add(d, sku, "refunds", -_amt(pr.get("PromotionAmount")),
+                        _cur(pr.get("PromotionAmount")))
             for fee in (item.get("ItemFeeAdjustmentList") or []):
-                # On a refund the fee adjustment is POSITIVE -- Amazon giving
-                # part of its commission back. Kept separate from fees charged so
-                # neither figure is quietly netted into the other.
+                # SIGNED. Most fee adjustments on a refund are positive -- Amazon
+                # giving part of its commission back -- but RefundCommission is
+                # NEGATIVE: the fee Amazon KEEPS for processing the refund. abs()
+                # counted it as money returned (measured on nestwell, 90 days:
+                # Commission +24.39, RefundCommission -4.89 -> stored 29.79, not
+                # 20.01; review, 30 Sep 2026).
                 acc.add(d, sku, "refund_fees_returned",
-                        abs(_amt(fee.get("FeeAmount"))), _cur(fee.get("FeeAmount")))
+                        _amt(fee.get("FeeAmount")), _cur(fee.get("FeeAmount")))
 
     # ---- service fees: charged against the account, often with no SKU --------
     for sf in (ev.get("ServiceFeeEventList") or []):
@@ -339,14 +379,19 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
         atype = str(adj.get("AdjustmentType") or "").lower()
         if not any(k in atype for k in _REIMBURSEMENT):
             continue
+        # SIGNED, as Amazon sends it: a reimbursement is +, a CLAWBACK of one
+        # ("compensated_clawback", "ReimbursementClawback") is - money taken
+        # back. abs() counted the clawback as money received (review, 30 Sep).
         items = adj.get("AdjustmentItemList") or []
         if items:
             for it in items:
                 acc.add(d, it.get("SellerSKU"), "reimbursements",
-                        abs(_amt(it.get("TotalAmount"))), _cur(it.get("TotalAmount")))
+                        _amt(it.get("TotalAmount")), _cur(it.get("TotalAmount")))
         else:
-            acc.add(d, None, "reimbursements", abs(_amt(adj.get("AdjustmentAmount"))),
+            acc.add(d, None, "reimbursements", _amt(adj.get("AdjustmentAmount")),
                     _cur(adj.get("AdjustmentAmount")))
+
+    _parse_other_money(ev, acc)
 
     rows = [r for r in acc.rows.values() if r["date"]]
     tot_u = sum(r["units"] for r in rows if r["asin"] == "*")
@@ -354,6 +399,8 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
     notes = {"units": tot_u, "cogs_units": kno_u,
              "cogs_coverage_pct": (round(kno_u / tot_u * 100, 1) if tot_u else None),
              "unknown_fee_types": sorted(acc.unknown_fees),
+             # Event lists that carried money and were read by the catch-all.
+             "other_event_lists": sorted(getattr(acc, "other_lists", set())),
              "unmapped_skus": sorted(acc.unmapped_skus)[:50],
              "unmapped_sku_count": len(acc.unmapped_skus),
              "unattributed": acc.unattributed,
@@ -365,12 +412,126 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
     return rows, notes
 
 
+# THE REST OF THE ACCOUNT'S MONEY (owner, 30 Sep 2026: "the transactions that
+# are performed in the account"). Each list by the shape Amazon documents for
+# it; the date field is PostedDate, or postedDate on the Ads invoices (measured,
+# 30 Sep 2026: that list is camelCase).
+def _money_of(node, *keys):
+    for k in keys:
+        if isinstance(node.get(k), dict):
+            return _amt(node.get(k)), _cur(node.get(k))
+    return 0.0, ""
+
+
+# The total-like field of each other event list, as Amazon's Finances API
+# reference names them (the list the review of 30 Sep 2026 found missing:
+# SAFE-T reimbursements, tax withheld, value-added services, capacity
+# reservation, affordability expenses). Checked in this order; the first one
+# present is the event's amount, never a total AND its parts.
+_OTHER_AMOUNT_KEYS = ("TotalAmount", "totalAmount", "TransactionValue", "transactionValue",
+                      "TransactionAmount", "ReimbursedAmount", "TotalExpense",
+                      "AdjustmentAmount", "ChargeAmount", "FeeAmount", "Amount", "amount")
+# Always a cost, whatever sign Amazon puts on it.
+_COST_KEYS = ("WithheldAmount",)
+
+
+def _other_event_money(e):
+    """One uncatalogued event -> (signed amount, currency): + money to you,
+    - a cost. Liquidation pays proceeds less its fee; an event that lists its
+    fees (FeeList: imaging services) is their sum."""
+    if isinstance(e.get("LiquidationProceedsAmount"), dict):
+        p, cur = _money_of(e, "LiquidationProceedsAmount")
+        f, _c = _money_of(e, "LiquidationFeeAmount")
+        return abs(p) - abs(f), cur
+    for k in _COST_KEYS:
+        if isinstance(e.get(k), dict):
+            v, cur = _money_of(e, k)
+            return -abs(v), cur
+    v, cur = _money_of(e, *_OTHER_AMOUNT_KEYS)
+    if not v and isinstance(e.get("FeeList"), list):
+        for f in e["FeeList"]:
+            fv, fc = _money_of(f or {}, "FeeAmount")
+            v += fv
+            cur = cur or fc
+    return v, cur
+
+
+def _parse_other_money(ev, acc):
+    acc.other_lists = set()
+    # Amazon Ads invoices: Charge is negative, a refund of one positive.
+    for e in (ev.get("ProductAdsPaymentEventList") or []):
+        d = _day(e.get("postedDate") or e.get("PostedDate"))
+        base, cur = _money_of(e, "baseValue", "BaseValue")
+        tax, _c = _money_of(e, "taxValue", "TaxValue")
+        if not base and not tax:
+            base, cur = _money_of(e, "transactionValue", "TransactionValue")
+        acc.add(d, None, "ads_charged", -base, cur)
+        acc.add(d, None, "ads_charged_tax", -tax, cur)
+    # Coupon redemptions and Lightning / Best Deal fees: the price of a promotion.
+    for lst in ("CouponPaymentEventList", "SellerDealPaymentEventList"):
+        for e in (ev.get(lst) or []):
+            d = _day(e.get("PostedDate") or e.get("postedDate"))
+            v, cur = _money_of(e, "TotalAmount", "totalAmount")
+            if not v:
+                # No total: the parts, where Amazon's reference puts them --
+                # the fee inside FeeComponent, the charge inside ChargeComponent
+                # (a top-level FeeAmount, read before, is never sent).
+                fee, cur = _money_of(e.get("FeeComponent") or {}, "FeeAmount")
+                ch, _c = _money_of(e.get("ChargeComponent") or {}, "ChargeAmount")
+                v = fee + ch
+            acc.add(d, None, "promo_fees", -v, cur)
+    # Removals / disposals: the fee is an FBA cost; any liquidation revenue is income.
+    for e in (ev.get("RemovalShipmentEventList") or []):
+        d = _day(e.get("PostedDate"))
+        for it in (e.get("RemovalShipmentItemList") or []):
+            fee, cur = _money_of(it, "FeeAmount")
+            tx, _c = _money_of(it, "TaxAmount")
+            rev, _c2 = _money_of(it, "Revenue")
+            acc.add(d, it.get("SellerSKU"), "fba_fees", abs(fee) + abs(tx), cur)
+            acc.add(d, it.get("SellerSKU"), "adjustments", rev, cur)
+    # Tax retrocharges: signed, as Amazon sends them.
+    for e in (ev.get("RetrochargeEventList") or []):
+        d = _day(e.get("PostedDate"))
+        for k in ("BaseTax", "ShippingTax"):
+            v, cur = _money_of(e, k)
+            acc.add(d, None, "adjustments", v, cur)
+    # Adjustments that are not reimbursements (postage labels bought through
+    # Amazon, fee corrections, ...): signed, + to you, - a cost.
+    for adj in (ev.get("AdjustmentEventList") or []):
+        atype = str(adj.get("AdjustmentType") or "").lower()
+        if any(k in atype for k in _REIMBURSEMENT):
+            continue                                   # read above as reimbursements
+        if "reserve" in atype:
+            # A RESERVE is money Amazon holds back from a payout and releases
+            # later -- cash timing, not income or cost. Counting it made a
+            # held balance read as a loss (review, 30 Sep 2026).
+            continue
+        d = _day(adj.get("PostedDate"))
+        v, cur = _money_of(adj, "AdjustmentAmount")
+        acc.add(d, None, "adjustments", v, cur)
+    # EVERYTHING ELSE that carries money: one amount per event, the first of the
+    # total-like fields present (never a total AND its parts), signed.
+    handled = set(_READ_EVENTS) | set(_IGNORED_EVENTS)
+    for lst, items in (ev or {}).items():
+        if lst in handled or not isinstance(items, list):
+            continue
+        for e in items:
+            if not isinstance(e, dict):
+                continue
+            v, cur = _other_event_money(e)
+            if v:
+                acc.other_lists.add(lst)
+                acc.add(_day(e.get("PostedDate") or e.get("postedDate")), None,
+                        "adjustments", v, cur)
+
+
 # A refunded unit's cost is NOT credited back. The stock left, and whether it
 # comes back saleable is not something Amazon tells us here. Not crediting it
 # understates profit slightly; crediting it would overstate profit whenever the
 # return is damaged, and of the two errors only one gets someone to reorder
 # stock that is not selling.
 _COLS = ["referral_fees", "fba_fees", "other_fees", "promo_fees",
+         "ads_charged", "ads_charged_tax", "adjustments",
          "refunds", "refund_units",
          "refund_fees_returned", "reimbursements", "promos", "principal",
          "tax", "refund_tax",

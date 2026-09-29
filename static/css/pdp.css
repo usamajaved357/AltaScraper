@@ -253,6 +253,9 @@ body.pdp-on .chatwrap{ z-index:79; }
   #pdp{ padding:0; background:var(--pdp-bg); }
   .pdp{
     width:100%; min-height:100vh; max-height:100vh;
+  /* iOS Safari: 100vh is taller than what is visible, so the save bar sat under
+     its toolbar. dvh is the visible height; vh above stays the fallback. */
+  min-height:100dvh; max-height:100dvh;
     border:0; border-radius:0; box-shadow:none;
   }
   .pdp-top{ border-radius:0; }

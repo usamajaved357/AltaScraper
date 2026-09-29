@@ -62,9 +62,10 @@ function imgpRender() {
       (IMGP.loading ? "Loading products…" : "No products match.") + "</div>";
   } else {
     html += '<div class="imgp-list">';
-    // Capped, and it says so. A picker of four hundred rows is a scrollbar
-    // nobody uses; the search box is the way through it.
-    items.slice(0, 60).forEach(function (r) {
+    // EVERY PRODUCT, not the first 60 (owner, 30 Sep 2026: "i see only 60 items
+    // out of 133 in image library, i want to see all in the list"). Thumbnails
+    // are loading="lazy", so rows below the fold cost nothing until scrolled to.
+    items.forEach(function (r) {
       const on = (String(r.sku) === String(IMGP.sku)) ? " on" : "";
       html += '<div class="imgp-row' + on + '" onclick="imgpPick(' +
         jsArg(String(r.sku)) + ')">' +
@@ -82,10 +83,6 @@ function imgpRender() {
         "</div></div></div>";
     });
     html += "</div>";
-    if (items.length > 60) {
-      html += '<div class="cc" style="font-size:11px;padding:6px 2px">Showing 60 of ' +
-        items.length + " — narrow it with the search box.</div>";
-    }
   }
   box.innerHTML = html;
 }

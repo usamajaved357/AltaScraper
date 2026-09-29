@@ -332,8 +332,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             est = _op.for_period(CONFIG_PATH, wsid, mkt, start, end,
                                  _cogs_overrides(),
                                  vat_rate=_vat,
-                                 ads_connected=bool(avail["ads"]["connected"]),
-                                 ad_spend=cur.get("spend") or 0.0,
+                                 # What ads COST (domain/ad_cost: VAT and the
+                                 # invoices included), not the Ads API spend alone.
+                                 ads_connected=(cur.get("ad_cost") is not None),
+                                 ad_spend=cur.get("ad_cost") or 0.0,
                                  revenue=cur.get("ordered_sales"),
                                  units=cur.get("units"),
                                  # THE PRODUCT FILTER, when one is on: `cur`
@@ -341,6 +343,20 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                  # included, so the profit must be its too.
                                  asin=(asin or None))
             est["cogs_mode"] = _mode
+            # NET, like the P&L: the account's own charges, its other postings
+            # and the costs entered by hand come off the account-wide figure.
+            # From overhead_for itself, the P&L's own step: this estimate is on
+            # the ORDER calendar whichever calendar the grid is drawn on, so it
+            # must not borrow the grid's per-day split (on the money calendar
+            # that split is only the give-back of charges already in the fees).
+            _gaps = list(_meta.get("profit_gaps") or [])
+            if not asin:
+                from domain import expenses as _exp
+                _am = _exp.account_money_totals(CONFIG_PATH, wsid, mkt, start, end)
+                est = _exp.apply_account_money(est, _am)
+                _gaps += _am.get("errors") or []
+            if _gaps:
+                est["profit_gaps"] = _gaps
             # Profit is now built from the SAME revenue and unit count as the
             # cards, so there is no longer a period-coverage question to answer:
             # the two describe the same trade by construction. What can still be
@@ -467,13 +483,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         trade carries no currency, so taking the first row returns "" whenever
         the range starts before the account's first sale.
         """
-        try:
-            from domain import sales_data as _sd
-            from domain import sales_queries as _sq   # its SQL (batch A6)
-            rows = _sq.currency_rows(CONFIG_PATH, wsid, mkt)
-            return _sd.currency_of(rows)
-        except Exception:
-            return ""
+        from domain import sales_data as _sd
+        return _sd.currency_for(CONFIG_PATH, wsid, mkt)
 
     @app.route("/sales/ads-refresh", methods=["POST"])
     def sales_ads_refresh():
@@ -490,6 +501,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if not mkt:
             return jsonify({"ok": False, "error": "no marketplace selected"}), 400
         got = _as.collect_pending(CONFIG_PATH, wsid)
+        # THE MARKETPLACE THE AD PROFILE COVERS, not the one on screen. A report
+        # is scoped by the profile id, so pressing Refresh on IT filed the UK
+        # profile's figures under IT -- the duplicate the scheduler was fixed
+        # for (ads_sync.marketplace_for, Rule 12; review, 30 Sep 2026).
+        ad_mkt, ad_note = _as.marketplace_for(CONFIG_PATH, _acc or {})
+        page_mkt = mkt
+        # ONLY WHEN AMAZON ANSWERED. With a note, marketplace_for fell back to
+        # the account's default -- a guess, and a guess must not move a DE
+        # profile's figures to UK (review, 30 Sep 2026). The note is still said.
+        if ad_mkt and not ad_note:
+            mkt = ad_mkt
         asked = _as.request_reports(wsid, mkt, days=30, config_path=CONFIG_PATH)
         if not asked.get("ok") and not (got.get("collected") or []):
             return jsonify({"ok": False,
@@ -506,7 +528,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "errors": (asked.get("errors") or []) + (got.get("failed") or []),
             "note": ("Stored %d finished report%s. Amazon is building the next "
                      "ones now — they take about 10 minutes, and appear on the "
-                     "next refresh." % (n, "" if n == 1 else "s")),
+                     "next refresh." % (n, "" if n == 1 else "s"))
+                    + ((" This account's advertising covers %s, so that is "
+                        "where the figures are filed." % mkt)
+                       if ad_mkt and ad_mkt != page_mkt else "")
+                    + ((" " + ad_note) if ad_note else ""),
+            "marketplace": mkt,
         })
 
     @app.route("/sales/breakdown")

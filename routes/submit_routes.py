@@ -8,6 +8,9 @@ Routes:
   GET /submit/precheck -> warn about APPROVED rows whose main image is a LOCAL path
   GET /submit/target   -> report which Amazon account/marketplace a submit will hit
 """
+import json
+import re
+
 from flask import jsonify, request
 
 
@@ -41,6 +44,7 @@ def register(app, *, _records, _active_account, _state, _cfg, _ws=None, CONFIG_P
         except Exception:
             records = []
         bad = []
+        others = []      # PT01..PT08 the submit would drop, per SKU
         for r in records or []:
             # The statuses a submit sends: the one list (listing/preview_scope).
             status = str(r.get("Status") or r.get("status") or "").strip().upper()
@@ -53,7 +57,28 @@ def register(app, *, _records, _active_account, _state, _cfg, _ws=None, CONFIG_P
             why = _iu.main_image_problem(CONFIG_PATH, img)
             if why:
                 bad.append({"sku": sku or "?", "image": img[:120], "why": why})
-        return jsonify({"ok": True, "local_image_rows": bad, "count": len(bad)})
+            # THE OTHER SLOTS TOO. The submit drops a gallery picture Amazon
+            # cannot fetch (the same image_urls.fetchable rule), and only the
+            # main image was warned about -- so PT pictures vanished with no word
+            # (payload review, 30 Sep 2026).
+            try:
+                _a = json.loads(r.get("Attributes JSON") or "{}") if isinstance(
+                    r.get("Attributes JSON"), str) else (r.get("Attributes JSON") or {})
+            except Exception:
+                _a = {}
+            if not isinstance(_a, dict):
+                _a = {}
+            for _k in sorted(k for k in _a if re.match(r"^other_product_image_locator_\d+$", str(k))):
+                _v = _a.get(_k)
+                _u = _v if isinstance(_v, str) else (
+                    (_v[0] or {}).get("media_location", "") if isinstance(_v, list) and _v and isinstance(_v[0], dict)
+                    else (_v or {}).get("media_location", "") if isinstance(_v, dict) else "")
+                if _u and not _iu.fetchable(CONFIG_PATH, str(_u)):
+                    others.append({"sku": sku or "?", "slot": _k, "image": str(_u)[:120]})
+        # `count` stays the number of MAIN-image problems (the bulk submit reads
+        # it that way); the gallery ones are counted separately.
+        return jsonify({"ok": True, "local_image_rows": bad, "count": len(bad),
+                        "other_image_rows": others, "other_count": len(others)})
 
     @app.route("/submit/target")
     def submit_target():

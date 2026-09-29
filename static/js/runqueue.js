@@ -159,7 +159,7 @@ function _rqRefreshRow(sku){
 
 // ---- enqueue + watch --------------------------------------------------------
 // mode: "api" (Preview) | "api_submit" (Submit)
-function rqEnqueue(sku, mode, minimal){
+function rqEnqueue(sku, mode, minimal, account){
   if(!sku) return;
   const P=_runPanel(sku);
   if(P){ P.show((mode==="api_submit"?"Submitting ":"Previewing ")+sku+" …"); P.verdict.innerHTML='<span class="rspin"></span> Queuing…'; }
@@ -177,7 +177,9 @@ function rqEnqueue(sku, mode, minimal){
   window.RUN_STREAMING=true;
   fetch("/preview/enqueue",{method:"POST",headers:{"Content-Type":"application/json"},
     // Names the account (known-issues #4).
-    body:JSON.stringify(acctBody({sku:sku, mode:mode, minimal:!!minimal}))})
+    // A caller that confirmed first passes the account it confirmed in (pin).
+    body:JSON.stringify(account ? acctBodyFor({sku:sku, mode:mode, minimal:!!minimal}, account)
+                                : acctBody({sku:sku, mode:mode, minimal:!!minimal}))})
     .then(r=>r.json()).then(r=>{
       // SAID SOMEWHERE THAT EXISTS. The verdict panel lives in the old drawer;
       // from the product page there is none, so a refusal -- no publish

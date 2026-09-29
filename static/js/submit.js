@@ -347,16 +347,29 @@ async function bulkPreview(){
 }
 async function submitOne(sku){
   if(!sku) return;
+  // THE ACCOUNT AND MARKETPLACE THIS WAS PRESSED IN, noted before the first
+  // dialog. A switch while a confirm is open (Back, the switcher) must not send
+  // this SKU to the other account's same-SKU listing (PDP review, 30 Sep 2026;
+  // the confirm-then-write pin clearField already uses).
+  const _pin = (typeof acctId === "function") ? acctId() : "";
+  const _pinMkt = (typeof WS_MARKET !== "undefined") ? WS_MARKET : "";
   // same safety as the global submit: precheck local images, then confirm the account
   try{
     const pc=await (await fetch("/submit/precheck?skus="+encodeURIComponent(sku))).json();
-    if(pc&&pc.ok&&pc.count>0){
+    if(pc&&pc.ok&&(pc.count>0||(pc.other_image_rows||[]).length)){
       const hit=(pc.local_image_rows||[]).find(x=>String(x.sku)===String(sku));
       if(hit){
         // The reason is the submit's own (domain/image_urls.main_image_problem).
         if(!await uiConfirm("\u26a0 This listing's main image: "+(hit.why||"cannot be used")+".\n\n"
           +"Set one of your own images, reachable by Amazon, as the main image first -- "
           +"or submit anyway?")) return;
+      }
+      // The gallery slots the submit would leave out, said before it runs.
+      const others=(pc.other_image_rows||[]).filter(x=>String(x.sku)===String(sku));
+      if(others.length){
+        if(!await uiConfirm("\u26a0 "+others.length+" other picture(s) on this listing cannot be fetched by Amazon"
+          +" and will be LEFT OUT of this submit:\n  "+others.map(o=>o.slot.replace("other_product_image_locator_","PT0")).join(", ")
+          +"\n\nUse images with a public https:// address (or set PUBLIC_BASE_URL for the app's own), or submit without them?")) return;
       }
     }
   }catch(e){}
@@ -376,9 +389,14 @@ async function submitOne(sku){
   if(!await uiConfirm("PUBLISH THIS LISTING LIVE\n\n  SKU: "+sku+"\n  Account: "+who
       +(MINIMAL_MODE_ON?"\n  Mode: MINIMAL (required fields only)":"")
       +"\n\nThis creates/replaces ONLY this listing on the account above. Continue?")) return;
+  if((typeof acctId === "function" && acctId() !== _pin)
+     || (typeof WS_MARKET !== "undefined" && WS_MARKET !== _pinMkt)){
+    toast("The account or marketplace changed while this was open, so nothing was submitted.");
+    return;
+  }
   toast("Submitting "+sku+"…");
   // background-job path (survives navigation + refresh; queues behind any active run)
-  rqEnqueue(sku, "api_submit", MINIMAL_MODE_ON);
+  rqEnqueue(sku, "api_submit", MINIMAL_MODE_ON, _pin);
 }
 
 async function loadViews(){

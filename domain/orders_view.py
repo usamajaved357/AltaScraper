@@ -324,6 +324,50 @@ def profit_detail(items, order_total, cost_of, referral_rate=None, fees=None,
     return out
 
 
+def apply_refund(d, refund, vat_rate=None, order_total=None):
+    """Take ONE order's refunds off its profit (owner, 30 Sep 2026: "we can see
+    how much we are earning per order ... also see the refunds").
+
+    `refund` is order_finance.refund_for_order: what went back to the buyer,
+    and the part of Amazon's fee returned NET of the refund commission it kept.
+    The VAT inside a refund is HMRC's (it reduces what is owed), so only the
+    ex-VAT part is a cost to a VAT-registered account. The stock's cost is not
+    credited back -- the same rule the Finances path follows. Mutates `d`."""
+    if not refund or not d or d.get("profit") is None:
+        return d
+    # THE SAME FOOTING AS THE ORDER'S REVENUE. profit_detail starts from
+    # OrderTotal -- what the buyer paid, tax included, already net of any
+    # coupon -- and takes the VAT out at the account's rate. So the refund is
+    # what went back the same way: the refunded price plus the tax Amazon lists
+    # beside it (jack_uk lists Tax separately), already less the coupon Amazon
+    # posted back (order_finance puts that into `refunds`), and then the VAT
+    # comes out once. Reading the principal alone and taking VAT out of it took
+    # it out twice where the tax is separate (review, 30 Sep 2026).
+    back = float(refund.get("refunds") or 0.0) + float(refund.get("refund_tax") or 0.0)
+    if not back and not refund.get("refund_fees_returned"):
+        return d
+    net_back = round(back - _vat_in(back, vat_rate), 2)
+    fees_back = round(float(refund.get("refund_fees_returned") or 0.0), 2)
+    d["refunded"] = round(back, 2)
+    d["refund_fees_returned"] = fees_back
+    d["profit_before_refund"] = d["profit"]
+    d["profit"] = round(float(d["profit"]) - net_back + fees_back, 2)
+    # MARGIN over the same base as before (what the buyer paid, less VAT):
+    # the list showed the refunded profit beside the pre-refund margin.
+    if order_total is not None:
+        try:
+            base = float(order_total) - _vat_in(order_total, vat_rate)
+            d["margin_pct"] = round(d["profit"] / base * 100, 1) if base else None
+        except (TypeError, ValueError):
+            pass
+    if d.get("cogs"):
+        d["roi_pct"] = round(d["profit"] / float(d["cogs"]) * 100, 1)
+    d["note"] = ((d.get("note") + " ") if d.get("note") else "") + (
+        "After a refund of %.2f (and %.2f of fees Amazon returned, net of its "
+        "refund commission)." % (back, fees_back))
+    return d
+
+
 def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None,
                    vat_rate=None):
     """What each LINE of an order brought in and what came off it.

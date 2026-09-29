@@ -1339,25 +1339,59 @@ function bulletControls(sku, i, total){
   const del  = `<button class="bctl del" title="Delete this bullet" onclick="removeBullet(${jsArg(sku)},${i})">✕</button>`;
   return `<span class="bctls">${up}${down}${del}</span>`;
 }
+/* THE BULLETS AS DRAWN. On the product page of a live listing the cards show
+ * Amazon's bullets (pdpAmazonCopy), which can differ from the draft's -- and
+ * the controls used to act on the draft's list, so ↓ on card 4 of 5 did
+ * nothing and ✕ on card 2 deleted a different sentence (PDP review, 30 Sep
+ * 2026). The controls now act on the list on screen; the result is saved as
+ * the draft's bullets, which is what Submit sends. */
+function _bulletsShown(sku, r){
+  try{
+    if(typeof PDP_SKU !== "undefined" && String(PDP_SKU) === String(sku) && typeof pdpRow === "function"){
+      const shown = pdpRow();
+      if(shown && shown.amazon_copy && Array.isArray(shown.bullets)) return shown.bullets.slice();
+    }
+  }catch(e){}
+  return (r.bullets || []).slice();
+}
+/* ASKED, NOT DONE SILENTLY: on a live listing the list on screen is Amazon's,
+ * and saving it replaces the draft's own bullets (an unsent rewrite). When the
+ * two differ, say so first (review, 30 Sep 2026). */
+async function _bulletsMayReplace(sku, r, list){
+  const draft = (r.bullets || []).map(function(b){ return String(b || "").trim(); }).join("\n");
+  const shown = list.map(function(b){ return String(b || "").trim(); }).join("\n");
+  if(draft === shown) return true;
+  return await uiConfirm("This listing's draft bullets differ from Amazon's, which are on screen.\n\n"
+    + "Doing this saves Amazon's bullets (with your change) as the draft, replacing the draft's own "
+    + "bullets. Nothing is sent to Amazon until you submit. Continue?");
+}
 async function addBullet(sku){
   const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
-  r.bullets=r.bullets||[];
-  if(r.bullets.length>=MAX_BULLETS){ toast("Amazon allows a maximum of 5 bullet points"); return; }
-  r.bullets.push("");
+  const list=_bulletsShown(sku, r);
+  if(list.length>=MAX_BULLETS){ toast("Amazon allows a maximum of 5 bullet points"); return; }
+  if(!await _bulletsMayReplace(sku, r, list)) return;
+  list.push("");
+  r.bullets=list;
   await _saveBullets(sku, r.bullets);
   _rebuildDrawerData(sku);
 }
 async function removeBullet(sku, i){
-  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r||!r.bullets) return;
-  if((r.bullets[i]||"").trim() && !await uiConfirm("Delete bullet "+(i+1)+"?")) return;
-  r.bullets.splice(i,1);                         // remove AND compact -> no empty slot
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
+  const list=_bulletsShown(sku, r); if(i<0||i>=list.length) return;
+  if((list[i]||"").trim() && !await uiConfirm("Delete bullet "+(i+1)+"?")) return;
+  if(!await _bulletsMayReplace(sku, r, list)) return;
+  list.splice(i,1);                              // remove AND compact -> no empty slot
+  r.bullets=list;
   await _saveBullets(sku, r.bullets);
   _rebuildDrawerData(sku);
 }
 async function moveBullet(sku, i, dir){
-  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r||!r.bullets) return;
-  const j=i+dir; if(j<0||j>=r.bullets.length) return;
-  const t=r.bullets[i]; r.bullets[i]=r.bullets[j]; r.bullets[j]=t;
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
+  const list=_bulletsShown(sku, r);
+  const j=i+dir; if(i<0||j<0||j>=list.length) return;
+  if(!await _bulletsMayReplace(sku, r, list)) return;
+  const t=list[i]; list[i]=list[j]; list[j]=t;
+  r.bullets=list;
   await _saveBullets(sku, r.bullets);
   _rebuildDrawerData(sku);
 }
@@ -2521,17 +2555,27 @@ function uploadMainImage(sku, inp){
   rd.readAsDataURL(f);
 }
 async function pushImageLive(sku, btn){
-  var r=(ROWS||[]).find(x=>String(x.sku)===String(sku));
-  if(!r){ toast('Listing not found'); return; }
+  // The row is only a hint (its product type): the SERVER reads the main image
+  // from the stored listing. Refusing when it was not in ROWS said "Listing not
+  // found" for every listing opened from Amazon's catalogue, even after a
+  // picture was put in its Main slot (PDP review, 30 Sep 2026).
+  var r=(ROWS||[]).find(x=>String(x.sku)===String(sku))
+     || ((typeof pdpCatalogueRow==='function') ? pdpCatalogueRow(sku) : null) || {};
+  // The account and marketplace it was pressed in, pinned across the dialog.
+  var _pin=(typeof acctId==='function')?acctId():'';
+  var _pinMkt=(typeof WS_MARKET!=='undefined')?WS_MARKET:'';
   if(!await uiConfirm("Send the current main image to the LIVE Amazon listing for "+sku+"?\n\nThis updates ONLY the main image on Amazon (no full resubmit). Amazon must be able to fetch the image, so it will be uploaded to your Drive and made public if it isn't already.")) return;
-  var old = btn?btn.textContent:'';
+  if((typeof acctId==='function' && acctId()!==_pin) || (typeof WS_MARKET!=='undefined' && WS_MARKET!==_pinMkt)){
+    toast('The account or marketplace changed while this was open, so nothing was sent.'); return;
+  }
+  var old = btn?btn.innerHTML:'';
   if(btn){ btn.disabled=true; btn.textContent='Pushing…'; }
   try{
     var res=await fetch('/listing/push_image',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({confirmed:true, sku:sku,
-        marketplace:(typeof WS_MARKET!=='undefined'?WS_MARKET:''),
+      body:JSON.stringify(acctBodyFor({confirmed:true, sku:sku,
+        marketplace:_pinMkt,
         product_type:(r.product_type||''),
-        id:(CUR_ACCOUNT&&CUR_ACCOUNT.id)||''})});
+        id:_pin}, _pin))});
     var j=await res.json();
     if(j.ok){
       toast('✓ Image sent to Amazon ('+(j.status||'accepted')+'). Amazon takes a few minutes to show it.');
@@ -2540,7 +2584,7 @@ async function pushImageLive(sku, btn){
       toast('Could not push image: '+(j.error||'unknown')+extra);
     }
   }catch(e){ toast('Push failed: '+e); }
-  finally{ if(btn){ btn.disabled=false; btn.textContent=old||'Push image to live'; } }
+  finally{ if(btn){ btn.disabled=false; if(old) btn.innerHTML=old; else btn.textContent='Push image to live'; } }
 }
 async function applyGen(sku, sidv){
   var out=document.getElementById('genresult_'+sidv);

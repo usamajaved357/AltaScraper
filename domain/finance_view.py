@@ -67,10 +67,19 @@ def overhead(config_path, wsid, mkt, start, end, totals):
     # P&L did not, so their "net profit" differed by the subscription.
     try:
         from domain import expenses as _exp
-        ov = _exp.overhead_for(config_path, wsid, mkt, start, end)
-    except Exception:
+        # The settlement tab's product rows carry a SKU's own postings (a
+        # removal fee, say), so the charge "no row carries" is measured
+        # against them there, not against the orders (review, 30 Sep 2026).
+        ov = _exp.overhead_for(config_path, wsid, mkt, start, end,
+                               attributed_by=("products" if (totals or {}).get("basis")
+                                              == "settlement" else "orders"))
+    except Exception as e:
         ov = {"amazon_account_charges": 0.0, "own_costs": 0.0,
-              "own_costs_detail": {"total": 0.0, "items": [], "recorded": 0}}
+              "own_costs_detail": {"total": 0.0, "items": [], "recorded": 0},
+              "errors": ["the account's own charges and costs could not be read (%s)" % e]}
+    # Said, not swallowed: a part that could not be read leaves the net profit
+    # below too high (review, 30 Sep 2026).
+    out["errors"] = list(ov.get("errors") or [])
     unatt = float(ov.get("amazon_account_charges") or 0.0)
     if unatt:
         out["items"].append({
@@ -79,6 +88,18 @@ def overhead(config_path, wsid, mkt, start, end, totals):
             "note": ("The monthly selling subscription is the usual one. "
                      "Amazon posts these against the account rather than a "
                      "sale, so no per-product row can carry them."),
+            "children": [],
+        })
+    # EVERY OTHER AMAZON POSTING, signed (postage labels, Vine, retrocharges ...;
+    # owner, 30 Sep 2026). Shown as a cost when it is one.
+    other = float(ov.get("amazon_other_transactions") or 0.0)
+    if other:
+        out["items"].append({
+            "label": "Other Amazon transactions",
+            "amount": round(-other, 2),
+            "note": ("Everything else Amazon posted to the account: postage "
+                     "labels bought through Amazon, Vine, tax corrections, "
+                     "removal revenue. A negative amount is money paid in."),
             "children": [],
         })
     man = ov["own_costs_detail"]
@@ -95,7 +116,7 @@ def overhead(config_path, wsid, mkt, start, end, totals):
                      for x in (man.get("items") or [])],
     })
 
-    out["total"] = round(unatt + float(man.get("total") or 0), 2)
+    out["total"] = round(unatt - other + float(man.get("total") or 0), 2)
     out["why"] = (
         "Amazon sends a type with every charge — storage, inbound "
         "transportation, disposal, deal participation — but this app keeps "

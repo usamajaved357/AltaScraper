@@ -35,6 +35,7 @@ placed. Mixing them produces a contribution per unit that is neither, and the
 difference is largest exactly when a period is busy.
 """
 from data import db as _db
+from domain import ad_cost as _adc
 from domain import sales_data as _sd
 
 
@@ -113,6 +114,8 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         "FROM ads_daily WHERE workspace_id=? AND marketplace=? "
         "  AND date>=? AND date<=? AND asin<>'*' GROUP BY asin",
         (workspace_id, marketplace, start, end)).fetchall()}
+    # The VAT on ads, where the account cannot reclaim it (domain/ad_cost).
+    ads = _adc.uplift(ads, _adc.product_ratio(config_path, workspace_id, marketplace, end, vat_rate))
 
     # WHO EACH ASIN IS, so the screen can say what the product is rather than
     # only B0H7N2Q5GG. A row you cannot identify at a glance is a row nobody
@@ -309,12 +312,14 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
             "AND asin<>'*' GROUP BY asin",
             (workspace_id, marketplace, start, end)):
         ads[r["asin"]] = _f(r["spend"])
-    acct_ads = conn.execute(
-        "SELECT SUM(spend) s FROM ads_daily WHERE workspace_id=? "
-        "AND marketplace=? AND date>=? AND date<=? AND asin='*'",
-        (workspace_id, marketplace, start, end)).fetchone()
-    acct_ad_spend = (None if not acct_ads or acct_ads["s"] is None
-                     else round(_f(acct_ads["s"]), 2))
+    # WHAT ADS COST, the one rule (domain/ad_cost; 30 Sep 2026): the Ads API
+    # where it covers the window, else Amazon's ad invoices, plus the VAT on
+    # ads where the account cannot reclaim it -- per product at the rate
+    # measured on the account's invoices.
+    _adw = _adc.for_window(config_path, workspace_id, marketplace, start, end,
+                           _adc.vat_registered(vat_rate))
+    ads = _adc.uplift(ads, _adw.get("vat_ratio"))
+    acct_ad_spend = _adw["cost"]
     ads_connected = bool(ads) or acct_ad_spend is not None
 
     names, parents = {}, {}

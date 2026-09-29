@@ -253,7 +253,38 @@ def for_window(config_path, workspace_id, marketplace, start, end):
     }
 
 
-def account_level_charge(config_path, workspace_id, marketplace, start, end):
+# The three fee kinds an account can be charged outside an order (30 Sep 2026).
+_FEES_SQL = ("SUM(COALESCE(other_fees,0)+COALESCE(fba_fees,0)"
+             "+COALESCE(promo_fees,0))")
+
+
+def _attributed_fees(conn, workspace_id, marketplace, start, end, by):
+    """The fees in the window that a row of the screen already carries -> float,
+    or None when there is nothing to compare with.
+
+    by="orders"    the postings attached to an order (order_fees) -- the order
+                   calendar, the P&L, the Sales screen;
+    by="products"  the per-product rows of finance_daily -- the Finance screen's
+                   settlement tab, whose product rows carry a SKU's removal
+                   fees too, which no order does."""
+    if by == "products":
+        r = conn.execute(
+            "SELECT %s o, COUNT(*) n FROM finance_daily WHERE workspace_id=? AND "
+            "marketplace=? AND asin<>'*' AND date>=? AND date<=?" % _FEES_SQL,
+            (workspace_id, marketplace, start, end)).fetchone()
+    else:
+        r = conn.execute(
+            "SELECT %s o, COUNT(*) n FROM order_fees WHERE workspace_id=? AND "
+            "marketplace=? AND substr(posted_date,1,10)>=? AND "
+            "substr(posted_date,1,10)<=?" % _FEES_SQL,
+            (workspace_id, marketplace, start, end)).fetchone()
+    if not r or not r["n"]:
+        return None
+    return float(r["o"] or 0)
+
+
+def account_level_charge(config_path, workspace_id, marketplace, start, end,
+                         attributed_by="orders"):
     """What Amazon charged the ACCOUNT that belongs to no order. -> float.
 
     The monthly selling subscription is the usual one. Amazon posts it against
@@ -273,10 +304,15 @@ def account_level_charge(config_path, workspace_id, marketplace, start, end):
     from profit as though it were income.
     """
     conn = _db.get_db(config_path)
+    # ALL THREE FEE KINDS, not only "other" (owner, 30 Sep 2026: every
+    # transaction in the account). Storage and inbound fees are FBA fees posted
+    # against no order, and a coupon's participation fee arrives as an account
+    # service fee -- both were charged, and neither reached any profit.
     charged = conn.execute(
-        "SELECT ROUND(SUM(COALESCE(other_fees,0)),2) o FROM finance_daily "
+        "SELECT ROUND(%s,2) o, ROUND(SUM(COALESCE(other_fees,0)),2) oth, "
+        "SUM(COALESCE(principal,0)) p FROM finance_daily "
         "WHERE workspace_id=? AND marketplace=? AND asin='*' "
-        "AND date>=? AND date<=?",
+        "AND date>=? AND date<=?" % _FEES_SQL,
         (workspace_id, marketplace, start, end)).fetchone()
     # BOTH SIDES ON THE SAME CALENDAR: the day Amazon POSTED the money.
     #
@@ -293,14 +329,146 @@ def account_level_charge(config_path, workspace_id, marketplace, start, end):
     # counts each posting once however many products the order had -- the
     # join to order_lines this replaces counted a three-product order three
     # times.
-    attributed = conn.execute(
-        "SELECT ROUND(SUM(COALESCE(other_fees,0)),2) o FROM order_fees "
-        "WHERE workspace_id=? AND marketplace=? "
-        "AND substr(posted_date,1,10)>=? AND substr(posted_date,1,10)<=?",
-        (workspace_id, marketplace, start, end)).fetchone()
-    gap = round(float((charged["o"] if charged else 0) or 0)
-                - float((attributed["o"] if attributed else 0) or 0), 2)
+    attributed = _attributed_fees(conn, workspace_id, marketplace, start, end,
+                                  attributed_by)
+    if not charged:
+        return 0.0
+    if attributed is None and float(charged["p"] or 0) > 0:
+        # SALES SETTLED BUT NO PER-ORDER POSTINGS KEPT (a window synced before
+        # order_fees existed, or its write failed). The shipments' FBA fees are
+        # then inside the '*' total with nothing to set them against, so only
+        # the "other" fees -- which no shipment carries -- are sure to belong to
+        # no order. The rule before 30 Sep 2026, kept for that case.
+        return max(0.0, round(float(charged["oth"] or 0), 2))
+    gap = round(float(charged["o"] or 0) - float(attributed or 0), 2)
     return max(0.0, gap)
+
+
+def account_adjustments(config_path, workspace_id, marketplace, start, end):
+    """Every other Amazon posting in the window, SIGNED: + money to you, - a
+    cost. -> float. Postage labels bought through Amazon, Vine enrolment, tax
+    retrocharges, removal revenue, anything Amazon adds tomorrow (finance_data
+    reads them into `adjustments`; owner, 30 Sep 2026)."""
+    r = _db.get_db(config_path).execute(
+        "SELECT ROUND(SUM(COALESCE(adjustments,0)),2) a FROM finance_daily "
+        "WHERE workspace_id=? AND marketplace=? AND asin='*' AND date>=? AND date<=?",
+        (workspace_id, marketplace, start, end)).fetchone()
+    return round(float((r["a"] if r else 0) or 0), 2)
+
+
+def apply_account_money(est, totals):
+    """Take the account's own money off a trading profit -> the same dict,
+    with `profit` now NET (the P&L's "Net profit"; owner, 30 Sep 2026: the
+    same profit on every screen). The trading figure is kept as
+    `profit_before_account`; the three parts are named so the working can be
+    shown. `totals` carries account_charges / other_amazon / own_costs for the
+    same window (sales_data.totals sums them from the rows the grid draws)."""
+    if not isinstance(est, dict) or est.get("profit") is None:
+        return est
+    ac = float((totals or {}).get("account_charges") or 0.0)
+    oa = float((totals or {}).get("other_amazon") or 0.0)
+    oc = float((totals or {}).get("own_costs") or 0.0)
+    est["profit_before_account"] = est["profit"]
+    est["account_charges"] = round(ac, 2)
+    est["other_amazon"] = round(oa, 2)
+    est["own_costs"] = round(oc, 2)
+    est["profit"] = round(float(est["profit"]) - ac + oa - oc, 2)
+    nr = est.get("net_revenue")
+    if nr:
+        est["margin_pct"] = round(est["profit"] / float(nr) * 100, 1)
+    return est
+
+
+def account_money_totals(config_path, workspace_id, marketplace, start, end):
+    """The three account-level lines for a window, from overhead_for (the
+    P&L's step) -> {account_charges, other_amazon, own_costs}, the shape
+    apply_account_money reads."""
+    ov = overhead_for(config_path, workspace_id, marketplace, start, end)
+    return {"account_charges": ov.get("amazon_account_charges") or 0.0,
+            "other_amazon": ov.get("amazon_other_transactions") or 0.0,
+            "own_costs": ov.get("own_costs") or 0.0,
+            "errors": ov.get("errors") or []}
+
+
+def amazon_charge_given_back(ov):
+    """How much of Amazon's measured account charge the owner's own entries
+    already cover in the window (overhead_for's dict) -> float >= 0."""
+    seen = float(ov.get("amazon_charge_seen") or 0.0)
+    return max(0.0, seen - float(ov.get("amazon_account_charges") or 0.0))
+
+
+def account_money_by_day(config_path, workspace_id, marketplace, start, end,
+                         fees_in_rows=False):
+    """The account's own money, per day -> {date: {account_charges,
+    other_amazon, own_costs}} -- for the Sales grid, so a week or a month there
+    is the P&L's NET profit (owner, 30 Sep 2026: accurate profit on every screen).
+
+    THE SAME TOTALS overhead_for gives the P&L, per calendar month of the
+    window, then placed on days:
+      account_charges  on the days Amazon posted them (each day's share of the
+                       month's positive gaps), so the subscription lands on its day;
+      other_amazon     exactly as posted, signed;
+      own_costs        spread evenly over the month's days in the window (they
+                       are monthly amounts; for_window apportions them by day).
+    So summing the days of any month gives that month's P&L lines to the penny.
+
+    fees_in_rows: the grid is on the MONEY calendar, where each day's row is
+    the account's '*' finance row and its fees already include every account
+    charge (sales_data.net_proceeds_for). Taking them off again counted the
+    subscription twice (review, 30 Sep 2026). Then account_charges is only the
+    part of Amazon's charge the owner ALSO entered as his own cost, given back
+    (<= 0) -- overhead_for's same "not twice" rule.
+    """
+    import datetime as _dtm
+    conn = _db.get_db(config_path)
+    d0 = _dtm.date.fromisoformat(str(start)[:10])
+    d1 = _dtm.date.fromisoformat(str(end)[:10])
+    out = {}
+    m0 = d0
+    while m0 <= d1:
+        nxt = (m0.replace(day=28) + _dtm.timedelta(days=4)).replace(day=1)
+        m1 = min(d1, nxt - _dtm.timedelta(days=1))
+        s, e = m0.isoformat(), m1.isoformat()
+        ov = overhead_for(config_path, workspace_id, marketplace, s, e)
+        days = [(m0 + _dtm.timedelta(days=i)).isoformat() for i in range((m1 - m0).days + 1)]
+        for d in days:
+            out[d] = {"account_charges": 0.0, "other_amazon": 0.0, "own_costs": 0.0}
+        # Where the month's account charge fell: each day's own gap.
+        gaps = {}
+        for r in conn.execute(
+                "SELECT date, %s c, "
+                "SUM(COALESCE(adjustments,0)) a FROM finance_daily WHERE workspace_id=? AND "
+                "marketplace=? AND asin='*' AND date>=? AND date<=? GROUP BY date" % _FEES_SQL,
+                (workspace_id, marketplace, s, e)):
+            gaps[r["date"]] = float(r["c"] or 0)
+            if r["date"] in out:
+                out[r["date"]]["other_amazon"] = round(float(r["a"] or 0), 4)
+        for r in conn.execute(
+                "SELECT substr(posted_date,1,10) d, %s c FROM order_fees WHERE workspace_id=? "
+                "AND marketplace=? AND substr(posted_date,1,10)>=? AND "
+                "substr(posted_date,1,10)<=? GROUP BY d" % _FEES_SQL,
+                (workspace_id, marketplace, s, e)):
+            gaps[r["d"]] = gaps.get(r["d"], 0.0) - float(r["c"] or 0)
+        pos = {d: g for d, g in gaps.items() if g > 0 and d in out}
+        amazon = float(ov.get("amazon_account_charges") or 0.0)
+        if fees_in_rows:
+            amazon = 0.0
+            back = round(amazon_charge_given_back(ov), 4)
+            if back and days:
+                out[days[-1]]["account_charges"] = -back
+        tot = sum(pos.values())
+        if amazon and tot:
+            for d, g in pos.items():
+                out[d]["account_charges"] = round(amazon * g / tot, 4)
+        elif amazon and days:
+            out[days[-1]]["account_charges"] = round(amazon, 4)
+        own = float(ov.get("own_costs") or 0.0)
+        if own and days:
+            per = own / len(days)
+            for d in days:
+                out[d]["own_costs"] = round(per, 4)
+        m0 = nxt
+    return out
 
 
 def _is_amazon_charge(expense):
@@ -336,7 +504,8 @@ def _subscription_recorded(config_path, workspace_id, marketplace):
                for r in all_for(config_path, workspace_id, marketplace))
 
 
-def overhead_for(config_path, workspace_id, marketplace, start, end):
+def overhead_for(config_path, workspace_id, marketplace, start, end,
+                 attributed_by="orders"):
     """The step from the headline profit to NET profit. -> a dict.
 
         net profit = profit (the Sales card's figure)
@@ -355,11 +524,16 @@ def overhead_for(config_path, workspace_id, marketplace, start, end):
     the remainder. So an entry starting 1 Sep stops nothing in August, and an
     entry for less than Amazon charged still leaves the difference to come off.
     """
+    # WHAT COULD NOT BE READ IS SAID (`errors`), never swallowed: a missing
+    # part leaves net profit higher than it is (review, 30 Sep 2026). The
+    # P&L, the Finance screen and the Sales card print it.
+    errors = []
     try:
         charge = account_level_charge(config_path, workspace_id, marketplace,
-                                      start, end)
-    except Exception:
+                                      start, end, attributed_by=attributed_by)
+    except Exception as e:
         charge = 0.0
+        errors.append("Amazon's account charges could not be read (%s)" % e)
     man = for_window(config_path, workspace_id, marketplace, start, end)
     covered = round(sum(float(i.get("in_window") or 0.0)
                         for i in (man.get("items") or [])
@@ -367,15 +541,24 @@ def overhead_for(config_path, workspace_id, marketplace, start, end):
     amazon = round(max(0.0, charge - covered), 2)
     recorded_already = charge > 0 and covered > 0
     own = round(float(man.get("total") or 0.0), 2)
+    try:
+        other = account_adjustments(config_path, workspace_id, marketplace, start, end)
+    except Exception as e:
+        other = 0.0
+        errors.append("Amazon's other postings could not be read (%s)" % e)
     return {
+        "errors": errors,
         "amazon_account_charges": amazon,
+        # Signed: + money Amazon paid in, - a cost. Comes off (or goes on) net
+        # profit beside the account charges.
+        "amazon_other_transactions": other,
         "amazon_charge_seen": round(charge, 2),
         "amazon_charge_in_own_costs": bool(recorded_already),
         "amazon_charge_covered_by_own": covered,
         "own_costs": own,
         "own_costs_recorded": bool(man.get("recorded")),
         "own_costs_detail": man,
-        "total": round(amazon + own, 2),
+        "total": round(amazon + own - other, 2),
     }
 
 

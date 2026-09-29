@@ -639,52 +639,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         "product_type": _pt,
                         "status": (summaries[0].get("status", []) if summaries else [])})
 
-    @app.route("/listing/push_image", methods=["POST"])
-    def listing_push_image():
-        """Push ONLY the main image to the LIVE Amazon listing via patchListingsItem.
-        Amazon must be able to fetch the image over the public internet, so we resolve
-        the row's main image to a PUBLIC Drive direct URL (uploading to Drive first if
-        it isn't there yet). Local /media/... paths are never sent to Amazon."""
-        try:
-            import accounts as _acc
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
-        b = request.get_json(force=True) or {}
-        if not b.get("confirmed"):
-            return jsonify({"ok": False, "error": "not confirmed"}), 400
-        # A WRITE to a LIVE listing (patchListingsItem). It took `id` from the
-        # caller and used that account's credentials, so naming another account
-        # here would push an image onto their shopfront.
-        _bad = _wrong_account(b.get("id"), "listing")
-        if _bad:
-            return _bad
-        # WRITE (patchListingsItem). A workspace that owns its Amazon app passes
-        # straight through -- this only stops read-only/borrowing workspaces, which
-        # would otherwise patch the LENDER's listing.
-        try:
-            _require_publish()
-        except Exception as _e:
-            return jsonify({"ok": False, "read_only": True, "error": str(_e)}), 403
-        sku = (b.get("sku", "") or "").strip()
-        if not sku:
-            return jsonify({"ok": False, "error": "missing sku"}), 400
-        aid = b.get("id", "") or _rqa.current(_state)
-        # THE ROWS AND THE PUSH MUST BE ONE ACCOUNT. The image is read from the
-        # rows _ws() opens (the account the request names, else the open one)
-        # and pushed with `aid`'s credentials -- with two tabs and a SKU used on
-        # both accounts, B's live listing could get A's main image (two-tab
-        # review). Refuse rather than guess.
-        if str(aid) != str(_rqa.current(_state)):
-            return jsonify({"ok": False, "error":
-                            "This page is showing %s but %s is open in another tab, so "
-                            "no image was pushed. Open %s again in this tab and retry."
-                            % (aid, _rqa.current(_state) or "no account", aid)}), 409
-        from routes import scope as _scope_mod
-        mkt = (b.get("marketplace", "") or request.args.get("marketplace")
-               or _scope_mod.marketplace(state=_state, account=_active_account() or {})
-               or "").upper()
-        ptype = b.get("product_type", "") or ""
-
+    def _push_main_image(b, sku):
+        """The main image to push: the one given, else the stored row's --
+        a str, or the route's error response. Moved out of
+        listing_push_image verbatim (architecture guard, 30 Sep 2026)."""
         # 1) find the row's current main image (what the user saved via "use as main")
         img = (b.get("image_url", "") or "").strip()
         if not img:
@@ -705,10 +663,33 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         img = ""
         if not img:
             return jsonify({"ok": False, "error": "no main image found on this listing"}), 400
+        return img
 
+    def _push_public_url(img, sku):
+        """A public address Amazon can fetch for `img` -- a str, or the
+        route's error response. Moved out of listing_push_image verbatim
+        (architecture guard, 30 Sep 2026)."""
         # 2) resolve to a PUBLIC url Amazon can fetch
+        # THIS APP'S OWN /media/ ADDRESS IS NOT PUBLIC: it sits behind the login
+        # (only the signed /img/<token>/ one is open). Read it as the local path
+        # it is, so it goes through the same conversion (review, 30 Sep 2026).
+        _own = re.match(r"^https?://([^/]+)(/media/.+)$", img, re.I)
+        if _own:
+            try:
+                _here = (request.host or "").lower()
+            except Exception:
+                _here = ""
+            try:
+                from domain import image_urls as _iu_b
+                _bh = re.sub(r"^https?://", "", str(_iu_b.base_url(CONFIG_PATH) or ""), flags=re.I).split("/")[0].lower()
+            except Exception:
+                _bh = ""
+            if _own.group(1).lower() in {h for h in (_here, _bh) if h}:
+                img = _own.group(2)
         public_url = ""
-        if re.match(r"^https?://", img, re.I) and "/media/" not in img:
+        # A LOCAL path starts with /media/; a full https address that happens to
+        # contain /media/ (the app's own public one) is already public.
+        if re.match(r"^https?://", img, re.I) and not img.startswith("/media/"):
             # already a public URL (e.g. an lh3 Drive link or competitor URL)
             public_url = img
         else:
@@ -761,6 +742,74 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                             "images without Google Drive."}), 400
         if not public_url:
             return jsonify({"ok": False, "error": "could not resolve a public image URL for Amazon"}), 400
+        return public_url
+
+    @app.route("/listing/push_image", methods=["POST"])
+    def listing_push_image():
+        """Push ONLY the main image to the LIVE Amazon listing via patchListingsItem.
+        Amazon must be able to fetch the image over the public internet, so we resolve
+        the row's main image to a PUBLIC Drive direct URL (uploading to Drive first if
+        it isn't there yet). Local /media/... paths are never sent to Amazon."""
+        try:
+            import accounts as _acc
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        b = request.get_json(force=True) or {}
+        if not b.get("confirmed"):
+            return jsonify({"ok": False, "error": "not confirmed"}), 400
+        # A WRITE to a LIVE listing (patchListingsItem). It took `id` from the
+        # caller and used that account's credentials, so naming another account
+        # here would push an image onto their shopfront.
+        _bad = _wrong_account(b.get("id"), "listing")
+        if _bad:
+            return _bad
+        # WRITE (patchListingsItem). A workspace that owns its Amazon app passes
+        # straight through -- this only stops read-only/borrowing workspaces, which
+        # would otherwise patch the LENDER's listing.
+        try:
+            _require_publish()
+        except Exception as _e:
+            return jsonify({"ok": False, "read_only": True, "error": str(_e)}), 403
+        sku = (b.get("sku", "") or "").strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "missing sku"}), 400
+        aid = b.get("id", "") or _rqa.current(_state)
+        # THE ROWS AND THE PUSH MUST BE ONE ACCOUNT. The image is read from the
+        # rows _ws() opens (the account the request names, else the open one)
+        # and pushed with `aid`'s credentials -- with two tabs and a SKU used on
+        # both accounts, B's live listing could get A's main image (two-tab
+        # review). Refuse rather than guess.
+        if str(aid) != str(_rqa.current(_state)):
+            return jsonify({"ok": False, "error":
+                            "This page is showing %s but %s is open in another tab, so "
+                            "no image was pushed. Open %s again in this tab and retry."
+                            % (aid, _rqa.current(_state) or "no account", aid)}), 409
+        from routes import scope as _scope_mod
+        mkt = (b.get("marketplace", "") or request.args.get("marketplace")
+               or _scope_mod.marketplace(state=_state, account=_active_account() or {})
+               or "").upper()
+        ptype = b.get("product_type", "") or ""
+
+        img = _push_main_image(b, sku)
+        if not isinstance(img, str):
+            return img
+        # Never somebody else's photograph as the main image (the submit's rule,
+        # domain/image_urls.is_ours; review, 30 Sep 2026).
+        from domain import image_urls as _iu_own
+        if not _iu_own.is_ours(CONFIG_PATH, img):
+            return jsonify({"ok": False, "error": (
+                "The main image on this listing is the source listing's own "
+                "photograph, not yours, so it is not sent. Upload or generate your "
+                "own picture for Main first.")}), 400
+
+        public_url = _push_public_url(img, sku)
+        if not isinstance(public_url, str):
+            return public_url
+        # The same check the per-slot push makes: an address Amazon can reach.
+        from listing import images as _img_chk
+        _bad = _img_chk.check_url(public_url)
+        if _bad:
+            return jsonify({"ok": False, "error": _bad}), 400
 
         # 3) patch ONLY the main image on the live listing (reuse the gated push)
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
@@ -802,7 +851,20 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             from api import amazon_listings as _al
         except Exception as e:
             return jsonify({"ok": False, "error": f"sp_api Listings not available: {e}"}), 500
-        res = _al.patch(creds, mkt, seller, sku, mid, ptype or "PRODUCT", patches,
+        # THE LISTING'S OWN PRODUCT TYPE, never a guessed "PRODUCT" (Rule 4):
+        # the row often has none, and a patch filed under the wrong type was never
+        # shown to be accepted. Read from Amazon, as /listing/image_push does.
+        if not ptype:
+            try:
+                ptype = str((_al.get_item(creds, mkt, seller, sku, mid) or {}).get("product_type") or "")
+            except Exception:
+                ptype = ""
+        if not ptype:
+            return jsonify({"ok": False, "error": (
+                "Amazon did not say what product type %s is, so the image was not "
+                "sent (it is filed under the type). Open the listing once so its "
+                "type is read, then try again." % sku)}), 502
+        res = _al.patch(creds, mkt, seller, sku, mid, ptype, patches,
                         issue_locale=("en_US" if mkt == "US" else "en_GB"))
         if res["status"] != _al.OK:
             why = _al.refusal_text(res, "Amazon rejected it")   # the one wording

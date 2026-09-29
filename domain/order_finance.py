@@ -103,7 +103,10 @@ def parse_by_order(payload):
                 r["promos"] += -_fd._amt(p.get("PromotionAmount"))
 
     # ---- refunds: money going back, against the order it came from ---------
-    for s in (ev.get("RefundEventList") or []):
+    # Chargebacks and A-to-z guarantee claims take the money back the same way
+    # (same shape), so they count against the order too (30 Sep 2026).
+    for s in ((ev.get("RefundEventList") or []) + (ev.get("ChargebackEventList") or [])
+              + (ev.get("GuaranteeClaimEventList") or [])):
         oid = str(s.get("AmazonOrderId") or "")
         posted = _fd._day(s.get("PostedDate"))
         if not oid or not posted:
@@ -120,15 +123,25 @@ def parse_by_order(payload):
                 amt = -_fd._amt(ch.get("ChargeAmount"))
                 if t in _fd._TAX_TYPES:
                     r["refund_tax"] += amt
-                elif t in _fd._REVENUE_TYPES:
+                elif t in _fd._REVENUE_TYPES or t.replace(" ", "") in ("returnshipping",
+                                                                        "restockingfee"):
+                    # Return postage / restocking go with the refund they belong to.
                     r["refunds"] += amt
+            # The discount you funded, posted back on a refund: the buyer got
+            # the price LESS it back, so it makes the refund smaller -- on the
+            # refund's own date. Booked against `promos` it moved the ORDER's
+            # month and made a refund-only row look like a settled sale
+            # (review, 30 Sep 2026). finance_data reads it the same way.
+            for p in (it.get("PromotionAdjustmentList") or []):
+                r["refunds"] -= _fd._amt(p.get("PromotionAmount"))
             for f in (it.get("ItemFeeAdjustmentList") or []):
                 # The part of the fee Amazon hands back with a refund.
                 r["refund_fees_returned"] += _fd._amt(f.get("FeeAmount"))
 
     # ---- everything with no order: counted, never guessed onto one ---------
     for k, v in ev.items():
-        if k in ("ShipmentEventList", "RefundEventList"):
+        if k in ("ShipmentEventList", "RefundEventList", "ChargebackEventList",
+                 "GuaranteeClaimEventList"):
             continue
         if isinstance(v, list):
             skipped += sum(1 for x in v
@@ -164,6 +177,28 @@ def store(config_path, workspace_id, marketplace, rows):
         n += 1
     conn.commit()
     return n
+
+
+def refund_for_order(config_path, workspace_id, marketplace, order_id):
+    """One order's refunds, from its own postings -> {refunds, refund_tax,
+    refund_fees_returned, refund_units} or None. refund_fees_returned is SIGNED:
+    fees Amazon handed back less the RefundCommission it kept (30 Sep 2026)."""
+    if not order_id:
+        return None
+    try:
+        r = _db.get_db(config_path).execute(
+            "SELECT SUM(COALESCE(refunds,0)) refunds, SUM(COALESCE(refund_tax,0)) refund_tax, "
+            "SUM(COALESCE(refund_fees_returned,0)) refund_fees_returned, "
+            "SUM(COALESCE(refund_units,0)) refund_units FROM order_fees "
+            "WHERE workspace_id=? AND marketplace=? AND order_id=?",
+            (workspace_id, marketplace, str(order_id))).fetchone()
+    except Exception:
+        return None
+    if not r or not (r["refunds"] or r["refund_fees_returned"]):
+        return None
+    return {k: round(float(r[k] or 0), 2) for k in ("refunds", "refund_tax",
+                                                   "refund_fees_returned")} | {
+        "refund_units": int(r["refund_units"] or 0)}
 
 
 def by_order_date(config_path, workspace_id, marketplace, start, end):

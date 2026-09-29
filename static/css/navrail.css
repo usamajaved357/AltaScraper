@@ -1,7 +1,7 @@
 /* static/css/navrail.css -- the always-visible icon rail (Direction A,
    prototype A; owner 29 Sep 2026). Behaviour: static/js/navrail.js.
 
-   64px, below the 40px app bar, at the left of every screen wider than the
+   80px (owner, 30 Sep 2026: every name readable -- "Invent..." and a cut-off "Settings" at 64px), below the 40px app bar, at the left of every screen wider than the
    phone breakpoint (860px, mobile.css). The page is moved right by the rail's
    width rather than covered by it. Layers (design-system.md section 7): above
    the page and the app bar's shadow, BELOW the overlay menu (scrim 65, sidebar
@@ -9,23 +9,19 @@
 
 .navrail{ display:none; }
 
-@media (max-width: 860px){
-  #railshow{ display:none !important; }     /* no rail on a phone to bring back */
-}
-
 @media (min-width: 861px){
   /* Only beside an open workspace: the accounts grid and the first paint have
      no screens to go to. */
-  body:not(.railoff):has(#workspace.show) .navrail{
+  body:has(#workspace.show) .navrail{
     display:flex; flex-direction:column; align-items:stretch; gap:4px;
-    position:fixed; left:0; top:40px; bottom:0; width:64px; z-index:19;
+    position:fixed; left:0; top:40px; bottom:0; width:80px; z-index:19;
     padding:8px 6px; overflow-y:auto; overflow-x:hidden;
     background:var(--as-bg-rail); border-right:1px solid var(--as-border-subtle);
   }
-  body:not(.railoff) #workspace.show{ padding-left:64px; }
+  #workspace.show{ padding-left:80px; }
   /* The one bar pinned to the page's left edge (listrow_edit.css): it starts
      after the rail, or it covers the rail's Menu and Hide buttons. */
-  body:not(.railoff) .lr-savebar{ left:64px; }
+  .lr-savebar{ left:80px; }
 }
 
 .nr-btn{
@@ -52,7 +48,7 @@
 
 /* The group's screens, beside the rail. */
 .nr-fly{
-  position:fixed; left:70px; z-index:85; min-width:220px; max-height:calc(100vh - 56px);
+  position:fixed; left:86px; z-index:85; min-width:220px; max-height:calc(100vh - 56px);
   overflow-y:auto; padding:4px;
   background:var(--as-surface-raised); border:1px solid var(--as-border);
   border-radius:var(--as-radius-lg); box-shadow:var(--as-shadow-dropdown);

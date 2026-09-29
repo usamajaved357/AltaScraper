@@ -94,6 +94,8 @@ LINES = (
     # selling subscription. Measured, so it comes off; not when it is already
     # recorded as one of your own costs below (expenses.overhead_for).
     ("account_charges", "Amazon charges on the account", -1),
+    # Every other Amazon posting, signed (postage labels, Vine, retrocharges ...).
+    ("other_amazon", "Other Amazon transactions", +1),
     ("manual_expenses", "Your own costs", -1),
     ("profit", "Net profit", 0),
 )
@@ -227,14 +229,21 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     out = {"ok": True, "workspace": workspace_id, "marketplace": marketplace,
            "start": start, "end": end, "notes": [], "basis": {}}
 
-    # ---- advertising, as measured for the whole account ------------------
-    ad = conn.execute(
-        "SELECT ROUND(SUM(COALESCE(spend,0)),2) s FROM ads_daily "
-        "WHERE workspace_id=? AND marketplace=? AND asin='*' "
-        "AND date>=? AND date<=?",
-        (workspace_id, marketplace, start, end)).fetchone()
-    ads_connected = bool(ad and ad["s"] is not None)
-    ad_spend = _f(ad["s"]) if ad else 0.0
+    # ---- advertising, as it COST the account --------------------------------
+    # The one rule (domain/ad_cost): the Ads API where it covers the window,
+    # else Amazon's ad invoices; plus the VAT on ads for an account that cannot
+    # reclaim it (owner, 30 Sep 2026).
+    from domain import ad_cost as _adc
+    _ad = _adc.for_window(config_path, workspace_id, marketplace, start, end,
+                          # Registered / not / NOT SET (unknown: no VAT added,
+                          # said) -- the one test, as the Sales screen uses it.
+                          vat_registered=_adc.vat_registered(vat_rate))
+    ads_connected = _ad["cost"] is not None
+    ad_spend = _f(_ad["cost"]) if ads_connected else 0.0
+    out["ads_source"] = _ad["source"]
+    out["ads_vat_added"] = _ad["vat_added"]
+    if _ad.get("note"):
+        out["notes"].append(_ad["note"])
 
     # ---- everything down to the headline profit: ONE calculation --------
     est = _op.for_period(config_path, workspace_id, marketplace, start, end,
@@ -273,13 +282,20 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     # and the Finance screen asks it the same question (Rule 12).
     try:
         ov = _exp.overhead_for(config_path, workspace_id, marketplace, start, end)
-    except Exception:
+    except Exception as e:
         ov = {"amazon_account_charges": 0.0, "own_costs": 0.0,
               "own_costs_detail": {"total": 0.0, "count": 0, "recorded": 0,
-                                   "items": []}}
+                                   "items": []},
+              "errors": ["the account's own charges and costs could not be read (%s)" % e]}
+    # SAID, NEVER SILENT: a part that could not be read leaves profit higher
+    # than it is (review, 30 Sep 2026).
+    for _e in (ov.get("errors") or []):
+        out["notes"].append("Net profit may be too high: %s." % _e)
     man = ov["own_costs_detail"]
     manual = round(float(man.get("total") or 0), 2)
     account_charges = float(ov.get("amazon_account_charges") or 0.0)
+    # Every other Amazon posting, signed (+ money in, - a cost; 30 Sep 2026).
+    other_amazon = float(ov.get("amazon_other_transactions") or 0.0)
 
     # A category Amazon has itemised nothing for is UNKNOWN, not zero -- see
     # _FEE_LINES. Where it HAS itemised some of the window, the figure is real
@@ -307,7 +323,7 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     refunds = est.get("refunds") or 0.0
     net_sales = round(sales - float(vat_amount or 0.0) - refunds, 2)
     operating = est["profit"]
-    profit = round(operating - account_charges - manual, 2)
+    profit = round(operating - account_charges - manual + other_amazon, 2)
     missing_units = int(est.get("missing_units") or 0)
     total_units = int(est.get("units") or 0)
 
@@ -350,6 +366,7 @@ def build(config_path, workspace_id, marketplace, start, end, vat_rate=None):
         "ad_spend": ad_spend if ads_connected else None,
         "profit_before_own_costs": operating,
         "account_charges": round(account_charges, 2),
+        "other_amazon": round(other_amazon, 2),
         "account_charge_in_own_costs": bool(ov.get("amazon_charge_in_own_costs")),
         # RECORDED NONE AND SPENT NONE ARE DIFFERENT. An account where nobody
         # has entered a single cost reports None, so the line reads "not

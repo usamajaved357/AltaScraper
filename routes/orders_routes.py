@@ -1,4 +1,4 @@
-﻿"""routes/orders_routes.py -- orders from every account, on one screen.
+"""routes/orders_routes.py -- orders from every account, on one screen.
 
     GET  /orders/list     recent orders, this account or all of them
     GET  /orders/detail   one order's lines
@@ -347,6 +347,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 d = _ov.profit_detail(items, r.get("total"), _cf,
                                       fees=_ff(r["order_id"], r.get("total")),
                                       vat_rate=_vat_of(r["account_id"]))
+                _refund_off(d, r["account_id"], r.get("order_id"), r.get("total"))
+                r["refunded"] = d.get("refunded")
                 r["profit"] = d["profit"]
                 r["margin_pct"] = d["margin_pct"]
                 r["roi_pct"] = d["roi_pct"]
@@ -548,6 +550,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                  "title": str(r["title"] or ""),
                  "qty": int(r["units"] or 0) or 1} for r in rows]
 
+    def _refund_off(d, account_id, order_id, order_total):
+        """Take this order's refunds off its profit dict `d` (30 Sep 2026) --
+        the one call the list, the items panel and the detail share."""
+        from domain import order_finance as _ofin
+        _ov.apply_refund(d, _ofin.refund_for_order(
+            CONFIG_PATH, account_id, _mkt_of(account_id), order_id),
+            vat_rate=_vat_of(account_id), order_total=order_total)
+        return d
+
     def _store_items(account_id, marketplace, order_id, items, purchased=""):
         """Keep what Amazon just told us, so the next visit is free."""
         try:
@@ -565,8 +576,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                               "currency": it.get("currency") or "",
                               "status": it.get("status") or ""}
                              for it in (items or [])])
-        except Exception:
-            pass                     # a cache must never be the reason this fails
+        except Exception as _e:
+            # a cache must never be the reason this fails -- but say so, or a
+            # store that never writes costs an Amazon call on every visit.
+            print("[orders] could not keep the lines of %s: %s" % (order_id, _e))
 
     def _items_for(order_id, account_id, purchased=""):
         """One order's lines, or None if Amazon would not say.
@@ -668,11 +681,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             d = _ov.profit_detail(items, w.get("total"), _cf,
                                   fees=_ff(oid, w.get("total")),
                                   vat_rate=_vat_of(aid))
+            _refund_off(d, aid, oid, w.get("total"))
             it = _ov.item_summary(items)
             it["img"] = _cat_look(pics, it).get("img") or ""
             out[oid] = {"item": it, "lines": len(items),
                         "profit": d["profit"], "margin_pct": d["margin_pct"],
                         "roi_pct": d["roi_pct"], "cogs": d["cogs"],
+                        "refunded": d.get("refunded"),
                         "profit_note": d["note"], "fees": d.get("fees"),
                         "fees_basis": d.get("fees_basis")}
         note = ""
@@ -753,6 +768,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                            row.get("order_id") or oid)
         bd = _ov.line_breakdown(items, row.get("total"), _cf, fees=fees,
                                 vat_rate=_vat_of(aid))
+        # THE SAME REFUND THE LIST TAKES OFF, so the panel and the row it was
+        # opened from show one profit (review, 30 Sep 2026).
+        _refund_off(bd["totals"], aid, oid, row.get("total"))
+        row["refunded"] = bd["totals"].get("refunded")
         row["profit"] = bd["totals"]["profit"]
         row["margin_pct"] = bd["totals"]["margin_pct"]
         row["profit_note"] = bd["totals"]["note"]

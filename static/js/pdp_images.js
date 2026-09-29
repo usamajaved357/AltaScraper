@@ -124,7 +124,7 @@ function _pdpiEmpty(sku, productType){
   return {sku: String(sku || ""), slots: [], live: false, checked: false,
           note: "", productType: String(productType || ""), library: [],
           loading: false, err: "", dragUrl: "", comp: null, compTab: "ebay",
-          compLoading: false,
+          compLoading: false, issues: [], touched: {},
           // The account and marketplace this state was loaded for (pdpContext,
           // pdp.js). The same SKU in another context is another listing.
           ctx: (typeof pdpContext === "function") ? pdpContext() : ""};
@@ -191,6 +191,12 @@ async function _pdpiLoadSlots(){
     mine.live = !!j.live;
     mine.checked = !!j.checked;
     mine.note = j.note || "";
+    // Amazon's problems with THIS listing's images (an image it accepted and
+    // then could not fetch or rejected). Shown on the tab, not dropped.
+    mine.issues = (j.issues || []).filter(function(i){
+      return /image/i.test(JSON.stringify((i && (i.attributeNames || i.attributeName)) || "")
+                           + " " + ((i && i.message) || ""));
+    });
     if(j.product_type) mine.productType = j.product_type;
   }catch(e){ if(PDPI === mine) mine.err = String(e); }
 }
@@ -252,6 +258,9 @@ async function pdpImgAssign(slotKey, url, opts){
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)})).json();
     if(!j || !j.ok){ toast("Could not assign: " + ((j && j.error) || "unknown")); return false; }
+    // Changed on this page: what "Push to Amazon" will send (_pdpiChanged) --
+    // only while this is still the same listing in the same account.
+    if(PDPI.sku === sku && (typeof pdpContext !== "function" || pdpContext() === ctx)){ PDPI.touched = PDPI.touched || {}; if(url) PDPI.touched[slotKey] = true; else delete PDPI.touched[slotKey]; }
     // The server saved it to the account named when it was sent. If the
     // account or marketplace has changed since, the row in ROWS with this SKU
     // is ANOTHER account's: leave it alone (pdpContext, pdp.js).
@@ -478,32 +487,115 @@ function _pdpiSection(title, sub, body, right){
        + '</div>' + body + '</div>';
 }
 
-/* "X of N slots filled · these go live when you submit", with Push to Amazon
- * and Upload image beside it.
+/* "X of N slots filled", with Push to Amazon and Upload image beside it.
  *
- * PUSH TO AMAZON is pushImageLive (listings.js) -- the existing single-image
- * push of the MAIN picture to a live listing. It is offered only on a live
- * listing; on a draft there is nothing to push to, and everything in the slots
- * goes with Submit. */
+ * PUSH TO AMAZON is pdpImgPushChanged (below): on a live listing it sends the
+ * slots changed on this page, and any Amazon holds no picture in, one by one
+ * through /listing/image_push. On a draft there is nothing to push to, and
+ * everything in the slots goes with Submit. */
+/* THE SLOTS WHOSE PICTURE DIFFERS FROM WHAT AMAZON HOLDS -- what "Push to
+ * Amazon" sends on a live listing. Every one of them, not only Main: pictures
+ * put in PT01-PT08 on a live listing used to reach Amazon only through a full
+ * Submit, which is what "pdp does not upload images to amazon" was (owner, 30
+ * Sep 2026). */
+function _pdpiChanged(){
+  const assigned = _pdpiAssignedNow();
+  const touched = PDPI.touched || {};
+  return (PDPI.slots || []).filter(function(s){
+    const d = assigned[s.key] || "";
+    if(!d) return false;
+    // NOT "differs from Amazon's address": Amazon re-hosts every picture, so
+    // its URL never equals the one sent, and every filled slot would look
+    // changed and be re-sent. A slot counts when it was changed on this page,
+    // or when Amazon holds nothing there yet.
+    return !!touched[s.key] || !s.current;
+  });
+}
+
 function _pdpiStatusLine(){
   const all = PDPI.slots || [];
   const assigned = _pdpiAssignedNow();
   const filled = all.filter(function(s){ return assigned[s.key] || s.current; }).length;
-  const push = PDPI.live
-    ? '<button class="pdpi-btn" onclick="pushImageLive(' + jsArg(PDPI.sku) + ',this)"'
-      + ' title="Send the main image to the live Amazon listing now — the image only, no resubmit">'
-      + '<i class="ti ti-cloud-upload"></i> Push to Amazon</button>'
+  const ro = (typeof window !== "undefined" && window.WS_READONLY);
+  const changed = _pdpiChanged();
+  let push = "";
+  if(PDPI.live && !ro){
+    push = changed.length
+      ? '<button class="pdpi-btn" onclick="pdpImgPushChanged(this)"'
+        + ' title="Send the ' + changed.length + ' picture(s) that differ from Amazon to the live listing now -- the images only, no resubmit">'
+        + '<i class="ti ti-cloud-upload"></i> Push ' + changed.length + ' to Amazon</button>'
+      : '<button class="pdpi-btn" disabled title="Nothing new to send: put a picture in a slot first.">'
+        + '<i class="ti ti-cloud-upload"></i> Push to Amazon</button>';
+  }
+  // WHY THERE IS NO PUSH, said rather than silently missing.
+  const why = ro ? "read-only workspace: nothing can be sent to Amazon from here"
+            : (!PDPI.live ? "Amazon does not show this SKU as a live listing here, so the pictures go with Submit" : "");
+  const issues = (PDPI.issues || []).length
+    ? '<div class="pdpi-note bad" style="margin-top:6px"><b>Amazon reports a problem with this listing\'s images:</b> '
+      + PDPI.issues.slice(0, 3).map(function(i){ return esc(i.message || i.code || ""); }).join(" · ") + '</div>'
     : "";
-  return '<div class="pdpi-status" title="Assigning writes to the draft — what Submit '
-    + 'will send. It does not push to Amazon; only Push to Amazon does, for the main image.">'
+  return '<div class="pdpi-status" title="Putting a picture in a slot saves it to the draft -- what Submit will send. On a live '
+    + 'listing, Push to Amazon sends the slots you changed here, and any Amazon has no picture in; otherwise Submit sends them.">'
     + '<i class="ti ti-photo"></i>'
     + '<span>' + filled + ' of ' + all.length + ' slots filled · '
-    + (PDPI.live ? 'changes go live when you submit' : 'these go live when you submit')
+    + (PDPI.live ? (changed.length ? changed.length + ' to send to Amazon' : 'nothing new to send')
+                 : 'these go live when you submit')
     + '</span><span class="pdpi-grow"></span>' + push
     + '<label class="pdpi-btn" title="Upload a picture from your computer into the next empty slot">'
     +   '<i class="ti ti-upload"></i> Upload image'
     +   '<input type="file" accept="image/*" style="display:none" onchange="pdpImgUpload(this)">'
-    + '</label></div>';
+    + '</label></div>'
+    + (why ? '<div class="pdpi-hint">' + esc(why) + '.</div>' : '')
+    + issues;
+}
+
+/* SEND THE CHANGED SLOTS TO THE LIVE LISTING, one slot at a time, through the
+ * route that already checks each one (/listing/image_push: a public address
+ * Amazon can fetch, a slot the product type has, Amazon's own product type).
+ * The account and marketplace are pinned before the confirm and checked after
+ * it, and every request names them. */
+async function pdpImgPushChanged(btn){
+  const sku = PDPI.sku, list = _pdpiChanged();
+  if(!sku || !list.length) return;
+  const pin = (typeof acctId === "function") ? acctId() : "";
+  const pinMkt = (typeof WS_MARKET !== "undefined") ? WS_MARKET : "";
+  const ctx = PDPI.ctx;
+  const names = list.map(function(s){ return _pdpiSlotName(s.key) + (s.current ? " (replaces Amazon's)" : ""); });
+  if(!await uiConfirm("Send " + list.length + " picture(s) to the LIVE Amazon listing " + sku + "?\n\n  "
+      + names.join("\n  ") + "\n\nOnly these images change on Amazon -- no resubmit. Amazon keeps no copy "
+      + "of a picture it replaces. It usually shows new images within a few minutes.")) return;
+  if((typeof acctId === "function" && acctId() !== pin) || (typeof WS_MARKET !== "undefined" && WS_MARKET !== pinMkt)){
+    toast("The account or marketplace changed while this was open, so nothing was sent."); return;
+  }
+  const assigned = _pdpiAssignedNow();
+  if(btn){ btn.disabled = true; btn.textContent = "Sending…"; }
+  const ok = [], bad = [], warn = [], failedKeys = [];
+  for(const s of list){
+    if((typeof acctId === "function" && acctId() !== pin) || PDPI.ctx !== ctx){
+      bad.push("stopped: the account or listing changed"); break;
+    }
+    try{
+      const url = "/listing/image_push?account=" + encodeURIComponent(pin) + "&marketplace=" + encodeURIComponent(pinMkt);
+      const j = await (await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(acctBodyFor({confirmed: true, sku: sku, slot: s.key, url: assigned[s.key],
+                                          marketplace: pinMkt}, pin))})).json();
+      if(j && j.ok){
+        ok.push(_pdpiSlotName(s.key));
+        (j.issues || []).forEach(function(i){ warn.push(_pdpiSlotName(s.key) + ": " + (i.message || i.code || "")); });
+      } else { bad.push(_pdpiSlotName(s.key) + ": " + ((j && j.error) || "refused")); failedKeys.push(s.key); }
+    }catch(e){ bad.push(_pdpiSlotName(s.key) + ": " + e); failedKeys.push(s.key); }
+  }
+  const msg = (ok.length ? "Sent to Amazon: " + ok.join(", ") + "." : "")
+            + (bad.length ? (ok.length ? "\n\n" : "") + "Not sent:\n  " + bad.join("\n  ") : "")
+            + (warn.length ? "\n\nAmazon noted:\n  " + warn.join("\n  ") : "");
+  if(typeof uiAlert === "function") await uiAlert(msg); else toast(msg);
+  // Re-read what Amazon now holds (and any problems it reports) for this listing.
+  if(PDPI.ctx === ctx && PDPI.sku === sku){
+    await pdpImagesLoad(sku, PDPI.productType);
+    // A slot Amazon refused is still yours to send: it stays on the list.
+    failedKeys.forEach(function(k){ PDPI.touched[k] = true; });
+    _pdpiPaint();
+  }
 }
 
 function _pdpiSlotsHtml(){

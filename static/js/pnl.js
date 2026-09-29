@@ -110,6 +110,7 @@ const _PNL_GROUP_OF = {
   fees_estimated: "fees", account_charges: "fees", refund_fees_returned: "fees",
   refunds: "refunds", vat_line: "vat", promos: "promos", charges: "charges",
   manual_expenses: "own", reimbursements: "back",
+  other_amazon: "fees",           // signed: postage labels, Vine, tax corrections (30 Sep 2026)
 };
 // ...and how each group is named and coloured (foundations.css --as-viz-*).
 const _PNL_GROUP = {
