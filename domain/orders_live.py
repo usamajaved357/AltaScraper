@@ -92,6 +92,37 @@ def _amount(order):
 MAX_ITEM_LOOKUPS = 200
 
 
+class NoMarketplace(ValueError):
+    """The account names no marketplace Amazon's Orders API knows."""
+
+
+def orders_marketplace(marketplace, account=""):
+    """THE ONE RULE for which Amazon marketplace an Orders call is made in.
+
+    The account's own configured marketplace, and nothing else. Two readers of
+    "what was in this order" guessed differently when it was missing or not a
+    marketplace code -- this module fell back to the US, routes/orders_routes.py
+    to the UK -- so one order could be looked up in two countries. The owner's
+    decision (read.txt, 29 Sep 2026): "Do NOT arbitrarily choose UK or US ... If
+    the account genuinely has no marketplace configured, fail clearly rather
+    than silently choosing another country." So this raises NoMarketplace, in
+    words that name the account and what to set.
+    """
+    from sp_api.base import Marketplaces
+    code = str(marketplace or "").strip().upper()
+    m = getattr(Marketplaces, code, None) if code and not code.startswith("_") else None
+    if not isinstance(m, Marketplaces):
+        who = (" for %s" % account) if account else ""
+        if not code:
+            raise NoMarketplace("No marketplace is configured%s, so its orders were not "
+                                "read. Set the account's default marketplace in Settings."
+                                % who)
+        raise NoMarketplace("'%s' is not a marketplace Amazon's Orders API knows%s, so "
+                            "its orders were not read. Check the account's default "
+                            "marketplace in Settings." % (code, who))
+    return m
+
+
 def order_items(marketplace, creds, order_ids, max_orders=MAX_ITEM_LOOKUPS):
     """The line items of each order: {order_id: [line, ...]}, and whether all fit.
 
@@ -112,8 +143,7 @@ def order_items(marketplace, creds, order_ids, max_orders=MAX_ITEM_LOOKUPS):
     could be answered afterwards.
     """
     from sp_api.api import Orders
-    from sp_api.base import Marketplaces
-    mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.US
+    mkt = orders_marketplace(marketplace)      # the account's own; never a guess
     oc = Orders(credentials=creds, marketplace=mkt)
 
     ids = [str(i) for i in (order_ids or []) if i]
@@ -340,8 +370,7 @@ def fetch_since(marketplace, marketplace_id, creds, since, until=None,
             return hit[1], hit[2]
 
     from sp_api.api import Orders
-    from sp_api.base import Marketplaces
-    mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.US
+    mkt = orders_marketplace(marketplace)      # the same rule (owner, 29 Sep 2026)
     oc = Orders(credentials=creds, marketplace=mkt)
 
     kw = {"CreatedAfter": _iso(since),

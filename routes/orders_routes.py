@@ -28,6 +28,7 @@ from flask import request, jsonify
 import domain.request_account as _req_acct
 from domain import marketplace_health as _mh
 from domain import orders_view as _ov
+from domain import orders_live as _ol   # the one Orders-marketplace rule
 
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
@@ -313,11 +314,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             # like success, and the screen showed a column of dashes with a note
             # saying the profit had been worked out. Silence about a total
             # failure is the one thing this file is otherwise careful about.
-            unread = 0
+            unread, mkt_problems = 0, set()
             for r in rows:
                 if done >= cap:
                     break
-                items = _items_for(r["order_id"], r["account_id"], r.get("purchased") or "")
+                try:
+                    items = _items_for(r["order_id"], r["account_id"], r.get("purchased") or "")
+                except _ol.NoMarketplace as _nm:
+                    mkt_problems.add(str(_nm))
+                    continue
                 if items is None:
                     unread += 1
                     continue
@@ -365,6 +370,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 profit_note += (" %d order%s could not be read from Amazon — "
                                 "usually rate limiting; try again shortly."
                                 % (unread, "" if unread == 1 else "s"))
+            for _p in sorted(mkt_problems):
+                profit_note += " " + _p
 
         # WHERE THE PARCEL IS, on every row and not only the profited ones.
         #
@@ -569,10 +576,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         cached = _items_from_store(account_id, mkt, order_id)
         if cached:
             return cached
+        # The account's own marketplace or nothing -- the rule the Sales screen's
+        # reader uses too (domain/orders_live.orders_marketplace). It used to
+        # fall back to the UK here and to the US there. RAISED, not swallowed:
+        # the callers say it in its own words instead of "rate limiting".
+        enum = _ol.orders_marketplace(mkt, acc.get("label") or account_id)
         try:
             from sp_api.api import Orders
-            from sp_api.base import Marketplaces
-            enum = getattr(Marketplaces, mkt.upper(), Marketplaces.UK)
             oc = Orders(credentials=_acc_mod.account_creds(acc), marketplace=enum)
             r = oc.get_order_items(order_id)
             pay = r.payload if hasattr(r, "payload") else r
@@ -614,7 +624,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         cost_of = _cost_fn()
         pics = _pictures()
         _fee_fns = {}
-        out, unread = {}, 0
+        out, unread, mkt_problems = {}, 0, set()
         # EVERY order in the batch must belong to the account on screen. One
         # foreign id in a list of sixty is enough to leak that account's
         # products and profit, and the batch shape is what made it easy to
@@ -628,7 +638,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             aid = str(w.get("account_id") or "").strip()
             if not oid:
                 continue
-            items = _items_for(oid, aid, str(w.get("purchased") or ""))
+            try:
+                items = _items_for(oid, aid, str(w.get("purchased") or ""))
+            except _ol.NoMarketplace as _nm:
+                mkt_problems.add(str(_nm))
+                continue
             if items is None:
                 unread += 1
                 continue
@@ -659,6 +673,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             note = ("%d of %d could not be read from Amazon — usually rate "
                     "limiting; press Refresh to try those again."
                     % (unread, len(want)))
+        # A MISSING MARKETPLACE IS NOT RATE LIMITING: said in its own words
+        # (owner decision, 29 Sep 2026 -- "fail clearly").
+        for _p in sorted(mkt_problems):
+            note = (note + " " + _p).strip()
         return jsonify({"ok": True, "items": out, "asked": len(want),
                         "read": len(out), "unread": unread, "note": note})
 
@@ -688,10 +706,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": False, "error": (
                 "That order's account is not configured here.")}), 404
         mkt = _marketplace(acc)
+        # The account's own marketplace or a clear refusal -- never a guessed
+        # country (owner decision, 29 Sep 2026; domain/orders_live).
+        try:
+            enum = _ol.orders_marketplace(mkt, acc.get("label") or aid)
+        except _ol.NoMarketplace as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
         try:
             from sp_api.api import Orders
-            from sp_api.base import Marketplaces
-            enum = getattr(Marketplaces, mkt.upper(), Marketplaces.UK)
             oc = Orders(credentials=_acc_mod.account_creds(acc), marketplace=enum)
             r = oc.get_order_items(oid)
             pay = r.payload if hasattr(r, "payload") else r
