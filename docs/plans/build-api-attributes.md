@@ -106,5 +106,14 @@ shipping weight + merchant_shipping_group (needs the engine's
 `_shape_list_price`). B4 done: the pa-mapping phase (`phase_pa_map`) and the
 required-field backfill (`phase_required_backfill`, which returns the names it
 filled) moved verbatim the same way; the three `_cond_*` lines that open the
-conditionally-required safety net stayed with it. B5-B6 not started; B7 is the
-owner's.
+conditionally-required safety net stayed with it. B5 done: the whole compliance
+block (special nested fields through schema-independent hardening, 844 lines,
+the backfill call and the `_cond_*` lines inside it) is ONE function,
+`phase_compliance`, returning `(_backfilled, _has_battery)`; the engine's
+`_LAST_COMPLIANCE_NOTES` dict is passed in and filled in place.
+B6 STOPS HERE ON PURPOSE: moving the whole function into listing/builder.py
+would carry the Rule 1 identifier pass with it, which is B7 -- the owner's
+explicit OK, by itself, last. What remains in the engine function, in order:
+set-up (pa parse, _renest, defaults, g/has/put), the five phase calls, images,
+list_price + shipping weight + merchant_shipping_group, minimal mode, final
+cleanup, the Rule 1 identifier pass, the merchant_suggested_asin drop.

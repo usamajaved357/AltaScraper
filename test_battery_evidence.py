@@ -61,6 +61,9 @@ def falsy(label, got):
 
 src = open(os.path.join(HERE, "amazon_listing_generator.py"),
            encoding="utf-8").read()
+# Plan B5 (29 Sep 2026) moved the builder's compliance block, verbatim, into
+# listing/attributes_phases.phase_compliance; the battery evidence lives there now.
+src += open(os.path.join(HERE, "listing", "attributes_phases.py"), encoding="utf-8").read()
 
 print("== the question is asked once, and it is the right question ==")
 truthy("there is a single battery-evidence helper",
