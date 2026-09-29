@@ -7206,9 +7206,12 @@ async def main():
     # rather than in an unattributed pile.
     try:
         from domain import ai_usage as _aiu_gen
-        _aiu_gen.install_anthropic_recorder("config.json")
+        # CONFIG_PATH, not the literal "config.json": this process runs in the
+        # code folder (/app on the server), so a relative name put the spend in
+        # a throwaway /app/altascraper.db instead of the data disk's database.
+        _aiu_gen.install_anthropic_recorder(str(CONFIG_PATH))
         _aiu_gen.set_context(workspace_id=_cli_account_id or "",
-                             config_path="config.json",
+                             config_path=str(CONFIG_PATH),
                              feature="listing: write the copy")
     except Exception:
         pass
@@ -7217,7 +7220,7 @@ async def main():
     if _cli_account_id:
         try:
             import accounts as _acc_mod
-            _acc_obj = _acc_mod.get_account(config, _cli_account_id, "config.json")
+            _acc_obj = _acc_mod.get_account(config, _cli_account_id, str(CONFIG_PATH))
             if _acc_obj:
                 # the account's own brand (first of its 'brands' list) is the
                 # authority for this run -- NOT the global config["brand_name"]

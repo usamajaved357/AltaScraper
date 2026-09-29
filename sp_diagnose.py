@@ -44,8 +44,12 @@ US_MKT  = "ATVPDKIKX0DER"
 
 def _load_config():
     """Load config.json + optional account-scoped creds (mirrors amazon_listing_generator.py)."""
+    # CONFIG_PATH first, as the app and the generator do: on the server the
+    # config lives on the data disk (/data), not beside this file (/app).
     here = os.path.dirname(os.path.abspath(__file__))
-    cfg_path = os.path.join(here, "config.json")
+    cfg_path = os.environ.get("CONFIG_PATH") or os.path.join(here, "config.json")
+    if not os.path.exists(cfg_path):
+        cfg_path = os.path.join(here, "config.json")
     if not os.path.exists(cfg_path):
         cfg_path = "config.json"
     with open(cfg_path) as f:
