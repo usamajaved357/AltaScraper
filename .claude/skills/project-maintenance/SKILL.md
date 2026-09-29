@@ -11,7 +11,7 @@ the root folder fills with one-off files.
 **Modifies files:** only after the owner ticks items in the report. Deleting or
 archiving anything always needs approval, with the reason stated.
 
-## Procedure (write findings to `<main checkout>/active/maintenance-<date>.md`)
+## Procedure (write findings to `active/maintenance-<date>.md` in the worktree)
 1. **Broken references:** every file path, function and route named in
    CLAUDE.md, docs/*.md, .claude/agents/*.md and .claude/skills/*/SKILL.md
    still exists (search for each).

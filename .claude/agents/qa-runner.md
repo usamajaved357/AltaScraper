@@ -18,7 +18,7 @@ Follow `.claude/skills/verify-change/SKILL.md` for the exact commands.
 - the task base commit (recorded by start-task) and the changed files
   (or "all": `git diff --name-only <task-base>` plus untracked files). Do not
   use origin/main as the base: the long-running branch carries earlier tasks.
-- the baseline file (normally `<main checkout>/active/test-baseline-<short-base-sha>.txt`)
+- the baseline file (normally `active/test-baseline-<short-base-sha>.txt` in the worktree)
 - whether to run the relevant subset or the full suite
 
 ## Choosing relevant tests

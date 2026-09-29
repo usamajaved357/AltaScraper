@@ -162,7 +162,11 @@ what to do now.
   `listing/` = business logic. `templates/` = HTML only. Never embed JS or CSS
   in Python strings.
 - **A change touching more than 2 files: explain the plan and get the owner's
-  confirmation before editing.**
+  confirmation before editing.** Exception delegated by the owner (read.txt,
+  29 Sep 2026): feature work under the `build-feature` skill at autonomy
+  Level 1 or 2 (docs/product-operating-model.md §2) writes its plan to
+  `active/` and proceeds. Level 3 real actions and Level 4 (push, merge,
+  deploy, irreversible) still wait for the owner, every time.
 - One function, one job. Split before adding to a function that does two.
 
 ## 8. PPC AND CAMPAIGNS
@@ -307,7 +311,8 @@ let the owner decide.
 
 Skills (`.claude/skills/`): start-task, investigate, verify-change,
 amazon-schema-first, ui-change, refactor-move, ship, update-context,
-project-maintenance, security-review.
+project-maintenance, security-review, build-feature (a feature outcome in
+plain English, end to end; operating model: docs/product-operating-model.md).
 Agents (`.claude/agents/`): tracer, listing-payload-guardian,
 account-scope-reviewer, ui-reviewer, change-reviewer, qa-runner. They are
 **read-only by instruction**: their definitions forbid edits, but four of them

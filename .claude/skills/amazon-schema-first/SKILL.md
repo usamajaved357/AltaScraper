@@ -10,7 +10,7 @@ and units from memory or docs (the leg/cable/decimal_value bugs), and field
 names invented from Amazon's prose (the "The"/"Your" phantom fields).
 
 **Modifies files:** only a temporary probe script in
-`<main checkout>/active/probes/` (never in the repo), deleted at the end.
+`active/probes/` in the worktree (git-ignored) (never in the repo), deleted at the end.
 The fix itself is made afterwards through the normal flow.
 
 ## Inputs

@@ -21,7 +21,8 @@ A new worktree/branch is created ONLY when the owner explicitly asks for
 isolated experimental work.
 
 **Modifies files:** writes the baseline and a plan into
-`<main checkout>/active/` and an entry in `<main checkout>/current-work.md`.
+`active/` in the worktree (git-ignored; never the old checkout's, per the
+owner's 28-29 Sep instructions) and an entry in `<main checkout>/current-work.md`.
 Never edits application code itself.
 
 ## Inputs
@@ -51,18 +52,23 @@ The owner's message, and usually `<main checkout>/read.txt` (the task inbox).
    ALREADY DOES (cite file/function) / NEEDS YOUR INPUT / WOULD CHANGE
    BEHAVIOUR / PURE ADDITION.
 6. **Baseline** (meaningful, UI and high-risk tiers), before any edit, in this
-   worktree: `py -3.11 run_tests.py > <main checkout>\active\test-baseline-<short-base-sha>.txt`
+   worktree: `py -3.11 run_tests.py > D:\AltaScraper-wt\claude-environment\active\test-baseline-<short-base-sha>.txt`
    (about 5-10 minutes; run it in the background while reading code). If a
-   baseline for the same base commit already exists, reuse it. Expected here:
-   about 28 failures (docs/known-issues.md "Tests").
+   baseline for the same base commit already exists, reuse it. Expected here
+   (29 Sep 2026): 0 failures, 2 "could not run" (test_library needs a real
+   sheelady_us account; test_mockup_match needs an untracked mockup file).
 7. **Rule 12 audit:** search the whole repo for every place handling the
    concept(s) involved; list them.
 8. **Route:** bug -> `investigate`; UI -> `ui-change`; Amazon rejection ->
    `amazon-schema-first`; refactor -> `refactor-move`; maintenance ->
-   `project-maintenance`; security -> `security-review`.
+   `project-maintenance`; security -> `security-review`; a feature or product
+   outcome -> `build-feature`.
 9. **Plan gate:** if the change touches more than 2 files or changes existing
-   behaviour, write the plan to `<main checkout>/active/plan-<topic>.md`,
+   behaviour, write the plan to `active/plan-<topic>.md` (worktree),
    show it in plain English, and wait for the owner's approval (CLAUDE.md Rule 7).
+   EXCEPTION (owner, read.txt 29 Sep 2026): under `build-feature`, Level 1 and
+   Level 2 work (docs/product-operating-model.md §2) writes the plan to
+   `active/` and proceeds; Level 3 real actions and Level 4 still wait.
 10. **Record** in `current-work.md` under the claude-environment-setup block:
     the task (one line), task base sha, status "in progress", waiting-on.
 

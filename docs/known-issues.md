@@ -495,6 +495,16 @@ works is in CLAUDE.md Rule 19; these are the genuine remaining limits.
 - **Agents are read-only by instruction only**: four have PowerShell.
 - **Hooks use relative paths** (`.claude/hooks/...`); a session started in a
   subfolder of the worktree was not tested.
+- **A session started in `D:\AltaScraper` runs with NO hooks at all** (measured
+  29 Sep 2026). The hooks live in the worktree's `.claude/settings.json`; the
+  old checkout has no `settings.json` and its `settings.local.json` defines no
+  hooks. The whole 28-29 Sep run was such a session: guard_secrets did not stop
+  a Python read of `D:\AltaScraper\config.json` (only one key's presence was
+  printed, as a boolean), and governance edits (build-feature skill, start-task,
+  CLAUDE.md Rules 7/19) raised no guard_rules prompt. The rules were followed
+  by hand; the edits are in one commit for the owner to review. Fix: start
+  Claude Code from `D:\AltaScraper-wt\claude-environment` (the old checkout is
+  not to be modified, so the hooks cannot be added there without the owner).
 - **The interactive approval path** (owner clicks "allow" on a guard prompt) was
   not testable in headless sessions; the ask was verified to stop the action.
 - The syntax_check hook reports through JSON because PowerShell turns a child's

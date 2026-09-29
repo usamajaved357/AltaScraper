@@ -11,7 +11,7 @@ three places, and docs that drift from the code.
 **Modifies files:** docs/architecture.md, docs/known-issues.md,
 docs/changelog.md, docs/design-system.md (observed facts), docs/decisions.md
 (recording decisions the owner stated), `<main checkout>/current-work.md`,
-`<main checkout>/active/`. Proposes, but does not make, changes to CLAUDE.md,
+`active/` (worktree, git-ignored). Proposes, but does not make, changes to CLAUDE.md,
 skills, agents, hooks, .gitignore, .dockerignore.
 
 ## Procedure

@@ -16,7 +16,7 @@ The request, the screen (Listings table/detailed/card, PDP tab, drawer, PPC,
 Sales, ...), the account and marketplace, a screenshot if given.
 
 ## Procedure
-1. **Answer the seven questions** in `<main checkout>/active/ui-<topic>.md`:
+1. **Answer the seven questions** in `active/ui-<topic>.md` (worktree):
    1. What is the user trying to accomplish?
    2. What happens now? (reproduce; or `tracer` / `ui-reviewer` mode B)
    3. What should happen?
@@ -55,7 +55,7 @@ Sales, ...), the account and marketplace, a screenshot if given.
    Fix what they find and repeat the affected steps.
 7. **Visual verification (when possible):** Playwright is installed locally.
    Start the app in the worktree (`py -3.11 dashboard.py`) and capture the
-   affected states at 1280px and 390px into `<main checkout>/active/screens/`,
+   affected states at 1280px and 390px into `active/screens/` (worktree),
    then LOOK at them. If the local app needs a login or has no data for that
    account, say "not visually verified" and why — never claim a visual check
    that did not happen. The owner verifies on app.altascraper.com after deploy.

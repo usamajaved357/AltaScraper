@@ -18,7 +18,7 @@ the `qa-runner` agent when the output would be long.
   began). On the long-running branch, never diff against origin/main for "what
   this task changed" — that would include every earlier task.
 - what changed: `git status --short` and `git diff --name-only <task-base>`
-- the baseline file: `<main checkout>/active/test-baseline-<short-base-sha>.txt`
+- the baseline file: `active/test-baseline-<short-base-sha>.txt` (worktree)
   (made by `start-task`; if missing, say so and make one before judging
   failures — never by resetting or stashing the work)
 

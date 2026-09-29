@@ -9,7 +9,7 @@ description: AltaScraper's standard bug investigation - reproduce, find the entr
 and fixes that treat a symptom.
 
 **Modifies files:** no application files. Writes a trace/notes file in
-`<main checkout>/active/` and may add a FAILING test in the development worktree once
+`active/` (worktree, git-ignored) and may add a FAILING test in the development worktree once
 the cause is known (step 7).
 
 ## Inputs
@@ -43,7 +43,7 @@ account and marketplace, the screen and view (table / detailed / card / PDP).
    `change-reviewer`; for UI, the `ui-change` order. Then `update-context`.
 
 ## Output
-`<main checkout>/active/investigation-<topic>.md`: symptom, reproduction,
+`active/investigation-<topic>.md` (worktree): symptom, reproduction,
 trace, root cause, classification, proposed fix, open questions. A summary to
 the owner in plain English first.
 
