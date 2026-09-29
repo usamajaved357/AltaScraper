@@ -57,6 +57,17 @@ def person(config_path, uid=None):
         return {}
 
 
+def label(config_path, uid=None):
+    """The person as the RECORDS name them: email, else name, else the id; ""
+    when nobody is signed in (the shared-password owner, or background work).
+    Upload history, Dr PPC, the repricer's manual prices and the error log all
+    use this one wording."""
+    p = person(config_path, uid)
+    if not p:
+        return ""
+    return p["email"] or p["name"] or p["id"]
+
+
 def _is_manager(config_path):
     """Can the caller manage users? They see everything."""
     try:

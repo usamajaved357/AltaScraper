@@ -957,10 +957,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         # go to. A price that moved with no entry beside it is a price nobody
         # can account for later, and "who changed this" is the first question
         # asked when one looks wrong.
+        # Was session.get("user"), a key nothing ever sets, so every manual
+        # price said "set by hand" whoever set it.
         who = ""
         try:
-            from flask import session as _sess
-            who = str(_sess.get("user") or "")
+            from domain import job_owner as _jo
+            who = _jo.label(CONFIG_PATH)
         except Exception:
             who = ""
         decision = {

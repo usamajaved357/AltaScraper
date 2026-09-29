@@ -233,8 +233,10 @@ def _json_errors(e):
     if code == 500:
         try:
             import domain.selfcheck as _sc
+            # session["email"] is never set; the one "who" wording (job_owner).
+            import domain.job_owner as _jo
             _sc.record(getattr(request, "path", ""), getattr(request, "method", ""),
-                       code, e, user=(session.get("email") or session.get("uid") or ""))
+                       code, e, user=_jo.label(CONFIG_PATH))
         except Exception:
             pass
 
