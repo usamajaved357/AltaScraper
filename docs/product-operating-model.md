@@ -70,7 +70,7 @@ Visual claims need a screenshot that was actually looked at.
 | Engineering standards | `docs/engineering-standards.md` |
 | UI system | `docs/design-system.md` |
 | Product context | `docs/product-context.md` |
-| In-flight work | `D:\AltaScraper\current-work.md` (shared, untracked — the one file Claude edits in the old checkout) |
+| In-flight work | `current-work.md` at the worktree root (untracked). The old checkout `D:\AltaScraper` is fully read-only — only its `read.txt` is read (docs/decisions.md, 29 Sep 2026) |
 | Plans, baselines, reports | `active/` in the worktree (git-ignored) |
 
 ## 6. Reporting

@@ -187,7 +187,15 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   never-commit rule narrowed from blanket "key"/"token" to secret-bearing file
   types; memory project facts migrated into docs/ (originals kept); shared
   untracked `current-work.md` and `active/` in the main checkout.
-  Source: read.txt, 27 Sep 2026.
+  Source: read.txt, 27 Sep 2026. SUPERSEDED for notes by the entry below.
+- **29 Sep 2026 — The old checkout is fully read-only.** "DO NOT modify
+  D:\AltaScraper at all, including current-work.md ... all working notes,
+  current-work tracking, plans, baselines, screenshots, investigations and other
+  development artifacts must stay inside: D:\AltaScraper-wt\claude-environment".
+  So `current-work.md` and `active/` live at the worktree root (both already in
+  .gitignore); `D:\AltaScraper\read.txt` is only read. The old
+  `D:\AltaScraper\current-work.md` is frozen as it stood at 07:04, 29 Sep.
+  Source: read.txt, 29 Sep 2026.
 
 ## Orders
 
