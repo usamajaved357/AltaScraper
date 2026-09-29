@@ -299,6 +299,16 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # where the owning workspace never showed it. Capturing it here pins each image
         # to the workspace it was generated for.
         _acct_now = _rqa.current(_state)
+        # NO ACCOUNT, NO BATCH (owner decision, read.txt 29 Sep 2026: "Capture
+        # and pin the account when the batch begins. Never file images under
+        # whichever account is open when processing finishes."). A batch with
+        # no account used to be stamped "" and the worker then filed each image
+        # under whatever was open when it FINISHED. Refused before any job or
+        # thread exists.
+        if not str(_acct_now or "").strip():
+            return jsonify({"ok": False, "error": (
+                "No account is open. Open the account these images are for, "
+                "then start the batch again.")}), 400
         for jb in jobs:
             # SET, never setdefault: `_acct_id` sent by the browser would file
             # images into an account the guard never checked (review).

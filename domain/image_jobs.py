@@ -396,7 +396,12 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                             # whatever is active now -- a background job can finish after
                             # a redeploy or a workspace switch, and reading _state here is
                             # what misfiled images (and lost the user's A+ content).
-                            _aid = str(job.get("_acct_id", "") or _app._state.get("active_account_id", "") or "")
+                            # ONLY the stamped account -- never the one open NOW
+                            # (owner decision, 29 Sep 2026). start_batch refuses a
+                            # batch without one, so "" here means a job from
+                            # before that rule: it goes to the shared root, as an
+                            # unstamped image always did, not to another account.
+                            _aid = str(job.get("_acct_id", "") or "")
                             _acct_root = _app._account_media_root(_aid) if _aid else _app._media_root()
                             _dir = os.path.join(_acct_root, _app._safe_sku(sku))
                             if _sub:
@@ -427,10 +432,11 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                                         acc = None
                                 # Never the OPEN account's Drive: if the batch's
                                 # account is gone, the copy is simply not made.
-                                if _aid and not acc:
+                                # ...and no stamped account, no Drive copy: the
+                                # OPEN account's Drive is never a stand-in
+                                # (owner decision, 29 Sep 2026).
+                                if not _aid or not acc:
                                     acc = None
-                                else:
-                                    acc = acc or _app._active_account()
                                 folder = (acc or {}).get("drive_folder_url", "")
                                 parent_id = _drive_folder_id_from_url(folder) if folder else ""
                                 if not parent_id:
