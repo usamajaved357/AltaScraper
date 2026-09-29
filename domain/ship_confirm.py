@@ -26,6 +26,7 @@ SWITCH_KEY = "ship_confirm_enabled"
 
 # carrier_code (domain/tracking.carrier_code) -> Amazon carrierCode, ONLY after
 # Amazon has been seen accepting it. Empty on purpose: see the module note.
+# arch-ok: module-mutable-global -- a read-only table, filled by editing this file once Amazon has accepted a code
 VERIFIED_CARRIER_CODES = {}
 
 PACKAGE_REFERENCE = "1"      # one parcel per confirmation; "positive numeric values"

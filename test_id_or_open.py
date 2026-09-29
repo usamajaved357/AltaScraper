@@ -74,11 +74,18 @@ for f in sorted(glob.glob("routes/*.py")):
 # 52 on 29 Sep 2026 after A5 (either quote, .get or [...] reads; writes not counted). The remaining reads differ from the helper (str(),
 # strip(), None instead of "", reading ?account= too) -- each is a behaviour of
 # its own route, left for its route's batch. Lower this as they move; never raise it.
-CEILING = 52
+# 51 on 29 Sep 2026 (evening): the tracking routes stopped falling back to the
+# open account (test_tracking_named_account.py).
+CEILING = 51
 print("  hand-written reads of the open account in routes/: %d (ceiling %d)" % (total, CEILING))
 if total > CEILING:
     fails.append("new hand-written read of active_account_id in routes/ (%d > %d): "
                  "use domain.request_account.id_or_open / current / routes.scope" % (total, CEILING))
+# AND THE CEILING FOLLOWS THE COUNT DOWN (architecture guard, 29 Sep 2026): a
+# ceiling left above the real count is room for a new read to slip in unseen.
+if total < CEILING:
+    fails.append("the open-account reads fell to %d: lower CEILING from %d to %d"
+                 % (total, CEILING, total))
 
 if fails:
     raise SystemExit("FAILED: %d -- %s" % (len(fails), fails[:3]))

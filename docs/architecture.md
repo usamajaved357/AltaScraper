@@ -463,6 +463,52 @@ stylesheet the dashboard loads, raw and gzipped.
 - Undefined-name guards: `test_no_undefined_names.py` (Python, pyflakes) and
   `test_no_undefined_js_calls.js` (browser calls to functions defined nowhere).
 
+Dispatch check -- `py -3.11 tools/browser_dispatch_check.py` (29 Sep 2026): the
+Orders dispatch-to-Amazon flow in headless Chromium, desktop and phone, with the
+two Amazon calls faked in-process (51 checks, screenshots in active/).
+
+### Architecture guards (enforced, not documentation)
+The target shape (docs/architecture-audit-2026-09-29.md section 2): browser JS
+-> routes/<feature> -> domain/ + listing/ -> data/ + api/, with the account and
+marketplace explicit for anything account-sensitive. Each guard is an ordinary
+test in `run_tests.py`, so every build-feature slice runs it.
+
+**NO NEW DEBT.** `tools/arch_rules.py` + `test_architecture_guard.py` (29 Sep
+2026) run seven rules over the app packages (~8 seconds); today's code is the
+BASELINE (`tools/arch_baseline.json`, 108 legacy entries) and is not failed. A
+NEW violation fails; a baseline entry that no longer occurs fails until
+removed (`py -3.11 tools/arch_rules.py --baseline-shrink`); the size per rule
+is pinned in the test (`BASELINE_SIZE`), so the baseline cannot grow by hand or
+by re-creating it; and a legacy large function that grows past its recorded
+size + 10% + 20 lines is new debt. Keys are file + symbol (+ `#n` for a
+repeat), never line numbers. A deliberate exception is a COMMENT on the
+statement (any of its lines, its decorators, or the line above):
+`# arch-ok: <rule-id> -- <reason>` (10+ non-space characters; text inside a
+string does not count; a reviewer reads it). `py -3.11 tools/arch_rules.py`
+prints the report.
+
+| Rule | Catches |
+|---|---|
+| spapi-client-outside-api | each `sp_api.api` client class imported outside api/ |
+| routes-import-dashboard | a routes/ module importing dashboard.py, at any depth |
+| lower-imports-upper | domain/listing/data/api/monitor importing routes/ or dashboard; api/ importing domain/ |
+| module-mutable-global | module-level state (also inside a module-level if/try/with, tuple and annotated targets): an EMPTY container under any name, a filled one under a lowercase name |
+| duplicate-function | two functions (nested and methods included) with an identical 5+ statement body (Rule 12) |
+| large-function | a function over 200 lines (a routes/ `register()` container excepted) |
+| background-open-account | code below routes/ taking the open account: a read of active_account_id / active_marketplace, or a call to request_account.current / id_or_open however imported (the owners domain/request_account.py and domain/account_scope.py excepted) |
+
+The older, single-purpose guards (each with its own legacy mechanism):
+`test_routes_sql_ceiling.py` (raw SQL in routes, per-file caps that only go
+down), `test_engine_not_a_library.py` (nothing in the web process imports the
+engine; allow-list), `test_one_anthropic_constructor.py` (one Anthropic
+constructor), `test_sp_client.py` (the SP-API factory's marketplace rules),
+`test_order_items_one_read.py`, `test_price_send_one_place.py`,
+`test_id_or_open.py` (open-account reads in routes: a ceiling that must follow
+the count down), `test_jobs_name_their_account.py`, `test_account_scope_audit.py`,
+`test_guard_every_account.py`, `test_loops_pin_account.js`,
+`test_global_name_clashes.py`, `test_json_writes_are_atomic.py`,
+`test_no_esc_in_handlers.js`.
+
 Many tests still assert source text rather than behaviour; about 11 need the
 owner's real data. Details and the baseline: docs/known-issues.md "Tests".
 
