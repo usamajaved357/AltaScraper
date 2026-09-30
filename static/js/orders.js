@@ -1977,7 +1977,9 @@ function _ordShipMs(shipBy){
  * its 760px beside a 380px panel. The window alone was not enough -- with the
  * sidebar open on a 1366 laptop the table lost Profit, Margin and ROI behind a
  * sideways scroll, which is the panel replacing the table after all. */
-const ORD_SIDE_MIN = 760 + 380 + 16;
+// 980, not 760 (30 Sep 2026): measured, the nine columns need ~960px to show
+// without overprinting; below that the order opens under its row instead.
+const ORD_SIDE_MIN = 980 + 380 + 16;
 function _ordSideMode(){
   try{
     if(!(window.matchMedia && window.matchMedia("(min-width: 1100px)").matches)) return false;

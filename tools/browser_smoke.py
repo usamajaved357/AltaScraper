@@ -639,6 +639,12 @@ def main(argv):
                     osd["table_fits"] = page.evaluate(
                         "() => { const s = document.querySelector('.ord-main div[style*=overflow-x]');"
                         " return !s || s.scrollWidth <= s.clientWidth + 1; }")
+                    # AND NO CELL OVERPRINTS ITS NEIGHBOUR (30 Sep 2026). table.kv's fixed
+                    # layout never scrolled -- so table_fits passed -- while the id, the state
+                    # chip and the profit ran into the next column beside the open order.
+                    osd["no_overprint"] = page.evaluate(
+                        "() => ![...document.querySelectorAll('table.ordtable tr.ordrow > td')]"
+                        ".some(td => td.offsetParent && td.scrollWidth > td.clientWidth + 2)")
                     osd["focus_kept"] = page.evaluate("() => !!(document.activeElement && document.activeElement.classList.contains('ordrow'))")
                     page.click("tr.ordrow >> nth=1")
                     page.wait_for_timeout(500)
@@ -736,7 +742,7 @@ def main(argv):
                or not log["modal_keyboard"].get("focus_inside")))
            or (log.get("orders_side") and (log["orders_side"].get("error")
                or (log["orders_side"].get("rows") and not all(log["orders_side"].get(k)
-                   for k in ("panel_where_expected", "table_fits", "focus_kept", "swaps",
+                   for k in ("panel_where_expected", "table_fits", "no_overprint", "focus_kept", "swaps",
                              "enter_closes", "switch_closes")))))
            or (log.get("floating") and (log["floating"].get("covered")
                or log["floating"].get("missing") or log["floating"].get("error")))
