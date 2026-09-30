@@ -1,5 +1,12 @@
 // ---- Miles Lubricants import ----
 let MILES_ITEMS=[];
+// EVERY SUPPLIER IMPORT REQUEST NAMES ITS ACCOUNT (account scope rule). The
+// server now holds runs, logs and results per account (routes/miles_routes.py,
+// admin bug round 30 Sep 2026), so a request that named none was answered
+// about whichever account the server had open.
+function _milesUrl(u){ return (typeof acctUrl === "function") ? acctUrl(u) : u; }
+function _milesBody(o){ return JSON.stringify((typeof acctBody === "function") ? acctBody(o || {}) : (o || {})); }
+function _milesEsc(s){ return (typeof esc === "function") ? esc(s) : String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 // The picked file itself, so the upload can send it to the Upload history.
 let MILES_FILE=null;
 function milesPickFile(input){
@@ -59,7 +66,7 @@ function milesParseRows(rows, fname){
   const _withFile = (typeof uphFileForUpload === "function")
     ? uphFileForUpload(MILES_FILE) : Promise.resolve(null);
   _withFile.then(file=>fetch("/miles/upload",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({items, filename: fname, file})})).then(r=>r.json()).then(j=>{
+    body:_milesBody({items, filename: fname, file})})).then(r=>r.json()).then(j=>{
       const btn=document.getElementById("miles_runbtn");
       if(btn) btn.disabled = !(j.ok && j.count>0);
     }).catch(()=>{});
@@ -78,7 +85,12 @@ function milesRun(reattach){
   let _sawBusy=false, _sawErr=false;   // so we don't falsely toast "finished" on a busy/blocked run
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=true;
   const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;
+  // The run belongs to the account it was started in; after a switch its lines
+  // stop painting into the next account's log (account-scope review, 30 Sep
+  // 2026). The stream itself is left alone: the run goes on on the server.
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   ES.onmessage=e=>{
+    if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     if(e.data.indexOf("[busy]")>=0) _sawBusy=true;
     if(e.data.startsWith("[error]")) _sawErr=true;
     if(!log) return;
@@ -124,7 +136,7 @@ function milesPollTick(){
   const from = MILES_TAILID ? MILES_TAILFROM : 0;
   const idq = MILES_TAILID ? ("&id="+encodeURIComponent(MILES_TAILID)) : "";
   // Resolves TRUE while a run is going, which is what keeps the fast cadence.
-  return fetch("/miles/run_tail?from="+from+idq).then(r=>r.json()).then(t=>{
+  return fetch(_milesUrl("/miles/run_tail?from="+from+idq)).then(r=>r.json()).then(t=>{
     const st=document.getElementById("miles_livestatus");
     if(!(t && t.ok) || !t.state || t.state==="none"){
       if(st) st.style.display="none";
@@ -136,7 +148,7 @@ function milesPollTick(){
     if(st){
       st.style.display="block";
       const dot = running ? '<b style="color:var(--accent2)">● Running</b>' : '<b style="color:var(--ok)">✓ Finished</b>';
-      st.innerHTML = dot + (t.source?(' &nbsp;<b>'+t.source+'</b>'):'')
+      st.innerHTML = dot + (t.source?(' &nbsp;<b>'+_milesEsc(t.source)+'</b>'):'')
         + ' &nbsp;—&nbsp; '+(t.done||0)+(t.total?('/'+t.total):'')+' processed'
         + ' &nbsp;·&nbsp; <span style="color:var(--ok)">drafts '+(c.generated||0)+'</span>'
         + ' &nbsp;·&nbsp; harvested '+(c.harvested||0)
@@ -165,7 +177,7 @@ function milesLoadRuns(){
   const host=document.getElementById("miles_runs_list");
   if(!host) return;
   const esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});};
-  fetch("/miles/runs").then(r=>r.json()).then(j=>{
+  fetch(_milesUrl("/miles/runs")).then(r=>r.json()).then(j=>{
     if(!(j&&j.ok&&j.runs&&j.runs.length)){ host.textContent="No saved runs yet."; return; }
     host.innerHTML=j.runs.map(function(r){
       const c=r.counts||{};
@@ -177,8 +189,8 @@ function milesLoadRuns(){
       return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">'
         +'<div><b>'+esc(r.source||"(run)")+'</b> <span style="opacity:.6">'+esc(r.started||"")+'</span><br>'+badge+' <span style="opacity:.7">— '+counts+'</span></div>'
         +'<div style="white-space:nowrap">'
-        +'<a href="/miles/run_log?id='+encodeURIComponent(r.id)+'" target="_blank" style="color:var(--accent2);margin-right:10px">View log</a>'
-        +'<a href="/miles/run_csv?id='+encodeURIComponent(r.id)+'" style="color:var(--ok)">CSV</a>'
+        +'<a href="'+esc(_milesUrl("/miles/run_log?id="+encodeURIComponent(r.id)))+'" target="_blank" style="color:var(--accent2);margin-right:10px">View log</a>'
+        +'<a href="'+esc(_milesUrl("/miles/run_csv?id="+encodeURIComponent(r.id)))+'" style="color:var(--ok)">CSV</a>'
         +'</div></div>';
     }).join("");
   }).catch(()=>{ host.textContent="Could not load runs."; });
@@ -274,25 +286,44 @@ function milesOptimize(){
     const ob=document.getElementById("miles_optbtn"); if(ob) ob.disabled=false;
     const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=true;}};
 }
-function milesStop(){
+async function milesStop(){
   // The Miles harvest is an SSE stream, not a subprocess. Cancel it server-side
   // (so the in-flight loop stops between items) and close the stream client-side.
-  fetch("/miles/stop",{method:"POST"}).catch(()=>{});
+  //
+  // THE REPLY IS READ (admin bug round, 30 Sep 2026). The server now refuses to
+  // stop another account's run, or somebody else's, and says so -- that is the
+  // message to show, not "Stopped". A refused stop leaves the stream alone.
+  let j = null, st = 0;
+  try{
+    const r = await fetch("/miles/stop",{method:"POST",headers:{"Content-Type":"application/json"},body:_milesBody({})});
+    st = r.status; try{ j = await r.json(); }catch(e){ j = null; }
+  }catch(e){ toast("Could not stop: "+e); return; }
+  if(!j || !j.ok){
+    toast((j && j.error) || ("Could not stop (HTTP "+st+")"));
+    if(st === 403) return;          // someone else's run: keep watching it
+  }
   if(ES){ try{ES.close();}catch(e){} ES=null; }
   const log=document.getElementById("miles_log");
   if(log){ const d=document.createElement("div"); d.style.color="var(--warn)"; d.textContent="[stopped] harvest cancelled by user"; log.appendChild(d); log.scrollTop=log.scrollHeight; }
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
   const gb=document.getElementById("miles_genbtn"); if(gb) gb.disabled=false;
   const ob=document.getElementById("miles_optbtn"); if(ob) ob.disabled=false;
-  toast("Stopped — lock cleared, you can run again");
+  if(j && j.ok) toast("Stopped — lock cleared, you can run again");
 }
-function milesClearHistory(){
-  fetch("/miles/clear_history",{method:"POST"}).then(r=>r.json()).then(j=>{
-    toast(j.ok ? ("Cleared "+(j.cleared||0)+" harvested item(s)") : "Could not clear history");
-  }).catch(()=>toast("Could not clear history"));
+async function milesClearHistory(){
+  // ASKED FIRST: the harvested-items history is shared by the whole app, and
+  // clearing it makes the next Harvest redo every item (admin bug round).
+  if(typeof uiConfirm === "function"
+     && !await uiConfirm("Forget every harvested item number? The next Harvest will fetch them all again. This history is shared by every account that uses Supplier Import.")) return;
+  try{
+    const r = await fetch("/miles/clear_history",{method:"POST",headers:{"Content-Type":"application/json"},body:_milesBody({})});
+    let j = null; try{ j = await r.json(); }catch(e){ j = null; }
+    toast(j && j.ok ? ("Cleared "+(j.cleared||0)+" harvested item(s)")
+                    : ("Could not clear history: " + ((j && j.error) || ("HTTP " + r.status))));
+  }catch(e){ toast("Could not clear history: "+e); }
 }
 function milesLoadResults(){
-  fetch("/miles/results").then(r=>r.json()).then(j=>{
+  fetch(_milesUrl("/miles/results")).then(r=>r.json()).then(j=>{
     const box=document.getElementById("miles_results");
     if(!box) return;
     if(!j.ok){ box.innerHTML=""; return; }

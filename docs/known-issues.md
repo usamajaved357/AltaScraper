@@ -236,6 +236,27 @@ change needs it, via register injection.
 - The hook parses a JSON body again (third parse for large base64 uploads);
   the insert happens before the reply is sent (busy_timeout 30s under a long
   write lock). READ, low.
+- "Changed after sending" (Employee Performance, 30 Sep 2026) can only match a
+  product submitted ON ITS OWN: a batch /run/api_submit is recorded as a count
+  with no SKU list, so edits after a batch submit are not counted. The tile's
+  (i) says so. Fix would be one activity row per submitted SKU. READ.
+
+## Left open after the 30 Sep 2026 bug round (reviews)
+- Variation "already in another family" reads `child_parent_sku_relationship`
+  as `[{child_relationship_type, parent_sku}]` -- taken from a code comment,
+  not a captured reply. Needs one getListingsItem capture of a child already in
+  a family (Rule 4). UNVERIFIED.
+- `ilPushLive` (listingimages.js) cannot tell what a MAIN image stored as a
+  Drive link was made as, so the secondary/A+ slot check does not apply to it.
+  The server's refuse_slot checks the page's made_as AND the /media path; a
+  Drive link has neither. READ.
+- Supplier Import's harvested-items history and bundle store are one
+  server-wide file (dashboard.py), so "clear history" is still global (it now
+  asks first and refuses during a run). Runs saved before 30 Sep carry no
+  account and stay visible to every account. READ.
+- The shared EventSource `ES` (howworks.js) carries both generation and Supplier
+  Import streams; an account switch stops Miles lines painting but does not
+  close the stream (the run continues on the server by design). READ.
 
 ## Orders "To buy" -- left open (29 Sep 2026 reviews)
 - **"Mark as bought" is still offered when the records could not be read.**

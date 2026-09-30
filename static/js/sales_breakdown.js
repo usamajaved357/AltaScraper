@@ -17,16 +17,20 @@ async function salesLoadBreakdown(){
   const host = document.getElementById("sales_breakdown");
   if(!host) return;
   host.innerHTML = '<div class="cc" style="padding:14px"><span class="genspin"></span> Loading products…</div>';
+  // NEWEST ASK WINS: a period change or a group toggle while a slow reply is
+  // out must not be overwritten by that older reply.
+  const tk = SALES_BD.seq = (SALES_BD.seq || 0) + 1;
   try{
     const j = await _sFetch("/sales/breakdown?"+_sQuery()
                             +"&group="+encodeURIComponent(SALES_BD.group));
-    if(j === null) return;
+    if(j === null || tk !== SALES_BD.seq) return;
     if(!j || !j.ok){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'
       + _sEsc((j&&j.error)||"Could not load") + '</div>'; return; }
     SALES_BD.rows = j.rows || [];
     SALES_BD.meta = j;
     salesDrawBreakdown();
   }catch(e){
+    if(tk !== SALES_BD.seq) return;
     host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sEsc(String(e))+'</div>';
   }
 }
@@ -104,7 +108,9 @@ function salesDrawBreakdown(){
     let x=a[SALES_BD.sort], y=b[SALES_BD.sort];
     if(x===null||x===undefined) return 1;      // unknown is not "smallest"
     if(y===null||y===undefined) return -1;
-    if(typeof x==="string") return dir*(x<y?1:x>y?-1:0);
+    // Same direction as the numbers (the campaign table's fix, 30 Sep): the
+    // Product column read Z-A under "▴" and A-Z under "▾".
+    if(typeof x==="string") return dir*(x<y?-1:x>y?1:0);
     return dir*(x-y);
   });
 

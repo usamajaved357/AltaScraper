@@ -209,12 +209,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 # CANCELLED means Amazon had nothing to give, which is not an
                 # error and must not read as one.
                 return [], [], ("__EMPTY__" if st == "CANCELLED" else
-                                "Amazon could not build the report (FATAL) â€” "
+                                "Amazon could not build the report (FATAL) — "
                                 "usually the window is too wide; this one is "
                                 "limited to %d days." % MAX_DAYS)
         if not doc:
             return [], [], ("Amazon is still building the report. Try again in "
-                            "a minute â€” they can be slow.")
+                            "a minute — they can be slow.")
         try:
             d = rc.get_report_document(doc, download=True)
             body = (d.payload if hasattr(d, "payload") else d) or {}
@@ -235,6 +235,20 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return [], [], "__EMPTY__"
         return rows[0], rows[1:], ""
 
+    def _ccy(mkt):
+        """The marketplace's currency code, or "" when it is not one we know.
+
+        Neither returns report states a currency, but every answer here is for
+        ONE marketplace, and that decides it. From the one map the app keeps
+        (domain/sourcing.CURRENCY_FOR), so both returns views print money the
+        same way (bug round 30 Sep 2026: one showed the account's symbol, the
+        other none)."""
+        try:
+            from domain import sourcing as _src
+            return _src.CURRENCY_FOR.get(str(mkt or "").upper(), "")
+        except Exception:
+            return ""
+
     def _answer(returns, kind, wsid, mkt, start, end, skipped=0, note="",
                 no_report=""):
         sold = _sold(wsid, mkt, start, end)
@@ -252,6 +266,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                   start=start, end=end, marketplace=mkt)
         s.update({
             "ok": True, "source": kind, "workspace": wsid, "marketplace": mkt,
+            "currency": _ccy(mkt),
             "start": start, "end": end, "skipped": skipped, "note": note,
             # WHY there is no report, when there is none. A separate field from
             # `unavailable` below, which lists the SECTIONS a report cannot
@@ -263,7 +278,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "unavailable": ([] if kind == "fba" else [
                 {"section": "Disposition & recovery",
                  "why": ("Amazon grades a return's condition only when it "
-                         "receives it â€” which happens with FBA. A "
+                         "receives it — which happens with FBA. A "
                          "seller-fulfilled return goes straight back to you, so "
                          "Amazon never sees it and has nothing to report. "
                          "Upload an FBA Customer Returns file to fill this in.")},
@@ -312,7 +327,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify(_answer([], "mfn", wsid, mkt, start.isoformat(),
                                    end.isoformat(),
                                    note=("Amazon returned nothing for the last "
-                                         "%d days â€” which for returns is good "
+                                         "%d days — which for returns is good "
                                          "news, not a failure." % days)))
         if err:
             # NOT AN ERROR PAGE. Amazon being slow, or an account that is
@@ -382,6 +397,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
         return jsonify({
             "ok": True, "workspace": wsid, "marketplace": mkt,
+            "currency": _ccy(mkt),
             "start": start, "end": end,
             "rows": rows, "count": len(rows),
             "statuses": statuses,
@@ -391,7 +407,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "note": ("" if cov.get("held") else
                      "No returns have been stored for this account yet. Press "
                      "Refresh to pull Amazon's report, or upload a returns "
-                     "file â€” Amazon caps that report at 60 days, so anything "
+                     "file — Amazon caps that report at 60 days, so anything "
                      "older has to be uploaded once and is then kept."),
         })
 
@@ -456,7 +472,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 "permitted_actions": [], "actions_error": "",
                 "actions_note": (
                     "%s has no Amazon developer app of its own, so Amazon "
-                    "cannot be asked what may be sent about this order â€” "
+                    "cannot be asked what may be sent about this order — "
                     "borrowed credentials would answer for the account they "
                     "were borrowed from. Connect this account's own SP-API "
                     "credentials under Account & sheets."
@@ -507,7 +523,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             "actions_note": (
                 "Amazon decides which messages may be sent about an order, and "
                 "the list differs between orders. Free-form messages are not "
-                "possible through the API â€” each of these is one of Amazon's "
+                "possible through the API — each of these is one of Amazon's "
                 "own templates." if actions else
                 ("Amazon could not be asked what may be sent about this order."
                  if not perm.get("ok") else
@@ -660,12 +676,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         for name, text in blobs:
             headers, rows, err = _split(text)
             if err == "__EMPTY__":
-                rejected.append("%s â€” no rows in it" % name)
+                rejected.append("%s — no rows in it" % name)
                 continue
             parsed, kind, skipped = _rv.parse_rows(headers, rows)
             if not kind:
                 rejected.append(
-                    "%s â€” those columns are not an Amazon returns report "
+                    "%s — those columns are not an Amazon returns report "
                     "(found: %s)" % (name, ", ".join(str(h) for h in headers[:8])))
                 continue
             held, added, dupes = _rv.merge(held, parsed)
@@ -850,7 +866,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                           got.get("marketplace") or "", got.get("start") or "",
                           got.get("end") or "",
                           note=("Read %d listings from your Listing Quality "
-                                "file â€” %d already carry Amazon's returns badge "
+                                "file — %d already carry Amazon's returns badge "
                                 "and %d are at risk of it."
                                 % (counts["rows"], counts["badge_showing"],
                                    counts["at_risk_count"])))
@@ -879,7 +895,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if not got.get("summary"):
             return jsonify({"ok": False, "error": (
                 "There is nothing to export yet. Load the returns report on "
-                "this screen first â€” the export writes exactly what you are "
+                "this screen first — the export writes exactly what you are "
                 "looking at, so it needs you to be looking at something. (If "
                 "the app has restarted since, load it again.)")}), 400
         s = got["summary"]

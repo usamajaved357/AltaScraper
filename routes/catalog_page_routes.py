@@ -69,6 +69,11 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                 q += " AND date>=? AND date<=? "
                 args += [start, end]
             rows = [dict(r) for r in con.execute(q, args).fetchall()]
+            # HOW FAR BACK THE STORED SALES GO. "Earning nothing" is only a
+            # finding when the sales cover the WHOLE window (bug round 30 Sep
+            # 2026): with thirty days synced, "last year" called every product
+            # that sold in month two dead. See product_catalog.sales_span.
+            first_synced, last_synced = _pc.sales_span(CONFIG_PATH, wsid, mkt)
         except Exception as e:
             return jsonify({"ok": False,
                             "error": "Could not read the sales table: %s"
@@ -104,23 +109,49 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         # product wherever two accounts happen to use the same SKU -- and these
         # accounts do reuse SKU shapes, so it would happen. The prefix is
         # matched, not discarded.
+        #
+        # THROUGH cogs_store.find, THE ONE MATCHER (bug round 30 Sep 2026). This
+        # split the keys itself and stored them UPPER-CASED, then looked them
+        # up by the catalogue's SKU exactly as spelled -- "10.99_3Days_B0..."
+        # never matched "10.99_3DAYS_B0...", so costs the owner had entered
+        # showed as "not set". find() is account-scoped and case-insensitive,
+        # the same rule every other cost reader uses (Rule 12).
         costs = {}
         try:
             from domain import cogs_store as _cogs
-            prefix = "%s::" % wsid
-            for k, v in (_cogs.all_overrides(CONFIG_PATH) or {}).items():
-                ks = str(k)
-                if not ks.startswith(prefix):
+            _ov = _cogs.all_overrides(CONFIG_PATH) or {}
+            for rec in names.values():
+                sku = str((rec or {}).get("sku") or "").strip()
+                if not sku or sku in costs:
                     continue
-                sku = ks[len(prefix):].strip().upper()
-                if sku:
+                v, _k = _cogs.find(_ov, wsid, sku)
+                if v is not None:
                     costs[sku] = v
         except Exception:
             pass
 
-        out = _pc.build(rows, names=names, costs=costs, extra_asins=extra)
+        covered = bool(first_synced) and (not start or first_synced <= start)
+        out = _pc.build(rows, names=names, costs=costs, extra_asins=extra,
+                        sales_cover=covered)
+        # The marketplace's currency, so the screen prints money in the
+        # currency it is actually in rather than the account's default.
+        currency = ""
+        for r in rows:
+            if r.get("currency"):
+                currency = str(r["currency"])
+                break
+        if not currency:
+            try:
+                from domain import sourcing as _src
+                currency = _src.CURRENCY_FOR.get(str(mkt or "").upper(), "")
+            except Exception:
+                currency = ""
         out.update({"ok": True, "account": wsid, "marketplace": mkt,
                     "period": period, "start": start, "end": end,
+                    "currency": currency,
+                    "sales_first_date": first_synced,
+                    "sales_last_date": last_synced,
+                    "sales_cover_window": covered,
                     "rows_read": len(rows),
                     "catalogue_known": len(known)})
         if not rows and not known:

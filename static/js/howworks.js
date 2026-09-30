@@ -213,7 +213,12 @@ function _studioAddResult(job, j, grid){
   if(j&&j.ok&&j.data_url){
     // stash the originating kind+payload so we can regenerate JUST this one
     STUDIO._reroll=STUDIO._reroll||{};
-    if(j._kind&&j._payload){ STUDIO._reroll[cardId]={kind:j._kind, payload:j._payload, label:(job.strategy||job.sku)}; }
+    // The SKU and what the image IS travel with the redo, so a redone image is
+    // saved under its own product and filed in its own folder (it used to be
+    // saved under the product TITLE, with kind "concept").
+    if(j._kind&&j._payload){ STUDIO._reroll[cardId]={kind:j._kind, payload:j._payload,
+      label:(job.strategy||job.sku), sku:(job.sku||j.sku||(j._payload&&j._payload.sku)||""),
+      madeAs:(job.kind||"main"), tier:(job.tier||"")}; }
     const canReroll = !!(j._kind&&j._payload);
     const _driveLine = j.drive_direct_url
       ? `<div class="cc" style="color:var(--ok);font-size:10.5px;padding:0 8px 4px">\u2713 saved to Drive</div>`
@@ -247,7 +252,11 @@ function _studioAddResult(job, j, grid){
     // hero, lifestyle, A+ header -- was written into one flat folder as
     // generated_<timestamp>.jpg and could only be told apart by opening it.
     STUDIO.results[cardId]={data_url:j.data_url, sku:job.sku,
-                            kind:(job.kind||"main")};
+                            kind:(job.kind||"main"), tier:(job.tier||""),
+                            // Already on disk when the batch auto-saved it, so
+                            // Save / Drive reuse that file rather than making a
+                            // second copy of the same image.
+                            savedUrl:(j.saved_url||"")};
   } else {
     inner=`<div class="sresfail">✗ ${esc((j&&j.error)||'failed')}</div><div class="srescap">${label}</div>`;
   }
@@ -268,24 +277,38 @@ async function studioReroll(cardId){
     const j=await (await fetch(ep,{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(r.payload)})).json();
     if(j&&j.ok&&j.data_url){
+      // THE REDO KEEPS ITS SKU. It was saved under r.payload.sku OR THE TITLE,
+      // and its card's Save/Drive buttons were given '' -- so a redone image
+      // went into a folder named after the product title, or none.
+      const _sku = r.sku || (r.payload&&r.payload.sku) || "";
+      // What it is: the payload's kind (a strategist job's "concept" batch kind
+      // is not a folder), else what the first card said.
+      const _kind = (typeof _studioEffectiveKind==="function")
+        ? _studioEffectiveKind(r.kind, (r.payload&&r.payload.kind)||r.madeAs||"")
+        : ((r.payload&&r.payload.kind)||r.madeAs||"main");
+      const _tier = (r.payload&&r.payload.tier)||r.tier||"";
+      const _variant = ((r.payload&&r.payload.viewport)==="mobile"?"mobile":"desktop");
       // auto-save the redo too, filed the same way the first one was: a redo of
       // an A+ mobile module is still an A+ mobile module.
-      try{ await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:r.payload.sku||r.payload.title||"", data_url:j.data_url,
-                             kind:r.kind||"main",
-                             tier:(r.payload&&r.payload.tier)||"",
-                             variant:((r.payload&&r.payload.viewport)==="mobile"?"mobile":"desktop")})}); }catch(e){}
+      let _saved = "";
+      if(_sku){
+        try{
+          const sv = await (await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({sku:_sku, data_url:j.data_url, kind:_kind, tier:_tier, variant:_variant})})).json();
+          if(sv && sv.ok) _saved = sv.url || "";
+          else toast("Redone, but not saved: "+((sv&&sv.error)||"unknown"));
+        }catch(e){ toast("Redone, but not saved: "+e); }
+      }
       if(card){
-        STUDIO.results[cardId]={data_url:j.data_url, sku:(r.payload.title||""),
-                                kind:r.kind||"main",
-                                tier:(r.payload&&r.payload.tier)||"",
-                                variant:((r.payload&&r.payload.viewport)==="mobile"?"mobile":"desktop")};
+        STUDIO.results[cardId]={data_url:j.data_url, sku:_sku,
+                                kind:_kind, tier:_tier, variant:_variant,
+                                savedUrl:_saved};
         card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,${jsArg(j.data_url)})">
           <div class="srescap">${esc(r.label)} · redone</div>
           <div class="sresacts">
-            <button class="ib" onclick="studioSave(${jsArg(cardId)},'')"><i class="ti ti-device-floppy"></i> Save to media</button>
-            <button class="ib" onclick="studioDownload(${jsArg(cardId)},'')"><i class="ti ti-download"></i></button>
-            <button class="ib" onclick="studioToDrive(${jsArg(cardId)},'')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
+            <button class="ib" onclick="studioSave(${jsArg(cardId)},${jsArg(_sku)})"><i class="ti ti-device-floppy"></i> Save to media</button>
+            <button class="ib" onclick="studioDownload(${jsArg(cardId)},${jsArg(_sku)})"><i class="ti ti-download"></i></button>
+            <button class="ib" onclick="studioToDrive(${jsArg(cardId)},${jsArg(_sku)})" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
             <button class="ib" onclick="studioReroll(${jsArg(cardId)})"><i class="ti ti-refresh"></i> Redo this</button>
           </div>`;
       }
@@ -303,6 +326,11 @@ async function studioRefine(cardId){
   // figure out the kind from the original payload (main / secondary / aplus)
   let kind="main";
   if(r&&r.kind){ kind = (r.kind==="concept")?"main":(r.kind==="aplus"?"aplus":(r.kind==="secondary"?"secondary":"main")); }
+  // A strategist job's batch kind is "concept" whatever it made; the payload
+  // (or the card) says whether it was a secondary or A+ image.
+  if(r && typeof _studioEffectiveKind==="function"){
+    kind = _studioEffectiveKind(r.kind, (r.payload&&r.payload.kind)||r.madeAs||"");
+  } else if(cur && cur.kind && cur.kind!=="concept"){ kind = cur.kind; }
   const card=document.getElementById(cardId);
   if(card){ card.innerHTML='<div class="srescap"><span class="genspin"></span> refining…</div>'; }
   // The studio may be working on a batch, so fall back to the first item it
@@ -344,6 +372,10 @@ async function studioRefine(cardId){
 }
 async function studioSave(cardId, sku){
   const r=STUDIO.results[cardId]; if(!r) return;
+  sku = sku || r.sku || "";
+  // Already in the library (the batch or the redo saved it): say where rather
+  // than writing a second copy of the same picture.
+  if(r.savedUrl){ toast("Already saved to "+sku+"'s media library"); return; }
   try{
     const j=await (await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({sku:sku, data_url:r.data_url,
@@ -358,6 +390,7 @@ async function studioSave(cardId, sku){
 }
 async function studioToDrive(cardId, sku){
   const r=STUDIO.results[cardId]; if(!r) return;
+  sku = sku || r.sku || "";
   // confirm a Drive folder is configured for this account
   let ds=null; try{ ds=await (await fetch("/drive/status")).json(); }catch(e){}
   if(!ds||!ds.ok||!ds.configured){

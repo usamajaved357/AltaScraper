@@ -36,8 +36,12 @@ function catpPct(v) {
   return (Number(v) * 100).toFixed(1) + "%";
 }
 
+/* THE MARKETPLACE'S CURRENCY, from the reply (bug round 30 Sep 2026). This
+   asked curSymbol("") -- no code at all -- which falls back to the ACCOUNT's
+   symbol, so a US store's dollars printed with the UK account's "£". */
 function catpCur() {
-  return (typeof curSymbol === "function") ? curSymbol("") : "";
+  const cc = (CATP.data && CATP.data.currency) || "";
+  return (typeof curSymbol === "function") ? curSymbol(cc) : "";
 }
 
 function catpRender() {
@@ -73,7 +77,12 @@ function catpRender() {
                  s: f.top.label + (f.top.title ? " — " + f.top.title.slice(0, 46) : ""),
                  cls: "", share: f.top.share, bar: "var(--ok)" });
   }
-  if (f.dead) {
+  if (f.dead && f.dead.unknown) {
+    // NOT SYNCED IS NOT DEAD (bug round 30 Sep 2026): the stored sales start
+    // after this window does, so no count is claimed -- the card says why.
+    cards.push({ k: "Listed, earning nothing", v: "—", s: f.dead.label,
+                 cls: "", bar: "var(--gold)", share: null });
+  } else if (f.dead) {
     // The only one that names work to do, so it is the one that carries a
     // colour. The others are facts; this is a job.
     const _prods = Number(d.products) || 0;
@@ -109,6 +118,10 @@ function catpRender() {
     '<span><b>' + catpNum(d.total_units) + "</b> units</span>" +
     '<span class="cc">' + esc(d.period === "all" ? "all time"
       : (d.start + " → " + d.end)) + "</span>" +
+    // WHICH STORE (bug round 30 Sep 2026): with "All marketplaces" picked the
+    // server answers for one, and the page must say which.
+    (d.marketplace ? '<span class="cc">' + esc(d.marketplace) +
+                     (d.currency ? " · " + esc(d.currency) : "") + "</span>" : "") +
     "</div>";
 
   // ---- controls -----------------------------------------------------------
@@ -138,13 +151,24 @@ function catpRender() {
     box.innerHTML = html;
     return;
   }
-  html += uiPanel('Every product, best first', 'Ranked by what it earns. A product with no cost entered shows no margin rather than a flattering one.',
+  // "GROSS MARGIN (BEFORE FEES)", not "Margin" (bug round 30 Sep 2026). The
+  // figure is (revenue - unit cost x units) / revenue: Amazon's referral and
+  // fulfilment fees, postage and VAT are NOT taken off, so beside the Sales
+  // screen's profit it read as a far healthier margin than the product earns.
+  // No fee-aware per-ASIN figure exists for this page to reuse, so the column
+  // says what it is instead.
+  const _gmTip = "Revenue minus unit cost x units, as a share of revenue. " +
+                 "Amazon fees, postage and VAT are NOT taken off — see the " +
+                 "Sales screen for profit after fees.";
+  const _deadKnown = !(f.dead && f.dead.unknown);
+  html += uiPanel('Every product, best first', 'Ranked by what it earns. A product with no cost entered shows no margin rather than a flattering one. The margin here is before Amazon fees.',
     '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
     "<th>#</th><th>Product</th><th>Parent</th><th>Units</th><th>Revenue</th>" +
-    "<th>Share</th><th>Unit cost</th><th>Margin</th><th>Days with sales</th>" +
+    '<th>Share</th><th>Unit cost</th><th title="' + esc(_gmTip) + '">Gross margin ' +
+    '<span class="cc" style="font-weight:400">(before fees)</span></th><th>Days with sales</th>' +
     "</tr></thead><tbody>");
   rows.forEach(function (r) {
-    const dead = (r.revenue <= 0 && r.units <= 0);
+    const dead = _deadKnown && (r.revenue <= 0 && r.units <= 0);
     html += '<tr' + (dead ? ' class="catp-dead"' : "") + ">" +
       '<td class="cc">' + r.rank + "</td>" +
       '<td><div class="stk-prod">' +
@@ -175,9 +199,25 @@ function catpRender() {
   box.innerHTML = html;
 }
 
+/* THE SEARCH BOX KEEPS ITS FOCUS (bug round 30 Sep 2026). Every keystroke
+   redraws the whole page, the box included, and the new box had no focus --
+   so each letter typed knocked you out of it. The caret is put back where it
+   was on the fresh box. */
 function catpSearch(v) {
   CATP.q = v || "";
+  const was = document.getElementById("catp_q");
+  const had = !!(was && document.activeElement === was);
+  let caret = null;
+  try { caret = was ? was.selectionStart : null; } catch (e) { caret = null; }
   catpRender();
+  if (!had) return;
+  const box = document.getElementById("catp_q");
+  if (!box) return;
+  box.focus();
+  try {
+    const at = (caret === null || caret === undefined) ? box.value.length : caret;
+    box.setSelectionRange(at, at);
+  } catch (e) {}
 }
 
 function catpPeriod(p) {
@@ -185,16 +225,25 @@ function catpPeriod(p) {
   catpLoad();
 }
 
+/* THE NEWEST REQUEST WINS (bug round 30 Sep 2026). Clicking "Last month" then
+   "All time" quickly let whichever reply arrived last paint the page, so the
+   chip could say one period while the figures were for the other. */
+let _CATP_SEQ = 0;
 async function catpLoad() {
+  const mine = ++_CATP_SEQ;
   CATP.loading = true; CATP.note = ""; catpRender();
   try {
     const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/catalog/products" +
       _catpQs({ period: CATP.period }))).json();
-    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    if (mine !== _CATP_SEQ) return;   // a newer request is on its way
+    // switched account/marketplace meanwhile: dropped, and the spinner goes
+    // with it rather than staying up for good.
+    if(_sc && !screenStillIn(_sc)) { CATP.loading = false; return; }
     if (j && j.ok) CATP.data = j;
     else CATP.note = (j && j.error) || "Could not read the catalogue.";
   } catch (e) {
+    if (mine !== _CATP_SEQ) return;
     CATP.note = "Could not read the catalogue: " + e;
   }
   CATP.loading = false;

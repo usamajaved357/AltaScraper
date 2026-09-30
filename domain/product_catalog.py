@@ -94,7 +94,7 @@ def totals(rows):
     return by
 
 
-def build(rows, names=None, costs=None, extra_asins=None):
+def build(rows, names=None, costs=None, extra_asins=None, sales_cover=True):
     """Every product with its figures, plus the four headline findings.
 
     `names`  {asin -> {title, img, asin, sku}} from domain/catalogue
@@ -104,6 +104,8 @@ def build(rows, names=None, costs=None, extra_asins=None):
              exactly the ambiguity this module refuses to guess at: it is either
              a dead product or an unsynced one, and only the caller knows which
              window it asked for.
+    `sales_cover` False when the stored sales do not reach back over the whole
+             window: then "earning nothing" cannot be said (see findings).
     """
     names = names or {}
     costs = costs or {}
@@ -125,6 +127,14 @@ def build(rows, names=None, costs=None, extra_asins=None):
         cost = _f(costs.get(a))
         if cost is None:
             cost = _f(costs.get(rec.get("sku") or ""))
+        if cost is None and rec.get("sku"):
+            # Case folded, as cogs_store.norm does: Amazon spells one SKU two
+            # ways, and a cost typed against either must be found.
+            _want = str(rec.get("sku")).strip().upper()
+            for _k, _v in costs.items():
+                if str(_k).strip().upper() == _want:
+                    cost = _f(_v)
+                    break
         row = dict(t)
         row.update({
             "title": rec.get("title") or "",
@@ -149,12 +159,16 @@ def build(rows, names=None, costs=None, extra_asins=None):
     return {"rows": out, "total_revenue": total_rev,
             "total_units": sum(r["units"] for r in out),
             "products": len(out),
-            "findings": findings(out, total_rev),
+            "findings": findings(out, total_rev, sales_cover=sales_cover),
             "counts": counts(out)}
 
 
-def findings(rows, total_rev=None):
+def findings(rows, total_rev=None, sales_cover=True):
     """The four sentences above the table.
+
+    `sales_cover` False: the stored sales begin after the window starts, so a
+    product with no sales in it has not been shown to have earned nothing --
+    the "dead" card then says the period is not synced, with no count.
 
     Each returns None when it cannot honestly be said, rather than a zero -- a
     card reading "Top 0 products generate 80% of revenue" is worse than no card.
@@ -208,7 +222,15 @@ def findings(rows, total_rev=None):
 
     # --- dead: exists, earned nothing ---------------------------------------
     dead = [r for r in rows if r["revenue"] <= 0 and r["units"] <= 0]
-    if dead:
+    if dead and not sales_cover:
+        # NOT SYNCED IS NOT DEAD (bug round 30 Sep 2026) -- the module
+        # docstring's own rule, which the window was never checked against.
+        out["dead"] = {
+            "n": None, "unknown": True, "asins": [],
+            "label": "Sales are not synced for this whole period, so products "
+                     "with no sales in it cannot be called dead",
+        }
+    elif dead:
         out["dead"] = {
             "n": len(dead),
             "asins": [r["asin"] for r in dead[:50]],
@@ -216,6 +238,26 @@ def findings(rows, total_rev=None):
                      % (len(dead), "" if len(dead) == 1 else "s"),
         }
     return out
+
+
+def sales_span(config_path, workspace_id, marketplace):
+    """(first stored sales day, last stored sales day) for one account and
+    marketplace, "" when nothing is stored.
+
+    The one database read in this module, and deliberately a small one: it
+    says whether the sales table reaches back over a window at all, which is
+    what separates "listed, earning nothing" from "not synced that far" (bug
+    round 30 Sep 2026). The '*' rollup counts -- a day with no product sales
+    still has one. Kept here rather than in the route (test_routes_sql_ceiling).
+    """
+    from data import db as _db
+    r = _db.get_db(config_path).execute(
+        "SELECT MIN(date) a, MAX(date) b FROM sales_daily "
+        "WHERE workspace_id=? AND marketplace=?",
+        (workspace_id, marketplace)).fetchone()
+    if not r:
+        return "", ""
+    return str(r["a"] or ""), str(r["b"] or "")
 
 
 def counts(rows):

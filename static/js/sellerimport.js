@@ -63,7 +63,9 @@ async function sellerFind(){
   const out = document.getElementById("simp_results");
   if(out) out.innerHTML = '<div class="cc" style="padding:16px"><span class="genspin"></span> '
     + 'Searching eBay for this seller — several passes, so give it a moment…</div>';
-  SIMP.seller = seller; SIMP.screened = false;
+  // A NEW SEARCH IS A NEW LIST. The last seller's "Checked N of M" summary
+  // stayed above the new rows, reading as a verdict on items never checked.
+  SIMP.seller = seller; SIMP.screened = false; SIMP.screenSummary = null;
   try{
     const j = await (await fetch("/seller/find",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -328,8 +330,16 @@ async function sellerDraft(){
          + "blocked spends generation credits on a listing that can never be "
          + "published.";
   }
+  // THE SERVER REFUSES THE WHOLE BATCH when any selected item is blocked
+  // (/seller/draft, include_blocked is never sent from here). The confirm used
+  // to say only "N will be refused", as though the rest would go through, and
+  // then nothing was drafted. Said as it is, and nothing is sent.
   if(blocked){
-    msg += "\n\n" + blocked + " of these are BLOCKED by Amazon and will be refused.";
+    await (typeof uiAlert === "function" ? uiAlert : uiConfirm)(blocked + " of the selected item" + (sel.length===1?" is":"s are")
+      + " BLOCKED by Amazon. A draft that includes a blocked item is refused as "
+      + "a whole, so nothing will be drafted.\n\nUntick the blocked item"
+      + (blocked===1?"":"s") + " (marked “blocked”) and draft again.");
+    return;
   }
   if(!await uiConfirm(msg)) return;
   await _siDraft(sel, {});
@@ -343,6 +353,19 @@ async function _siDraft(sel, extra){
     const j = await (await fetch("/seller/draft",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:_siBody(body)})).json();
+    // PARTLY DONE IS NOT "COULD NOT DRAFT". The server answers ok:false when
+    // any one row failed, even with the rest written -- and this said only
+    // "Could not draft" and never reloaded the list, so drafts that did exist
+    // were invisible until a manual refresh.
+    if(!j.ok && Number(j.drafted) > 0){
+      const errs = j.errors || [], eerrs = j.enrol_errors || [];
+      toast("Drafted " + j.drafted + ", but " + errs.length + " could not be drafted"
+            + (errs.length ? ": " + (errs[0].sku ? errs[0].sku + " — " : "") + (errs[0].error || "") : "")
+            + (eerrs.length ? " · supplier not recorded on " + eerrs.length : "")
+            + ". Nothing was sent to Amazon.");
+      if(typeof loadRows === "function") loadRows();
+      return;
+    }
     if(!j.ok){
       // The server counted the expanded families and it is over the ceiling.
       // A real number, asked about once, rather than a silent cap.

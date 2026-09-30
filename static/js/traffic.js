@@ -95,7 +95,9 @@ function trafficZoomTo(i, j){
   if(!from || !to) return;
   // Remember where we came from, so "Show the whole period" is one press and
   // not a hunt for which preset was on before.
-  TRAF._zoomBack = {preset: TRAF.preset, start: TRAF.start, end: TRAF.end};
+  // A ZOOM INSIDE A ZOOM KEEPS THE FIRST WAY BACK. Overwriting it made "Back to
+  // the full range" go back only one zoom -- to a range that was itself a zoom.
+  if(!TRAF._zoomBack) TRAF._zoomBack = {preset: TRAF.preset, start: TRAF.start, end: TRAF.end};
   TRAF.preset = "custom"; TRAF.start = from; TRAF.end = to;
   trafficLoad();
 }
@@ -110,7 +112,11 @@ function trafficZoomOut(){
 }
 
 async function trafficLoad(){
-  if(TRAF.busy) return;
+  // NEWEST REQUEST WINS. This used to return while busy, so a preset, a group
+  // or a zoom chosen during a load was thrown away: the pill lit up for the
+  // new choice and the screen kept drawing the old one. Every load now runs,
+  // and only the latest (by ticket) may draw or clear the loading state.
+  const my = TRAF.seq = (TRAF.seq || 0) + 1;
   TRAF.busy = true;
   const host = document.getElementById("trafbody");
   // The previous render is held at reduced opacity rather than replaced with a
@@ -121,16 +127,19 @@ async function trafficLoad(){
   const sc = (typeof screenScope === "function") ? screenScope() : null;         // the account this reply is for (audit S5)
   try{
     const j = await (await fetch("/traffic/summary?" + _tQuery())).json();
+    if(my !== TRAF.seq) return;
     if(sc && !screenStillIn(sc)) return;
     TRAF.data = j;
     trafficRender();
   }catch(e){
+    if(my !== TRAF.seq) return;
     if(sc && !screenStillIn(sc)) return;
     if(host) host.innerHTML = uiError("Traffic could not be loaded", String(e), "trafficLoad", "traffic");
   }finally{
     // Only THIS request's own state: after a switch the new account's request
-    // owns the busy flag and the panel (Milestone 3 review, known-issues #5).
-    if(!sc || screenStillIn(sc)){ TRAF.busy = false; if(host) host.style.opacity = ""; }
+    // owns the busy flag and the panel (Milestone 3 review, known-issues #5),
+    // and a newer load owns it too.
+    if(my === TRAF.seq && (!sc || screenStillIn(sc))){ TRAF.busy = false; if(host) host.style.opacity = ""; }
   }
 }
 

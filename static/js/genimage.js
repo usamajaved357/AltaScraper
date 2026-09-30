@@ -13,7 +13,15 @@
 // recipe UI is gone would silently break Creative, which the owner kept.
 // If it is ever cleaned up, rename the view first and repoint the dispatcher.
 let STUDIO = { skus: [], items: [], brand: "", results: {} };
-function _itemForSku(sku){ return (LIVE_ITEMS||[]).find(x=>String(x.sku)===String(sku)) || (ROWS||[]).find(x=>String(x.sku)===String(sku)); }
+// Also the Studio's OWN items: a product opened from the Image Studio picker or
+// ASIN Studio is in neither LIVE_ITEMS nor ROWS, so every lookup here came back
+// empty and the job went out with no reference image and no title.
+function _itemForSku(sku){
+  const _m = x=>String(x.sku)===String(sku);
+  return ((typeof LIVE_ITEMS!=="undefined" && LIVE_ITEMS)||[]).find(_m)
+      || ((typeof ROWS!=="undefined" && ROWS)||[]).find(_m)
+      || ((typeof STUDIO!=="undefined" && STUDIO && STUDIO.items)||[]).find(_m);
+}
 function _refImgForItem(it){
   if(!it){ return (typeof STUDIO!=='undefined' && STUDIO.manualRef) || ""; }
   var direct = it.img || it.main_image || it.image || "";
@@ -885,7 +893,10 @@ function _aplusAddResult(job, j, grid){
                             kind:"aplus",
                             tier:(job.tier||j.tier||"basic"),
                             variant:((j&&j.viewport==="mobile")||job.variant==="mobile"
-                                     ? "mobile" : "desktop")};
+                                     ? "mobile" : "desktop"),
+                            // The batch already saved it (image_jobs auto-save):
+                            // Save / Drive reuse that file instead of a copy.
+                            savedUrl:(j&&j.saved_url)||""};
   } else {
     inner=`<div class="sresfail">✗ ${esc((j&&j.error)||'failed')}</div><div class="srescap">${esc(job.sku)} · ${esc(job.modName)}</div>`;
   }
@@ -909,14 +920,58 @@ function _studioRenderResult(kind, r, grid){
   // was generated from -- and it used to stop here, so save_to_media received a
   // data URL and a SKU and nothing else, and wrote every image into one flat
   // folder. Passed on so the file can be filed by purpose (domain/media_kinds).
+  // A STRATEGIST BATCH IS SENT AS kind "concept" with the real kind on each
+  // job's payload (_conceptJobs). Carried as "concept", Save filed a secondary
+  // or A+ image as an unsorted one -- and the main-slot refusal, which reads the
+  // folder, then let it go to Amazon as MAIN. The payload's kind is the truth.
+  const _pk = (r && r._payload && r._payload.kind) ? String(r._payload.kind) : "";
+  const eff = _studioEffectiveKind(kind, _pk);
+  // The A+ module card only for an A+ module run; a strategist A+ concept keeps
+  // the ordinary card (with Redo and Refine) but is filed as A+.
   if(kind==="aplus"){
     _aplusAddResult({sku:r.sku, modName:(r.module&&r.module.name)||r.label||"",
                      kind:"aplus",
-                     tier:(r.tier||"basic"),
+                     tier:(r.tier||(r._payload&&r._payload.tier)||"basic"),
                      variant:(r.viewport==="mobile" ? "mobile" : "desktop")}, r, grid);
   } else {
-    _studioAddResult({sku:r.sku, strategy:r.label, kind:kind}, r, grid);
+    _studioAddResult({sku:r.sku, strategy:r.label, kind:eff,
+                      tier:((r._payload&&r._payload.tier)||"")}, r, grid);
   }
+}
+// What an image IS, from the batch kind and the job's own payload kind. The
+// batch kinds that make a main image (concept without a payload kind, the
+// cleaned source photo, the hero variations) are "main" -- "source" means
+// "reference photos" to media_kinds.folder_for, which is not what these are.
+function _studioEffectiveKind(batchKind, payloadKind){
+  const k = String(payloadKind || batchKind || "").toLowerCase();
+  if(k==="secondary" || k==="aplus") return k;
+  return "main";
+}
+// THE FINISHED LINE SAYS WHAT HAPPENED. It said "All generated images were
+// saved" whatever the results said -- including when an image's save failed
+// (save_error) and when the batch was stopped part-way. Pure, so it is tested.
+function _studioDoneLine(st){
+  const res=(st&&st.results)||[];
+  const okN=res.filter(r=>r&&r.ok).length;
+  const savedN=res.filter(r=>r&&r.ok&&r.saved_url).length;
+  const saveErr=res.filter(r=>r&&r.ok&&!r.saved_url);
+  const stopped=(st&&st.status==="error"&&st.error==="stopped by user");
+  let h;
+  if(stopped){
+    h='<span style="color:var(--warn)">■ Stopped — '+okN+'/'+(st.total||res.length)+' finished before stopping.</span>';
+  } else {
+    h='<span style="color:var(--ok)">✓ Done — '+okN+'/'+(st.total||res.length)+' succeeded.</span>';
+  }
+  if(savedN){
+    h+=' <span class="cc">'+savedN+' saved to this account’s media library (Image refs).</span>';
+  }
+  if(saveErr.length){
+    const why=saveErr.map(r=>r.save_error).filter(Boolean)[0]||"no file was written";
+    h+=' <span style="color:var(--red)">'+saveErr.length+' image'+(saveErr.length>1?'s were':' was')
+      +' NOT saved ('+esc(why)+') — use Save on '+(saveErr.length>1?'them':'it')+' below.</span>';
+  }
+  if(st&&st.error&&!stopped) h+=' <span style="color:var(--red)">'+esc(st.error)+'</span>';
+  return h;
 }
 async function studioRunBackground(kind, jobs, total){
   // Each section (main / secondary / aplus) has its OWN concept list but they
@@ -924,7 +979,14 @@ async function studioRunBackground(kind, jobs, total){
   // or A+ section wrote into (or failed to find) the MAIN container and looked
   // like "nothing happened". Resolve the right containers for the active section,
   // and create them on the fly if that section doesn't have them yet.
-  const section = STUDIO.conceptKind || (kind==="concept" ? (STUDIO.conceptKind||"main") : "main");
+  // THE RUN'S OWN KIND, not the last strategist section used. This read
+  // STUDIO.conceptKind first for every run, so after one A+ suggestion a
+  // Secondary or main run drew its results into the A+ pane -- hidden while
+  // the user looked at the pane they had pressed the button in.
+  const _jk = (jobs && jobs[0] && jobs[0].payload && jobs[0].payload.kind) || "";
+  const section = (kind==="concept")
+    ? _studioEffectiveKind("concept", _jk || STUDIO.conceptKind || "main")
+    : _studioEffectiveKind(kind, "");
   function _ensure(anchorId, id, cls){
     let el=document.getElementById(id);
     if(el) return el;
@@ -1005,9 +1067,7 @@ async function studioRunBackground(kind, jobs, total){
       }
       if(st.status!=="running"){
         clearInterval(STUDIO_POLL); STUDIO_POLL=null;
-        const okN=st.results.filter(r=>r.ok).length;
-        prog.innerHTML='<span style="color:var(--ok)">✓ Done — '+okN+'/'+st.total+' succeeded. <b>All generated images were saved to this account\u2019s media library</b> (Image refs) on the app\u2019s own storage \u2014 safe across redeploys, no Google Drive needed.</span>'
-          + (st.error?(' <span style="color:var(--red)">'+esc(st.error)+'</span>'):'');
+        prog.innerHTML=_studioDoneLine(st);
       } else {
         prog.innerHTML='<span class="genspin"></span> Generating '+st.done+'/'+st.total+' in background… <span class="cc">each finished image is auto-saved to its media library; safe to close or keep working.</span>';
       }

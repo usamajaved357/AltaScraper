@@ -9,6 +9,25 @@
 
 let ME = null;              // {id,email,name,role,permissions,workspaces,...}
 let USERS_META = null;      // the vocabulary the screens are drawn from
+let USERS_BY_ID = {};       // the last /users/list, by id (the editor reads it)
+
+/* WHAT AN EDITOR STARTS FROM: the levels somebody actually SET, plus each
+ * AREA's resolved level (an area has no Inherit, so it shows what it is).
+ * A page nobody set stays absent, which the editor draws as Inherit and never
+ * sends back. Drawing from the resolved map made every page look set, so Save
+ * pinned all of them and they stopped following their area (admin bug round,
+ * 30 Sep 2026). Shared by this screen and permissions.js. */
+function userEditorFeatures(u, parentMap){
+  const parent = parentMap || (USERS_META && USERS_META.feature_parent) || {};
+  const own = (u && u.feature_overrides) || null;
+  const resolved = (u && u.features) || {};
+  if(!own) return Object.assign({}, resolved);   // an older server: as before
+  const out = Object.assign({}, own);
+  Object.keys(resolved).forEach(function(k){
+    if(!parent[k] && !Object.prototype.hasOwnProperty.call(out, k)) out[k] = resolved[k];
+  });
+  return out;
+}
 
 // The ONE place USERS_META is assembled. It was being built by hand in two
 // places, and BOTH listed only all_permissions and roles -- so all_features,
@@ -379,6 +398,8 @@ async function renderUsers(){
     return;
   }
   _setMeta(j);
+  USERS_BY_ID = {};
+  (j.users || []).forEach(function(u){ USERS_BY_ID[u.id] = u; });
 
   // The Team screen has its own heading; this one is for the old modal only.
   let h = body.id === "teambody" ? ""
@@ -466,7 +487,10 @@ async function renderUsers(){
     +  '</div>'
     +  '<div class="cc" style="font-size:11.5px;margin-bottom:6px">Which workspaces?</div>'
     +  '<div id="nu_ws" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">'
-    +    workspaceCheckboxes("nu", ["*"])
+    // DEFAULTS TO THE ACCOUNTS YOU HOLD, not "All": the server refuses a
+    // grant wider than the caller's own (auth/users.grant_exceeds), so an
+    // admin limited to some accounts would otherwise start from a refusal.
+    +    workspaceCheckboxes("nu", (ME && ME.workspaces) ? ME.workspaces.slice() : ["*"])
     +  '</div>'
     +  '<button class="db-chip btn-primary" '
     +    'onclick="userCreate()">Add and make an invite link</button>'
@@ -627,10 +651,27 @@ function _rolePreset(prefix, selectId, fallback){
   });
   // Roles preset the AREA access too, so picking "lister" hides PPC and
   // credentials without anyone having to know that is what a lister means.
+  //
+  // EVERY ROW, CONSISTENTLY (admin bug round, 30 Sep 2026). Only rows the
+  // preset named were touched, so a page pinned under the old role kept its
+  // pin under the new one -- "lister" could leave Orders at View & edit. Now an
+  // area takes the preset; a page goes back to Inherit unless the preset
+  // gives it a level different from what inheriting would give.
   const fpre = (USERS_META.role_features||{})[role] || {};
+  const parent = (USERS_META.feature_parent||{});
+  const resolve = function(k){
+    for(let i = 0; k && i < 10; i++){
+      if(fpre[k]) return fpre[k];
+      k = parent[k];
+    }
+    return "view";
+  };
   document.querySelectorAll("."+prefix+"_feat").forEach(function(s){
     const k = s.getAttribute("data-feat");
-    if(fpre[k]) s.value = fpre[k];
+    const hasInherit = Array.prototype.some.call(s.options || [], function(o){ return o.value === ""; });
+    if(!hasInherit){ s.value = fpre[k] || resolve(k); return; }
+    const viaParent = resolve(parent[k]);
+    s.value = (fpre[k] && fpre[k] !== viaParent) ? fpre[k] : "";
   });
 }
 
@@ -695,6 +736,7 @@ function userEdit(id){
   fetch("/users/list").then(r=>r.json()).then(function(j){
     const u = (j.users||[]).find(function(x){ return x.id===id; });
     if(!u) return;
+    USERS_BY_ID[id] = u;            // userSave carries through what is not drawn
     host.innerHTML =
         '<div style="margin:8px 0 4px;padding:10px;border:1px solid var(--line2);border-radius:6px">'
       // NAME AND ROLE were fixed after creation (the server always accepted
@@ -709,7 +751,7 @@ function userEdit(id){
       + '</div>'
       + '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they SEE?</div>'
       + '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">'
-      +   featureRows("ue"+id, u.features||{})
+      +   featureRows("ue"+id, userEditorFeatures(u))
       + '</div>'
       + '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they do?</div>'
       + '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">'
@@ -738,6 +780,18 @@ async function userSave(id){
                    permissions:_collect("ue"+id,"data-perm","perm"),
                    features:   _collectFeatures("ue"+id),
                    workspaces: _collect("ue"+id,"data-ws","ws")};
+  // ACCOUNTS THIS EDITOR CANNOT SEE ARE KEPT. The boxes only list accounts the
+  // viewer may open (ACCOUNTS), so saving somebody who also has an account the
+  // viewer lacks used to drop it silently. _teamAccess already shows those as
+  // raw ids; this carries them through the save (admin bug round, 30 Sep 2026).
+  {
+    const drawn = {};
+    document.querySelectorAll(".ue"+id+"_ws").forEach(function(c){ drawn[c.getAttribute("data-ws")] = 1; });
+    const had = ((USERS_BY_ID[id] || {}).workspaces) || [];
+    had.forEach(function(w){
+      if(!drawn[w] && payload.workspaces.indexOf(w) < 0) payload.workspaces.push(w);
+    });
+  }
   try{
     const j = await (await fetch("/users/update",{method:"POST",
       headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)})).json();

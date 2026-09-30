@@ -14,7 +14,7 @@
 // and renders as fine is the paper form's exact failure: ticked without the
 // looking.
 
-const DAILY = {data: null, loading: false, showOk: false, note: ""};
+const DAILY = {data: null, loading: false, showOk: false, note: "", seq: 0};
 
 function dailyOnOpen(){ if(!DAILY.data) dailyLoad(); else dailyRender(); }
 
@@ -27,14 +27,25 @@ function dailyOnOpen(){ if(!DAILY.data) dailyLoad(); else dailyRender(); }
 function _dyQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; }
 
 async function dailyLoad(){
+  // NEWEST RUN WINS. Two quick presses of "Run again" started two rounds and
+  // whichever answered LAST was drawn, even if it was the older one. Each run
+  // takes a ticket; a reply whose ticket is no longer current is dropped.
+  const my = ++DAILY.seq;
   DAILY.loading = true; DAILY.note = ""; dailyRender();
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
   try{
-    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/daily/check" + _dyQs())).json();
-    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    if(my !== DAILY.seq) return;             // a newer run has taken over
+    // switched account/marketplace meanwhile: drop the reply, but do not leave
+    // the screen stuck on "running" (no newer run exists, the ticket says so).
+    if(_sc && !screenStillIn(_sc)){ DAILY.loading = false; dailyRender(); return; }
     if(j && j.ok) DAILY.data = j;
     else DAILY.note = (j && j.error) || "Could not run the round.";
-  }catch(e){ DAILY.note = "Could not run the round: " + e; }
+  }catch(e){
+    if(my !== DAILY.seq) return;
+    if(_sc && !screenStillIn(_sc)){ DAILY.loading = false; dailyRender(); return; }
+    DAILY.note = "Could not run the round: " + e;
+  }
   DAILY.loading = false; dailyRender();
 }
 
@@ -87,8 +98,20 @@ function dailyRender(){
   const unk = all.filter(c => c.status === "unknown");
   const ok  = all.filter(c => c.status === "ok");
 
+  // A FAILED RE-RUN IS SAID ABOVE THE OLD RESULT. It used to be dropped
+  // whenever an earlier round was on screen, so a refused re-run left the old
+  // round looking current. The old round stays (it is still the last one that
+  // worked) under a line saying the new one did not.
+  let h = '';
+  if(DAILY.note){
+    h += '<div class="odp-note warn" style="padding:10px 14px;margin:0 0 10px">'
+      + _dyEsc(DAILY.note) + ' Showing the previous round'
+      + (d.ran_at ? ' (run ' + _dyEsc(d.ran_at) + ')' : '') + '.</div>';
+  }else if(DAILY.loading){
+    h += '<div class="cc" style="padding:0 0 8px;font-size:12px">Running the round again…</div>';
+  }
   // THE HEADLINE NEVER SAYS ALL CLEAR WHILE SOMETHING COULD NOT BE LOOKED AT.
-  let h = '<div class="dy-head ' + (off.length ? "bad" : unk.length ? "part" : "good") + '">'
+  h += '<div class="dy-head ' + (off.length ? "bad" : unk.length ? "part" : "good") + '">'
     + '<div class="dy-eyebrow">Daily round</div>'
     + '<div class="dy-headline">' + _dyEsc(d.headline || "") + '</div>'
     + '<div class="dy-sub cc">' + off.length

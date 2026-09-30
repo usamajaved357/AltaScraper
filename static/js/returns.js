@@ -62,12 +62,19 @@ function _rEsc(s){
 
    NO CURRENCY SYMBOL. The returns report states the amount and not the
    currency, and these accounts span GBP, EUR and USD marketplaces; printing a
-   "$" over a euro figure would be a confident lie. The marketplace is on the
-   screen already. */
+   "$" over a euro figure would be a confident lie.
+
+   EXCEPT WHERE THE SERVER NAMES IT (bug round 30 Sep 2026): every answer is for
+   ONE marketplace, and the server now sends that marketplace's currency code.
+   Then this uses money.js's curMoney -- the same formatter the returns list
+   uses -- so the two views print the same figure the same way. No code, no
+   symbol, as before. */
 function _rMoney(v){
   if(v === null || v === undefined) return "—";
   const n = Number(v);
   if(!isFinite(n)) return "—";
+  const cc = (RET.data && RET.data.currency) || "";
+  if(cc && typeof curMoney === "function") return curMoney(n, cc);
   return n.toLocaleString(undefined, {minimumFractionDigits: 2,
                                       maximumFractionDigits: 2});
 }
@@ -89,12 +96,18 @@ const RET_NATURE_COLOUR = {
 };
 
 function returnsOnOpen(){ if(!RET.data) returnsLoad(); else returnsRender(); }
-function returnsSetDays(d){ RET.days = d; returnsLoad(); }
+// A DAY CHIP PRESSED WHILE A PULL IS RUNNING IS STILL A REQUEST (bug round
+// 30 Sep 2026). RET.busy dropped it, so the chip showed 90 days while the page
+// went on to draw the 30-day answer still in flight. Now the chip always asks,
+// and the ticket makes the NEWEST answer the one drawn.
+function returnsSetDays(d){ RET.days = d; returnsLoad(true); }
 
-async function returnsLoad(){
+let _RET_LOADS = 0;
+async function returnsLoad(force){
   const body = document.getElementById("retbody");
-  if(!body || RET.busy) return;
+  if(!body || (RET.busy && !force)) return;
   RET.busy = true;
+  const mine = ++_RET_LOADS;
   const t = _retTicket();
   body.innerHTML = '<div class="cc" style="padding:18px"><span class="genspin"></span> '
     + 'Asking Amazon for the returns report — they build these slowly, so this '
@@ -116,7 +129,26 @@ async function returnsLoad(){
     if(!_retCurrent(t)) return;
     body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
       + _rEsc(String(e)) + '</div>';
-  }finally{ RET.busy = false; }
+  }finally{
+    // Only the latest pull clears the flag; an older one finishing must not
+    // mark the screen idle while the newer one is still waiting on Amazon.
+    if(mine === _RET_LOADS) RET.busy = false;
+  }
+}
+
+/* THE STORED LIST MUST FOLLOW WHAT WAS JUST LOADED (bug round 30 Sep 2026).
+   returnsListOnOpen only fetches when RETL.rows is empty, so after an upload or
+   "Start again" the list kept showing the returns held before it. Emptying it
+   here makes the next look re-read the store, and a list already on screen is
+   reloaded now. */
+function _retListForget(){
+  if(typeof RETL === "undefined" || !RETL) return;
+  RETL.rows = []; RETL.statuses = {}; RETL.coverage = {};
+  RETL.open = null; RETL.detail = null; RETL.action = "";
+  const host = document.getElementById("returns_list");
+  if(host && host.innerHTML && typeof returnsListLoad === "function"){
+    returnsListLoad();
+  }
 }
 
 /* WHICH REPORT, AND WHERE TO GET IT. Two reports fill different halves of this
@@ -193,6 +225,7 @@ async function returnsUploadFile(input){
     (j.rejected || []).forEach(function(msg){ toast(msg); });
     RET.range = null;             // a new upload drops any zoom
     RET.data = j; returnsRender();
+    _retListForget();
   }catch(e){
     if(body) body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
       + _rEsc(String(e)) + '</div>';
@@ -210,7 +243,8 @@ async function returnsClear(){
     const body = document.getElementById("retbody");
     if(body) body.innerHTML = "";
     toast((j && j.note) || "Cleared.");
-    returnsLoad();
+    _retListForget();
+    returnsLoad(true);
   }catch(e){ toast(String(e)); }
 }
 

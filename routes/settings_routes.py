@@ -267,7 +267,10 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                     if raw.get(f) not in (None, ""):
                         raw.pop(f, None)
                         moved.append(f)
-            _settings.write_raw(raw, CONFIG_PATH)
+            # A FAILED WRITE IS AN ERROR, not "ok": write_raw returns False
+            # rather than raising, and this answered ok:true over a save that
+            # never reached the disk (admin bug round, 30 Sep 2026).
+            _write_config(raw)
             _state["cfg"] = None
             return jsonify({"ok": True, "account_id": aid,
                             "scope": ("account" if target is not raw else "global"),
@@ -367,7 +370,7 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                     raw["tracking_provider"] = p
                 else:
                     raw.pop("tracking_provider", None)
-            _settings.write_raw(raw, CONFIG_PATH)
+            _write_config(raw)          # raises on a failed write -> ok:false
             _state["cfg"] = None
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500

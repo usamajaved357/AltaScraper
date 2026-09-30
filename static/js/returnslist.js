@@ -29,12 +29,17 @@ function _rlEsc(s){
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/* ONE FORMATTER FOR BOTH RETURNS VIEWS (bug round 30 Sep 2026): money.js's
+   curMoney, in the currency of the marketplace the server answered for. This
+   printed the ACCOUNT's symbol while returns.js printed none -- two screens
+   of the same returns disagreeing about what the figures were in. */
 function _rlMoney(v){
   if(v === null || v === undefined || v === "") return "—";
   const n = Number(v);
   if(!isFinite(n)) return "—";
-  const sym = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
-  return sym + n.toFixed(2);
+  if(typeof curMoney === "function" && RETL.currency) return curMoney(n, RETL.currency);
+  return n.toLocaleString(undefined, {minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2});
 }
 
 /* Amazon's own words, coloured by what they mean for you.
@@ -70,11 +75,14 @@ async function returnsListLoad(){
     if(m && m !== "__all__") qs.push("marketplace=" + encodeURIComponent(m));
     const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const r = await fetch("/returns/list?" + qs.join("&"));
-    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    // switched account/marketplace meanwhile. loading is cleared on the way
+    // out: left true, returnsListOnOpen never asked again (bug round 30 Sep).
+    if(_sc && !screenStillIn(_sc)) { RETL.loading = false; return; }
     const j = await r.json();
     RETL.rows = (j && j.rows) || [];
     RETL.statuses = (j && j.statuses) || {};
     RETL.coverage = (j && j.coverage) || {};
+    RETL.currency = (j && j.currency) || "";
     RETL.note = (j && j.note) || ((j && !j.ok && j.error) || "");
   }catch(e){
     RETL.rows = []; RETL.note = "Could not load stored returns.";
@@ -183,7 +191,10 @@ function returnsListRender(){
     let x = a[RETL.sort], y = b[RETL.sort];
     if(x === null || x === undefined || x === "") return 1;
     if(y === null || y === undefined || y === "") return -1;
-    if(typeof x === "string") return dir * (x < y ? 1 : x > y ? -1 : 0);
+    // Same sign convention as the numbers below (bug round 30 Sep 2026): this
+    // had it inverted, so "Returned" newest-first actually listed OLDEST first
+    // and every text column sorted the opposite way to its arrow.
+    if(typeof x === "string") return dir * (x < y ? -1 : x > y ? 1 : 0);
     return dir * (x - y);
   });
 
@@ -236,6 +247,11 @@ function returnsListRender(){
 }
 
 async function returnsListOpen(identity){
+  // A DIFFERENT RETURN STARTS WITH NO MESSAGE PICKED (bug round 30 Sep 2026).
+  // The picked action outlived the return it was picked on, so opening the
+  // next one showed the previous order's message form already open. Re-opening
+  // the SAME return (after a send) keeps nothing either -- returnsSend clears it.
+  if(RETL.open !== identity) RETL.action = "";
   RETL.open = identity;
   RETL.detail = null;
   returnsListRenderDetail();
@@ -249,8 +265,15 @@ async function returnsListOpen(identity){
     const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const r = await fetch("/returns/detail?" + qs.join("&"));
     if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
-    RETL.detail = await r.json();
+    const got = await r.json();
+    // THE RETURN STILL OPEN, and only that (bug round 30 Sep 2026). Clicking
+    // two rows quickly let the slower reply land last, so the panel showed
+    // one return's detail under another's heading -- and a message sent from
+    // it would go to the wrong order.
+    if(RETL.open !== identity) return;
+    RETL.detail = got;
   }catch(e){
+    if(RETL.open !== identity) return;
     RETL.detail = {ok: false, error: "Could not open that return."};
   }
   returnsListRenderDetail();

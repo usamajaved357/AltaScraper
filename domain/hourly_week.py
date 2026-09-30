@@ -55,11 +55,20 @@ def _parse(ts):
 
 
 def known_order_ids(config_path, workspace_id, marketplace, since):
-    """Orders already in the table, so they are never fetched twice."""
+    """Orders already in the table, so they are never fetched twice.
+
+    ONLY ORDERS WITH A REAL LINE. An order Amazon would not itemise is stored
+    as a placeholder with a blank SKU, and fetch() says that blank SKU "is what
+    makes it eligible to be fetched again" -- but it was counted as known here,
+    so it never was, and the product stayed "(not itemised by Amazon)" for
+    ever. A placeholder-only order is now left out, and is itemised on the next
+    pull (store_lines then removes the placeholder).
+    """
     conn = _db.get_db(config_path)
     rows = conn.execute(
         "SELECT DISTINCT order_id FROM order_lines "
-        "WHERE workspace_id=? AND marketplace=? AND purchase_date>=?",
+        "WHERE workspace_id=? AND marketplace=? AND purchase_date>=? "
+        "  AND COALESCE(sku,'')<>''",
         (workspace_id, marketplace, since)).fetchall()
     return {r["order_id"] for r in rows}
 
@@ -107,6 +116,20 @@ def store_lines(config_path, workspace_id, marketplace, lines):
                  float(L.get("shipping") or 0),
                  L.get("currency") or "", L.get("status") or "", now))
             n += 1
+        except Exception:
+            continue
+    # A PLACEHOLDER GOES ONCE THE REAL LINES ARE IN. An order stored as
+    # "(not itemised by Amazon)" -- blank ASIN and SKU, revenue from the order
+    # total -- and later itemised would otherwise count twice: once as the
+    # placeholder and once as its real lines (price_cache sums both).
+    itemised = {L["order_id"] for L in lines
+                if (L.get("sku") or L.get("asin"))}
+    for oid in itemised:
+        try:
+            conn.execute(
+                "DELETE FROM order_lines WHERE workspace_id=? AND marketplace=? "
+                "AND order_id=? AND COALESCE(sku,'')='' AND COALESCE(asin,'')=''",
+                (workspace_id, marketplace, oid))
         except Exception:
             continue
     conn.commit()
@@ -203,6 +226,17 @@ def fetch(config_path, workspace_id, marketplace, marketplace_id, creds, days=30
         if not oid or oid in known:
             continue
         todo.append(o)
+    # NEW ORDERS FIRST (review, 30 Sep 2026): an order Amazon keeps refusing to
+    # itemise comes back every pull now; ahead of new ones, a run of throttled
+    # retries could use up the cap and starve today's orders. Retries go last.
+    try:
+        _any = {r[0] for r in _db.get_db(config_path).execute(
+            "SELECT DISTINCT order_id FROM order_lines WHERE workspace_id=? "
+            "AND marketplace=? AND purchase_date>=?",
+            (workspace_id, marketplace, since_iso)).fetchall()}
+    except Exception:
+        _any = set()
+    todo.sort(key=lambda o: str(o.get("AmazonOrderId") or "") in _any)   # stable: False first
 
     capped = len(todo) > max_orders
     todo = todo[:max_orders]
@@ -273,20 +307,31 @@ def summary(config_path, workspace_id, marketplace, days=30, metric="units",
     metric = "revenue" if metric == "revenue" else "units"
     conn = _db.get_db(config_path)
     since = (_dt.date.today() - _dt.timedelta(days=max(1, int(days)) - 1)).isoformat()
+    # CANCELLED ORDERS ARE NOT SALES (module docstring). fetch() skips them,
+    # but order_lines is also written by the Sales screen's price cache, which
+    # stores every order it prices, and a stored line's status follows the
+    # order when it is cancelled later -- so they reached this table anyway.
     rows = conn.execute(
         "SELECT asin, title, purchase_date, units, revenue, currency "
         "FROM order_lines WHERE workspace_id=? AND marketplace=? "
-        "  AND substr(purchase_date,1,10)>=? AND asin<>''",
+        "  AND substr(purchase_date,1,10)>=? AND asin<>'' "
+        "  AND LOWER(COALESCE(status,'')) NOT IN ('canceled','cancelled')",
         (workspace_id, marketplace, since)).fetchall()
 
     tz = _zone(marketplace)
     by = {}
     currency = ""
+    first_day = last_day = ""
     for r in rows:
         dt = _parse(r["purchase_date"])
         if not dt:
             continue
         local = dt.astimezone(tz)
+        ld = local.date().isoformat()
+        if not first_day or ld < first_day:
+            first_day = ld
+        if not last_day or ld > last_day:
+            last_day = ld
         # Monday = 0, to match "the full Mon-Sun grid".
         dow, hour = local.weekday(), local.hour
         a = by.setdefault(r["asin"], {
@@ -322,5 +367,10 @@ def summary(config_path, workspace_id, marketplace, days=30, metric="units",
         "currency": currency,
         "asins": out,
         "lines": len(rows),
+        # THE DAYS THE STORED ORDERS ACTUALLY COVER. The footer said "trailing
+        # 90 days" whenever 90 was picked, even when orders had only ever been
+        # pulled for the last 30 -- the window asked for, not the one read.
+        "first_day": first_day,
+        "last_day": last_day,
         "empty": not out,
     }

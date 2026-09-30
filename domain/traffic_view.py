@@ -109,11 +109,10 @@ def per_asin(config_path, workspace_id, marketplace, start, end, group="asin"):
     product in the account into one nameless row.
     """
     conn = _db.get_db(config_path)
-    key = ("CASE WHEN COALESCE(parent_asin,'')<>'' THEN parent_asin ELSE asin END"
-           if group == "parent" else "asin")
+    key = _group_key(group)
     rows = conn.execute(
         "SELECT %s k, MAX(COALESCE(parent_asin,'')) parent_asin, "
-        "  COUNT(DISTINCT asin) children, "
+        "  COUNT(DISTINCT asin) children, MIN(asin) a_child, "
         "  SUM(COALESCE(sessions,0)) sessions, "
         "  SUM(COALESCE(page_views,0)) page_views, "
         "  SUM(COALESCE(units,0)) units, "
@@ -130,7 +129,12 @@ def per_asin(config_path, workspace_id, marketplace, start, end, group="asin"):
     for r in rows:
         d = dict(r)
         d["asin"] = d.pop("k")
-        d["title"] = titles.get(d["asin"], "")
+        # A parent ASIN is rarely in the catalogue itself (it is not a thing
+        # you can buy), so on "By parent" a row takes one of its children's
+        # names rather than showing a bare code.
+        child = d.pop("a_child", None)
+        d["title"] = titles.get(d["asin"], "") or (
+            titles.get(child, "") if group == "parent" and child else "")
         d["conversion"] = _pct(d["units"], d["sessions"])
         d["buy_box"] = (round(d["bb_num"] / d["bb_den"], 2) if d["bb_den"] else None)
         d.pop("bb_num", None)
@@ -139,25 +143,40 @@ def per_asin(config_path, workspace_id, marketplace, start, end, group="asin"):
     return out
 
 
-def asin_daily(config_path, workspace_id, marketplace, start, end, asins):
-    """Daily sessions for a handful of named ASINs -- the Top ASINs Trend.
+def _group_key(group):
+    """The SQL for a row's product key: its own ASIN, or its parent when there
+    is one and the page is grouped by parent. ONE definition, used by the table
+    and the trend lines, so the two cannot group differently (Rule 12)."""
+    return (_PARENT_KEY if group == "parent" else "asin")
+
+
+_PARENT_KEY = "CASE WHEN COALESCE(parent_asin,'')<>'' THEN parent_asin ELSE asin END"
+
+
+def asin_daily(config_path, workspace_id, marketplace, start, end, asins,
+               group="asin"):
+    """Daily sessions for a handful of named products -- the Top ASINs Trend.
 
     One query for all of them rather than one per ASIN: five round trips to draw
     five lines is five chances for one of them to be a different period.
+
+    `group="parent"`: `asins` are parent keys (see _group_key), and each line is
+    the sum of that parent's children -- the same grouping as the table.
     """
     if not asins:
         return {}
     marks = ",".join("?" for _ in asins)
+    key = _group_key(group)
     conn = _db.get_db(config_path)
     rows = conn.execute(
-        "SELECT asin, date, SUM(COALESCE(sessions,0)) sessions "
+        "SELECT %s k, date, SUM(COALESCE(sessions,0)) sessions "
         "FROM sales_daily WHERE workspace_id=? AND marketplace=? "
-        "  AND date>=? AND date<=? AND asin IN (%s) "
-        "GROUP BY asin, date" % marks,
+        "  AND date>=? AND date<=? AND asin<>'*' AND %s IN (%s) "
+        "GROUP BY k, date" % (key, key, marks),
         [workspace_id, marketplace, start, end] + list(asins)).fetchall()
     out = {}
     for r in rows:
-        out.setdefault(r["asin"], {})[r["date"]] = r["sessions"]
+        out.setdefault(r["k"], {})[r["date"]] = r["sessions"]
     return out
 
 
@@ -257,6 +276,41 @@ def freshness(config_path, workspace_id, marketplace, start, end):
         % (last, gap, "" if gap == 1 else "s", start, last, end))}
 
 
+def _equal_length_prev(prev, start, fresh):
+    """`prev` cut to as many days as this window really has data for.
+
+    `fresh` is freshness()'s answer. When nothing is missing, `prev` comes back
+    unchanged. When the whole window is missing there is nothing to compare,
+    and `prev` is also returned unchanged -- the tiles then show no data.
+    """
+    import datetime as _dt
+    try:
+        missing = int((fresh or {}).get("missing_days") or 0)
+        last = (fresh or {}).get("last") or ""
+        if missing <= 0 or not last or last < start:
+            return prev
+        covered = (_dt.date.fromisoformat(last) - _dt.date.fromisoformat(start)).days + 1
+        p0 = _dt.date.fromisoformat(prev[0])
+        p1 = _dt.date.fromisoformat(prev[1])
+        cut = p0 + _dt.timedelta(days=covered - 1)
+        return (prev[0], min(cut, p1).isoformat())
+    except (TypeError, ValueError, IndexError):
+        return prev
+
+
+def _all_dates(start, end):
+    """Every calendar day from start to end, inclusive (ISO strings)."""
+    import datetime as _dt
+    try:
+        s = _dt.date.fromisoformat(start)
+        e = _dt.date.fromisoformat(end)
+    except (TypeError, ValueError):
+        return []
+    if e < s or (e - s).days > 800:
+        return []
+    return [(s + _dt.timedelta(days=i)).isoformat() for i in range((e - s).days + 1)]
+
+
 def _totals(days, rows):
     t = {k: 0 for k in ("sessions", "page_views", "units", "revenue")}
     bb_num = bb_den = 0.0
@@ -304,8 +358,18 @@ def summary(config_path, workspace_id, marketplace, start, end,
                 "the table below adds up to — the rest it reports at account "
                 "level only." % (_money(acct), _money(attributed)))
 
+    fresh = freshness(config_path, workspace_id, marketplace, start, end)
     deltas = {}
+    compared = None
     if prev:
+        # LIKE FOR LIKE WHEN THE NEWEST DAYS HAVE NOT ARRIVED. With the last
+        # `missing_days` of this window still empty, its totals cover fewer days
+        # than the previous window's, and every tile read as a fall that was
+        # only the calendar. The previous window is cut to the same number of
+        # days this one actually has (its first N days, as this window's data
+        # is its first N), and the reply says which days it used.
+        prev = _equal_length_prev(prev, start, fresh)
+        compared = {"start": prev[0], "end": prev[1]}
         p_days = daily(config_path, workspace_id, marketplace, prev[0], prev[1])
         p_rows = per_asin(config_path, workspace_id, marketplace, prev[0], prev[1], group)
         p_tot = _totals(p_days, p_rows)
@@ -324,9 +388,18 @@ def summary(config_path, workspace_id, marketplace, start, end,
 
     # The five most-visited products, and their daily sessions.
     top = [r for r in rows if (r.get("sessions") or 0) > 0][:top_n]
+    # `group` too: on "By parent" these keys are PARENT ASINs, which are not in
+    # the asin column, so every trend line came back empty.
     trend_map = asin_daily(config_path, workspace_id, marketplace, start, end,
-                           [r["asin"] for r in top])
-    dates = [d["date"] for d in days]
+                           [r["asin"] for r in top], group=group)
+    # EVERY DAY OF THE WINDOW ON THE AXIS. Only days with rows were listed, so
+    # a day Amazon has not sent vanished from the charts and its neighbours were
+    # drawn joined across it -- a missing week read as a smooth line. A day
+    # with no row is now on the axis with null values, which the charts draw as
+    # a gap. (When nothing at all is stored the axis stays empty.)
+    by_day = {d["date"]: d for d in days}
+    dates = (_all_dates(start, end) if days else []) or [d["date"] for d in days]
+    days_axis = [by_day.get(dt, {}) for dt in dates]
     trend = [{"asin": r["asin"], "title": r["title"], "sessions": r["sessions"],
               "daily": [trend_map.get(r["asin"], {}).get(d) for d in dates]}
              for r in top]
@@ -347,15 +420,18 @@ def summary(config_path, workspace_id, marketplace, start, end,
                      (rows[0].get("currency") if rows else "")),
         "dates": dates,
         "series": {
-            "sessions":   [d.get("sessions") for d in days],
-            "page_views": [d.get("page_views") for d in days],
-            "conversion": [d.get("conversion") for d in days],
-            "buy_box":    [d.get("buy_box") for d in days],
-            "browser":    [d.get("browser") for d in days],
-            "mobile":     [d.get("mobile") for d in days],
+            "sessions":   [d.get("sessions") for d in days_axis],
+            "page_views": [d.get("page_views") for d in days_axis],
+            "conversion": [d.get("conversion") for d in days_axis],
+            "buy_box":    [d.get("buy_box") for d in days_axis],
+            "browser":    [d.get("browser") for d in days_axis],
+            "mobile":     [d.get("mobile") for d in days_axis],
         },
         "totals": tot,
         "deltas": deltas,
+        # The window the change figures were actually measured against (it is
+        # shortened to equal length when the newest days are missing).
+        "compared_to": compared,
         # Said, not hidden. The gap between the account's revenue and what
         # Amazon attributes to individual products is Amazon's, and a page that
         # shows one number while its own table adds to another is how two
@@ -364,7 +440,7 @@ def summary(config_path, workspace_id, marketplace, start, end,
         "revenue_attributed": attributed,
         # How much of the window actually has data behind it. Silent when the
         # answer is "all of it", which is the usual case.
-        "freshness": freshness(config_path, workspace_id, marketplace, start, end),
+        "freshness": fresh,
         "kpis": [{"key": k, "label": l, "kind": kind,
                   "value": tot.get(k), "delta_pct": deltas.get(k),
                   "note": (revenue_note if k == "revenue" else "")}

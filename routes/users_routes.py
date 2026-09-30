@@ -119,9 +119,28 @@ def register(app, *, CONFIG_PATH):
                         "bootstrap": users.is_bootstrap(CONFIG_PATH),
                         **_vocabulary()})
 
+    def _outranks(uid):
+        """Why the caller may not act on user `uid` (reset their link, remove
+        them), or "": they must hold at least everything that person holds --
+        the same grant_exceeds judgement, with the whole record as the "grant"."""
+        target = users.get_user(CONFIG_PATH, uid) if uid else None
+        if target is None:
+            return ""                        # the action itself reports "no such user"
+        why = users.grant_exceeds(_me(), None, target)
+        return ("That person has access you do not have, so only someone who "
+                "holds it can do this. (" + why + ")") if why else ""
+
     @app.route("/users/create", methods=["POST"])
     def users_create():
         b = request.get_json(force=True, silent=True) or {}
+        # NOBODY GIVES WHAT THEY DO NOT HOLD (auth/users.grant_exceeds).
+        _after = users.prospective(None, role=b.get("role", "lister"),
+                                   permissions=b.get("permissions"),
+                                   features=b.get("features"),
+                                   workspaces=b.get("workspaces"))
+        _why = users.grant_exceeds(_me(), None, _after)
+        if _why:
+            return jsonify({"ok": False, "error": _why, "forbidden": True}), 403
         rec, res = users.create_user(
             CONFIG_PATH,
             email=b.get("email", ""),
@@ -142,6 +161,12 @@ def register(app, *, CONFIG_PATH):
         """Issue a fresh invitation link. Doubles as the password reset: it
         clears the old password, so the link is the only way back in."""
         b = request.get_json(force=True, silent=True) or {}
+        # A new link IS the person's access: an admin limited to one account
+        # must not mint one for somebody who holds more -- accept it and they
+        # are signed in as that person (account-scope review, 30 Sep 2026).
+        _why = _outranks(str(b.get("id", "")))
+        if _why:
+            return jsonify({"ok": False, "error": _why, "forbidden": True}), 403
         token, err = users.new_invite(CONFIG_PATH, str(b.get("id", "")))
         if err:
             return jsonify({"ok": False, "error": err}), 400
@@ -154,6 +179,18 @@ def register(app, *, CONFIG_PATH):
         fields = {k: b[k] for k in ("name", "role", "permissions", "workspaces",
                                     "features", "active")
                   if k in b}
+        # Judged against what the change would STORE, so a role switch that
+        # lifts every unset area through its preset is caught as well.
+        _target = users.get_user(CONFIG_PATH, uid)
+        if _target is not None:
+            _after = users.prospective(_target, role=fields.get("role"),
+                                       permissions=fields.get("permissions"),
+                                       features=fields.get("features"),
+                                       workspaces=fields.get("workspaces"),
+                                       active=fields.get("active"))
+            _why = users.grant_exceeds(_me(), _target, _after)
+            if _why:
+                return jsonify({"ok": False, "error": _why, "forbidden": True}), 403
         rec, err = users.update_user(CONFIG_PATH, uid, **fields)
         if err:
             return jsonify({"ok": False, "error": err}), 400
@@ -166,6 +203,9 @@ def register(app, *, CONFIG_PATH):
         if uid and uid == session.get("uid"):
             return jsonify({"ok": False,
                             "error": "You cannot delete the account you are signed in with."}), 400
+        _why = _outranks(uid)
+        if _why:
+            return jsonify({"ok": False, "error": _why, "forbidden": True}), 403
         ok, err = users.delete_user(CONFIG_PATH, uid)
         if not ok:
             return jsonify({"ok": False, "error": err}), 400
@@ -192,4 +232,7 @@ def register(app, *, CONFIG_PATH):
         session.permanent = True
         session["authed"] = True
         session["uid"] = rec["id"]
+        # The session generation this sign-in belongs to (auth/guard.py ends
+        # any session carrying an older one after a reset).
+        session["sv"] = users.session_version(users.get_user(CONFIG_PATH, rec["id"]))
         return render_template("invite.html", token=token, error=None, done=True)

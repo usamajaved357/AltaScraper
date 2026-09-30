@@ -196,8 +196,14 @@ truthy("  and a masked tail so you can tell which is saved", '"secret_tail"' in 
 # the token -- the same rule the eBay cert already follows.
 truthy("a blank secret keeps the stored one",
        re.search(r"if v and not v\.startswith", body))
+# RE-PINNED (admin bug round, 30 Sep 2026): the route now goes through the
+# module's _write_config(), which calls _settings.write_raw and RAISES when it
+# returns False -- so a failed save answers ok:false instead of ok:true. Same
+# one atomic writer underneath; the wrapper is what stopped it being ignored.
 truthy("credentials are written through the one atomic writer",
-       "_settings.write_raw(" in body)
+       "_settings.write_raw(" in body or "_write_config(raw)" in body)
+truthy("  and a failed write is not reported as saved",
+       "_settings.write_raw(raw, CONFIG_PATH)\n" not in body.replace("\r\n", "\n"))
 
 print("\n== it is guarded ==")
 G = open(_os_repo.path.join(_REPO, r"auth\guard.py"), encoding="utf-8-sig").read()

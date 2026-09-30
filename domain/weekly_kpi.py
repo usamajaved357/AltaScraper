@@ -533,6 +533,27 @@ def weeks(config_path, workspace_id, marketplace, limit=26):
     return out
 
 
+def changes_by_week(weeks_list):
+    """{week_start: compare(week, the calendar week before it)} for every
+    stored week whose week before (week_start - 7 days) is also stored.
+
+    A week whose predecessor is missing gets no entry: comparing against the
+    next-older stored week would call a fortnight "the week before".
+    """
+    by_start = {w.get("week_start"): w for w in (weeks_list or [])
+                if w.get("week_start")}
+    out = {}
+    for ws, w in by_start.items():
+        try:
+            prev = (_dt.date.fromisoformat(str(ws)[:10])
+                    - _dt.timedelta(days=7)).isoformat()
+        except ValueError:
+            continue
+        if prev in by_start:
+            out[ws] = compare(w, by_start[prev])
+    return out
+
+
 def compare(this_week, last_week):
     """Movement on every headline figure, week over week.
 

@@ -23,19 +23,32 @@ and would then cover both.
 """
 from flask import jsonify, request
 
+import re
+
 from domain import trackers as _t
+
+_ASIN_RE = re.compile(r"^[A-Z0-9]{10}$")
 
 
 def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     """Attach /trackers/* to the app."""
 
     def _scope():
-        # The shared resolver (routes/scope.pair): the marketplace follows the
-        # account the PAGE named, not the server's open one (Rule 12).
+        # The shared resolver (routes/scope.for_request): the marketplace
+        # follows the account the PAGE named, not the server's open one (Rule 12).
+        #
+        # The trackers are kept per account AND marketplace now. Rows written
+        # before that carry no marketplace; they were read in the account's
+        # default one, so they are adopted into it here -- once, and a no-op
+        # after (domain/trackers.adopt_legacy).
         from routes import scope as _scope_mod
-        return _scope_mod.pair(request, state=_state,
-                               active_account=_active_account, cfg=_cfg,
-                               config_path=CONFIG_PATH, last_resort="UK")
+        acc, wsid, mkt = _scope_mod.for_request(
+            request, state=_state, active_account=_active_account, cfg=_cfg,
+            config_path=CONFIG_PATH)
+        mkt = mkt or "UK"
+        legacy_home = str((acc or {}).get("default_marketplace") or "").strip() or mkt
+        _t.adopt_legacy(CONFIG_PATH, wsid, legacy_home)
+        return wsid, mkt
 
     def _names(wsid, mkt):
         """{asin: product name}, from the catalogue the rest of the app uses.
@@ -64,7 +77,8 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         metric = (request.args.get("metric") or "").strip().lower() or None
         if metric and metric not in _t.METRICS:
             return jsonify({"ok": False, "error": "Unknown tracker: %s" % metric}), 400
-        rows = _t.rows(CONFIG_PATH, wsid, metric, _names(wsid, mkt))
+        rows = _t.rows(CONFIG_PATH, wsid, metric, _names(wsid, mkt),
+                       marketplace=mkt)
         return jsonify({"ok": True, "account": wsid, "marketplace": mkt,
                         "metric": metric or "", "rows": rows,
                         "metrics": _t.METRICS})
@@ -72,21 +86,22 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     @app.route("/trackers/summary", methods=["GET"])
     def trackers_summary():
         wsid, mkt = _scope()
-        s = _t.summary(CONFIG_PATH, wsid, _names(wsid, mkt))
+        s = _t.summary(CONFIG_PATH, wsid, _names(wsid, mkt), marketplace=mkt)
         return jsonify({"ok": True, "account": wsid, "marketplace": mkt,
                         "summary": s,
-                        "alerts": _t.alerts(CONFIG_PATH, wsid)["count"]})
+                        "alerts": _t.alerts(CONFIG_PATH, wsid,
+                                            marketplace=mkt)["count"]})
 
     @app.route("/trackers/alerts", methods=["GET"])
     def trackers_alerts():
         wsid, mkt = _scope()
-        a = _t.alerts(CONFIG_PATH, wsid, _names(wsid, mkt))
+        a = _t.alerts(CONFIG_PATH, wsid, _names(wsid, mkt), marketplace=mkt)
         return jsonify({"ok": True, "account": wsid, "marketplace": mkt,
                         "count": a["count"], "rows": a["rows"]})
 
     @app.route("/trackers/history", methods=["GET"])
     def trackers_history():
-        wsid, _mkt = _scope()
+        wsid, mkt = _scope()
         asin = (request.args.get("asin") or "").strip().upper()
         metric = (request.args.get("metric") or "").strip().lower()
         if not asin or metric not in _t.METRICS:
@@ -96,16 +111,23 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         except ValueError:
             limit = 60
         return jsonify({"ok": True, "asin": asin, "metric": metric,
-                        "points": _t.history(CONFIG_PATH, wsid, asin, metric, limit)})
+                        "points": _t.history(CONFIG_PATH, wsid, asin, metric, limit,
+                                             marketplace=mkt)})
 
     @app.route("/trackers/watch", methods=["POST"])
     def trackers_watch():
-        wsid, _mkt = _scope()
+        wsid, mkt = _scope()
         b = request.get_json(silent=True) or {}
         asin = str(b.get("asin") or "").strip().upper()
         metric = str(b.get("metric") or "").strip().lower()
         if not asin:
             return jsonify({"ok": False, "error": "Which ASIN?"}), 400
+        # An ASIN is ten letters and digits. Anything else becomes a watch row
+        # that every Check now spends an API call failing to read.
+        if not _ASIN_RE.match(asin):
+            return jsonify({"ok": False,
+                            "error": "An ASIN is 10 letters and digits, e.g. "
+                                     "B0XXXXXXXX."}), 400
         if metric not in _t.METRICS:
             return jsonify({"ok": False, "error": "Unknown tracker: %s" % metric}), 400
         # `on` and `target` are both optional, so a screen can flip the switch
@@ -117,7 +139,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         if target is None and "target" in b:
             target = ""
         return jsonify(_t.watch_set(CONFIG_PATH, wsid, asin, metric,
-                                    on=on, target=target))
+                                    on=on, target=target, marketplace=mkt))
 
     @app.route("/trackers/refresh", methods=["POST"])
     def trackers_refresh():
@@ -153,5 +175,5 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         except Exception as e:
             return jsonify({"ok": False,
                             "error": "%s: %s" % (type(e).__name__, str(e)[:180])}), 502
-        res["alerts"] = _t.alerts(CONFIG_PATH, wsid)["count"]
+        res["alerts"] = _t.alerts(CONFIG_PATH, wsid, marketplace=mkt)["count"]
         return jsonify(res)

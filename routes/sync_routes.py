@@ -39,6 +39,33 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
                 return r
         return None
 
+    def _account_moved(write=False):
+        """Why this request must not act on the server's open account, or "".
+
+        Every sync route acts on _active_account() -- the server's open
+        account, one for the whole process. A page that names a DIFFERENT
+        account (another tab, or a Pull review left open across a switch) would
+        otherwise apply Amazon copy into the wrong account's row, and SKUs are
+        not unique across accounts (admin bug round, 30 Sep 2026).
+        """
+        try:
+            from domain import request_account as _ra
+            asked = _ra.named(request)
+        except Exception:
+            asked = ""
+        if not asked:
+            # A WRITE must say whose row it changes (review, 30 Sep 2026): with
+            # nothing named it would land in whichever account is open now.
+            return ("This change did not say which account it is for, so nothing "
+                    "was changed. Reload the page and try again.") if write else ""
+        acc = _active_account() or {}
+        cur = str(acc.get("id") or "")
+        if asked != cur:
+            return ("This screen is for %s but the app now has %s open, so "
+                    "nothing was changed. Reopen %s and try again."
+                    % (asked, cur or "no account", asked))
+        return ""
+
     def _regenerated_at(row):
         stamp = str(row.get("Regenerated", "") or "").strip()
         if not stamp:
@@ -66,6 +93,9 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
                         "seller_id": a.get("seller_id", ""),
                         "pull_enabled": c["pull_enabled"], "pull_confirmed": c["pull_confirmed"],
                         "push_enabled": c["push_enabled"], "push_confirmed": c["push_confirmed"],
+                        # THE STATUS PILL READS THIS, and it was never sent, so
+                        # every account showed "?" (admin bug round, 30 Sep 2026).
+                        "status": c.get("status", ""),
                         "reason": c["reason"]})
         return jsonify({"ok": True, "accounts": out})
 
@@ -73,6 +103,9 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
     def sync_read_test():
         """LIVE READ-ONLY capability confirmation for the active account (getListingsItem on
         a dummy SKU). NOT_FOUND -> pull confirmed; Forbidden -> denied. Confirms PULL only."""
+        _moved = _account_moved()
+        if _moved:
+            return jsonify({"ok": False, "account_moved": True, "error": _moved}), 409
         acc = _active_account()
         if not acc:
             return jsonify({"ok": False, "error": "no active account"}), 400
@@ -112,6 +145,9 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
         """OPERATOR override for the active account's pull status -- name a cause the generic
         403 cannot (e.g. mark a suspended account 'deactivated'). Does NOT touch the Amazon
         account; a later successful re-test clears it."""
+        _moved = _account_moved(write=True)
+        if _moved:
+            return jsonify({"ok": False, "account_moved": True, "error": _moved}), 409
         b = request.get_json(force=True) or {}
         status = str(b.get("status", "")).strip()
         note = str(b.get("note", "")).strip()
@@ -125,6 +161,9 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
 
     @app.route("/sync/status", methods=["POST"])
     def sync_status():
+        _moved = _account_moved()
+        if _moved:
+            return jsonify({"ok": False, "account_moved": True, "error": _moved}), 409
         b = request.get_json(force=True) or {}
         sku = str(b.get("sku", "")).strip()
         acc = _active_account()
@@ -140,6 +179,9 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
     def sync_pull():
         """PROPOSE a pull: fetch Amazon's copy, return it beside the stored copy for a
         side-by-side. Does NOT write to the sheet."""
+        _moved = _account_moved()
+        if _moved:
+            return jsonify({"ok": False, "account_moved": True, "error": _moved}), 409
         b = request.get_json(force=True) or {}
         sku = str(b.get("sku", "")).strip()
         acc = _active_account()
@@ -161,6 +203,9 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
         """Apply chosen Amazon fields INTO the sheet (after the operator reviewed the
         side-by-side). REGEN-SAFETY: never silently overwrite a row that was regenerated
         but not yet pushed -- refuse unless force=true."""
+        _moved = _account_moved(write=True)
+        if _moved:
+            return jsonify({"ok": False, "account_moved": True, "error": _moved}), 409
         b = request.get_json(force=True) or {}
         sku = str(b.get("sku", "")).strip()
         fields = b.get("fields") or {}          # {field: value} chosen by the operator
@@ -200,6 +245,9 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
     def sync_push():
         """PROPOSE a push: return the stored copy beside Amazon's current copy for review.
         No write. The actual write is /sync/push/confirm (currently gated-halted)."""
+        _moved = _account_moved()
+        if _moved:
+            return jsonify({"ok": False, "account_moved": True, "error": _moved}), 409
         b = request.get_json(force=True) or {}
         sku = str(b.get("sku", "")).strip()
         acc = _active_account()
@@ -222,6 +270,9 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
     def sync_push_confirm():
         """LIVE WRITE surface -- gated. Currently HALTED in listing/sync.push_to_amazon
         pending the reviewed one-listing first-push test."""
+        _moved = _account_moved(write=True)
+        if _moved:
+            return jsonify({"ok": False, "account_moved": True, "error": _moved}), 409
         b = request.get_json(force=True) or {}
         sku = str(b.get("sku", "")).strip()
         fields = b.get("fields") or {}

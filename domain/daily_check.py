@@ -65,6 +65,17 @@ def _r(key, title, group, status, value="", detail="", needs="", action=""):
             "value": value, "detail": detail, "needs": needs, "action": action}
 
 
+def _orders_needs(ctx, default):
+    """What the order checks need, naming why the list could not be read.
+
+    The route leaves ctx["orders"] ABSENT and puts the reason in
+    ctx["orders_error"] when Amazon refused the list, so these checks say
+    "could not check" with the reason instead of reading [] as "none waiting".
+    """
+    err = str(ctx.get("orders_error") or "").strip()
+    return ("%s — %s" % (default, err)) if err else default
+
+
 def _n(v):
     try:
         return int(v or 0)
@@ -86,7 +97,8 @@ def check_unshipped(ctx):
     orders = ctx.get("orders")
     if orders is None:
         return _r("unshipped", "Orders waiting to go out", G_ORDERS, UNKNOWN,
-                  needs="the live order list, which could not be read just now")
+                  needs=_orders_needs(ctx, "the live order list, which could "
+                                           "not be read just now"))
 
     now = ctx.get("now") or _dt.datetime.now(_dt.timezone.utc)
     waiting, late = [], []
@@ -124,7 +136,7 @@ def check_cancel_requests(ctx):
     orders = ctx.get("orders")
     if orders is None:
         return _r("cancel_requested", "Buyers asking to cancel", G_ORDERS,
-                  UNKNOWN, needs="the live order list")
+                  UNKNOWN, needs=_orders_needs(ctx, "the live order list"))
     hits = [o for o in orders
             if o.get("cancel_requested")
             and str(o.get("status") or "") in ("Unshipped", "PartiallyShipped",
@@ -146,7 +158,7 @@ def check_fbm(ctx):
     orders = ctx.get("orders")
     if orders is None:
         return _r("fbm", "Orders you post yourself", G_ORDERS, UNKNOWN,
-                  needs="the live order list")
+                  needs=_orders_needs(ctx, "the live order list"))
     mfn = [o for o in orders if str(o.get("fulfilment") or "").upper() == "MFN"]
     # A count with no line to cross. Reported, never judged -- there is no
     # honest threshold for "too many merchant-fulfilled orders".
@@ -476,7 +488,11 @@ CANNOT = [
 
 def unavailable():
     """Every check that cannot run, with the reason and no verdict."""
-    return [_r(k, t, g, UNKNOWN, needs=why) for (k, t, g, why) in CANNOT]
+    # `always` marks the checks that can NEVER run from this app, so a screen
+    # can tell them apart from a check that normally runs and failed today
+    # (the orders list refused, say) -- the one somebody must hear about.
+    return [dict(_r(k, t, g, UNKNOWN, needs=why), always=True)
+            for (k, t, g, why) in CANNOT]
 
 
 CHECKS = (check_unshipped, check_cancel_requests, check_fbm, check_stranded,

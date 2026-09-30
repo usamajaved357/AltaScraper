@@ -152,29 +152,90 @@ def _save(config_path, data):
     return jsonstore.write_json_atomic(_path(config_path), data, indent=2)
 
 
-def _wskey(workspace_id, asin):
-    """One key per account per ASIN.
+def _scope(workspace_id, marketplace=""):
+    """The account part of a key: "ws" (legacy) or "ws|MKT".
+
+    THE MARKETPLACE IS PART OF IT NOW. One ASIN is a different listing in each
+    country -- a different price, rank and fee -- and the refresh reads it in
+    the marketplace the screen is on. Keyed by account alone, a UK check and a
+    DE check wrote into ONE history, so the line flapped between two countries'
+    numbers and the target was judged against whichever read last.
+    """
+    ws = str(workspace_id or "").strip()
+    m = str(marketplace or "").strip().upper()
+    return ws if not m else "%s|%s" % (ws, m)
+
+
+def _wskey(workspace_id, asin, marketplace=""):
+    """One key per account (and marketplace) per ASIN.
 
     The account is part of the key because the same ASIN can be listed by two of
     these accounts at different prices, and one shared row would have them
     overwriting each other's readings -- which reads as a price that flaps
-    between two values for no reason.
+    between two values for no reason. The marketplace is, for the same reason
+    across countries (see _scope). A key with no marketplace is a row written
+    before that change; adopt_legacy() moves it to the account's default.
     """
-    return "%s::%s" % (str(workspace_id or "").strip(), str(asin or "").strip().upper())
+    return "%s::%s" % (_scope(workspace_id, marketplace),
+                       str(asin or "").strip().upper())
+
+
+def adopt_legacy(config_path, workspace_id, default_marketplace):
+    """Move this account's pre-marketplace rows ("ws::ASIN") to "ws|MKT::ASIN".
+
+    Old rows carry no marketplace; they were read in whichever one the account
+    defaults to, so that is where they go. Idempotent: once moved there is
+    nothing left to move and nothing is written. A row already present under the
+    new key keeps its watch settings; histories are merged oldest first.
+    Returns how many keys moved. Never raises.
+    """
+    ws = str(workspace_id or "").strip()
+    mkt = str(default_marketplace or "").strip().upper()
+    if not ws or not mkt:
+        return 0
+    old_prefix = ws + "::"
+    try:
+        with _LOCK:
+            data = load(config_path)
+            moved = 0
+            for part in ("watch", "history"):
+                block = data.setdefault(part, {})
+                for k in [k for k in block if k.startswith(old_prefix)]:
+                    asin = k[len(old_prefix):]
+                    nk = _wskey(ws, asin, mkt)
+                    old = block.pop(k) or {}
+                    cur = block.get(nk)
+                    if not cur:
+                        block[nk] = old
+                    elif part == "watch":
+                        for m, e in old.items():
+                            cur.setdefault(m, e)
+                    else:
+                        for m, pts in old.items():
+                            both = list(pts or []) + list(cur.get(m) or [])
+                            both.sort(key=lambda p: str(p.get("at") or ""))
+                            cur[m] = both[-MAX_HISTORY:]
+                    moved += 1
+            if moved:
+                _save(config_path, data)
+            return moved
+    except Exception:
+        return 0
 
 
 # --------------------------------------------------------------------------
 # the watch list
 # --------------------------------------------------------------------------
 
-def watch_get(config_path, workspace_id, asin, metric):
+def watch_get(config_path, workspace_id, asin, metric, marketplace=""):
     """{"on":bool, "target":float|None} for one ASIN and one metric."""
-    row = (load(config_path).get("watch") or {}).get(_wskey(workspace_id, asin)) or {}
+    row = (load(config_path).get("watch") or {}).get(_wskey(workspace_id, asin, marketplace)) or {}
     e = row.get(metric) or {}
     return {"on": bool(e.get("on")), "target": _num(e.get("target"))}
 
 
-def watch_set(config_path, workspace_id, asin, metric, on=None, target=None):
+def watch_set(config_path, workspace_id, asin, metric, on=None, target=None,
+              marketplace=""):
     """Turn a tracker on or off for one ASIN, and/or set its target.
 
     `on` and `target` are both optional so a screen can change one without
@@ -184,7 +245,7 @@ def watch_set(config_path, workspace_id, asin, metric, on=None, target=None):
     """
     if metric not in METRICS:
         return {"ok": False, "error": "Unknown tracker: %s" % metric}
-    k = _wskey(workspace_id, asin)
+    k = _wskey(workspace_id, asin, marketplace)
     with _LOCK:
         data = load(config_path)
         row = data.setdefault("watch", {}).setdefault(k, {})
@@ -198,7 +259,7 @@ def watch_set(config_path, workspace_id, asin, metric, on=None, target=None):
                                       "target": _num(e.get("target"))}}
 
 
-def tracked(config_path, workspace_id, metric=None):
+def tracked(config_path, workspace_id, metric=None, marketplace=""):
     """The ASINs being watched, as {asin: {metric: {...}}}.
 
     Only rows with at least one metric switched ON, because an ASIN whose target
@@ -206,7 +267,7 @@ def tracked(config_path, workspace_id, metric=None):
     per ASIN and this is the list that decides how many.
     """
     out = {}
-    prefix = "%s::" % str(workspace_id or "").strip()
+    prefix = "%s::" % _scope(workspace_id, marketplace)
     for k, row in (load(config_path).get("watch") or {}).items():
         if not k.startswith(prefix):
             continue
@@ -226,7 +287,8 @@ def tracked(config_path, workspace_id, metric=None):
 # readings
 # --------------------------------------------------------------------------
 
-def record(config_path, workspace_id, asin, metric, value, at=None):
+def record(config_path, workspace_id, asin, metric, value, at=None,
+           marketplace=""):
     """Append one reading. A value that is not a number is NOT stored.
 
     Refusing to store the unknown is what keeps a failed fetch from becoming a
@@ -237,7 +299,7 @@ def record(config_path, workspace_id, asin, metric, value, at=None):
     v = _num(value)
     if metric not in METRICS or v is None:
         return False
-    k = _wskey(workspace_id, asin)
+    k = _wskey(workspace_id, asin, marketplace)
     with _LOCK:
         data = load(config_path)
         hist = data.setdefault("history", {}).setdefault(k, {}).setdefault(metric, [])
@@ -248,14 +310,14 @@ def record(config_path, workspace_id, asin, metric, value, at=None):
     return True
 
 
-def history(config_path, workspace_id, asin, metric, limit=0):
+def history(config_path, workspace_id, asin, metric, limit=0, marketplace=""):
     h = ((load(config_path).get("history") or {})
-         .get(_wskey(workspace_id, asin)) or {}).get(metric) or []
+         .get(_wskey(workspace_id, asin, marketplace)) or {}).get(metric) or []
     return h[-limit:] if limit and limit > 0 else list(h)
 
 
-def latest(config_path, workspace_id, asin, metric):
-    h = history(config_path, workspace_id, asin, metric)
+def latest(config_path, workspace_id, asin, metric, marketplace=""):
+    h = history(config_path, workspace_id, asin, metric, marketplace=marketplace)
     return h[-1] if h else None
 
 
@@ -292,7 +354,7 @@ def status_for(value, target, good, tolerance):
     return OFF if d > (tolerance if tolerance is not None else 0) else OK
 
 
-def rows(config_path, workspace_id, metric=None, names=None):
+def rows(config_path, workspace_id, metric=None, names=None, marketplace=""):
     """One row per tracked ASIN per metric -- what the screen draws.
 
     `names` is an optional {asin: title} so the screen can show a product name
@@ -300,12 +362,13 @@ def rows(config_path, workspace_id, metric=None, names=None):
     rather than a lookup because domain/catalogue.py already owns that job.
     """
     out = []
-    watch = tracked(config_path, workspace_id, metric)
+    watch = tracked(config_path, workspace_id, metric, marketplace)
     for asin, metrics in sorted(watch.items()):
         for m, e in sorted(metrics.items()):
             spec = METRICS[m]
-            last = latest(config_path, workspace_id, asin, m)
-            h = history(config_path, workspace_id, asin, m, limit=2)
+            last = latest(config_path, workspace_id, asin, m, marketplace)
+            h = history(config_path, workspace_id, asin, m, limit=2,
+                        marketplace=marketplace)
             prev = h[0]["v"] if len(h) > 1 else None
             v = last["v"] if last else None
             tgt = e.get("target")
@@ -325,28 +388,29 @@ def rows(config_path, workspace_id, metric=None, names=None):
                 # thing that raises an alert -- see the module docstring.
                 "change": (None if (v is None or prev is None) else round(v - prev, 4)),
                 "last_at": last["at"] if last else "",
-                "points": len(history(config_path, workspace_id, asin, m)),
+                "points": len(history(config_path, workspace_id, asin, m,
+                                      marketplace=marketplace)),
                 "status": status_for(v, tgt, spec["good"], spec["tolerance"]),
             })
     return out
 
 
-def alerts(config_path, workspace_id, names=None):
+def alerts(config_path, workspace_id, names=None, marketplace=""):
     """Every row that is OFF target, worst first, plus the count.
 
     ONE count across all four trackers, as Orbit has it. A per-tracker count
     would mean four badges to check, which is four chances to miss the one that
     mattered.
     """
-    bad = [r for r in rows(config_path, workspace_id, None, names)
+    bad = [r for r in rows(config_path, workspace_id, None, names, marketplace)
            if r["status"] == OFF]
     bad.sort(key=lambda r: (-(r["drift"] or 0), r["asin"]))
     return {"count": len(bad), "rows": bad}
 
 
-def summary(config_path, workspace_id, names=None):
+def summary(config_path, workspace_id, names=None, marketplace=""):
     """Counts per tracker for the All Trackers screen."""
-    all_rows = rows(config_path, workspace_id, None, names)
+    all_rows = rows(config_path, workspace_id, None, names, marketplace)
     out = {}
     for m, spec in METRICS.items():
         mine = [r for r in all_rows if r["metric"] == m]

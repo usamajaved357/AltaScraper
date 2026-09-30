@@ -95,7 +95,9 @@ truthy("  and only serves the sizes it caches",
        /_THUMB_SIZES = \(160, 320, 640\)/.test(MEDIA));
 // A path is user data. "../../config.json" is a valid-looking relpath.
 truthy("  a path outside the media root cannot be resized",
-       /if not src\.startswith\(root\)/.test(MEDIA));
+       // Re-pinned 30 Sep 2026 (bug round): commonpath, not startswith --
+       // "media_old/x" starts with "media" too.
+       /os\.path\.commonpath\(\[src, root\]\) == root/.test(MEDIA));
 truthy("  a small file is served as-is rather than re-encoded",
        /os\.path\.getsize\(src\) < 60 \* 1024/.test(MEDIA));
 // Replacing an image must replace its thumbnail, not serve yesterday's.

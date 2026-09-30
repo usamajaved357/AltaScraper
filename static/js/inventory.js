@@ -21,11 +21,20 @@ async function inv2Run(){
     resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">No workspace/account selected. Pick one from the sidebar first.</div>';
     return;
   }
-  resBox.innerHTML = '<div class="cc"><span class="genspin"></span> Running inventory model — fetching FBA + sales from SP-API (5-15 min if cache is stale, instant if cached)…</div>';
+  // ONE REAL MARKETPLACE (bug round 30 Sep 2026). This sent WS_MARKET || "US":
+  // "All marketplaces" went to the server as "__all__", and nothing picked at
+  // all became the United States whatever the account sells in.
+  const mkt = (typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+              ? WS_MARKET : "";
+  if(!mkt){
+    resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">Pick one marketplace at the top of the screen first. Replenishment is worked out per marketplace, so it cannot run on All marketplaces.</div>';
+    return;
+  }
+  resBox.innerHTML = '<div class="cc"><span class="genspin"></span> Running inventory model for ' + esc(mkt) + ' — fetching FBA + sales from SP-API (5-15 min if cache is stale, instant if cached)…</div>';
 
   const fd = new FormData();
   fd.append("account_id", acctId);
-  fd.append("marketplace", WS_MARKET || "US");
+  fd.append("marketplace", mkt);
   fd.append("target_normal_dos",       document.getElementById("inv2_normal").value  || "85");
   fd.append("reorder_cycle_days",      document.getElementById("inv2_reorder").value || "5");
   fd.append("target_long_horizon_dos", document.getElementById("inv2_long").value    || "110");
@@ -36,7 +45,12 @@ async function inv2Run(){
   if(three_pl_file.files && three_pl_file.files[0]) fd.append("three_pl_file", three_pl_file.files[0]);
 
   try{
+    // A run takes minutes. If the account or marketplace is switched while it
+    // is going, its answer belongs to the screen that asked, not this one
+    // (bug round 30 Sep 2026) -- the same check every other screen makes.
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;
     const j = await (await fetch("/inventory/v2/run",{method:"POST", body:fd})).json();
+    if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     if(!j.ok){
       resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">'+esc(j.error||"run failed")+'</div>';
       return;
@@ -99,14 +113,21 @@ async function invBadgeRefresh(){
   if(!badge) return;
   const acctId = (CUR_ACCOUNT && CUR_ACCOUNT.id) || "";
   if(!acctId){ badge.style.display="none"; return; }
+  // PER MARKETPLACE when one is picked (bug round 30 Sep 2026): a UK run's
+  // count was shown while looking at the same account's US store.
+  const mkt = (typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+              ? WS_MARKET : "";
   try{
-    const j = await (await fetch("/inventory/v2/alerts?account_id="+encodeURIComponent(acctId))).json();
+    const j = await (await fetch("/inventory/v2/alerts?account_id="+encodeURIComponent(acctId)
+                                 + (mkt ? "&marketplace="+encodeURIComponent(mkt) : ""))).json();
     // THE ACCOUNT IT ASKED FOR, and only that. Not screenScope(): enterAccount
     // calls this BEFORE the switch finishes (before screenForgetAll moves the
     // generation), so a scope check threw away every reply and the badge never
     // updated on entering an account (Milestone 3 review).
     if(!(CUR_ACCOUNT && String(CUR_ACCOUNT.id) === String(acctId))) return;
-    const n = j.count || 0;
+    // NOT RUN IS NOT ZERO: an unknown count hides the badge rather than
+    // claiming nothing needs reordering.
+    const n = (j && j.count !== null && j.count !== undefined) ? Number(j.count) : 0;
     if(n > 0){
       badge.textContent = n;
       badge.style.display = "inline-block";

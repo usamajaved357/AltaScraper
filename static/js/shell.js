@@ -387,9 +387,23 @@ function _toggleVat(on){
   }
 }
 
+// Which enterAccount call is the latest. An older call whose /accounts/select
+// reply lands after a newer one's must not paint over it (admin bug round).
+let _ENTER_SEQ = 0;
+// /accounts/select calls go to the server ONE AT A TIME, in the order they
+// were made, so the server's open account is always the last one clicked.
+let _SELECT_CHAIN = Promise.resolve();
 async function enterAccount(accountId){
-  const a=ACCOUNTS.find(x=>x.id===accountId) || ACCOUNTS[0];
-  if(!a){ toast("Account not found"); return; }
+  // AN UNKNOWN ACCOUNT IS SAID, NOT GUESSED. This fell back to ACCOUNTS[0], so
+  // a stale link or a deleted account silently opened some other company's
+  // workspace (admin bug round, 30 Sep 2026). Stay on the account list.
+  const a=ACCOUNTS.find(x=>String(x.id)===String(accountId));
+  if(!a){
+    toast("That account is not available — pick one from the list.");
+    if(typeof goHome === "function") goHome();
+    return;
+  }
+  const _mySeq = ++_ENTER_SEQ;
   // A DIFFERENT ACCOUNT IS A DIFFERENT PRODUCT CONTEXT (owner, 27 Sep 2026).
   // The product page used to stay open across this line: still showing the
   // old account's listing, while every save from it named the new account
@@ -476,13 +490,20 @@ async function enterAccount(accountId){
   // tell the backend this account is active (all submit/preview use ITS creds).
   // The reply names the exact spreadsheet + tab this workspace is bound to, and
   // lists anything unset -- shown in the header so the data source is never a guess.
-  try{
-    const _sel=await (await fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({id:a.id})})).json();
-    WS_SOURCE = _sel && _sel.ok ? {out_id:_sel.sheet||"", out_gid:_sel.tab_gid||"", out_tab:_sel.tab||"",
-                                   in_id:_sel.input_sheet||"", in_gid:_sel.input_tab_gid||"",
-                                   missing:_sel.missing||[]} : null;
-  }catch(e){ WS_SOURCE=null; }
+  let _selReply = null;
+  const _selP = _SELECT_CHAIN.then(function(){
+    return fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({id:a.id})}).then(function(r){ return r.json(); });
+  });
+  _SELECT_CHAIN = _selP.catch(function(){});
+  try{ _selReply = await _selP; }catch(e){ _selReply = null; }
+  // A NEWER enterAccount HAS STARTED: this reply is about an account that is no
+  // longer the one being opened, so it paints nothing.
+  if(_mySeq !== _ENTER_SEQ) return;
+  WS_SOURCE = _selReply && _selReply.ok
+    ? {out_id:_selReply.sheet||"", out_gid:_selReply.tab_gid||"", out_tab:_selReply.tab||"",
+       in_id:_selReply.input_sheet||"", in_gid:_selReply.input_tab_gid||"",
+       missing:_selReply.missing||[]} : null;
   renderDataSource();
   // paint shell
   // Picking an account from the panel closes it. This used to hide a full-screen
@@ -776,7 +797,7 @@ function openAccountEditor(id){
       <tr><td class="k">LWA client ID</td><td class="v"><input class="ed" id="ac_clientid" value="${esc(a.lwa_client_id||'')}" placeholder="amzn1.application-oa2-client..."></td></tr>
       <tr><td class="k">LWA client secret</td><td class="v"><input class="ed" id="ac_secret" type="password" placeholder="${a.has_secret?'•••••• (leave blank to keep)':'paste secret'}"></td></tr>
       <tr><td class="k">Refresh token</td><td class="v"><input class="ed" id="ac_refresh" type="password" placeholder="${a.has_creds?'•••••• (leave blank to keep)':'paste refresh token'}"></td></tr>
-      <tr><td class="k">Primary marketplace</td><td class="v"><select class="ed" id="ac_marketplace"><option value="UK"${(a.default_marketplace||'UK')==='UK'?' selected':''}>UK — amazon.co.uk (GBP)</option><option value="US"${(a.default_marketplace||'')==='US'?' selected':''}>US — amazon.com (USD)</option></select><div class="cc" style="font-size:11px;margin-top:2px">Drives pricing, fees, SP-API and the flat-file route for this account's listings.</div></td></tr>
+      <tr><td class="k">Primary marketplace</td><td class="v"><select class="ed" id="ac_marketplace">${_acctMktOptions(a)}</select><div class="cc" style="font-size:11px;margin-top:2px">Drives pricing, fees, SP-API and the flat-file route for this account's listings.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-table"></i> Google Sheets for this account ${onDb?'<span class="cc" style="font-weight:400">— optional</span>':''}</div><div class="cc" style="font-size:11.5px">${onDb
           // ON THE DATABASE THESE ARE NOT WHERE ANYTHING LIVES, and the labels
           // said otherwise -- "(generated listings)" against a sheet nothing is
@@ -872,6 +893,30 @@ function openAccountEditor(id){
       }
     }catch(e){}
   })();
+}
+/* THE PRIMARY-MARKETPLACE CHOICES ARE THE ACCOUNT'S OWN.
+ *
+ * The box offered UK and US only. An account whose default is MX, DE or CA
+ * matched neither option, the browser showed the first one, and Save wrote
+ * "UK" over the real default (admin bug round, 30 Sep 2026). The options are
+ * now the account's marketplaces plus its current default, whatever they are;
+ * a new account with none detected yet still gets UK and US. */
+function _acctMktOptions(a){
+  a = a || {};
+  const cur = String(a.default_marketplace || "").trim().toUpperCase();
+  const list = [];
+  (a.marketplaces || []).forEach(function(m){
+    m = String(m || "").trim().toUpperCase();
+    if(m && list.indexOf(m) < 0) list.push(m);
+  });
+  if(cur && list.indexOf(cur) < 0) list.unshift(cur);
+  if(!list.length) list.push("UK", "US");
+  const sel = cur || list[0];
+  return list.map(function(m){
+    const nm = (typeof mktName === "function") ? (mktName(m) || "") : "";
+    return '<option value="' + esc(m) + '"' + (m === sel ? " selected" : "") + '>'
+         + esc(m) + (nm && nm !== m ? " — " + esc(nm) : "") + '</option>';
+  }).join("");
 }
 function closeAccountEditor(){ document.getElementById("acctmodal").classList.remove("open"); }
 // Parse a full Google Sheets URL into {id, gid}. Accepts a bare ID too.
@@ -982,8 +1027,25 @@ async function saveAccount(){
 }
 async function deleteAccount(id){
   if(!await uiConfirm("Delete this account from the app? (Your Amazon account is unaffected; this only removes it from the tool.)")) return;
-  try{ await fetch("/accounts/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})});
-    toast("Account removed"); closeAccountEditor(); loadHome(); }
+  // THE REPLY IS READ. "Account removed" was shown whatever the server said,
+  // including a 403 or "not found" (admin bug round, 30 Sep 2026).
+  try{
+    const r = await fetch("/accounts/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})});
+    let j = null; try{ j = await r.json(); }catch(e){ j = null; }
+    if(!r.ok || !j || !j.ok){ toast("Could not delete: " + ((j && j.error) || ("HTTP " + r.status))); return; }
+    toast("Account removed"); closeAccountEditor();
+    // THE ACCOUNT THAT WAS OPEN IS GONE: nothing may go on naming it.
+    if(CUR_ACCOUNT && String(CUR_ACCOUNT.id) === String(id)){
+      if(typeof pdpLeaveContext === "function"){ try{ pdpLeaveContext(); }catch(e){} }
+      CUR_ACCOUNT = null;
+      if(typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && String(ACTIVE_WS.key) === String(id)) ACTIVE_WS = null;
+      try{ if(localStorage.getItem("alta_last_account") === String(id)) localStorage.removeItem("alta_last_account"); }catch(e){}
+      if(typeof screenForgetAll === "function"){ try{ screenForgetAll(); }catch(e){} }
+      goHome();                     // the account list, which also reloads it
+      return;
+    }
+    loadHome();
+  }
   catch(e){ toast("Error: "+e); }
 }
 async function detectFromEditor(id){
@@ -1084,6 +1146,19 @@ async function enterWorkspace(key){
      && !(typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && String(ACTIVE_WS.key) === String(v.key))){
     try{ pdpLeaveContext(); }catch(e){}
   }
+  // LEAVING AN ACCOUNT FOR A SHEET VIEW IS AN ACCOUNT CHANGE. A view is not an
+  // account, so CUR_ACCOUNT goes (acctBody would otherwise keep naming the
+  // account just left), and every screen is forgotten whenever the context
+  // moves -- not only when the marketplace happens to differ, which let one
+  // account's Sales figures sit under another's heading (admin bug round).
+  const _ctxMoved = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
+    || !(typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && String(ACTIVE_WS.key) === String(v.key));
+  if(typeof CUR_ACCOUNT !== "undefined") CUR_ACCOUNT = null;
+  _ENTER_SEQ++;                     // an account open in flight must not land now
+  if(_ctxMoved){
+    if(typeof screenForgetAll === "function"){ try{ screenForgetAll(); }catch(e){} }
+    if(typeof altaCountReset === "function"){ try{ altaCountReset(); }catch(e){} }
+  }
   ACTIVE_WS=v;
   // switch the backend view so all existing routes read this workspace's sheet
   try{ await fetch("/view/set",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1117,7 +1192,7 @@ async function enterWorkspace(key){
   WS_MARKET = _wsMkt;
   // Same rule as every other switch (Milestone 3 review): held data and
   // in-flight replies belong to the marketplace just left.
-  if(_wsMoved && typeof screenForgetAll === "function"){ try{ screenForgetAll(); }catch(e){} }
+  if(_wsMoved && !_ctxMoved && typeof screenForgetAll === "function"){ try{ screenForgetAll(); }catch(e){} }
   // This one only knew about dollars and pounds, so a German or Irish
   // marketplace showed euro amounts with a pound sign in front of them.
   CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js

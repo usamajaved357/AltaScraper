@@ -205,6 +205,29 @@ function uiError(title, detail, retry, sec) {
     "</div>";
 }
 
+/* LESS TEXT, MORE VISUAL (owner, 30 Sep 2026: "the ui should be uniform ...
+ * less text explanatory but more visual explanatory").
+ *
+ * uiHint(text)  a small (i): the explanation on hover and to a screen reader,
+ *               instead of a paragraph on the page.
+ * uiNote(tone, short, detail)  one coloured line -- an icon, a few words -- with
+ *               the long explanation behind its (i). tone: "info" | "warn" |
+ *               "bad" | "ok". Every screen's notes look the same. */
+function uiHint(text) {
+  if (!text) return "";
+  const t = esc(String(text));
+  return '<i class="ti ti-info-circle ui-hint" tabindex="0" role="img" ' +
+         'aria-label="' + t + '" title="' + t + '"></i>';
+}
+
+function uiNote(tone, short, detail) {
+  const ic = {info: "ti-info-circle", warn: "ti-alert-triangle", bad: "ti-alert-octagon",
+              ok: "ti-circle-check"}[tone] || "ti-info-circle";
+  return '<div class="ui-callout ' + esc(tone || "info") + '" role="note">' +
+    '<i class="ti ' + ic + '"></i><span>' + esc(short || "") + '</span>' +
+    (detail ? " " + uiHint(detail) : "") + "</div>";
+}
+
 // An empty state that says what to DO. Every screen has one and most of them
 // said "nothing here", which is indistinguishable from broken.
 function uiEmpty(title, body, action) {

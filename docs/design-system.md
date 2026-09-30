@@ -110,7 +110,10 @@ bottom-right corner and must win. Each `<link>` carries its reason.
 | Side panel | Orders `.ord-split` / `.ord-side` | a second grid column, not an overlay; only where the table keeps its width beside it (`ORD_SIDE_MIN`), inline below that |
 | Toast | `#toast`, `toast(msg,{err})` | bottom centre (clear of the corner buttons), role=status, errors `.toast.err` |
 | Empty / error / loading | `uiEmpty`, `uiError`, `.empty`, motion.js skeletons | a failure never looks like "no data"; all-clear says what was checked |
+| Explanation [decided 30 Sep 2026, owner: "less text explanatory but more visual explanatory"] | `uiHint(text)` (an (i) with the text on hover/screen reader), `uiNote(tone, short, detail)` (one coloured line, detail behind its (i)); pageui.js + datatable.css `.ui-hint`/`.ui-callout` (NOT `.ui-note`, which is the stat card's note) | a screen never opens with a paragraph: numbers, chips and colour first; sentences go behind an (i) |
 | Plain P&L | pnl.js `pnlSummary/pnlPlainHtml`, pnl.css | reads the statement's own lines; rows always total "Your costs" |
+| Counts as shapes (Employee Performance, 30 Sep 2026) | performance.js `perfMix` (stacked share bar, counts in its title/aria-label), `perfBars` (labelled bar list, failed part in red inside the bar), per-day chart on `salesCombo` at `scChartWidth`; performance.css `.perf-*` | never a score; a one-day period draws no chart; candidate to lift `perfBars` into pageui.js (graph audit: ~8 hand-made bar lists) |
+| Orders board | `table.ordtable.ord-board-table{table-layout:auto}` | the board is NOT fixed-layout like other `table.kv`: its nine columns need ~960px; 641–900px uses the phone card rows |
 | Needs-attention list | daily.js `.dy-*` | card per group, count badge, 4px tone bar, area overline, one action |
 
 ## 6. Shared helpers (reuse these)

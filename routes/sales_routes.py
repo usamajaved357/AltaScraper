@@ -223,8 +223,20 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                          basis=_basis(), meta=_meta)
         span = (_dt.datetime.strptime(end, "%Y-%m-%d")
                 - _dt.datetime.strptime(start, "%Y-%m-%d")).days + 1
-        p_end = (_dt.datetime.strptime(start, "%Y-%m-%d") - _dt.timedelta(days=1))
-        p_start = p_end - _dt.timedelta(days=span - 1)
+        # WHICH "BEFORE". The cards print "LY" when the screen's comparison is
+        # set to the prior year, but this always summed the period immediately
+        # before -- so "LY : £x" was last month's figure under last year's
+        # label. compare_kind=year now moves the window back 364 days (52
+        # weeks, weekday on weekday), the same shift salesLoadCompare uses for
+        # the dashed line, so the card and the line describe the same days.
+        if (request.args.get("compare_kind") or "").strip().lower() == "year":
+            p_end = _dt.datetime.strptime(end, "%Y-%m-%d") - _dt.timedelta(days=364)
+            p_start = _dt.datetime.strptime(start, "%Y-%m-%d") - _dt.timedelta(days=364)
+            compare_kind = "year"
+        else:
+            p_end = (_dt.datetime.strptime(start, "%Y-%m-%d") - _dt.timedelta(days=1))
+            p_start = p_end - _dt.timedelta(days=span - 1)
+            compare_kind = "period"
         prev = _sd.totals(CONFIG_PATH, wsid, mkt, p_start.strftime("%Y-%m-%d"),
                           p_end.strftime("%Y-%m-%d"), asin, _vat,
                           basis=_basis())
@@ -373,7 +385,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "basis_note": _basis_note(_meta.get("basis") or _basis()),
                         "cards": cards, "totals": cur, "previous": prev,
                         "compared_to": {"start": p_start.strftime("%Y-%m-%d"),
-                                        "end": p_end.strftime("%Y-%m-%d")},
+                                        "end": p_end.strftime("%Y-%m-%d"),
+                                        "kind": compare_kind},
                         "ads_connected": avail["ads"]["connected"],
                         "ads_note": avail["ads"]["note"],
                         "order_profit": est,

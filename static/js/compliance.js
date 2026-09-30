@@ -10,7 +10,7 @@
 // traceable to a named finding on the same screen, and what the scan COULD NOT
 // check is shown as prominently as what it did.
 
-let CMP = { scans: [], current: null, loading: false, note: "" };
+let CMP = { scans: [], current: null, loading: false, note: "", histError: "" };
 
 function _cmpQs() { return (typeof scopeQs === "function") ? scopeQs() : ""; }
 
@@ -47,23 +47,32 @@ function cmpRender() {
   // Four numbers at the top say how things ARE. A screen that opens with a
   // table makes you do the reading first, and mostly nobody does.
   if (CMP.scans.length) {
-    const scored = CMP.scans.filter(function (s) { return typeof s.score === "number"; });
+    // THE LATEST SCAN OF EACH LISTING, NOT EVERY SCAN (bug round 30 Sep 2026).
+    // Scanning one listing five times counted its critical findings five
+    // times, and a listing fixed since its first scan still dragged the
+    // average down. The history is newest first, so the first seen is latest.
+    const latest = [];
+    const seen = {};
+    CMP.scans.forEach(function (s) {
+      if (seen[s.asin]) return;
+      seen[s.asin] = 1;
+      latest.push(s);
+    });
+    const scored = latest.filter(function (s) { return typeof s.score === "number"; });
     const avg = scored.length
       ? Math.round(scored.reduce(function (a, s) { return a + s.score; }, 0) / scored.length)
       : null;
     let crit = 0, maj = 0;
-    CMP.scans.forEach(function (s) {
+    latest.forEach(function (s) {
       crit += (s.counts && s.counts.critical) || 0;
       maj += (s.counts && s.counts.major) || 0;
     });
-    const seen = {};
-    CMP.scans.forEach(function (s) { seen[s.asin] = 1; });
     html += uiStats([
-      { label: "Listings scanned", value: Object.keys(seen).length,
+      { label: "Listings scanned", value: latest.length,
         note: CMP.scans.length + " scan" + (CMP.scans.length === 1 ? "" : "s") + " in total" },
       { label: "Average score", value: avg === null ? "" : avg,
         tone: avg === null ? "" : (avg >= 90 ? "" : (avg >= 70 ? "warn" : "bad")),
-        note: "across every scan, out of 100" },
+        note: "latest scan of each listing, out of 100" },
       { label: "Critical findings", value: crit, tone: crit ? "bad" : "",
         note: crit ? "a refusal or takedown risk" : "none found" },
       { label: "Major findings", value: maj, tone: maj ? "warn" : "",
@@ -127,6 +136,12 @@ function cmpRender() {
   }
 
   // ---- history ------------------------------------------------------------
+  // A HISTORY THAT COULD NOT BE READ IS NOT AN EMPTY ONE (bug round 30 Sep).
+  if (CMP.histError) {
+    html += '<div class="sresfail" style="margin-bottom:12px">' + esc(CMP.histError) + "</div>";
+    box.innerHTML = html;
+    return;
+  }
   if (!CMP.scans.length) {
     html += uiEmpty("Nothing scanned yet",
       "These checks were written after real listings were refused or taken down, and " +
@@ -160,11 +175,26 @@ function cmpRender() {
   box.innerHTML = html;
 }
 
+function _cmpStill(sc) {
+  return !(sc && typeof screenStillIn === "function" && !screenStillIn(sc));
+}
+
 async function cmpLoad() {
+  // Replies are checked against the account and marketplace on screen when
+  // they land (bug round 30 Sep 2026): a switch mid-request drew the OLD
+  // account's scan history under the new one's name.
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   try {
     const j = await (await fetch("/compliance/scans" + _cmpQs())).json();
-    if (j && j.ok) CMP.scans = j.scans || [];
-  } catch (e) { /* the history is not worth an error banner */ }
+    if (!_cmpStill(_sc)) return;
+    if (j && j.ok) { CMP.scans = j.scans || []; CMP.histError = ""; }
+    else CMP.histError = (j && j.error) || "Could not read the scan history.";
+  } catch (e) {
+    if (!_cmpStill(_sc)) return;
+    // Said, not swallowed: "Nothing scanned yet" over a failed read tells the
+    // owner his history is gone when it is only unreachable.
+    CMP.histError = "Could not read the scan history: " + e;
+  }
   cmpRender();
 }
 
@@ -173,14 +203,17 @@ async function cmpScan() {
   const asin = ((el && el.value) || "").trim().toUpperCase();
   if (!asin) { toast("Enter an ASIN first."); return; }
   CMP.loading = true; CMP.note = ""; cmpRender();
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   try {
     const j = await (await fetch("/compliance/scan" + _cmpQs(), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ asin: asin })
     })).json();
+    if (!_cmpStill(_sc)) { CMP.loading = false; return; }
     if (j && j.ok) { CMP.current = j; }
     else { CMP.note = (j && j.error) || "Could not scan that ASIN."; }
   } catch (e) {
+    if (!_cmpStill(_sc)) { CMP.loading = false; return; }
     CMP.note = "Could not scan that ASIN: " + e;
   }
   CMP.loading = false;

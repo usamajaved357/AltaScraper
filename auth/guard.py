@@ -86,6 +86,16 @@ RULES = [
     #    this app start speaking OUTSIDE itself, into a room full of people who
     #    did not ask it to. Both are decisions for whoever runs the account, not
     #    for anyone who happens to be able to edit a listing.
+    #    THE BELL IS NOT A CHANNEL. /notify/inbox and /notify/read are the top
+    #    bar's record of what the app did to THIS account -- every signed-in
+    #    user's screen polls them, and under the rule below everyone without
+    #    manage_accounts got a 403 every two minutes and a bell that never lit.
+    #    Reading it changes nothing; marking read changes only the read flag.
+    #    The route still filters by the named account, and check() still
+    #    verifies that account is one the user may open. Listed BEFORE the
+    #    broad line: first match wins.
+    ("/notify/inbox",                   None),
+    ("/notify/read",                    None),
     ("/notify",                         "manage_accounts"),
     ("/sp_diagnose",                    "manage_accounts"),
     # /diag reports where state is stored, which environment variables are set,
@@ -437,7 +447,12 @@ WORKSPACE_PARAMS = ("id", "account_id", "workspace_id", "workspace", "ws",
                     # cross-account read there was the "is this the open
                     # account?" comparison in the route, which is a check about
                     # a process-wide variable rather than about who is asking.
-                    "account")
+                    "account",
+                    # The account whose Amazon app another one BORROWS
+                    # (/accounts/save). Unchecked, a user limited to one account
+                    # could point it at any other account's credentials and
+                    # generate with them (admin bug round, 30 Sep 2026).
+                    "credentials_source_account_id")
 
 # Sentinels that are not workspace ids. `__all__` means "the account that is
 # open" by the time a route reads it (routes/orders_routes.py turns it into ""),
@@ -693,6 +708,10 @@ FEATURE_PATHS = [
     ("/drppc",                "ppc"),
     # /notify holds a webhook credential and is already restricted to
     # manage_accounts by RULES; the feature axis follows the same reasoning.
+    # The bell (inbox/read) belongs to no feature, like /accounts/list: it is
+    # in the top bar of every screen, not on the Notifications page.
+    ("/notify/inbox",         None),
+    ("/notify/read",          None),
     ("/notify",               "accounts"),
 
     ("/orders",               "orders"),
@@ -1097,6 +1116,27 @@ def make_doorman(config_path, app_password, login_endpoint="_login"):
         # sign-in screen. NOT a 403: that path answers with JSON, which is right
         # for the app's fetch() calls but would show a disabled person a raw blob
         # of JSON in place of every page they open.
+        # A SESSION FROM BEFORE A PASSWORD RESET / "New link" IS OVER.
+        # auth/users.new_invite bumps the user's session_version; a session
+        # carrying an older one is signed out, so the reset actually shuts out
+        # a browser that was already signed in (admin bug round, 30 Sep 2026).
+        # A session with no version yet (signed in before this existed) is
+        # stamped on its first request -- but ONLY while the person has never
+        # been reset. Once they have (version > 0), an unversioned session is
+        # from before the reset and is over too; stamping it would let exactly
+        # the browser the reset was meant to shut out back in (review, 30 Sep
+        # 2026). Every sign-in path stamps "sv" now.
+        if uid and user is not None and user.get("active", True):
+            _sv_now = users.session_version(user)
+            _sv_had = session.get("sv")
+            if _sv_had is None and _sv_now == 0:
+                session["sv"] = _sv_had = 0
+            try:
+                _sv_had = int(_sv_had)
+            except (TypeError, ValueError):
+                _sv_had = -1                # unversioned after a reset, or garbage
+            if _sv_had != _sv_now:
+                user = None                 # signed out just below
         if uid and (user is None or not user.get("active", True)):
             session.clear()
             if _wants_json():

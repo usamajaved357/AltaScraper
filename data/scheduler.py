@@ -323,6 +323,14 @@ def asin_monitor_check(workspace_id=None):
     # every 4 hours whatever the setting said (known-issues #3; Milestone 3).
     if not _sched.is_on(_cfg_now):
         return {"skipped": "automatic checking is off (monitor schedule)"}
+    # ONE SCHEDULER, NOT TWO. The monitor's own loop (monitor/checker.
+    # start_scheduler) already sweeps on the owner's chosen interval; this job
+    # ran every 4 hours on top of it, whatever interval was chosen, so a
+    # 24-hour setting still swept six times a day. When the loop is running it
+    # owns the clock and this job stands aside; it only runs where the loop
+    # was never started.
+    if getattr(_checker, "_SCHED_STARTED", False):
+        return {"skipped": "the monitor's own schedule runs it"}
     res = _checker.check_all(_cfg_now, config_path, log=lambda m: None)
     return res if isinstance(res, dict) else {"result": str(res)[:400]}
 

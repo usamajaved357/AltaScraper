@@ -106,7 +106,11 @@ for m in ("category", "asin_studio", "catalog_page", "compliance", "drppc",
           "keywords", "leading", "sqp", "tracker", "daily"):
     src = open(os.path.join(HERE, "routes", m + "_routes.py"), encoding="utf-8").read()
     body = src.split("    def _scope(")[1].split("\n    def ")[0].split("\n    @app")[0]
-    if "_scope_mod.pair(" not in body or "active_marketplace" in body:
+    # for_request() is the same shared resolver pair() wraps; the tracker needs
+    # its account RECORD (the home marketplace legacy rows are adopted into),
+    # so either one counts (re-pinned 30 Sep 2026, monitoring bug round).
+    if not ("_scope_mod.pair(" in body or "_scope_mod.for_request(" in body) \
+            or "active_marketplace" in body:
         left.append(m)
 check("every _scope calls scope.pair", left, [])
 

@@ -158,7 +158,11 @@ function salesDrawFilters(){
 /* Custom shows two date boxes; it does not reload until both are filled, because
    half a range is not a range and asking for one would blank the screen. */
 function salesSet(what, val){
-  if(what==="preset") SALES.preset=val; else SALES.gran=val;
+  // PICKING A PERIOD ENDS A ZOOM. The "Zoomed to … / Back to the full range"
+  // bar stayed up after a preset was chosen, and pressing it threw the chosen
+  // period away for the one from before the zoom.
+  if(what==="preset"){ SALES.preset=val; SALES._zoomBack = null; }
+  else SALES.gran=val;
   salesDrawFilters();
   if(SALES.preset==="custom" && !(SALES.start && SALES.end)) return;
   salesReload();
@@ -168,6 +172,8 @@ function salesSetDates(){
   const s=document.getElementById("sales_start"), e=document.getElementById("sales_end");
   SALES.start = s ? s.value : "";
   SALES.end   = e ? e.value : "";
+  // Typed dates are a new period too, so they end a zoom (see salesSet).
+  SALES._zoomBack = null;
   if(SALES.start && SALES.end) salesReload();
 }
 
@@ -179,16 +185,62 @@ function salesSetDates(){
    chart and then translating it into two dates typed into two fields is the
    step nobody takes -- so the interesting week never got looked at closely.
    The previous range is remembered so there is a way back out. */
+/* A column key's real first and last day. On Day the key IS the day; on Week
+   it is the Monday the bucket starts (domain/sales_data.bucket) and the bucket
+   runs to the Sunday; on Month it is "YYYY-MM". Zooming used to send these keys
+   straight through as dates, so a dragged pair of weeks ended on the second
+   week's MONDAY and "2026-08" went to the server as a date. */
+function _sBucketSpan(key, gran){
+  const k = String(key || "");
+  const iso = function(d){ return d.toISOString().slice(0, 10); };
+  if(gran === "month" && /^\d{4}-\d{2}$/.test(k)){
+    const y = +k.slice(0, 4), m = +k.slice(5, 7) - 1;
+    return [iso(new Date(Date.UTC(y, m, 1))), iso(new Date(Date.UTC(y, m + 1, 0)))];
+  }
+  const d = new Date(k + "T00:00:00Z");
+  if(isNaN(d)) return null;
+  if(gran === "week") return [iso(d), iso(new Date(d.getTime() + 6 * 86400000))];
+  return [k, k];
+}
+
+/* The column key, `offDays` earlier, in the SAME granularity: the bucket's
+   first day moved back and snapped to the bucket it lands in. */
+function _sBackKey(key, offDays, gran){
+  const span = _sBucketSpan(key, gran);
+  if(!span) return null;
+  const d = new Date(new Date(span[0] + "T00:00:00Z").getTime() - (offDays || 0) * 86400000);
+  if(isNaN(d)) return null;
+  if(gran === "month") return d.toISOString().slice(0, 7);
+  if(gran === "week"){
+    const back = (d.getUTCDay() + 6) % 7;          // days since Monday
+    return new Date(d.getTime() - back * 86400000).toISOString().slice(0, 10);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 function salesZoomTo(i, j){
   const dates = (SALES._chartDates || []);
-  const from = dates[Math.max(0, Math.min(i, j))];
-  const to   = dates[Math.min(dates.length - 1, Math.max(i, j))];
-  if(!from || !to) return;
-  SALES._zoomBack = {preset: SALES.preset, start: SALES.start, end: SALES.end};
+  const gran = (SALES.series && SALES.series.granularity) || SALES.gran;
+  const a0 = _sBucketSpan(dates[Math.max(0, Math.min(i, j))], gran);
+  const b0 = _sBucketSpan(dates[Math.min(dates.length - 1, Math.max(i, j))], gran);
+  if(!a0 || !b0) return;
+  let from = a0[0], to = b0[1];
+  // Kept inside the range on screen: the first and last week or month of a
+  // range are usually part-buckets, and zooming must not widen the period.
+  const cur = SALES.series || {};
+  if(cur.start && from < cur.start) from = cur.start;
+  if(cur.end && to > cur.end) to = cur.end;
+  if(from > to) return;
+  // Zooming inside a zoom keeps the FIRST way back, so "Back to the full
+  // range" still means the range you started from.
+  if(!SALES._zoomBack) SALES._zoomBack = {preset: SALES.preset, start: SALES.start, end: SALES.end};
   SALES.preset = "custom"; SALES.start = from; SALES.end = to;
   const a = document.getElementById("sales_start"), b = document.getElementById("sales_end");
   if(a) a.value = from;
   if(b) b.value = to;
+  // The preset row and the date boxes follow the zoom (they were left showing
+  // the old preset with the Custom boxes hidden).
+  salesDrawFilters();
   salesReload();
 }
 
@@ -201,6 +253,7 @@ function salesZoomOut(){
   const a = document.getElementById("sales_start"), b = document.getElementById("sales_end");
   if(a) a.value = SALES.start;
   if(b) b.value = SALES.end;
+  salesDrawFilters();
   salesReload();
 }
 
@@ -286,11 +339,17 @@ async function _sFetch(url, opts){
     const hit = _sRecent[key];
     if(hit && (Date.now() - hit.at) < _S_LIVE_TTL) return hit.value;
   }
+  // THE MARKETPLACE AND THE SWITCH GENERATION TOO, not only the account.
+  // Comparing CUR_ACCOUNT alone let a reply for UK be painted after the
+  // sidebar moved to DE (same account), and an A -> B -> A switch pass as
+  // "still A". screenScope()/screenStillIn() is the shared test (Rule 12).
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   const run = (async function(){
     try{
       const r = await fetch(u, opts);
       const j = await r.json();
       if(shareable && _sIsLive(u) && j && j.ok) _sRecent[key] = {at: Date.now(), value: j};
+      if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return null;
       return (_sAcct() === acct) ? j : null;
     }finally{
       if(shareable) delete _sInflight[key];
@@ -365,6 +424,10 @@ function _sQuery(){
   if(SALES.asin) q.push("asin="+encodeURIComponent(SALES.asin));
   if(typeof WS_MARKET!=="undefined" && WS_MARKET && WS_MARKET!=="__all__")
     q.push("marketplace="+encodeURIComponent(WS_MARKET));
+  // WHAT THE CARDS' "was"/"LY" FIGURE IS. /sales/summary summed the period
+  // immediately before whatever the picker said, so "LY" printed last month's
+  // figure. It now shifts 364 days when told the comparison is the prior year.
+  if(SALES.compareKind === "year") q.push("compare_kind=year");
   return q.join("&");
 }
 
@@ -566,11 +629,15 @@ function salesDrawCharts(ser){
       if(cm && cm.cells){
         const was = {};
         (SALES.compare.columns || []).forEach(function(d, i){ was[d] = cm.cells[i]; });
-        const off = SALES.compareOffsetDays * 86400000;
+        // BY BUCKET, not by day. On Week and Month the columns are bucket keys
+        // (a Monday, or "YYYY-MM"), and shifting a Monday by 30 days lands on
+        // a Thursday -- which is no column at all -- while "2026-09" is not a
+        // date, so the dashed line vanished on both. _sBackKey shifts the
+        // bucket's first day and snaps to the bucket it falls in.
         cmpCells = dates.map(function(d){
-          const dt = new Date(String(d) + "T00:00:00Z");
-          if(isNaN(dt)) return null;
-          const back = new Date(dt.getTime() - off).toISOString().slice(0, 10);
+          const back = _sBackKey(d, SALES.compareOffsetDays,
+                                 (ser && ser.granularity) || SALES.gran);
+          if(!back) return null;
           return (back in was) ? was[back] : null;
         });
         // anyKnown, not anyReal: a prior period of genuine zeros is drawn along
@@ -851,7 +918,18 @@ async function salesReload(){
   //
   // One pending re-run is enough: three impatient clicks want the LAST period
   // asked for, not three sequential loads of the first three.
-  if(SALES.busy){ SALES._again = true; return; }
+  //
+  // NEWEST LOAD WINS, NOT "FINISH THE OLD ONE FIRST". The re-run above still
+  // painted the OLD period first (for seconds, on a slow account) and every
+  // helper it had started -- compare, recent, campaigns -- could land after
+  // the new one. Each load now takes a ticket (SALES.loadSeq); after every
+  // await a load whose ticket is no longer current stops without painting.
+  const my = SALES.loadSeq = (SALES.loadSeq || 0) + 1;
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  const stale = function(){
+    return my !== SALES.loadSeq
+        || (_sc && typeof screenStillIn === "function" && !screenStillIn(_sc));
+  };
   SALES.busy=true;
   SALES._again = false;
   // Every panel gets its frame before anything is asked for, so the screen
@@ -870,7 +948,7 @@ async function salesReload(){
     // period Amazon has not delivered is reported as such instead of drawn as a
     // wall of zeros.
     const av = await _sFetch("/sales/availability?"+_sQuery());
-    if(av === null) return;
+    if(av === null || stale()) return;
     // Kept, so every part of the screen can say what it does and does not have.
     // The grid needs it as much as the cards do -- an empty column and a column
     // that is genuinely zero look identical, and they are not the same fact.
@@ -879,7 +957,7 @@ async function salesReload(){
       _sFetch("/sales/summary?"+_sQuery()),
       _sFetch("/sales/series?"+_sQuery())
     ]);
-    if(sum === null || ser === null) return;
+    if(sum === null || ser === null || stale()) return;
     SALES.data=sum; SALES.series=ser;
     // The period immediately before this one, for the comparison line. Fetched
     // separately and NOT awaited with the rest: the charts must not wait for
@@ -909,7 +987,8 @@ async function salesReload(){
     // Below the split it breaks down. Fire and forget, like the product
     // breakdown: a slow campaign query must never hold up the charts.
     salesLoadCampaigns().catch(function(){});
-    salesDrawGrid(ser);
+    // The grid's own period if it has one (salesRedrawGrid, sales_grid.js).
+    salesRedrawGrid();
     salesDrawRange(sum, av);
     // WHICH PRODUCTS SOLD. This was never called.
     //
@@ -934,17 +1013,15 @@ async function salesReload(){
     // factor of twenty -- 5.75s against 250ms for everything else -- entirely
     // because it went last. Calling them again here would fetch both twice.
   }catch(e){
+    if(stale()) return;
     const g=document.getElementById("sales_grid");
     if(g) g.innerHTML=uiError("Sales could not be loaded", String(e), "salesReload", "sales");
   }finally{
-    if(grid) grid.style.opacity="";
-    SALES.busy=false;
-    // Whatever was asked for while this was running now happens, with the
-    // period that was actually chosen. Deferred a tick so the flag is clear
-    // before the next run reads it.
-    if(SALES._again){
-      SALES._again = false;
-      setTimeout(function(){ salesReload(); }, 0);
+    // Only the CURRENT load clears the loading state; an overtaken one leaves
+    // it to the load that replaced it.
+    if(my === SALES.loadSeq){
+      if(grid) grid.style.opacity="";
+      SALES.busy=false;
     }
   }
 }
@@ -964,11 +1041,15 @@ async function salesReload(){
 async function salesLoadRecent(){
   if(!SALES.series || !((SALES.series.columns) || []).length) return;
   let j;
+  const tk = SALES.loadSeq;
   try{
     // _sScope(), not _sQuery(): days=6 already says which window this is.
     j = await _sFetch("/sales/recent?days=6&" + _sScope());
     if(j === null) return;
   }catch(e){ return; }
+  // A newer load has cleared _live and asked again; this reply is for it only
+  // if no load started since this one was asked for.
+  if(tk !== SALES.loadSeq) return;
   // A 502 here is normal and not worth reporting: an account whose Amazon app
   // is not authorised for Orders simply keeps the report-only chart it had.
   if(!j || !j.ok || !j.days || !Object.keys(j.days).length) return;
@@ -980,7 +1061,7 @@ async function salesLoadRecent(){
   // disagreeing on the same screen.
   if(SALES.series){
     salesDrawCharts(SALES.series);
-    salesDrawGrid(SALES.series);
+    salesRedrawGrid();
     if(SALES.data) salesDrawCards(SALES.data, null);
   }
 }
@@ -1057,6 +1138,22 @@ function salesSetCompare(v){
   if(SALES.series) salesDrawCharts(SALES.series);
   if(SALES.data) salesDrawCards(SALES.data, null);
   if(SALES.compareKind !== "none" && SALES.data) salesLoadCompare(SALES.data).catch(function(){});
+  // THE CARDS' EARLIER FIGURE COMES FROM THE SERVER, so a change between
+  // "previous period" and "last year" needs a fresh summary (compare_kind in
+  // _sQuery); the label follows the reply, never the picker, until it lands.
+  if(SALES.data) _sReloadSummary().catch(function(){});
+}
+
+/* Only the stat cards' summary, re-asked with the current comparison. */
+async function _sReloadSummary(){
+  const tk = SALES.loadSeq;
+  const sc = (typeof screenScope === "function") ? screenScope() : null;
+  const sum = await _sFetch("/sales/summary?" + _sQuery());
+  if(sum === null || tk !== SALES.loadSeq) return;
+  if(sc && typeof screenStillIn === "function" && !screenStillIn(sc)) return;
+  if(!sum || !sum.ok) return;
+  SALES.data = sum;
+  salesDrawCards(sum, null);
 }
 
 async function salesLoadCompare(sum){
@@ -1095,7 +1192,11 @@ async function salesLoadCompare(sum){
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
     q.push("marketplace=" + encodeURIComponent(WS_MARKET));
 
+  const tk = SALES.loadSeq, kind = SALES.compareKind;
   const j = await _sFetch("/sales/series?" + q.join("&"));
+  // A comparison for a period (or a picker setting) that is no longer on
+  // screen is dropped rather than drawn behind the new one.
+  if(tk !== SALES.loadSeq || kind !== SALES.compareKind) return;
   if(!j || !j.ok || !(j.columns || []).length) return;
   SALES.compare = j;
   // The offset, in days, between a column here and the column it is compared
@@ -1160,9 +1261,10 @@ async function salesFillAsins(){
   const sel=document.getElementById("sales_asin");
   if(!sel) return;
   let items=[];
+  const tk = SALES.loadSeq;
   try{
     const j=await _sFetch("/sales/products?"+_sQuery());
-    if(j === null) return;
+    if(j === null || tk !== SALES.loadSeq) return;
     if(j && j.ok) items=j.products||[];
   }catch(e){ /* the filter is an aid; losing it must not take the screen down */ }
 

@@ -90,6 +90,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                     return str(v[k])
         return str(v) if v not in (None, "") else ""
 
+    def _parent_of(attrs):
+        """The parent SKU a child names in child_parent_sku_relationship, or ""."""
+        v = (attrs or {}).get("child_parent_sku_relationship")
+        for e in (v if isinstance(v, list) else [v]):
+            if isinstance(e, dict) and str(e.get("parent_sku") or "").strip():
+                return str(e.get("parent_sku")).strip()
+        # Any other wrapper (value/name) is still read, as before.
+        return _one(attrs, "child_parent_sku_relationship")
+
     def _live_attributes(sku, wsid, mkt):
         """What Amazon holds for this SKU right now, flattened for the checker.
 
@@ -135,7 +144,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                 "product_type": got.get("product_type") or "",
                 "brand": _one(a, "brand"),
                 "item_type_keyword": _one(a, "item_type_keyword"),
-                "parent_sku": _one(a, "child_parent_sku_relationship"),
+                # The relationship's own key. Amazon's value is
+                # [{"child_relationship_type": "variation", "parent_sku": ...}]
+                # -- the shape listing/variations.build writes -- with none of
+                # the _VALUE_KEYS in it, so _one() always returned "" and the
+                # "already belongs to another family" check never fired.
+                "parent_sku": _parent_of(a),
                 "title": _one(a, "item_name"),
                 "shopper_image": (mi.get("link") or "") if isinstance(mi, dict) else "",
                 "issues": issues,
@@ -611,7 +625,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
             problems.insert(0, "Amazon would not return %s, so nothing about them "
                                "could be checked. Nothing is merged on data we "
                                "could not read." % ", ".join(unreadable))
-        already = [c["sku"] for c in children if c.get("parent_sku")]
+        already = [c["sku"] for c in children if c.get("parent_sku")
+                   and c.get("parent_sku") != parent_sku]   # re-applying the SAME family is not "another"
         if already:
             problems.append("%s already belong%s to another family. Amazon allows "
                             "one parent per child, so it would have to be removed "
@@ -696,7 +711,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         pt = next((c["product_type"] for c in children if c["product_type"]), "")
 
         problems = _var.check(parent_sku, children, theme, _schema(pt, mkt), pt)
-        already = [c["sku"] for c in children if c.get("parent_sku")]
+        already = [c["sku"] for c in children if c.get("parent_sku")
+                   and c.get("parent_sku") != parent_sku]   # re-applying the SAME family is not "another"
         if already:
             problems.append("%s already belong%s to another family."
                             % (", ".join(already), "s" if len(already) == 1 else ""))

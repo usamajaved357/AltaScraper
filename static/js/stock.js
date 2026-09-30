@@ -125,6 +125,10 @@ async function stockLoad(force){
   STOCK.toOrder = j.to_order || [];
   STOCK.forecast = j.forecast || [];
   STOCK.horizon = j.horizon_days || 30;
+  // WHICH STORE THIS IS. With "All marketplaces" picked the server answers
+  // for the account's own default, and the screen must say which one.
+  STOCK.marketplace = j.marketplace || "";
+  STOCK.account = j.account || "";
   stockRender();
 }
 
@@ -382,11 +386,20 @@ function _skVisible(){
              .toLowerCase().indexOf(q) >= 0;
   });
   const key = STOCK.sort, dir = STOCK.dir;
-  const ORDER = ["safe", "watch", "order soon", "order now", "stockout likely",
-                 "unknown"];
+  // MOST URGENT FIRST on the default sort (bug round 30 Sep 2026). This list
+  // ran healthiest -> most urgent, so the opening view put "safe" at the top
+  // and the products about to run out at the bottom. "unknown" is not a
+  // position on the urgency scale, so it sorts last whichever way the column
+  // points -- the same rule as a missing number below.
+  const ORDER = ["stockout likely", "order now", "order soon", "watch", "safe"];
   rows = rows.slice().sort(function(a, b){
     let x, y;
-    if(key === "status"){ x = ORDER.indexOf(a.status); y = ORDER.indexOf(b.status); }
+    if(key === "status"){
+      x = ORDER.indexOf(a.status); y = ORDER.indexOf(b.status);
+      if(x < 0 && y < 0) return 0;
+      if(x < 0) return 1;
+      if(y < 0) return -1;
+    }
     else if(key === "product"){
       x = String(a.title || a.sku).toLowerCase();
       y = String(b.title || b.sku).toLowerCase();
@@ -891,8 +904,10 @@ function _skScopeQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; 
 
 function _skFooter(c){
   return '<div class="odp-note" style="margin-top:10px">'
+    + (STOCK.marketplace ? 'Marketplace: <b>' + _skEsc(STOCK.marketplace)
+                           + '</b>. ' : '')
     + 'As at ' + _skDate(c.as_at) + '. Sales are the last ' + c.window_days
-    + ' days. Cover is the listed quantity divided by that rate; a product is '
+    + ' whole days, to yesterday. Cover is the listed quantity divided by that rate; a product is '
     + 'flagged when its cover is shorter than the time its supplier takes to '
     + 'send more. Nothing here changes anything on Amazon.'
     + '</div>';

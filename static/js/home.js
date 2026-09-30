@@ -314,12 +314,24 @@ function _hRound(){
     const all = DAILY.data.checks || [];
     const off = all.filter(function(c){ return c.status === "off"; });
     const unk = all.filter(function(c){ return c.status === "unknown"; }).length;
-    const unkLine = unk ? unk + ' check' + (unk === 1 ? '' : 's') + ' could not be run &mdash; look at '
+    // THE ONES THAT NORMALLY RUN, BY NAME. Six checks can never run from this
+    // app (marked `always` by domain/daily_check.unavailable); a check that
+    // usually works and could not today -- the order list refused, say -- was
+    // lost inside that fixed count. Those are named, so "could not check the
+    // orders" is never read as "no orders to worry about".
+    const failed = all.filter(function(c){ return c.status === "unknown" && !c.always; });
+    const failedLine = failed.length
+      ? '<b>Could not check today:</b> ' + esc(failed.map(function(c){ return c.title; }).join(", ")) + '. '
+      : '';
+    const unkLine = unk ? failedLine + unk + ' check' + (unk === 1 ? '' : 's') + ' could not be run &mdash; look at '
                         + (unk === 1 ? 'it' : 'those') + ' by hand.' : '';
     // Never green while something could not be looked at (daily.js's rule).
     if(off.length && typeof _dyRow === "function"){
       body = off.map(_dyRow).join("")
         + (unk ? '<div class="hm-part"><i class="ti ti-help-circle" aria-hidden="true"></i> ' + unkLine + '</div>' : '');
+    }else if(failed.length){
+      body = '<div class="hm-part"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + unkLine
+        + ' Nothing else the round checked needs you.</div>';
     }else if(unk){
       body = '<div class="hm-part"><i class="ti ti-help-circle" aria-hidden="true"></i> Nothing the round could check needs you, but '
         + unkLine + '</div>';

@@ -372,6 +372,14 @@ def public(user):
         # role preset, and the UI must show what is ACTUALLY in force rather than
         # an empty box that looks like "no access".
         "features": {f: feature_level(user, f) for f in FEATURES},
+        # AND WHAT WAS ACTUALLY SET. The editors need both: `features` says what
+        # is in force, this says which of those somebody chose. Drawn from the
+        # resolved map alone, every page looked explicitly set -- so "Inherit"
+        # never showed, and the next Save pinned all of them to whatever they
+        # resolved to that day, cutting every page off from its area for good
+        # (admin bug round, 30 Sep 2026).
+        "feature_overrides": {f: lvl for f, lvl in (user.get("features") or {}).items()
+                              if f in FEATURES and lvl in LEVELS},
         "workspaces": list(user.get("workspaces") or []),
         "active": bool(user.get("active", True)),
         "created_at": user.get("created_at"),
@@ -601,6 +609,94 @@ def caller_sees_every_account(config_path):
     return ALL_WORKSPACES in [str(a) for a in (u.get("workspaces") or [])]
 
 
+def prospective(target=None, *, role=None, permissions=None, features=None,
+                workspaces=None, active=None):
+    """The record a create (target None) or an update WOULD produce.
+
+    Built the same way create_user and update_user build it, so the grant
+    check below judges exactly what would be stored -- including a role change
+    that widens every unset area through its preset.
+    """
+    if not target:
+        role = role if role in ROLES else "lister"
+        perms = permissions if isinstance(permissions, list) else ROLES[role]
+        return {
+            "role": role,
+            "permissions": [p for p in perms if p in PERMISSIONS],
+            "perms_version": PERMS_VERSION,
+            "features": ({f: lvl for f, lvl in (features or {}).items()
+                          if f in FEATURES and lvl in LEVELS}
+                         or dict(ROLE_FEATURES.get(role, ROLE_FEATURES["lister"]))),
+            "workspaces": [str(w) for w in (workspaces if isinstance(workspaces, list)
+                                            else [ALL_WORKSPACES])],
+            "active": True,
+        }
+    after = dict(target)
+    if role in ROLES:
+        after["role"] = role
+    if isinstance(permissions, list):
+        after["permissions"] = [p for p in permissions if p in PERMISSIONS]
+        after["perms_version"] = PERMS_VERSION
+    if isinstance(features, dict):
+        after["features"] = {f: lvl for f, lvl in features.items()
+                             if f in FEATURES and lvl in LEVELS}
+    if isinstance(workspaces, list):
+        after["workspaces"] = [str(w) for w in workspaces]
+    if active is not None:
+        after["active"] = bool(active)
+    return after
+
+
+def grant_exceeds(caller, target, after):
+    """Why `after` gives MORE than the caller holds, or "" when it does not.
+
+    "manage users" let anyone holding it hand out anything -- an admin scoped
+    to one account could create a colleague with every account, every page at
+    View & edit and every permission, including ones the admin did not have
+    (admin bug round, 30 Sep 2026). Nobody may give what they do not hold.
+
+    `target` is the record as it is now ({} / None when creating), `after` what
+    the change would store (prospective()). What the target ALREADY has is never
+    counted against the caller: an admin who sees two accounts may still save
+    somebody who has five, as long as the save ADDS nothing the admin lacks.
+    """
+    if not caller:
+        return "Not signed in."
+    target = target or {}
+    # Accounts / workspaces.
+    mine = [str(w) for w in (caller.get("workspaces") or [])]
+    if ALL_WORKSPACES not in mine:
+        theirs = [str(w) for w in (target.get("workspaces") or [])]
+        for w in [str(x) for x in (after.get("workspaces") or [])]:
+            if w in theirs:
+                continue
+            if w == ALL_WORKSPACES:
+                return ("You cannot grant every account: you are only allowed "
+                        "some of them yourself.")
+            if not can_access_workspace(caller, w):
+                return ("You cannot grant access to account %r: you do not "
+                        "have it yourself." % w)
+    # Permissions.
+    held = set(effective_permissions(caller))
+    had = set(effective_permissions(target)) if target else set()
+    for p in effective_permissions(after):
+        if p in PERMISSIONS and p not in held and p not in had:
+            return ("You cannot grant %r: you do not hold it yourself."
+                    % PERMISSIONS.get(p, p))
+    # Page / area levels, RESOLVED, so a role change that lifts every unset
+    # area through its preset is judged as well as an explicit level.
+    rank = {"none": 0, "view": 1, "edit": 2}
+    for f in FEATURES:
+        want = rank.get(feature_level(after, f), 0)
+        if want <= rank.get(feature_level(caller, f), 0):
+            continue
+        if target and want <= rank.get(feature_level(target, f), 0):
+            continue
+        return ("You cannot give %r at %r: you have less than that yourself."
+                % (FEATURES.get(f, f), feature_level(after, f)))
+    return ""
+
+
 # ---- mutations -----------------------------------------------------------
 
 def create_user(config_path, email, name="", role="lister", permissions=None,
@@ -667,10 +763,25 @@ def new_invite(config_path, user_id):
                 u["invite"] = {"token_hash": _hash_token(token),
                                "expires": time.time() + INVITE_TTL_SECONDS}
                 u["password_hash"] = ""
+                # AND EVERY EXISTING SESSION ENDS. Clearing the password stopped
+                # new sign-ins, but a browser already signed in -- including the
+                # one the reset was meant to shut out -- kept its 30-day cookie.
+                # The doorman compares this number with the one the session
+                # carries (auth/guard.py, admin bug round 30 Sep 2026).
+                u["session_version"] = session_version(u) + 1
                 if not _save(config_path, data):
                     return None, "Could not write users.json."
                 return token, None
         return None, "No such user."
+
+
+def session_version(user):
+    """The user's current session generation. A session carrying an older one
+    was issued before the last reset and is no longer honoured."""
+    try:
+        return int((user or {}).get("session_version") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def accept_invite(config_path, token, password):

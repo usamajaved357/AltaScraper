@@ -143,10 +143,18 @@ def _rows(config_path, workspace_id, marketplace=None):
         sql += " AND marketplace = ?"
         args.append(marketplace)
     sql += " ORDER BY posted_date DESC"
+    # A FAILED READ IS NOT "NOTHING OWED" (bug round 30 Sep 2026). Every error
+    # was swallowed into [], and the page then said "No refunds have settled
+    # yet" -- a confident answer about the money built on a read that never
+    # happened. Only a table that does not exist yet (no fees ever pulled on
+    # this deployment) is honestly empty; anything else is raised, and the
+    # route turns it into ok:false with the reason.
     try:
         return [dict(r) for r in conn.execute(sql, args).fetchall()]
-    except Exception:
-        return []
+    except Exception as e:
+        if "no such table" in str(e).lower():
+            return []
+        raise
 
 
 def find(config_path, workspace_id, marketplace=None):

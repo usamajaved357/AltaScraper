@@ -75,6 +75,12 @@ _SCHED_INTERVAL = 24 * 3600   # set by start_scheduler; used for next-run ETA + 
 _MIN_RECHECK_LIVE = 24 * 3600
 
 _LOCK = threading.Lock()
+# ONE CHECK AT A TIME. check_now_async looked at _STATUS["running"], but the
+# scheduler loop and the APScheduler job called check_all directly, so a
+# scheduled sweep and a Check now could run side by side -- two runs rewriting
+# one file, each with its own stale copy. Taken without waiting: a second
+# caller is told a check is running rather than queued behind a nine-minute one.
+_RUN_LOCK = threading.Lock()
 _SCHED_STARTED = False
 _STATUS = {"last_run": "", "last_run_ok": None, "checks": 0, "running": False}
 
@@ -249,7 +255,10 @@ def overview(config_path, cfg):
                     asin_unknown = True
                     total_unknown.add(f"{sid}::{mkt}")
                     fc = o.get("feedback_count")
-                    new_acct = (fc is None or fc == 0)
+                    # EXACTLY ZERO, not "missing". Amazon omits the count for
+                    # plenty of established sellers; reading None as 0 flagged
+                    # them NEW (and HIGH RISK with FBA + Buy Box) on no evidence.
+                    new_acct = (fc is not None and fc == 0)
                     unknowns.append({
                         "asin": asin, "label": it.get("label", ""), "marketplace": mkt,
                         "seller_id": sid, "name": nm, "buybox": (sid == bb),
@@ -440,6 +449,40 @@ def _should_check(state_entry, force):
     return since >= _RESCAN_DEAD_AFTER           # stale dead -> re-scan
 
 
+def _merge_save(config_path, d, touched, saved_alerts):
+    """Write THIS run's changes into the file as it is NOW. Returns the new
+    count of alerts already written.
+
+    The run loads the file once at its start and used to write that whole
+    copy back after every batch -- so an alert marked read, or a manual label
+    logged, while a nine-minute run was going was silently undone by the next
+    batch. Under the lock, the file is re-read and only what this run owns is
+    laid over it: the baselines, snapshots and market state of the keys it
+    checked, seller names it learned (never overwriting one already there),
+    and the alerts it raised. Everything else on disk -- read marks, the label
+    log, other keys -- is left exactly as it is.
+    """
+    with _LOCK:
+        fresh = _load_hist(config_path)
+        for part in ("baselines", "snapshots", "market_state"):
+            src = d.get(part) or {}
+            dst = fresh.setdefault(part, {})
+            for k in touched:
+                if k in src:
+                    dst[k] = src[k]
+        names = fresh.setdefault("seller_names", {})
+        for k, v in (d.get("seller_names") or {}).items():
+            if k not in names:
+                names[k] = v
+        have = {str(a.get("id")) for a in fresh.get("alerts", [])}
+        for a in d.get("alerts", [])[saved_alerts:]:
+            if str(a.get("id")) not in have:
+                fresh["alerts"].append(a)
+        fresh["alerts"] = fresh["alerts"][-1000:]
+        _save_hist(config_path, fresh)
+    return len(d.get("alerts", []))
+
+
 def _process_result(d, it, mkt, res, cfg, config_path, log):
     """Diff a fetch result vs its baseline -> alerts, record the snapshot, resolve unknown seller
     names + auto-classify Amazon. Returns the number of new alerts."""
@@ -488,6 +531,16 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
     Pricing endpoint (20 per call), records live/dead per marketplace, and reports cycle cost."""
     if cfg.get("asin_monitor_enabled", True) is False:
         return {"ok": False, "error": "monitoring disabled (asin_monitor_enabled=false)"}
+    if not _RUN_LOCK.acquire(blocking=False):
+        return {"ok": False, "error": "a check is already running"}
+    try:
+        return _check_all_locked(cfg, config_path, log, force_rescan)
+    finally:
+        _RUN_LOCK.release()
+
+
+def _check_all_locked(cfg, config_path, log, force_rescan):
+    """check_all's body, run while holding _RUN_LOCK."""
     items = _store.list_asins(config_path)
     if not items:
         _STATUS.update(last_run=_now(), last_run_ok=True, checks=0, api_calls=0)
@@ -505,6 +558,10 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
         with _LOCK:
             d = _load_hist(config_path)
         ms = d.setdefault("market_state", {})
+        # What this run owns, for _merge_save: the keys it checked, and how
+        # many of the alerts in `d` are already on disk.
+        touched = set()
+        saved_alerts = len(d.get("alerts", []))
         # 1) build the to-check list, SKIPPING dead marketplaces (unless forced / stale)
         tocheck, skipped = [], 0
         for it in items:
@@ -547,6 +604,7 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
                 api_calls += 1
                 for req, res in zip(chunk, results):
                     asin, mkt, it = req["asin"], req["marketplace"], req["it"]
+                    touched.add(_key(asin, mkt))
                     se = ms.setdefault(_key(asin, mkt), {})
                     se["last_checked"] = _now()
                     se["last_checked_ts"] = time.time()
@@ -579,9 +637,7 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
             # goes and a crash costs one batch. The file is ~1 MB and a batch is
             # ~2 seconds apart, which is a rewrite roughly every two seconds --
             # cheap next to the API call it follows.
-            d["alerts"] = d["alerts"][-1000:]
-            with _LOCK:
-                _save_hist(config_path, d)
+            saved_alerts = _merge_save(config_path, d, touched, saved_alerts)
             _STATUS.update(done=min(i + _BATCH_SIZE, total),
                            batches_done=i // _BATCH_SIZE + 1,
                            run_fails=fails, run_alerts=new_alerts)
@@ -613,7 +669,7 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
 def check_now_async(cfg, config_path, force_rescan=False):
     """Run a full check on a background thread (for the 'Check now' / 'Re-scan all' buttons).
     force_rescan=True checks EVERY selected marketplace (ignores dead-market skipping) for one cycle."""
-    if _STATUS.get("running"):
+    if _STATUS.get("running") or _RUN_LOCK.locked():
         return {"ok": False, "error": "a check is already running"}
 
     def _run():
@@ -709,7 +765,11 @@ def start_scheduler(cfg_getter, config_path, interval=None, initial_delay=25):
         while True:
             try:
                 cfg = cfg_getter() if callable(cfg_getter) else cfg_getter
-                gap = forced or _sched.interval_seconds(cfg)
+                # THE OWNER'S OFF IS OFF. MONITOR_INTERVAL_S used to win over
+                # the stored setting outright, so a machine with it set swept
+                # every N seconds after the owner had pressed Off. It now only
+                # changes HOW OFTEN, and only while the clock is on.
+                gap = (forced or _sched.interval_seconds(cfg)) if _sched.is_on(cfg) else 0
                 set_interval(gap)
                 if gap <= 0:
                     # Off. Nothing accrues while it is off, so switching it back
@@ -717,6 +777,8 @@ def start_scheduler(cfg_getter, config_path, interval=None, initial_delay=25):
                     next_due = 0.0
                 elif time.time() >= next_due:
                     check_all(cfg, config_path)
+                    # Measured from when it FINISHED, recorded for the one
+                    # other scheduler (data/scheduler.asin_monitor_check).
                     next_due = time.time() + gap
             except Exception as e:
                 print("[asin-monitor] scheduler error:", str(e)[:200])

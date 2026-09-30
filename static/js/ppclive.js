@@ -98,8 +98,10 @@ function ppclRender(){
   // THE LIMITATION FIRST, not buried at the bottom. Somebody opening a page
   // called "Live Tracker" expecting hourly figures should learn in one sentence
   // why the buttons say days.
-  h += '<div class="ppc-note warn"><b>This page is daily, not hourly.</b> '
-    + _pEsc((j.hourly && j.hourly.why) || "") + '</div>';
+  // One line; Amazon's reason behind the (i) (owner, 30 Sep 2026).
+  h += '<div class="ppc-note warn"><i class="ti ti-calendar"></i> '
+    + '<b>This page is daily, not hourly.</b>'
+    + uiHint((j.hourly && j.hourly.why) || "") + '</div>';
 
   if(j.connection && j.connection.ok === false){
     h += ppcNoData({connection: j.connection},
@@ -229,7 +231,8 @@ function ppclPlacements(j, cur){
   if(!p.has_data){
     return '<div class="ppc-panel ppc-mb16">'
       + '<div class="ppc-panel-title">Where the ads appeared</div>'
-      + '<div class="ppc-note">' + _pEsc(p.why || "") + '</div></div>';
+      + '<div class="ppc-note"><i class="ti ti-chart-bar-off"></i> '
+      + 'No placement figures' + uiHint(p.why || "") + '</div></div>';
   }
   let h = '<div class="ppc-panel ppc-mb16">'
     + '<div class="ppc-panel-title">Where the ads appeared'
@@ -253,7 +256,9 @@ function ppclPlacements(j, cur){
       + '<td>' + ppcNum(r.orders) + '</td></tr>';
   });
   h += '</tbody></table>'
-    + '<div class="ppc-note">' + _pEsc(p.asin_why || "") + '</div></div>';
+    + (p.asin_why ? '<div class="ppc-note"><i class="ti ti-info-circle"></i> '
+       + 'Placements are per campaign, not per product'
+       + uiHint(p.asin_why) + '</div>' : '') + '</div>';
   return h;
 }
 

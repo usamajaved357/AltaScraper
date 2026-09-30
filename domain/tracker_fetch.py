@@ -109,8 +109,27 @@ def fetch_bsr(creds, asins, marketplace, log=print):
             for a, d in (fetch_ranks(creds, asins, marketplace, log) or {}).items()}
 
 
-def fetch_ranks(creds, asins, marketplace, log=print):
-    """{asin: {rank, category, all}} -- the best rank AND where it is ranked.
+def _why(e):
+    """An Amazon failure as one short line, with its HTTP status when there is
+    one (403 no role, 404 no such item here, 429 throttled) -- the three need
+    different answers and "failed" names none of them."""
+    code = getattr(e, "code", None) or getattr(e, "status_code", None)
+    msg = str(e)[:100]
+    return ("HTTP %s: %s" % (code, msg)) if code else msg
+
+
+def fetch_ranks(creds, asins, marketplace, log=print, raise_setup=False):
+    """{asin: {rank, category, all, error}} -- the best rank AND where it is ranked.
+
+    A FAILED READ IS NOT "NO RANK" (bug round 30 Sep 2026). An ASIN whose call
+    Amazon refused (403, 404, 429...) comes back with `error` set and rank None;
+    one Amazon answered with no rank has error "". Before, both were the same
+    {"rank": None}, and the Category Explorer recorded a throttled call as
+    "read -- Amazon gave no rank", so it was never asked again.
+
+    `raise_setup` True raises when the Catalog client cannot even be built
+    (library missing, credentials incomplete), so a caller that must report it
+    gets the reason. The default keeps the old quiet {} for the trackers.
 
     An ASIN can carry several ranks: one in a broad display group and one or
     more in narrower categories. The BEST (lowest) one is taken because that is
@@ -130,6 +149,9 @@ def fetch_ranks(creds, asins, marketplace, log=print):
         from sp_api.base import Marketplaces
     except Exception as e:
         log("tracker_fetch: catalog unavailable: %s" % str(e)[:120])
+        if raise_setup:
+            raise RuntimeError("The Amazon catalogue library is not available: %s"
+                               % str(e)[:120])
         return out
     mid = _mid(marketplace)
     from api import sp_client as _sp             # 4E: the "upper_or_uk" rule
@@ -137,6 +159,9 @@ def fetch_ranks(creds, asins, marketplace, log=print):
         cat = _sp.client(CatalogItems, creds, marketplace, rule=_sp.UPPER_OR_UK, timeout=30)
     except Exception as e:
         log("tracker_fetch: catalog client failed: %s" % str(e)[:120])
+        if raise_setup:
+            raise RuntimeError("Could not connect to Amazon for this account "
+                               "(credentials incomplete?): %s" % str(e)[:120])
         return out
     for a in asins:
         try:
@@ -145,7 +170,7 @@ def fetch_ranks(creds, asins, marketplace, log=print):
             pay = res.payload if hasattr(res, "payload") else (res or {})
         except Exception as e:
             log("tracker_fetch: bsr %s: %s" % (a, str(e)[:100]))
-            out[a] = {"rank": None, "category": "", "all": []}
+            out[a] = {"rank": None, "category": "", "all": [], "error": _why(e)}
             continue
         best = None
         best_cat = ""
@@ -165,7 +190,7 @@ def fetch_ranks(creds, asins, marketplace, log=print):
                 every.append({"rank": v, "category": str(cat)})
                 if best is None or v < best:
                     best, best_cat = v, str(cat)
-        out[a] = {"rank": best, "category": best_cat, "all": every}
+        out[a] = {"rank": best, "category": best_cat, "all": every, "error": ""}
     return out
 
 
@@ -209,7 +234,9 @@ def refresh(config_path, workspace_id, creds, marketplace, seller_id="",
     from domain import trackers as _t
 
     want = set(metrics or _t.METRICS.keys())
-    watch = _t.tracked(config_path, workspace_id)
+    # Keyed by account AND marketplace (domain/trackers._scope): this reads
+    # in `marketplace`, so it stores there and nowhere else.
+    watch = _t.tracked(config_path, workspace_id, marketplace=marketplace)
     asins = sorted(watch.keys())
     at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     res = {"ok": True, "asins": len(asins), "read": 0, "stored": 0,
@@ -237,7 +264,8 @@ def refresh(config_path, workspace_id, creds, marketplace, seller_id="",
             v = row.get(metric)
             if v is not None:
                 res["read"] += 1
-                if _t.record(config_path, workspace_id, a, metric, v, at):
+                if _t.record(config_path, workspace_id, a, metric, v, at,
+                             marketplace=marketplace):
                     res["stored"] += 1
 
     # --- sales rank ---
@@ -247,7 +275,8 @@ def refresh(config_path, workspace_id, creds, marketplace, seller_id="",
             for a, v in (fetch_bsr(creds, need_bsr, marketplace, log) or {}).items():
                 if v is not None:
                     res["read"] += 1
-                    if _t.record(config_path, workspace_id, a, "bsr", v, at):
+                    if _t.record(config_path, workspace_id, a, "bsr", v, at,
+                                   marketplace=marketplace):
                         res["stored"] += 1
         except Exception as e:
             res["errors"].append("bsr: %s" % str(e)[:140])
@@ -270,7 +299,8 @@ def refresh(config_path, workspace_id, creds, marketplace, seller_id="",
                 for a, v in (fetch_fees(creds, priced, marketplace, log) or {}).items():
                     if v is not None:
                         res["read"] += 1
-                        if _t.record(config_path, workspace_id, a, "fee", v, at):
+                        if _t.record(config_path, workspace_id, a, "fee", v, at,
+                                       marketplace=marketplace):
                             res["stored"] += 1
             except Exception as e:
                 res["errors"].append("fees: %s" % str(e)[:140])

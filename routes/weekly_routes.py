@@ -79,6 +79,18 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
     # first file and the second, and a restart in that window costs one re-drop.
     _PENDING = {}
 
+    def _pending_key(wsid, mkt, week_start):
+        return "%s::%s::%s" % (wsid, str(mkt or "").upper(), week_start or "")
+
+    def _forget_pending(wsid, mkt, week_start=None):
+        """Drop held halves for one week, or every week, of this account."""
+        prefix = "%s::%s::" % (wsid, str(mkt or "").upper())
+        for k in list(_PENDING.keys()):
+            if week_start is None and k.startswith(prefix):
+                _PENDING.pop(k, None)
+            elif week_start is not None and k == prefix + str(week_start):
+                _PENDING.pop(k, None)
+
     @app.route("/weekly/upload", methods=["POST"])
     def weekly_upload():
         """One of the two reports. Which one is decided by its columns."""
@@ -103,10 +115,6 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
                 + ", ".join(str(h) for h in (table.get("headers") or [])[:12]))
             }), 400
 
-        key = "%s::%s" % (wsid, mkt)
-        slot = _PENDING.setdefault(key, {"business": None, "campaign": None})
-        slot["business" if family == _wk.BUSINESS else "campaign"] = table
-
         # WHICH WEEK. Amazon's reports do not carry the window inside the file
         # in a form worth trusting, so it is asked for -- and defaults to the
         # week just gone, which is the one being reported on a Monday.
@@ -120,12 +128,30 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
             start = _dt.date.today() - _dt.timedelta(days=7)
         week_start, week_end = _wk.week_bounds(start)
 
+        # THE WEEK IS PART OF THE KEY. Keyed on account+marketplace alone, a
+        # campaign export dropped for week 2 was paired with the Business
+        # Report still held from week 1, and week 2 was frozen with week 1's
+        # sales in it -- a wrong pack that looks complete.
+        key = _pending_key(wsid, mkt, week_start)
+        # BOUNDED (review, 30 Sep 2026): halves are kept per week now, so hold
+        # only the four newest weeks for this account + marketplace in memory.
+        _mine = sorted(k for k in _PENDING if k.startswith("%s::%s::" % (wsid, str(mkt or "").upper())))
+        for _old in _mine[:-3] if key not in _mine else _mine[:-4]:
+            _PENDING.pop(_old, None)
+        slot = _PENDING.setdefault(key, {"business": None, "campaign": None})
+        slot["business" if family == _wk.BUSINESS else "campaign"] = table
+
         pack = _wk.build(slot["business"], slot["campaign"],
                          brand_terms=_brand_terms(wsid),
                          week_start=week_start, week_end=week_end)
         # Stored as soon as either half arrives, so a half pack survives a
         # reload and the second file can be added to it later.
         _wk.store(CONFIG_PATH, wsid, mkt, pack, source="upload")
+        # NOT dropped once both halves are in. With the week in the key, a held
+        # half can only ever be paired with a file for the SAME week -- and
+        # re-dropping one corrected report is then rebuilt with the other half
+        # rather than overwriting a complete frozen week with half of one.
+        # /weekly/clear is what forgets them.
         return jsonify({"ok": True, "family": family,
                         "format": table.get("format"),
                         "rows_read": len(table.get("rows") or []), **pack})
@@ -138,8 +164,15 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
             return jsonify({"ok": False, "error": (
                 "Open an account and pick a marketplace first.")}), 400
         got = _wk.weeks(CONFIG_PATH, wsid, mkt)
-        change = _wk.compare(got[0], got[1]) if len(got) >= 2 else {}
+        # EACH WEEK AGAINST ITS CALENDAR PREDECESSOR, keyed by week_start, so
+        # the screen shows the movement of the week it is showing. `change`
+        # used to be got[0] against got[1] whatever those were -- with a week
+        # missing in between, "the week before" was a fortnight earlier, and
+        # an older week on screen carried the newest week's movement.
+        changes = _wk.changes_by_week(got)
+        change = changes.get(got[0]["week_start"], {}) if got else {}
         return jsonify({"ok": True, "weeks": got, "change": change,
+                        "changes": changes,
                         "brand_terms": _brand_terms(wsid),
                         "marketplace": mkt, "account": wsid})
 
@@ -197,6 +230,10 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
                                       % (have, "" if have == 1 else "s",
                                          expected))}), 409
         gone = _wk.clear(CONFIG_PATH, wsid, mkt, week_start=week or None)
+        # AND THE HALVES HELD IN MEMORY. Cleared weeks came back: the next single
+        # upload for that week was rebuilt with the other half still held from
+        # before the clear -- the data the owner had just deleted.
+        _forget_pending(wsid, mkt, week_start=(week or None))
         return jsonify({"ok": True, "deleted": gone, "account": wsid,
                         "marketplace": mkt,
                         "note": ("Week %s deleted." % week) if week else
@@ -223,10 +260,16 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
     def _grid(wsid, mkt, group):
         from domain import weekly_grid as _wg
         got = _wk.weeks(CONFIG_PATH, wsid, mkt)
-        label = ""
+        # THE ACCOUNT THE REQUEST NAMED, not the server's open one. The grid's
+        # header read _active_account(), so an export for Nestwell made while
+        # the server's global pointed at Jack Reacherd was titled Jack Reacherd
+        # over Nestwell's figures (CLAUDE.md Rule 14).
+        label = wsid
         try:
-            acc = (_active_account() or {}) if callable(_active_account) else {}
-            label = str(acc.get("label") or wsid)
+            from domain import accounts as _acc
+            acc = _acc.get_account(_cfg() if callable(_cfg) else (_cfg or {}),
+                                   wsid, CONFIG_PATH) or {}
+            label = str(acc.get("label") or acc.get("name") or wsid)
         except Exception:
             label = wsid
         return got, _wg.build(got, group=group, account_label=label)

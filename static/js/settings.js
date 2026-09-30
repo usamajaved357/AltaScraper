@@ -1,14 +1,30 @@
 // ---- Image refs section: shows this workspace's saved reference image ----
 let _IREF_PROFILE = null;
+// Why the brand profile could not be read, or "". While set, Save reference is
+// refused: saving merges into _IREF_PROFILE, so saving after a failed read
+// replaced the whole brand profile with just its name and this one image.
+let _IREF_LOAD_ERR = "";
 async function loadImageRefs(){
   const box=document.getElementById("imagerefsbody");
   let html="";
   // brand reference card (brands only)
   if(ACTIVE_WS && ACTIVE_WS.brand){
-    let prof={};
-    try{ prof=await (await fetch("/brand/get/"+encodeURIComponent(ACTIVE_WS.brand))).json(); }catch(e){}
-    _IREF_PROFILE = prof.profile || prof || {};
-    const ref=_IREF_PROFILE.main_image_reference||"";
+    let prof=null;
+    _IREF_LOAD_ERR = "";
+    try{
+      const r=await fetch("/brand/get/"+encodeURIComponent(ACTIVE_WS.brand));
+      prof=await r.json();
+      if(!r.ok || !prof || typeof prof!=="object" || prof.ok===false || prof.error){
+        _IREF_LOAD_ERR=(prof && prof.error) || ("the server answered " + r.status);
+        prof=null;
+      }
+    }catch(e){ _IREF_LOAD_ERR=String((e && e.message) || e); prof=null; }
+    _IREF_PROFILE = prof ? (prof.profile || prof) : null;
+    if(!box) return;
+    if(_IREF_LOAD_ERR){
+      html+=`<div class="sresfail" style="max-width:560px">Could not read this brand's profile (${esc(_IREF_LOAD_ERR)}), so its reference image cannot be changed right now — saving would overwrite the rest of the profile. <button class="db-chip" onclick="loadImageRefs()">Try again</button></div>`;
+    }
+    const ref=(_IREF_PROFILE||{}).main_image_reference||"";
     html+=`
       <div class="card" style="max-width:560px">
         <div class="kvsec">Brand main-image reference</div>
@@ -63,8 +79,13 @@ function mediaOpenAt(sku, index){
 
 async function loadMediaLibrary(){
   var host=document.getElementById('medialib'); if(!host) return;
+  // Whose library this is: a reply that lands after an account switch is
+  // dropped rather than drawn under the new account's name.
+  var _sc=(typeof screenScope==='function')?screenScope():null;
   try{
     var j=await (await fetch('/media/list')).json();
+    if(_sc && typeof screenStillIn==='function' && !screenStillIn(_sc)) return;
+    if(!document.body.contains(host)) return;
     if(!j.ok){ host.innerHTML='<div class="cc">Could not load media: '+esc(j.error||'')+'</div>'; return; }
     if(!j.folders||!j.folders.length){
       // SAY WHAT TO DO. Measured: nestwell_goods and selvora_limited have zero
@@ -243,16 +264,46 @@ async function editMediaImage(url, sku){
 }
 async function delMedia(url){
   if(!await uiConfirm('Delete this image?')) return;
-  try{ await fetch('/media/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})}); loadMediaLibrary(); }
+  // THE REPLY IS READ. A refused delete (another account's image, a bad path)
+  // used to reload the library silently, as though it had worked.
+  try{
+    const r=await fetch('/media/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})});
+    let j=null; try{ j=await r.json(); }catch(e){ j=null; }
+    if(!r.ok || !j || !j.ok){
+      toast('Could not delete: '+((j && j.error) || ('the server answered '+r.status)));
+      return;
+    }
+    toast('Image deleted'+(j.drive_removed?' (and from Drive)':''));
+    loadMediaLibrary();
+  }
   catch(e){ toast('Could not delete: '+e); }
 }
 async function saveImageRef(){
   if(!ACTIVE_WS||!ACTIVE_WS.brand) return;
+  // Never save over a profile that could not be read (see _IREF_LOAD_ERR).
+  if(_IREF_LOAD_ERR || !_IREF_PROFILE){
+    toast("Not saved: this brand's profile could not be read"
+          + (_IREF_LOAD_ERR ? " ("+_IREF_LOAD_ERR+")" : "")
+          + ", and saving would overwrite the rest of it. Reload and try again.");
+    return;
+  }
   const val=(document.getElementById("iref_input")||{}).value||"";
-  const prof=Object.assign({}, _IREF_PROFILE||{}, {brand_name:ACTIVE_WS.brand, main_image_reference:val});
+  // Only the profile's own fields go back: the reply's helpers (_tone_options)
+  // and any error/ok words are not part of the profile.
+  const base={};
+  Object.keys(_IREF_PROFILE||{}).forEach(function(k){
+    if(k.charAt(0)==="_" || k==="error" || k==="ok") return;
+    base[k]=_IREF_PROFILE[k];
+  });
+  const prof=Object.assign(base, {brand_name:ACTIVE_WS.brand, main_image_reference:val});
   try{
-    await fetch("/brand/save",{method:"POST",headers:{"Content-Type":"application/json"},
+    const r=await fetch("/brand/save",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(prof)});
+    let j=null; try{ j=await r.json(); }catch(e){ j=null; }
+    if(!r.ok || !j || j.ok===false){
+      toast("Could not save: "+((j && j.error) || ("the server answered "+r.status)));
+      return;
+    }
     toast("Reference image saved");
     loadImageRefs();
   }catch(e){ toast("Could not save: "+e); }
@@ -427,8 +478,16 @@ async function saveAISettings(){
   const t=(document.getElementById("ai_text")||{}).value;
   const i=(document.getElementById("ai_image")||{}).value;
   try{
-    await fetch("/ai/settings",{method:"POST",headers:{"Content-Type":"application/json"},
+    // THE REPLY IS READ. It was thrown away, so a refused or failed save
+    // (403, or config.json not writable) still said "AI selection saved" and
+    // closed the box (admin bug round, 30 Sep 2026).
+    const r = await fetch("/ai/settings",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({prompt_enhance:t,image_generate:i})});
+    let j = null; try{ j = await r.json(); }catch(e){ j = null; }
+    if(!r.ok || !j || !j.ok){
+      toast("Could not save: " + ((j && j.error) || ("HTTP " + r.status)));
+      return;
+    }
     AISET=null; // force reload in image-gen panels
     toast("AI selection saved");
     closeAISettings();

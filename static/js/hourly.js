@@ -40,7 +40,10 @@ function _hQuery(){
 }
 
 async function hourlyLoad(){
-  if(HRLY.busy) return;
+  // NEWEST REQUEST WINS. A window or metric picked during a load used to be
+  // dropped (the busy return) -- the pill moved, the table did not. Every load
+  // runs now; only the latest by ticket may draw or clear the loading state.
+  const my = HRLY.seq = (HRLY.seq || 0) + 1;
   HRLY.busy = true;
   const host = document.getElementById("hrlybody");
   if(host && host.innerHTML.trim()) host.style.opacity = ".45";
@@ -49,41 +52,53 @@ async function hourlyLoad(){
   const sc = (typeof screenScope === "function") ? screenScope() : null;         // the account this reply is for (audit S5)
   try{
     const j = await (await fetch("/hourly/summary?" + _hQuery())).json();
+    if(my !== HRLY.seq) return;
     if(sc && !screenStillIn(sc)) return;
     HRLY.data = j;
     hourlyRender();
   }catch(e){
+    if(my !== HRLY.seq) return;
     if(sc && !screenStillIn(sc)) return;
     // A failure, not "no data" (uiError, pageui.js).
     if(host) host.innerHTML = uiError("Hourly sales could not be loaded", String(e), "hourlyLoad", "hourly");
   }finally{
     // Only THIS request's own state: after a switch the new account's request
-    // owns the busy flag and the panel (Milestone 3 review, known-issues #5).
-    if(!sc || screenStillIn(sc)){ HRLY.busy = false; if(host) host.style.opacity = ""; }
+    // owns the busy flag and the panel (Milestone 3 review, known-issues #5),
+    // and so does a newer load.
+    if(my === HRLY.seq && (!sc || screenStillIn(sc))){ HRLY.busy = false; if(host) host.style.opacity = ""; }
   }
+}
+
+/* The pull's result line. Kept in HRLY and written into #hrly_status by every
+   render, because hourlyLoad() redraws the toolbar -- which used to wipe the
+   "Read 12 new orders…" message the moment the table it described arrived. */
+function _hStatus(html){
+  HRLY.status = html || "";
+  const st = document.getElementById("hrly_status");
+  if(st) st.innerHTML = HRLY.status;
 }
 
 /* Pull orders the app has not seen. Slow on purpose -- it is one Amazon call per
    order -- so it says what it is doing and how far it got. */
 async function hourlyFetch(btn){
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="genspin"></span> Pulling…'; }
-  const st = document.getElementById("hrly_status");
-  if(st) st.textContent = "Asking Amazon for orders, then for what was in each one…";
+  _hStatus("Asking Amazon for orders, then for what was in each one…");
+  const sc = (typeof screenScope === "function") ? screenScope() : null;
   try{
-    const sc = (typeof screenScope === "function") ? screenScope() : null;
     const j = await (await fetch("/hourly/fetch?" + _hQuery(), {method: "POST"})).json();
     if(sc && !screenStillIn(sc)) return;
     if(!j || !j.ok){
-      if(st) st.innerHTML = '<span style="color:var(--red)">'
-        + _hEsc((j && j.error) || "failed") + '</span>';
+      _hStatus('<span style="color:var(--red)">'
+        + _hEsc((j && j.error) || "failed") + '</span>');
     } else {
-      if(st) st.textContent = "Read " + j.fetched + " new order"
+      _hStatus(_hEsc("Read " + j.fetched + " new order"
         + (j.fetched === 1 ? "" : "s") + " of " + j.orders_seen + " in the window."
-        + (j.note ? " " + j.note : "");
+        + (j.note ? " " + j.note : "")));
       await hourlyLoad();
     }
   }catch(e){
-    if(st) st.innerHTML = '<span style="color:var(--red)">' + _hEsc(String(e)) + '</span>';
+    if(sc && !screenStillIn(sc)) return;
+    _hStatus('<span style="color:var(--red)">' + _hEsc(String(e)) + '</span>');
   }finally{
     if(btn){ btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i> Pull orders'; }
   }
@@ -142,7 +157,7 @@ function hourlyRender(){
     + '<i class="ti ti-download"></i> Pull orders</button>'
     + '</div>'
     + '<div class="cc" id="hrly_status" style="font-size:11.5px;margin:0 0 12px;'
-    + 'min-height:16px"></div>';
+    + 'min-height:16px">' + (HRLY.status || "") + '</div>';
 
   if(d.empty){
     host.innerHTML = h + '<div class="empty" style="text-align:left">'
@@ -184,6 +199,12 @@ function hourlyRender(){
       // THE FULL MON-SUN GRID, which is what Orbit opens on a click. The strip
       // above is the average day; this is where a Saturday-morning product
       // stops looking like a mid-week one.
+      // THE GRID'S OWN PEAK. a.peak is the busiest hour of the AVERAGE DAY --
+      // that hour summed over all seven weekdays -- so every single-day cell
+      // below was a fraction of it and the whole grid came out washed pale.
+      // Shaded against the busiest single cell instead, so the darkest cell
+      // is the busiest day-and-hour.
+      const gridPeak = Math.max.apply(null, [0].concat.apply([0], a.grid || []));
       h += '<div class="hrlygrid">'
         + '<div class="hrlygridhead"><span></span>'
         + [0, 6, 12, 18, 23].map(function(hr){
@@ -191,15 +212,15 @@ function hourlyRender(){
               + _hHourLabel(hr) + '</span>'; }).join("")
         + '</div>'
         + a.grid.map(function(row, dow){
-            const rowPeak = Math.max.apply(null, row.concat([0]));
             return '<div class="hrlygridrow"><span class="hrlydow">'
               + HRLY_DOW[dow] + '</span>'
               + row.map(function(v, hr){
-                  // Scaled against the WHOLE PRODUCT's peak, not the row's, so
-                  // Tuesday and Saturday can be compared to each other. Scaling
-                  // each day to itself would make every day look equally busy.
+                  // Scaled against the WHOLE PRODUCT's busiest cell, not the
+                  // row's, so Tuesday and Saturday can be compared to each
+                  // other. Scaling each day to itself would make every day look
+                  // equally busy.
                   return '<span class="hrlycell" style="background:'
-                    + _hCell(v, a.peak) + '" title="' + HRLY_DOW[dow] + ' '
+                    + _hCell(v, gridPeak) + '" title="' + HRLY_DOW[dow] + ' '
                     + _hHourLabel(hr) + ' — ' + _hEsc(_hNum(v, d.metric, cur))
                     + '"></span>';
                 }).join("") + '</div>';
@@ -216,9 +237,18 @@ function hourlyRender(){
   });
   h += '</div>';
 
+  // THE DAYS ACTUALLY READ, not the window asked for. Picking 90d over orders
+  // pulled for 30 said "trailing 90 days" about a month of data.
+  const _span = (d.first_day && d.last_day)
+    ? ('orders stored from <b>' + _hEsc(d.first_day) + '</b> to <b>'
+       + _hEsc(d.last_day) + '</b>' + (d.since && d.first_day > d.since
+         ? ' (the ' + d.days + '-day window starts ' + _hEsc(d.since)
+           + ' — press Pull orders to fetch the earlier days)'
+         : ''))
+    : ('trailing ' + d.days + ' days');
   h += '<div class="cc" style="font-size:11px;margin-top:12px">'
     + 'Order times in <b>' + _hEsc(d.timezone || "the marketplace's timezone")
-    + '</b>, trailing ' + d.days + ' days, from ' + d.lines + ' order line'
+    + '</b>, ' + _span + ', from ' + d.lines + ' order line'
     + (d.lines === 1 ? "" : "s") + '. Cancelled orders are not counted.</div>';
 
   host.innerHTML = h;

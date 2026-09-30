@@ -231,9 +231,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # that reads as live protection, which is worse than none: somebody
         # would trust it.
         rows, errors, asked = [], [], []
+        # An optional ?marketplace= (the daily round sends the one it is
+        # checking). Honoured ONLY when it is one of the account's own
+        # marketplaces; anything else falls back to the account's default, the
+        # behaviour every other caller already gets.
+        want_mkt = (request.args.get("marketplace") or "").strip().upper()
         for a in scope:
             aid = str(a.get("id") or "")
             mkt = _marketplace(a)
+            own = {str(m or "").strip().upper()
+                   for m in ([a.get("default_marketplace")]
+                             + list(a.get("marketplaces") or []))}
+            if want_mkt and want_mkt in own:
+                mkt = want_mkt
             asked.append(aid)
             try:
                 from domain import orders_live as _ol

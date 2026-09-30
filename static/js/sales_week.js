@@ -46,6 +46,9 @@ function _sAdFooter(j, whenLabel){
   const conn = (j && j.ads) || {};
 
   if(!spend.length){
+    // conn.ok === false is the ONLY "not connected". A connected account with
+    // no spend rows, and an unknown connection state, are "none" -- see the
+    // three answers above.
     const why = (conn.ok === false)
       ? ("not connected — advertising needs its own Amazon login, separate "
          + "from the selling one")
@@ -64,8 +67,12 @@ function _sAdFooter(j, whenLabel){
   const sales = cells("ordered_sales").reduce(function(a, b){
     return a + Number(b); }, 0);
   const tacos = sales ? (100 * total / sales) : null;
-  const cur = (j && j.currency) || "GBP";
-  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+  // THE SHARED SYMBOL TABLE (money.js curSymbol, Rule 12). This had its own
+  // three-way guess that printed £ for anything not USD/EUR -- SEK, PLN, CAD
+  // and a reply with no currency all read as pounds.
+  const cur = (j && j.currency) || "";
+  const sym = (typeof curSymbol === "function") ? curSymbol(cur)
+            : (_sCur(cur) || (cur ? cur + " " : ""));
   return '<div class="adfooter">'
     + '<span class="lbl">Ad spend ' + _sEsc(whenLabel) + '</span> <b>'
     + sym + total.toFixed(2) + '</b>'
@@ -122,12 +129,19 @@ async function salesLoadWeek(){
   // SALES_WEEK_START is the only place this is decided: 0 = Sunday, 1 = Monday.
   // Change this one number and the window, the comparison week, the axis labels
   // and the card's subtitle all follow, because they all read it from here.
-  const dow = (today.getUTCDay() - SALES_WEEK_START + 7) % 7;
-  const wkStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(),
-                                today.getUTCDate() - dow));
+  // THE BROWSER'S OWN DAY, not UTC's. getUTC* and toISOString() put "today"
+  // on Greenwich time, so between midnight and 01:00 in a UK summer (and all
+  // evening for a US viewer) the card asked for the wrong day and, on the
+  // week's first day, the wrong week. Dates are built from the local calendar
+  // and written out from it; the Date objects below are pinned to UTC midnight
+  // of that local day only so the day arithmetic has no DST hour in it.
+  const dow = (today.getDay() - SALES_WEEK_START + 7) % 7;
+  const todayU = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  const wkStart = new Date(Date.UTC(today.getFullYear(), today.getMonth(),
+                                today.getDate() - dow));
   const prevStart = new Date(wkStart.getTime() - 7 * 86400000);
   const prevEnd2 = new Date(wkStart.getTime() - 86400000);
-  const iso = d => d.toISOString().slice(0, 10);
+  const iso = d => d.toISOString().slice(0, 10);   // of a UTC-midnight local day
   const base = function(a, b){
     const q = ["preset=custom", "start=" + iso(a), "end=" + iso(b), "granularity=day"];
     if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
@@ -137,16 +151,27 @@ async function salesLoadWeek(){
   };
   host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">Loading…</div>';
   let now, before;
+  // Newest load wins (see salesReload): a week reply for a load that has been
+  // overtaken is not painted.
+  const tk = SALES.loadSeq;
   try{
-    now    = await _sFetch("/sales/series?" + base(wkStart, today));
+    now    = await _sFetch("/sales/series?" + base(wkStart, todayU));
     before = await _sFetch("/sales/series?" + base(prevStart, prevEnd2));
     if(now === null || before === null) return;
   }catch(e){
-    host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">'
-      + 'Could not load this week.</div>';
+    if(tk !== SALES.loadSeq) return;
+    // THE SAME ERROR CARD AS LIVE SALES, which says whether Amazon refused,
+    // throttled or the request broke -- not a bare "could not load".
+    _sCardError(host, (e && e.message) || e, "This week");
     return;
   }
-  if(!now || !now.ok){ host.innerHTML = ""; return; }
+  if(tk !== SALES.loadSeq) return;
+  // A REFUSAL IS SAID, not drawn as an empty card. `!now.ok` used to blank
+  // the panel, which reads as a week with nothing in it.
+  if(!now || !now.ok){
+    _sCardError(host, (now && now.error) || "no reply", "This week");
+    return;
+  }
   // Kept so the Live Sales footer, which is drawn from a different call, can say
   // whether advertising is connected without asking again.
   SALES._lastSeries = now;
@@ -352,7 +377,7 @@ async function salesLoadWeek(){
   // -57% on trade that had not moved at all, and its own tooltip said "against
   // the same days last week" while doing it.
   //
-  // Week to Date is a CALENDAR week, Monday to today. Its comparison has to be
+  // Week to Date is a CALENDAR week, SALES_WEEK_START (Sunday) to today. Its comparison has to be
   // the same slice of the week before, not the whole of it.
   if(badge){
     const cellsOf = function(m){ return (m ? (m.cells || []) : []); };

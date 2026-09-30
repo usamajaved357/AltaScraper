@@ -25,17 +25,22 @@ function catsRender() {
       "Amazon — one call per product…</div>";
     return;
   }
-  if (CATS.note) { box.innerHTML = '<div class="sresfail">' + esc(CATS.note) + "</div>"; return; }
+  // AN ERROR KEEPS THE BUTTON (bug round 30 Sep 2026). A failed Populate
+  // replaced the whole page with the message, so the only way to try again
+  // was to leave the screen and come back. The error now sits above what was
+  // already drawn, and the button stays.
   const d = CATS.data;
-  if (!d) { box.innerHTML = ""; return; }
+  const btn = '<button class="primary" onclick="catsPopulate()"' + (CATS.loading ? " disabled" : "") + '>' +
+    '<i class="ti ti-download"></i> Populate from Amazon</button>';
+  const err = CATS.note ? '<div class="sresfail" style="margin-bottom:12px">' + esc(CATS.note) + "</div>" : "";
+  if (!d) { box.innerHTML = err ? (uiToolbar(btn, "") + err) : ""; return; }
   const c = d.counts || {};
 
   let html = uiToolbar(
-    '<button class="primary" onclick="catsPopulate()"' + (CATS.loading ? " disabled" : "") + '>' +
-    '<i class="ti ti-download"></i> Populate from Amazon</button>',
+    btn,
     '<div class="cc" style="font-size:11.5px;max-width:560px;text-align:right">One call per ' +
     "product, so it is capped per press and picks up where it left off. " +
-    (d.fetched_at ? "Last read " + esc(d.fetched_at) + "." : "Never read yet.") + "</div>");
+    (d.fetched_at ? "Last read " + esc(d.fetched_at) + "." : "Never read yet.") + "</div>") + err;
 
   if (d.note) {
     html += '<div class="issuesbox" style="background:var(--warn-bg);border:1px solid var(--warn-line);' +
@@ -114,31 +119,46 @@ function catsRender() {
 }
 
 async function catsLoad() {
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   try {
     const j = await (await fetch("/categories" + _catsQs())).json();
+    if (_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     if (j && j.ok) { CATS.data = j; CATS.note = ""; }
     else CATS.note = (j && j.error) || "Could not read the categories.";
   } catch (e) {
+    if (_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     CATS.note = "Could not read the categories: " + e;
   }
   catsRender();
 }
 
 async function catsPopulate() {
+  if (CATS.loading) return;
   CATS.loading = true; CATS.note = ""; catsRender();
+  // A Populate takes a minute of Amazon calls. If the account or marketplace
+  // is switched meanwhile, its answer is about the OTHER account and must not
+  // be drawn here (bug round 30 Sep 2026) -- the check every screen makes.
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   try {
     const j = await (await fetch("/categories/populate" + _catsQs(), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({})
     })).json();
+    if (_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) {
+      CATS.loading = false; return;
+    }
     if (j && j.ok) {
       CATS.data = j;
       toast(j.read + " of " + j.asked + " read" +
+            (j.failed ? " — " + j.failed + " refused by Amazon, will retry" : "") +
             (j.remaining ? " — " + j.remaining + " still to go" : ""));
     } else {
       CATS.note = (j && j.error) || "Could not read from Amazon.";
     }
   } catch (e) {
+    if (_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) {
+      CATS.loading = false; return;
+    }
     CATS.note = "Could not read from Amazon: " + e;
   }
   CATS.loading = false;

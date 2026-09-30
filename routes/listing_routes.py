@@ -793,6 +793,25 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         img = _push_main_image(b, sku)
         if not isinstance(img, str):
             return img
+        # AN IMAGE MADE AS A SECONDARY OR A+ NEVER GOES IN THE MAIN SLOT. The same
+        # rule /listing/image_push applies (listing/images.refuse_slot, Rule 12);
+        # this route skipped it, so "Use as main" on an A+ image could publish it
+        # as MAIN. What the image was made as comes from the page (made_as, the
+        # library folder it sits in) or, failing that, from the app's own
+        # /media/<account>/<sku>/<folder>/ path.
+        from listing import images as _img_slot
+        # BOTH are checked (payload review, 30 Sep 2026): a stale page sending
+        # made_as "unsorted" for a file in the aplus folder must not publish it
+        # as MAIN. Either one refusing is enough.
+        _made = str(b.get("made_as") or "").strip().lower()
+        _m = re.search(r"/media/(?:_acct/[^/]+/)?[^/]+/((?:secondary|aplus)[^?#]*)/[^/?#]+(?:[?#]|$)",
+                       str(img or ""))
+        _path_made = _m.group(1).lower() if _m else ""
+        _refused = (_img_slot.refuse_slot(_img_slot.MAIN, _made)
+                    or _img_slot.refuse_slot(_img_slot.MAIN, _path_made))
+        if _refused:
+            return jsonify({"ok": False, "refused_slot": True,
+                            "error": _refused}), 400
         # Never somebody else's photograph as the main image (the submit's rule,
         # domain/image_urls.is_ours; review, 30 Sep 2026).
         from domain import image_urls as _iu_own
@@ -1184,6 +1203,14 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             return jsonify({"ok": True, "title": title, "headers": headers, "rows": rows,
                             "row_count": len(rows), "col_count": len(headers),
                             "sheet_id": sid, "gid": gid, "view_url": view_url})
+        except (FileNotFoundError, OSError) as e:
+            # NO GOOGLE SERVICE ACCOUNT on this server (the key file path is
+            # empty): a setup fact, said as one -- it was a raw "[Errno 2]" 500
+            # (route sweep, 30 Sep 2026).
+            return jsonify({"ok": False, "error": (
+                "Google Sheets is not connected on this server, so the input "
+                "sheet cannot be shown here. Open it in Google Sheets instead."),
+                "view_url": "https://docs.google.com/spreadsheets/d/%s/edit" % sid}), 503
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:200]}), 500
 

@@ -105,8 +105,9 @@ function ppcAnalyticsRender(){
     host.innerHTML =
         '<div class="stk-banner"><div class="stk-bannermain">'
       + '<div class="stk-eyebrow">PPC analytics</div>'
-      + '<h3 class="stk-headline">No report loaded yet</h3>'
-      + '<p class="stk-sub">' + _pvEsc(j.note || "") + '</p>'
+      // The server's explanation (where to download it, why) is behind the (i).
+      + '<h3 class="stk-headline">No report loaded yet'
+      + (j.note ? uiHint(j.note) : '') + '</h3>'
       + '<p class="stk-sub" style="margin-top:10px">'
       + '<label class="db-chip" for="ppc_report_file" style="cursor:pointer">'
       + '<i class="ti ti-table-import"></i> Upload the report</label></p>'
@@ -145,9 +146,9 @@ function _pvBanner(j){
         ? '<b>' + (t.wasted_terms || 0) + '</b> search term'
           + ((t.wasted_terms === 1) ? '' : 's')
           + ' took ' + _pvMoney(waste) + ' — that is '
-          + _pvN(t.wasted_pct, "%") + ' of the spend — and returned no orders. '
-          + 'Only terms with at least ' + (t.min_clicks_to_judge || 10)
-          + ' clicks are counted, so a term that has barely run is not blamed.'
+          + _pvN(t.wasted_pct, "%") + ' of the spend — no orders '
+          + uiHint('Only terms with at least ' + (t.min_clicks_to_judge || 10)
+          + ' clicks are counted, so a term that has barely run is not blamed.')
         : 'Every term with enough clicks to judge has produced at least one '
           + 'order.')
     + '</p>'
@@ -273,9 +274,10 @@ function _pvBrand(j){
     + 'this.value=\'\';}">'
     + '</div>';
   if(!b){
-    h += '<div class="cc" style="font-size:11.5px">Add your brand name above '
+    h += '<div class="cc" style="font-size:11.5px">Add a brand term to split '
+      + uiHint('Add your brand name above '
       + 'and this splits in two. Until then nothing is assumed — reporting '
-      + '“0% branded” would be a claim nobody made.</div>';
+      + '“0% branded” would be a claim nobody made.') + '</div>';
   }else{
     h += '<table class="stk-table"><thead><tr><th></th>'
       + '<th class="r">Spend</th><th class="r">Sales</th><th class="r">ACOS</th>'
@@ -474,11 +476,12 @@ function _pvTermTable(j){
 }
 
 function _pvFooter(j){
-  return '<div class="odp-note" style="margin-top:10px">'
-    + 'Every figure comes from the Search Term Report you uploaded. Nothing on '
+  return '<div style="margin-top:10px">'
+    + uiNote("info", "Read-only · from your Search Term Report",
+      'Every figure comes from the Search Term Report you uploaded. Nothing on '
     + 'this page changes a bid, a budget or a campaign — to act on a term, use '
     + 'the harvester below, which writes a bulk file for you to review and '
-    + 'upload yourself.</div>';
+    + 'upload yourself.') + '</div>';
 }
 
 async function ppcReportUpload(input){

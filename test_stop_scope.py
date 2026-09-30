@@ -65,9 +65,15 @@ with app.test_client() as c:
     with c.session_transaction() as s:
         s["user"] = "owner"; s["role"] = "owner"; s["is_owner"] = True
 
+    # RE-PINNED (admin bug round, 30 Sep 2026): /accounts/select now refuses
+    # an account that is not in the config (it used to move the server onto
+    # it anyway), and the test run's stand-in config has neither of these. The
+    # page names its account on the request instead -- which is how
+    # /run/health resolves it (request_account.current) -- so this still asks
+    # exactly "does THIS account see the run".
     def health(acct):
         c.post("/accounts/select", json={"id": acct, "marketplace": "UK"})
-        return c.get("/run/health").get_json() or {}
+        return c.get("/run/health?account=" + acct).get_json() or {}
 
     SLOTS.acquire("nestwell_goods", "SKU-N1", owner="")
     h_other = health("jack_uk")

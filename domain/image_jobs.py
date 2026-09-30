@@ -80,6 +80,13 @@ def _job_finish(jid, error=""):
     with _IMG_JOBS_LOCK:
         j = _IMG_JOBS.get(jid)
         if j:
+            # A STOPPED BATCH STAYS STOPPED. The worker ends a cancelled batch
+            # with "stopped by user"; the dispatcher then called this again with
+            # no error and flipped it to "done", so the screen said "Complete".
+            if not error and j.get("cancel"):
+                error = "stopped by user"
+            if not error and j.get("status") == "error" and j.get("error"):
+                return                 # already ended, with its reason
             j["status"] = "error" if error else "done"
             if error:
                 j["error"] = error
@@ -330,21 +337,27 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                         # sent to Amazon as the MAIN photo, and the "you already
                         # have N A+ images" warning never fired.
                         _kind = str(payload.get("kind", "") or kind or "").lower()
-                        _sub = ""
-                        if _kind == "aplus":
-                            _tier = str(payload.get("tier", "") or data.get("tier", "") or "basic").lower()
-                            _tier = "premium" if "prem" in _tier else "basic"
-                            _sub = f"aplus/{_tier}"
-                            # PREMIUM A+ IS TWO IMAGES, NOT ONE. Amazon renders
-                            # premium modules at different sizes on desktop and on
-                            # mobile, and a single asset cannot satisfy both -- so
-                            # the tier folder is split again by which one this is.
-                            # Basic A+ has no such split and keeps a flat folder.
-                            _dev = str(payload.get("device", "") or data.get("device", "") or "").lower()
-                            if _tier == "premium" and _dev in ("desktop", "mobile"):
-                                _sub = f"aplus/premium/{_dev}"
-                        elif _kind == "secondary":
-                            _sub = "secondary"
+                        # The batch kinds that make a MAIN image: a strategist
+                        # hero concept, the cleaned source photo, and the three
+                        # ready-made hero variations. "source" must not reach
+                        # folder_for as-is -- there it means "reference photos".
+                        if _kind in ("concept", "source", "recipe", "creative"):
+                            _kind = "main"
+                        # ONE RULE FOR WHERE AN IMAGE IS FILED: media_kinds
+                        # .folder_for, the same call /genimage/save_to_media
+                        # makes (Rule 12). This had its own copy, which read a
+                        # "device" field the page never sends -- the page says
+                        # viewport:"mobile" -- so every premium phone module was
+                        # filed with the desktop ones.
+                        _tier = str(payload.get("tier", "") or data.get("tier", "") or "basic").lower()
+                        _tier = "premium" if "prem" in _tier else "basic"
+                        _variant = str(payload.get("variant", "") or payload.get("device", "")
+                                       or data.get("device", "") or "").lower()
+                        if (str(payload.get("viewport", "") or "").lower() == "mobile"
+                                or str(data.get("viewport", "") or "").lower() == "mobile"):
+                            _variant = "mobile"
+                        from domain import media_kinds as _mk
+                        _sub = _mk.folder_for(_kind, _tier, _variant)
                         # Resolve the image to RAW BYTES. The model may return a
                         # data: URL (base64) OR a remote https URL -- the old code
                         # only handled data: URLs, so URL-returning models saved

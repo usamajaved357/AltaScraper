@@ -27,8 +27,9 @@ truthy("there is one constant for it", S.includes("const SALES_WEEK_START = 0"))
 truthy("  and it says which day 0 is", S.includes("0 = Sunday, 1 = Monday"));
 truthy("  and why it is not Monday any more",
        S.includes("it starts from sunday and ends at saturday"));
+// Re-pinned 30 Sep 2026: the browser's local day, not UTC (SALES 9).
 truthy("the window is worked out from it",
-       S.includes("(today.getUTCDay() - SALES_WEEK_START + 7) % 7"));
+       S.includes("(today.getDay() - SALES_WEEK_START + 7) % 7"));
 falsy("  and not from a hard-coded Monday offset",
       S.includes("(today.getUTCDay() + 6) % 7"));
 // The variables were called mon/lastMon while holding a Sunday, which is a

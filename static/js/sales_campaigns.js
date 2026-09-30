@@ -45,15 +45,19 @@ async function salesLoadCampaigns(){
   if(!host) return;
   // Same query builder and same fetch wrapper as every other panel, so the
   // campaign table is always showing the period the rest of the screen is.
+  // Newest ask wins: an older period's campaigns must not land over a newer's.
+  const tk = SALES_CAMP.seq = (SALES_CAMP.seq || 0) + 1;
   try{
     const j = await _sFetch("/sales/campaigns?" + _sQuery());
     if(j === null) return;                       // superseded by a newer request
+    if(tk !== SALES_CAMP.seq) return;
     SALES_CAMP.rows = (j && j.rows) || [];
     SALES_CAMP.totals = (j && j.totals) || {};
     SALES_CAMP.currency = (j && j.currency) || "";
     SALES_CAMP.products = (j && j.ad_products) || [];
     SALES_CAMP.error = (j && j.ok) ? "" : ((j && j.error) || "could not load campaigns");
   }catch(e){
+    if(tk !== SALES_CAMP.seq) return;
     SALES_CAMP.rows = []; SALES_CAMP.error = "could not load campaigns";
   }
   SALES_CAMP.loaded = true;
@@ -310,8 +314,26 @@ function salesDrawOrgPpc(ser){
   const haveAds = adSales.some(function(v){
     return v !== null && v !== undefined && Number(v) !== 0; });
 
+  // CONNECTED WITH NO AD SALES IS A MEASUREMENT, not "not connected". The
+  // placeholder used to appear whenever no ad sale was non-zero, so an account
+  // WITH an Advertising login that sold nothing through ads this period was
+  // told it was not connected. ser.ads is api/amazon_ads.connection's answer
+  // (the one place that decides it); ok === true means connected.
+  const adsConnected = !!(ser && ser.ads && ser.ads.ok === true);
   let organic, ppc, sample = false, note = "";
-  if(haveAds){
+  if(!haveAds && adsConnected){
+    ppc = total.map(function(t, i){
+      if(t === null || t === undefined) return null;
+      const a = adSales[i];
+      return (a === null || a === undefined) ? 0 : Number(a);
+    });
+    organic = total.map(function(t){
+      return (t === null || t === undefined) ? null : Number(t);
+    });
+    note = '<div class="cc" style="font-size:11.5px;margin:0 0 10px">'
+      + 'Advertising is connected, and no sales were attributed to ads in this '
+      + 'period — so everything here is organic.</div>';
+  } else if(haveAds){
     ppc = adSales.slice();
     organic = total.map(function(t, i){
       const a = Number(adSales[i] || 0);

@@ -14,7 +14,7 @@
 // credential, and rendering it puts it in screenshots and support threads. Only
 // a redacted form is ever drawn.
 
-let NTF = { channels: [], log: [], quiet: 6, loading: false, note: "" };
+let NTF = { channels: [], log: [], quiet: 6, loading: false, note: "", error: "" };
 
 function _ntfQs() { return (typeof scopeQs === "function") ? scopeQs() : ""; }
 
@@ -29,6 +29,10 @@ function ntfRender() {
   const box = document.getElementById("ntf_body");
   if (!box) return;
   if (NTF.loading) { box.innerHTML = '<div class="cc" style="padding:14px">Loading…</div>'; return; }
+  if (NTF.error) {
+    box.innerHTML = uiError("The notification settings could not be loaded", NTF.error, "ntfLoad", "notify");
+    return;
+  }
 
   let html = "";
 
@@ -85,7 +89,14 @@ function ntfRender() {
       "<th>Events</th><th>Last</th><th>On</th><th></th></tr></thead><tbody>";
     NTF.channels.forEach(function (c) {
       t += "<tr>" +
-        '<td style="font-weight:600">' + esc(c.label || "(unnamed)") + "</td>" +
+        '<td style="font-weight:600">' + esc(c.label || "(unnamed)") +
+        // ADDED BEFORE CHANNELS WERE PER ACCOUNT: it still receives every
+        // account's alerts. Said, with the one action that fixes it.
+        (c.account ? "" :
+          '<div class="cc" style="font-size:10.5px;font-weight:400;color:var(--warn)">' +
+          'all accounts <button class="db-chip" style="margin-left:4px" ' +
+          'onclick="ntfAssign(' + jsArg(c.id) + ')">Only this account</button></div>') +
+        "</td>" +
         "<td>" + esc(c.kind) + "</td>" +
         // Redacted, always. The server never sends the whole thing.
         '<td class="cc" style="font-size:11px;font-family:monospace">' + esc(c.url_shown) + "</td>" +
@@ -114,7 +125,7 @@ function ntfRender() {
         ' onchange="ntfAll(' + c.id + ', this.checked)"> every repricer event' +
         "</label></td>" +
         '<td class="cc" style="font-size:11px">' +
-        (c.last_result ? ntfResult(c.last_result) + " " + esc(c.last_at || "") : "never") + "</td>" +
+        (c.last_result ? ntfResult(c.last_result) + " " + esc(ntfWhen(c.last_at_utc)) : "never") + "</td>" +
         '<td><label class="apmob"><input type="checkbox" ' + (c.enabled ? "checked" : "") +
         ' onchange="ntfEnable(' + c.id + ', this.checked)"> ' +
         (c.enabled ? "on" : "off") + "</label></td>" +
@@ -145,11 +156,11 @@ function ntfRender() {
       '<div class="cc" style="padding:2px;font-size:12px">Nothing yet.</div>');
   } else {
     let t = '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
-      "<th>When</th><th>Where</th>" +
+      "<th>When (your time)</th><th>Where</th>" +
       "<th>What</th><th>Result</th><th>Detail</th></tr></thead><tbody>";
     NTF.log.forEach(function (e) {
       t += "<tr>" +
-        '<td class="cc" style="font-size:11px">' + esc(e.at || "") + "</td>" +
+        '<td class="cc" style="font-size:11px">' + esc(e.at_utc ? ntfWhen(e.at_utc) : (e.at || "")) + "</td>" +
         "<td>" + esc(e.channel || "") + "</td>" +
         "<td>" + esc(e.subject || "") + "</td>" +
         "<td>" + ntfResult(e.result) + "</td>" +
@@ -168,17 +179,52 @@ function ntfRender() {
   box.innerHTML = html;
 }
 
-async function ntfLoad() {
-  NTF.loading = true; ntfRender();
+function _ntfQs2(extra) { return (typeof scopeQs === "function") ? scopeQs(extra) : ""; }
+function _ntfBody(o) { return (typeof acctBody === "function") ? acctBody(o) : (o || {}); }
+
+/* One time, one zone. The bell's times are SQLite's CURRENT_TIMESTAMP (UTC) and
+ * the log's are the server's clock; both reach the browser in UTC now
+ * (domain/notify.log -> at_utc) and are shown here in the viewer's own time,
+ * said once in each heading. "" in, "" out; an unreadable time is shown as is. */
+function ntfWhen(utc) {
+  const s = String(utc || "").trim();
+  if (!s) return "";
+  const d = new Date(s.replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? "" : "Z"));
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleString(undefined, { day: "numeric", month: "short",
+    hour: "2-digit", minute: "2-digit" });
+}
+
+/* A reply as JSON, or {ok:false, error} -- never a throw, so every action can
+ * say what went wrong in the same words and still reload the screen. */
+async function _ntfCall(url, opts) {
   try {
-    const j = await (await fetch("/notify/channels" + _ntfQs())).json();
-    if (j.ok) { NTF.channels = j.channels || []; NTF.quiet = j.quiet_hours || 6; }
-    const l = await (await fetch("/notify/log?limit=40")).json();
-    if (l.ok) NTF.log = l.log || [];
+    const r = await fetch(url, opts);
+    let j = null;
+    try { j = await r.json(); } catch (e) { j = null; }
+    if (!j) return { ok: false, error: "The server replied " + r.status + " with no answer." };
+    return j;
   } catch (e) {
-    NTF.note = String(e);
+    return { ok: false, error: "Could not reach the server: " + e };
   }
+}
+
+async function ntfLoad() {
+  NTF.loading = true; NTF.error = ""; ntfRender();
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  const j = await _ntfCall("/notify/channels" + _ntfQs());
+  const l = await _ntfCall("/notify/log" + _ntfQs2({ limit: 40 }));
   NTF.loading = false;
+  // Another account's channels must not be drawn into this one (Rule 14).
+  if (_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
+  if (!j.ok) {
+    // A FAILED LOAD IS SAID, not drawn as "Nothing is set up" -- that reads as
+    // "no alerts go anywhere", which is a different and alarming claim.
+    NTF.error = j.error || "The channels could not be read.";
+  } else {
+    NTF.channels = j.channels || []; NTF.quiet = j.quiet_hours || 6;
+  }
+  NTF.log = l.ok ? (l.log || []) : [];
   ntfRender();
 }
 
@@ -187,17 +233,17 @@ async function ntfAdd() {
   const url = ((document.getElementById("ntf_url") || {}).value || "").trim();
   const label = ((document.getElementById("ntf_label") || {}).value || "").trim();
   if (!url) { toast("Paste the address first."); return; }
-  const j = await (await fetch("/notify/channels", {
+  // enabled is NOT sent: a new channel arrives switched off, always. The
+  // account IS: a channel belongs to the account it is added in.
+  const j = await _ntfCall("/notify/channels", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    // enabled is NOT sent: a new channel arrives switched off, always.
-    body: JSON.stringify({ kind: kind, url: url, label: label })
-  })).json();
-  if (!j.ok) { toast(j.error || "Could not add that."); return; }
+    body: JSON.stringify(_ntfBody({ kind: kind, url: url, label: label }))
+  });
+  if (!j.ok) { toast(j.error || "Could not add that."); ntfLoad(); return; }
   const u = document.getElementById("ntf_url"); if (u) u.value = "";
   toast("Added, switched off. Send a test before turning it on.");
   ntfLoad();
 }
-
 /* Is this channel signed up for the quiet kinds too?
  *
  * "*" is the marker the server reads (domain/notify.wants). An empty list is
@@ -214,10 +260,10 @@ function ntfAllEvents(c) {
  * started, not pinned to whatever the event names happened to be today.
  */
 async function ntfAll(id, on) {
-  const j = await (await fetch("/notify/channel", {
+  const j = await _ntfCall("/notify/channel", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: id, events: on ? ["*"] : [] })
-  })).json();
+    body: JSON.stringify(_ntfBody({ id: id, events: on ? ["*"] : [] }))
+  });
   if (!j.ok) toast(j.error || "Could not change that.");
   else toast(on ? "This channel will now get every repricer event."
                 : "Back to the usual alerts only.");
@@ -225,41 +271,56 @@ async function ntfAll(id, on) {
 }
 
 async function ntfEnable(id, on) {
-  const j = await (await fetch("/notify/channel", {
+  const j = await _ntfCall("/notify/channel", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: id, enabled: !!on })
-  })).json();
+    body: JSON.stringify(_ntfBody({ id: id, enabled: !!on }))
+  });
   if (!j.ok) toast(j.error || "Could not change that.");
+  ntfLoad();
+}
+
+/* A channel added before channels were per account receives EVERY account's
+ * alerts. This files it under the account that is open; nothing else moves. */
+async function ntfAssign(id) {
+  if (!await uiConfirm("Send this channel only this account's alerts from now on? " +
+      "Other accounts will stop reaching it.")) return;
+  const j = await _ntfCall("/notify/channel", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(_ntfBody({ id: id, assign: true }))
+  });
+  if (!j.ok) toast(j.error || "Could not assign it.");
+  else toast("Now for this account only.");
   ntfLoad();
 }
 
 async function ntfTest(id) {
   toast("Sending a test…");
-  const j = await (await fetch("/notify/test", {
+  const j = await _ntfCall("/notify/test", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: id })
-  })).json();
-  toast(j.ok ? "Test sent — check the channel." : ("Test failed: " + (j.detail || "")));
+    body: JSON.stringify(_ntfBody({ id: id }))
+  });
+  toast(j.ok ? "Test sent — check the channel."
+             : ("Test failed: " + (j.detail || j.error || "no reason given")));
   ntfLoad();
 }
 
 async function ntfRemove(id) {
   if (!await uiConfirm("Remove this channel? Nothing will be sent to it again.")) return;
-  await fetch("/notify/channel?id=" + encodeURIComponent(id), { method: "DELETE" });
+  const j = await _ntfCall("/notify/channel" + _ntfQs2({ id: id }), { method: "DELETE" });
+  if (!j.ok) toast(j.error || "Could not remove it.");
   ntfLoad();
 }
 
 async function ntfSendNow() {
-  const j = await (await fetch("/notify/send" + _ntfQs(), {
+  const j = await _ntfCall("/notify/send" + _ntfQs(), {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({})
-  })).json();
+    body: JSON.stringify(_ntfBody({}))
+  });
   if (j.note) toast(j.note);
-  else if (!j.ok) toast("Some sends failed — see the log below.");
+  else if (!j.ok) toast(j.error || "Some sends failed — see the log below.");
   else toast(j.sent + " sent, " + j.skipped + " not repeated, " + j.failed + " failed");
   ntfLoad();
 }
-
 /* ======================================================================
  * THE BELL.
  *
@@ -282,8 +343,11 @@ function _bellQs() { return (typeof scopeQs === "function") ? scopeQs() : ""; }
 
 /* A quiet bell is a quiet bell: the dot only exists when something is unread. */
 async function notifPoll() {
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
   try {
     const j = await (await fetch("/notify/inbox" + _bellQs())).json();
+    // A reply for the account just left must not set this one's badge.
+    if (_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     if (!j || !j.ok) return;
     BELL.rows = j.rows || [];
     BELL.unread = j.unread || 0;
@@ -314,6 +378,7 @@ function notifDraw() {
   let h = '<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;'
     + 'border-bottom:1px solid var(--line)">'
     + '<b style="font-size:12.5px;flex:1">What the app has done</b>'
+    + '<span class="cc" style="font-size:9.5px">times are yours</span>'
     + (BELL.unread
         ? '<button class="db-chip" onclick="notifReadAll()">Mark all read</button>'
         : '')
@@ -338,7 +403,7 @@ function notifDraw() {
               + 'white-space:pre-wrap">' + esc(r.body) + '</div>'
             : '')
         + '<div class="cc" style="font-size:9.5px;margin-top:2px">'
-        + esc(r.created_at || "") + (r.sku ? " &middot; " + esc(r.sku) : "")
+        + esc(ntfWhen(r.created_at)) + (r.sku ? " &middot; " + esc(r.sku) : "")
         + '</div></div></div>';
     });
   }

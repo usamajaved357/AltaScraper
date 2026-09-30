@@ -236,7 +236,19 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
                 _open = _state.get("active_account_id")
                 if _acctscope.is_mismatch(account_id, _open):
                     return jsonify(_acctscope.refusal(account_id, _open, "inventory")), 409
-            marketplace = (request.form.get("marketplace") or "US").strip().upper()
+            # ONE REAL MARKETPLACE, NAMED BY THE PAGE (bug round 30 Sep 2026).
+            # This defaulted to "US", and the browser sent "__all__" whenever
+            # "All marketplaces" was picked -- so a UK account was run against
+            # the US store, or against a marketplace called __ALL__, and the
+            # result (and the xlsx, and the sidebar badge) was filed as
+            # though it were real. Replenishment is per marketplace: refuse
+            # rather than guess.
+            marketplace = (request.form.get("marketplace") or "").strip().upper()
+            if not marketplace or marketplace == "__ALL__":
+                return jsonify({"ok": False, "error": (
+                    "Pick one marketplace at the top of the screen first. "
+                    "Replenishment is worked out per marketplace, so it "
+                    "cannot run on 'All marketplaces'.")}), 400
 
             try:
                 cfg = _INV2.InventoryConfig(
@@ -340,7 +352,16 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
             # Count SKUs where reorder is needed (any of: FBA reorder Yes, or 3PL reorder Yes)
             alert_count = sum(1 for r in result["rows"]
                               if r.get("replenish_yesno") == "Yes" or r.get("replenish_3pl") == "Yes")
-            _INV_ALERT_COUNTS[account_id] = alert_count
+            # KEYED BY ACCOUNT AND MARKETPLACE (bug round 30 Sep 2026). One
+            # number per account meant a UK run's count was shown while
+            # looking at the same account's US store. The bare account key
+            # stays as the SUM over its marketplaces, because the dashboard's
+            # per-account summary (routes/dashboard_routes.py) reads it.
+            _INV_ALERT_COUNTS["%s|%s" % (account_id, marketplace)] = alert_count
+            _pre = "%s|" % account_id
+            _INV_ALERT_COUNTS[account_id] = sum(
+                int(v or 0) for k, v in list(_INV_ALERT_COUNTS.items())
+                if isinstance(k, str) and k.startswith(_pre))
 
             # ---- Emit xlsx ----
             import time as _t
@@ -375,10 +396,21 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
     @app.route("/inventory/v2/alerts")
     def inventory_v2_alerts():
         """Return the current alert count for a workspace (drives the sidebar badge)."""
-        account_id = (request.args.get("account_id") or "").strip()
+        # NOT RUN IS NOT ZERO (bug round 30 Sep 2026). A count that was never
+        # worked out comes back as null with known=false, so nothing can draw
+        # it as "0 need reordering". Per marketplace when the page names one;
+        # the account's total over its marketplaces otherwise.
+        account_id = (request.args.get("account_id") or request.args.get("account")
+                      or "").strip()
+        mkt = (request.args.get("marketplace") or "").strip().upper()
         if not account_id:
-            return jsonify({"count": 0})
-        return jsonify({"count": _INV_ALERT_COUNTS.get(account_id, 0)})
+            return jsonify({"count": None, "known": False})
+        key = ("%s|%s" % (account_id, mkt)) if (mkt and mkt != "__ALL__") else account_id
+        if key not in _INV_ALERT_COUNTS:
+            return jsonify({"count": None, "known": False,
+                            "account": account_id, "marketplace": mkt})
+        return jsonify({"count": _INV_ALERT_COUNTS.get(key), "known": True,
+                        "account": account_id, "marketplace": mkt})
 
     # ------------------------------------------------------------------
     #  THE STOCK COCKPIT
@@ -393,21 +425,21 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
     #  READ ONLY. It changes nothing on Amazon and writes nothing anywhere.
 
     def _scope():
-        """(account_id, marketplace) for this request, however it was asked."""
-        aid = (request.args.get("account") or request.args.get("id") or request.args.get("account_id")
-               or "").strip()
-        mkt = (request.args.get("marketplace") or "").strip().upper()
-        if not aid or not mkt:
-            try:
-                acc = (_active_account() or {}) if callable(_active_account) else {}
-            except Exception:
-                acc = {}
-            aid = aid or str(acc.get("id") or
-                             (_state or {}).get("active_account_id") or "")
-            mkt = mkt or str(acc.get("default_marketplace")
-                             or (_state or {}).get("active_marketplace")
-                             or "").upper()
-        return aid, mkt
+        """(account_id, marketplace) for this request, however it was asked.
+
+        THE SHARED RESOLVER, not a copy of it (bug round 30 Sep 2026, Rule 12
+        and Rule 14). This filled a missing marketplace from the server's OPEN
+        account -- so ?account=sheelady_us with jack_uk open in another tab was
+        answered on jack's default -- and let the process-wide selection win
+        over the account's own default even where the account does not sell
+        there. routes/scope.pair() names the account from the request and
+        takes the marketplace from THAT account.
+        """
+        from routes import scope as _rscope
+        return _rscope.pair(request, state=_state or {},
+                            active_account=(_active_account if callable(_active_account)
+                                            else (lambda: {})),
+                            cfg=_cfg, config_path=CONFIG_PATH)
 
     @app.route("/inventory/coverage")
     def inventory_coverage():
@@ -551,7 +583,10 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
             out = _mb.find(CONFIG_PATH, aid, mkt or None)
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:300]}), 500
-        return jsonify({"ok": True, **out})
+        # Which account and marketplace this answer is FOR, so the screen can
+        # say so and check the reply is still the one it is showing.
+        return jsonify({"ok": True, **out, "account": aid,
+                        "marketplace": mkt or ""})
 
     @app.route("/inventory/stock")
     def inventory_stock():

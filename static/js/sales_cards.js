@@ -128,7 +128,7 @@ function salesDrawCards(sum, av){
     const foot = c.note
       ? (adsOff
           ? '<p class="stat-delta" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
-          : _sDelta(c, (SALES.compareKind === "year" ? "LY" : "was"),
+          : _sDelta(c, _sPrevLabel(sum),
                     c.previous, c.kind, sum.currency))
       : (adsOff
           ? '<p class="stat-delta" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
@@ -136,7 +136,7 @@ function salesDrawCards(sum, av){
           // the server calls the earlier figure -- it was read as `prev_value`,
           // which does not exist, so every card said only a percentage with
           // nothing to compare it against.
-          : _sDelta(c, (SALES.compareKind === "year" ? "LY" : "was"),
+          : _sDelta(c, _sPrevLabel(sum),
                     c.previous, c.kind, sum.currency));
     // Where postage has been folded into Total Sales, say so on hover -- the
     // goods figure alone is what reconciles against Seller Central, and someone
@@ -183,6 +183,16 @@ function salesDrawCards(sum, av){
    PERIOD by default, and calling a 30-day-ago figure "last year" would be a
    plain lie. When the comparison is set to a year earlier it says LY, because
    then it is one. */
+/* "LY" ONLY WHEN THE FIGURE IS LAST YEAR'S. The label used to follow the
+   compare picker while the figure always came from the period immediately
+   before, so "LY : £x" could be last month. The server now says which window it
+   summed (compared_to.kind, set from compare_kind in _sQuery), and the label
+   follows THAT -- a reply from before the picker changed says "was". */
+function _sPrevLabel(sum){
+  const k = sum && sum.compared_to && sum.compared_to.kind;
+  return (k === "year") ? "LY" : "was";
+}
+
 function _sDelta(c, prevLabel, prevValue, kind, currency){
   if(c.delta_pct===null || c.delta_pct===undefined){
     // Said, not left as a dash. A blank here reads as a fault, and showing

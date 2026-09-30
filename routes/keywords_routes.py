@@ -67,8 +67,13 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
 
     def _dates():
         s0, e0 = _last_full_week()
-        s = (request.values.get("start") or "").strip() or s0
-        e = (request.values.get("end") or "").strip() or e0
+        # THE JSON BODY TOO. The Rank Tracker posts {start, end} as JSON and
+        # request.values is only the query string and a FORM body, so the week
+        # picked on screen was ignored and every check pulled last week.
+        body = request.get_json(silent=True) if request.is_json else None
+        body = body if isinstance(body, dict) else {}
+        s = (request.values.get("start") or str(body.get("start") or "")).strip() or s0
+        e = (request.values.get("end") or str(body.get("end") or "")).strip() or e0
         try:
             datetime.date.fromisoformat(s)
             datetime.date.fromisoformat(e)

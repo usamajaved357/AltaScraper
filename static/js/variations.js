@@ -252,7 +252,11 @@ function variationsRender(q){
   if(VARS.note){
     h += '<div class="cc" style="padding:14px;border:1px dashed var(--line2);border-radius:6px;font-size:12px">'
       + _vesc(VARS.note)+'</div>';
-    host.innerHTML = h; return;
+    host.innerHTML = h;
+    // The families panel is in the markup just written; without this it stayed
+    // empty whenever the list had a note ("nothing matches", "press Sync").
+    varFamiliesRender();
+    return;
   }
 
   h += '<div style="max-height:360px;overflow:auto;border:1px solid var(--line2);border-radius:6px">';
@@ -488,7 +492,11 @@ async function variationsPreview(quiet){
   try{
     j = await (await fetch("/variations/preview",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({skus:VARS.picked, theme:theme, parent_sku:parent})})).json();
+      // The parent TITLE too: the preview builds the parent's attributes from
+      // it, and without it "this is exactly what would be sent" showed a parent
+      // with no title while Apply sent one.
+      body:JSON.stringify({skus:VARS.picked, theme:theme, parent_sku:parent,
+                           parent_title:((document.getElementById("var_title")||{}).value||"")})})).json();
   }catch(e){ out.innerHTML='<div class="cc" style="color:var(--red)">'+_vesc(String(e))+'</div>'; return; }
   if(!j || !j.ok){ out.innerHTML='<div class="cc" style="color:var(--red)">'+_vesc((j&&j.error)||"failed")+'</div>'; return; }
   VARS.preview = j;
@@ -594,6 +602,14 @@ async function variationsApply(){
       if(st) st.innerHTML = '<span style="color:var(--warn)">Parent created, '
         + (j.joined||[]).length+' joined, '+j.failed.length+' rejected: '
         + _vesc(j.failed.map(f => f.sku+" ("+f.error+")").join("; "))+'</span>';
+      return;
+    }
+    // ANY OTHER REFUSAL IS A REFUSAL. A 400 from the re-check ("already belongs
+    // to another family", "not confirmed", a missing theme) has no stage and no
+    // failed list, and fell through to "✓ family created — 0 products joined".
+    if(!j || !j.ok){
+      if(st) st.innerHTML = '<span style="color:var(--red)">Nothing was created: '
+        + _vesc((j && j.error) || "the server refused the request") + '</span>';
       return;
     }
     if(st) st.innerHTML = '<span style="color:var(--ok)">✓ family created — '
