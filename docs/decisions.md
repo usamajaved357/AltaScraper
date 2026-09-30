@@ -46,6 +46,25 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 
 ## Money and profit
 
+- **30 Sep 2026 — Product cost: two methods, and an order's own cost wins for
+  that order only.** "There are TWO ways to provide product cost. METHOD 1 —
+  PRODUCT-LEVEL COST: the product's normal/default cost, entered manually in the
+  app OR by uploading a sheet ... METHOD 2 — ORDER-LEVEL COST: a cost
+  specifically for an order. ORDER-LEVEL COST OVERRIDES THE PRODUCT-LEVEL COST
+  FOR THAT ORDER ... Product default cost = £10, Order-specific cost = £8: for
+  that order, use £8. The product default remains £10 for other orders ... Do
+  NOT create another independent product-cost source. Do NOT silently choose
+  between the two ... An order-specific cost must NOT overwrite the product
+  default." Rules out: a third cost source; an order correction changing the
+  product's default or any other order; screens disagreeing on which cost an
+  order used. Resolves the three cost defects deferred since 18 Aug 2026.
+  Source: owner decisions, chat, 30 Sep 2026.
+- **30 Sep 2026 — Selvora and Nestwell are NOT VAT-registered.** "Selvora is
+  NOT VAT-registered. Keep its VAT registration/status as NOT REGISTERED / 0%"
+  and the same for Nestwell. Their `vat_rate` stays 0; profit is not reduced
+  for VAT on either. Closes the "profit overstated ~20% if registered" question.
+  Source: owner decisions, chat, 30 Sep 2026.
+
 - **28 Sep 2026 — Every profit figure takes VAT out at the account's own
   setting.** Asked "should every profit figure for a VAT-registered account
   exclude VAT", he answered "D1 yes use the account VAT setting". SUPERSEDES the
@@ -115,6 +134,13 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   and CONFIG_PATH anchor dedup were also declined. gunicorn was declined (the
   Flask dev server stays). Source: memory phase5-listing-extraction,
   phase6-config-layer.
+- **30 Sep 2026 — Supplier Import history is per account.** "Supplier Import
+  history MUST be separate per account. The harvested-item history for Account A
+  must never be shared with Account B. The 'clear history' action must clear
+  only the current account's history. Audit and implement this with explicit
+  account ownership." Rules out any shared or "counts for every account"
+  history, including for entries recorded before the change. Source: owner
+  decisions, chat, 30 Sep 2026.
 - **Route registration by injection, not blueprints** (Phase 3). Source: memory
   phase3-route-extraction.
 
@@ -217,6 +243,16 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 
 ## Security
 
+- **30 Sep 2026 — Old credentials in git history: inventory first, rotate
+  nothing yet.** "Do NOT rotate/revoke anything yet. First perform a READ-ONLY
+  INVENTORY of old credentials in Git history ... provider/service, key type,
+  historical purpose, relevant commit/date, whether it still appears
+  potentially active, whether it remains anywhere in current files. NEVER print
+  actual key values ... Do not delete history or rotate credentials unless I
+  explicitly authorize the next step." The inventory goes to Owner Review
+  (active/credential-inventory-2026-09-30.md). Refines the Jul 2026 entry
+  below: rotation is now his open decision, informed by the inventory.
+  Source: owner decisions, chat, 30 Sep 2026.
 - **Jul 2026 — Old keys found in local history were not rotated, by the owner's
   choice**: GitHub push protection blocked the push, so they were never
   published; the local history was scrubbed. Do not nag about rotation.
@@ -225,6 +261,14 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 
 ## Team and Employee Performance
 
+- **30 Sep 2026 — A batch action is recorded product by product.** "When a
+  batch submission contains multiple products/listings, record each product
+  separately in employee activity. If an employee submits 20 products in one
+  batch, the activity system must be able to record the relevant work for all
+  20 products individually ... so Employee Performance does not undercount
+  work simply because the employee used a batch action ... Use the existing
+  central activity/audit system." One activity row per product, sharing a
+  batch id; no second tracking system. Source: owner decisions, chat, 30 Sep 2026.
 - **29 Sep 2026 — Team manages people; Employee Performance shows their work.**
   "Team = manage employees. Employee Performance = see what work they did."
   "Do NOT create a second user or permission system." "Do not invent a
@@ -240,6 +284,29 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
 
 ## Working agreements
 
+- **30 Sep 2026 — Owner decisions are read before behaviour is invented.**
+  "Write these owner decisions into the project's authoritative decision record
+  ... make sure future autonomous feature development reads the decision record
+  before inventing behavior. Do NOT create duplicate contradictory rules in
+  other documents." This file is that record; other documents point here rather
+  than restating a rule. Source: owner decisions, chat, 30 Sep 2026.
+- **30 Sep 2026 — Read-only Amazon checks are approved.** "You may perform the
+  previously listed READ-ONLY Amazon checks ... Search Query Performance
+  figures; how Amazon reports that a product already belongs to another
+  variation family; whether ad sales should use Amazon's 7-day or 30-day
+  window; eBay postage behavior that depends on delivery address for repricer
+  cost. Perform them only as read-only requests ... Record the real responses
+  and use them to settle the relevant application logic." Only these checks;
+  no write of any kind. Source: owner decisions, chat, 30 Sep 2026.
+- **30 Sep 2026 — Jack Reacherd UK permissions: deferred, owner-blocked.** "Do
+  not work on the missing Jack Reacherd UK Amazon permissions now. I do not
+  currently have access to that account ... Do not modify or guess its
+  permissions." Source: owner decisions, chat, 30 Sep 2026.
+- **30 Sep 2026 — He pushes; Claude does not ask him to push the same commits
+  again.** "I have already pushed the committed work. Do NOT tell me to push the
+  already-pushed commits again. The old production code is already preserved
+  separately. For final promotion, continue following the existing
+  backup/rollback rules." Source: owner decisions, chat, 30 Sep 2026.
 - **27 Sep 2026 — One long-running development branch.** `D:\AltaScraper-wt\claude-environment`
   on `claude-environment-setup` is the primary development environment for the
   whole app. Ordinary tasks do not create worktrees or branches, switch, reset,
