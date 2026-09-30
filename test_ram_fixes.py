@@ -175,6 +175,24 @@ except RuntimeError:
 check("an error still propagates as before", raised, True)
 check("  and the browser was closed first", closed[-1:], ["raise"])
 
+# The Supplier Import page fetch had the same `async with` (30 Sep 2026).
+_ResMI = type("_ResMI", (), {"html": "<p>x</p>", "cleaned_html": "", "fit_html": "", "markdown": "md"})
+_orig_arun = FakeCrawler.arun
+async def _arun_mi(self, url=None, config=None):
+    if FakeCrawler.mode == "raise": raise RuntimeError("page blew up")
+    if FakeCrawler.mode == "hang_run": await asyncio.sleep(30)
+    return _ResMI()
+FakeCrawler.arun = _arun_mi
+from domain import miles_import as mi
+# timeout=-19900 -> the hard ceiling is (timeout/1000)+20 = 0.1 s
+for mode, want in (("ok", ("<p>x</p>", "md")), ("hang_run", ("", "")),
+                   ("hang_start", ("", "")), ("raise", ("", ""))):
+    FakeCrawler.mode = mode
+    got = asyncio.run(mi._fetch_page("https://x", timeout=-19900, delay=0))
+    check("miles fetch %-10s returns %r" % (mode, want), got, want)
+    check("miles fetch %-10s closes the browser" % mode, closed[-1:] == [mode], True)
+FakeCrawler.arun = _orig_arun
+
 
 print()
 if fails:
