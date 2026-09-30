@@ -85,9 +85,24 @@ async def _scrape(url: str, css: str = None, timeout: int = 25000,
         excluded_tags=["nav", "header", "footer", "script", "style"] if not css else [],
     )
     async def _run():
-        async with AsyncWebCrawler(config=_browser_cfg()) as crawler:
+        # start()/close() by hand rather than `async with` (30 Sep 2026 RAM
+        # investigation). The timeout below cancels this coroutine; with
+        # `async with`, a cancel that landed while the browser was still
+        # LAUNCHING (inside __aenter__) skipped __aexit__, so that Chromium was
+        # never closed and kept its memory. The finally closes it in every case:
+        # success, error, timeout, or a cancel mid-launch.
+        crawler = AsyncWebCrawler(config=_browser_cfg())
+        try:
+            await crawler.start()
             result = await crawler.arun(url=url, config=run_cfg)
             return (result.markdown or result.cleaned_html or "").strip()
+        finally:
+            try:
+                # shielded and bounded: a second cancel cannot abandon the close,
+                # and a close that hangs cannot hold the run forever.
+                await asyncio.wait_for(asyncio.shield(crawler.close()), timeout=15)
+            except (Exception, asyncio.CancelledError):
+                pass
     # Hard ceiling: the page_timeout above is crawl4ai-internal and can still
     # hang on browser launch/navigation. Kill the whole attempt a few seconds
     # past the page timeout so a stuck browser can never freeze the run.

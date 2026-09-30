@@ -38,6 +38,23 @@ _RE_WRITTEN  = re.compile(r"\b(OK)\b[^\n]*Written|listing written|\bwrote\b", re
 _RE_SKU_WROTE= re.compile(r"(?:SKU|sku)[=:\s]+([A-Za-z0-9._-]+)")
 
 
+_KEEP_FINISHED = 10             # finished runs held in memory (30 Sep 2026 RAM investigation)
+
+
+def _evict_finished(keep=_KEEP_FINISHED):
+    """Forget all but the newest `keep` FINISHED runs. Call under _LOCK.
+
+    Every run's full log stayed in memory until a restart. A finished run is
+    still on disk (<run_id>.log / .json), which is what the history list,
+    read_log and write_csv use once it is gone from here. A running run is never
+    evicted, nor the active one."""
+    finished = [rid for rid, e in _RUNS.items()
+                if (e.get("meta") or {}).get("state") != "running"
+                and rid != _ACTIVE.get("id")]
+    for rid in finished[:max(0, len(finished) - keep)]:      # insertion order = oldest first
+        _RUNS.pop(rid, None)
+
+
 def _runs_dir(base_dir):
     d = os.path.join(str(base_dir), "miles_runs")
     os.makedirs(d, exist_ok=True)
@@ -173,6 +190,7 @@ def start(base_dir, source_name, args):
     with _LOCK:
         _RUNS[rid] = entry
         _ACTIVE["id"] = rid
+        _evict_finished()
     t = threading.Thread(target=_reader, args=(entry,), daemon=True, name=f"miles-run-{rid}")
     t.start()
     entry["thread"] = t
@@ -213,6 +231,7 @@ def run_stream(base_dir, source_name, gen_factory, args=None):
     with _LOCK:
         _RUNS[rid] = entry
         _ACTIVE["id"] = rid
+        _evict_finished()
 
     def _worker():
         lf = None
@@ -222,7 +241,10 @@ def run_stream(base_dir, source_name, gen_factory, args=None):
                      f"# started: {meta['started']}\n\n"); lf.flush()
             for chunk in gen_factory():
                 with entry["lock"]:
-                    entry["chunks"].append(chunk)
+                    # Only while the stream that reads them is still open: a
+                    # reconnect replays `lines` via tail(), never `chunks`.
+                    if not entry.get("tailer_gone"):
+                        entry["chunks"].append(chunk)
                 for ln in _lines_from_chunk(chunk):
                     with entry["lock"]:
                         entry["lines"].append(ln)
@@ -254,17 +276,26 @@ def run_stream(base_dir, source_name, gen_factory, args=None):
 
     def tailer():
         # first hand the client its run id so the page can re-attach after a reload
-        yield f"data: [runid] {rid}\n\n"
         i = 0
-        while True:
+        try:
+            yield f"data: [runid] {rid}\n\n"
+            while True:
+                with entry["lock"]:
+                    new = entry["chunks"][i:]; i = len(entry["chunks"])
+                for c in new:
+                    yield c
+                if entry["done"] and i >= len(entry["chunks"]):
+                    break
+                _t.sleep(0.4)
+            yield "event: end\ndata: end\n\n"
+        finally:
+            # 30 Sep 2026 RAM investigation: `chunks` exists only for THIS stream
+            # (the same text is in `lines` and on disk). It is dropped when the
+            # stream has drained it or the browser has gone -- not when the run
+            # finishes, because the stream may still be sending the tail then.
             with entry["lock"]:
-                new = entry["chunks"][i:]; i = len(entry["chunks"])
-            for c in new:
-                yield c
-            if entry["done"] and i >= len(entry["chunks"]):
-                break
-            _t.sleep(0.4)
-        yield "event: end\ndata: end\n\n"
+                entry["tailer_gone"] = True
+                entry["chunks"] = []
 
     return rid, tailer()
 
