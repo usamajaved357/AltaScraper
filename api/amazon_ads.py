@@ -476,7 +476,19 @@ def _row(d):
               "search_term", "keyword", "match_type", "asin", "date",
               "ad_group", "placement"):
         out[k] = str(out[k]) if out.get(k) is not None else ""
+    # WHICH ATTRIBUTION WINDOW THE SALES ARE ON, from the column Amazon actually
+    # sent ("7d" / "14d" / "30d", "" when none). Stored beside the row so the
+    # sync can find days still held on the old 30-day columns (30 Sep 2026).
+    out["attribution"] = attribution_of(d)
     return out
+
+
+def attribution_of(d):
+    """A raw report row -> "7d" | "14d" | "30d" | "" (the sales column it has)."""
+    for w in ("7d", "14d", "30d"):
+        if isinstance(d, dict) and ("sales" + w) in d:
+            return w
+    return ""
 
 
 def raw_sample(creds, marketplace, what="campaigns"):

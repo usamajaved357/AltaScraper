@@ -395,7 +395,10 @@ async function ordersFillItems(mine){
     const j = await (await fetch("/orders/items", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({orders: rows.map(function(r){
-        return {order_id:r.order_id, account_id:r.account_id, total:r.total};
+        // purchased + status: the server keeps these lines, and a line kept
+        // without its date is missing from every sales total (30 Sep 2026).
+        return {order_id:r.order_id, account_id:r.account_id, total:r.total,
+                purchased:r.purchased || "", status:r.status || ""};
       })})})).json();
     if(mine !== ORD.loadId) return;
     ORD.filling = false;

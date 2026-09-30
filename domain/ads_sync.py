@@ -208,43 +208,44 @@ def _fold(rows, keys, keep=()):
 
 
 def _upsert(conn, workspace_id, marketplace, date, asin, m, fetched_at,
-            ad_product="SPONSORED_PRODUCTS"):
+            ad_product="SPONSORED_PRODUCTS", attribution=""):
     conn.execute(
         "INSERT INTO ads_daily (workspace_id, marketplace, date, asin, "
         "impressions, clicks, spend, ad_orders, ad_sales, source, fetched_at, "
-        "ad_product) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ad_product, attribution) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(workspace_id, marketplace, date, asin, ad_product) "
         "DO UPDATE SET "
         "impressions=excluded.impressions, clicks=excluded.clicks, "
         "spend=excluded.spend, ad_orders=excluded.ad_orders, "
         "ad_sales=excluded.ad_sales, source=excluded.source, "
-        "fetched_at=excluded.fetched_at",
+        "fetched_at=excluded.fetched_at, attribution=excluded.attribution",
         (workspace_id, marketplace, date, asin,
          _int(m.get("impressions")), _int(m.get("clicks")), m.get("spend"),
          _int(m.get("orders")), m.get("sales"), "ads_api", fetched_at,
-         ad_product))
+         ad_product, attribution or ""))
 
 
 def _upsert_campaign(conn, workspace_id, marketplace, date, cid, m, fetched_at,
-                     ad_product="SPONSORED_PRODUCTS"):
+                     ad_product="SPONSORED_PRODUCTS", attribution=""):
     conn.execute(
         "INSERT INTO ads_campaign_daily (workspace_id, marketplace, date, "
         "campaign_id, campaign_name, status, budget, impressions, clicks, "
-        "spend, ad_orders, ad_sales, source, fetched_at, ad_product) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "spend, ad_orders, ad_sales, source, fetched_at, ad_product, "
+        "attribution) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(workspace_id, marketplace, date, campaign_id, ad_product) "
         "DO UPDATE SET "
         "campaign_name=excluded.campaign_name, status=excluded.status, "
         "budget=excluded.budget, impressions=excluded.impressions, "
         "clicks=excluded.clicks, spend=excluded.spend, "
         "ad_orders=excluded.ad_orders, ad_sales=excluded.ad_sales, "
-        "source=excluded.source, fetched_at=excluded.fetched_at",
+        "source=excluded.source, fetched_at=excluded.fetched_at, "
+        "attribution=excluded.attribution",
         (workspace_id, marketplace, date, str(cid),
          m.get("campaign_name") or "", m.get("state") or "",
          m.get("budget"),
          _int(m.get("impressions")), _int(m.get("clicks")), m.get("spend"),
          _int(m.get("orders")), m.get("sales"), "ads_api", fetched_at,
-         ad_product))
+         ad_product, attribution or ""))
 
 
 def _upsert_targeting(conn, workspace_id, marketplace, date, cid, ad_group,
@@ -423,11 +424,15 @@ def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at,
         out["ads_targeting_daily"] = n
         return out
 
+    # WHICH ATTRIBUTION WINDOW these sales are on -- one report carries one --
+    # kept on every row so resync_windows() can find days still on 30 days.
+    attr = report_attribution(rows)
+    out["attribution"] = attr
     if kind.endswith("campaign"):
         n = 0
         for (date,), m in sorted(_fold(rows, ("date",)).items()):
             _upsert(conn, workspace_id, marketplace, date, "*", m, fetched_at,
-                    prod)
+                    prod, attr)
             n += 1
         out["ads_daily"] = n
         c = 0
@@ -435,17 +440,119 @@ def store_rows(conn, workspace_id, marketplace, kind, rows, fetched_at,
                        keep=("campaign_name", "state", "budget"))
         for (date, cid), m in sorted(folded.items()):
             _upsert_campaign(conn, workspace_id, marketplace, date, cid, m,
-                             fetched_at, prod)
+                             fetched_at, prod, attr)
             c += 1
         out["ads_campaign_daily"] = c
     else:
         n = 0
         for (date, asin), m in sorted(_fold(rows, ("date", "asin")).items()):
             _upsert(conn, workspace_id, marketplace, date, asin, m, fetched_at,
-                    prod)
+                    prod, attr)
             n += 1
         out["ads_daily"] = n
     return out
+
+
+def report_attribution(rows):
+    """The attribution window of a report's rows ("7d" / "14d" / "30d" / "")."""
+    for r in rows or []:
+        a = str((r or {}).get("attribution") or "")
+        if a:
+            return a
+    return ""
+
+
+# THE 7-DAY SWITCH LEAVES OLD DAYS BEHIND (30 Sep 2026). Ad sales are now pulled
+# on Amazon's 7-day columns, but each pass rewrites only its own 30 days, so an
+# older stored day kept its 30-day sales (48% higher on a settled nestwell
+# week) and a 60-day window mixed the two. Any Sponsored Products day in the
+# last RESYNC_LOOKBACK days whose stored attribution is not 7d is pulled again,
+# in extra windows of at most RESYNC_CHUNK days (Amazon's limit per report is
+# 31), until none is left.
+RESYNC_LOOKBACK = 60
+RESYNC_CHUNK = 30
+# THE NEWEST DAYS ARE PROVISIONAL: measured, 27 Sep stored at 15.11 on the 28th
+# against Amazon's final 29.34. Every pass re-pulls at least this many days
+# back from yesterday (the normal window already does; this pins it).
+PROVISIONAL_DAYS = 3
+
+
+def resync_windows(config_path, workspace_id, marketplace, days=30, end=None):
+    """The windows one pass should ask for -> [(start, end), ...], newest first.
+
+    Always the normal window (ending yesterday, at least PROVISIONAL_DAYS
+    long). Plus, bounded to RESYNC_LOOKBACK days, one window reaching back to
+    the oldest stored SP account-total day that is not on 7-day attribution."""
+    start, stop = window(max(int(days or 30), PROVISIONAL_DAYS), end)
+    out = [(start, stop)]
+    floor = (_dt_date(stop) - dt.timedelta(days=RESYNC_LOOKBACK - 1)).isoformat()
+    if floor >= start:
+        return out
+    try:
+        r = _db.get_db(config_path).execute(
+            # EVERY SP ROW, the account total AND the per-product ones: the
+            # advertised-product report can fail on a pass the campaign one
+            # did not, leaving products on 30 days (review, 30 Sep 2026).
+            "SELECT MIN(date) d FROM ads_daily WHERE workspace_id=? AND "
+            "marketplace=? AND ad_product='SPONSORED_PRODUCTS' "
+            "AND COALESCE(attribution,'')<>'7d' AND date>=? AND date<?",
+            (workspace_id, marketplace, floor, start)).fetchone()
+        oldest = r["d"] if r else None
+    except Exception:
+        oldest = None
+    if not oldest:
+        return out
+    cur_end = _dt_date(start) - dt.timedelta(days=1)
+    lo = _dt_date(oldest)
+    while cur_end >= lo:
+        cur_start = max(lo, cur_end - dt.timedelta(days=RESYNC_CHUNK - 1))
+        out.append((cur_start.isoformat(), cur_end.isoformat()))
+        cur_end = cur_start - dt.timedelta(days=1)
+    return out
+
+
+def _dt_date(s):
+    return dt.date.fromisoformat(str(s)[:10])
+
+
+def settling_days(config_path, workspace_id, marketplace, start=None, end=None):
+    """Stored ad days whose figures are still PROVISIONAL -> sorted dates.
+
+    A day last read fewer than PROVISIONAL_DAYS days after it happened: Amazon
+    was still adding to it (27 Sep read on the 28th: spend 15.11, final 29.34).
+    The sync re-reads it on every pass, so it drops off this list by itself."""
+    sql = ("SELECT date, MAX(fetched_at) f FROM ads_daily WHERE workspace_id=? "
+           "AND marketplace=? AND asin='*'")
+    args = [workspace_id, marketplace]
+    if start:
+        sql += " AND date>=?"
+        args.append(str(start)[:10])
+    if end:
+        sql += " AND date<=?"
+        args.append(str(end)[:10])
+    out = []
+    try:
+        for r in _db.get_db(config_path).execute(sql + " GROUP BY date", args):
+            try:
+                read = _dt_date(r["f"])
+                if read < _dt_date(r["date"]) + dt.timedelta(days=PROVISIONAL_DAYS):
+                    out.append(r["date"])
+            except (TypeError, ValueError):
+                continue
+    except Exception:
+        return []
+    return sorted(out)
+
+
+def _kinds_for_window(products, index):
+    """The reports to ask for in window number `index` of resync_windows().
+    The extra (older) windows skip the search term report: it is stored per
+    window as a whole report, and an older window stored LAST would become the
+    "newest report" the Search Terms page reads (ppc_view.report_meta)."""
+    kinds = kinds_for(products)
+    if index == 0:
+        return kinds
+    return [k for k in kinds if k != "search_term"]
 
 
 # ---------------------------------------------------------------------------
@@ -820,14 +927,17 @@ def sync(workspace_id, marketplace="UK", days=30, wait=300, config_path=None,
                 if a.get("id") == workspace_id), {})
     products = products_for(cfg, acc)
 
-    start, end = window(days)
+    wins = resync_windows(config_path, workspace_id, marketplace, days)
+    start, end = wins[0]
     fetched_at = dt.datetime.now().isoformat(timespec="seconds")
     conn = _db.get_db(config_path)
     out = {"ok": True, "workspace_id": workspace_id, "marketplace": marketplace,
            "profile_id": creds["ads_profile_id"], "start": start, "end": end,
+           "windows": [list(w) for w in wins],
            "written": {}, "errors": [], "ad_products": list(products)}
 
-    for kind in kinds_for(products):
+    for kind, (start, end) in [(k, w) for i, w in enumerate(wins)
+                               for k in _kinds_for_window(products, i)]:
         got = _rows_for(creds, marketplace, kind, start, end, wait, on_wait)
         if not got.get("ok"):
             # STILL BUILDING IS NOT A FAILURE. Hand the id to the collector so
@@ -848,9 +958,11 @@ def sync(workspace_id, marketplace="UK", days=30, wait=300, config_path=None,
         stored = store_rows(conn, workspace_id, marketplace, kind, rows,
                             fetched_at, window=(start, end),
                             config_path=config_path)
-        out["written"][kind] = {"report_rows": len(rows), "stored": stored,
-                                "report_id": got.get("report_id")}
+        _wkey = kind if (start, end) == wins[0] else "%s %s..%s" % (kind, start, end)
+        out["written"][_wkey] = {"report_rows": len(rows), "stored": stored,
+                                 "report_id": got.get("report_id")}
     conn.commit()
+    start, end = wins[0]
 
     # TELL THE APP THE DATA IS THERE. Every ad figure on every screen is gated
     # on data_availability, which is a CACHED row, not a count of this table --
@@ -903,6 +1015,18 @@ def _job_add(conn, workspace_id, marketplace, kind, report_id, start, end):
          dt.datetime.now().isoformat(timespec="seconds")))
 
 
+def _job_pending(conn, workspace_id, marketplace, kind, start, end):
+    """True when this exact report (account, type, window) is still pending."""
+    try:
+        return conn.execute(
+            "SELECT 1 FROM ads_report_jobs WHERE workspace_id=? AND marketplace=? "
+            "AND kind=? AND start_date=? AND end_date=? AND status='pending' "
+            "LIMIT 1", (workspace_id, marketplace, kind, start, end)
+        ).fetchone() is not None
+    except Exception:
+        return False
+
+
 def _job_finish(conn, row_id, status, error=None):
     conn.execute(
         "UPDATE ads_report_jobs SET status=?, error=?, collected_at=? "
@@ -935,28 +1059,42 @@ def request_reports(workspace_id, marketplace="UK", days=30, config_path=None):
                 if a.get("id") == workspace_id), {})
     products = products_for(cfg, acc)
 
-    start, end = window(days)
+    # The normal window, plus any older one still holding 30-day sales
+    # (resync_windows -- bounded, and empty once every day is on 7d).
+    wins = resync_windows(config_path, workspace_id, marketplace, days)
+    start, end = wins[0]
     conn = _db.get_db(config_path)
     out = {"ok": True, "workspace_id": workspace_id, "marketplace": marketplace,
            "start": start, "end": end, "ad_products": list(products),
+           "windows": [list(w) for w in wins],
            "requested": [], "errors": []}
-    for kind in kinds_for(products):
-        try:
-            rid = _ads.report_request(creds, marketplace, kind, start, end,
-                                      time_unit_for(kind))
-        except Exception as e:
-            # A report product that Amazon rejects must be VISIBLE, not skipped.
-            # Sponsored Brands and Display columns have never been verified
-            # against a live response, so this is the most likely thing to fail
-            # and the least useful thing to swallow.
-            out["errors"].append({"kind": kind,
-                                  "ad_product": _ads.ad_product_of(kind),
-                                  "error": str(e)[:400]})
-            out["ok"] = False
-            continue
-        _job_add(conn, workspace_id, marketplace, kind, rid, start, end)
-        out["requested"].append({"kind": kind, "report_id": rid,
-                                 "ad_product": _ads.ad_product_of(kind)})
+    for i, (w_start, w_end) in enumerate(wins):
+        for kind in _kinds_for_window(products, i):
+            # AN OLDER WINDOW ALREADY ASKED FOR IS NOT ASKED AGAIN while its
+            # report is still waiting to be collected -- every scheduled run
+            # would otherwise commission the same reports (review, 30 Sep 2026).
+            if i > 0 and _job_pending(conn, workspace_id, marketplace, kind,
+                                      w_start, w_end):
+                out.setdefault("skipped_pending", []).append(
+                    {"kind": kind, "start": w_start, "end": w_end})
+                continue
+            try:
+                rid = _ads.report_request(creds, marketplace, kind, w_start, w_end,
+                                          time_unit_for(kind))
+            except Exception as e:
+                # A report product that Amazon rejects must be VISIBLE, not
+                # skipped. Sponsored Brands and Display columns have never been
+                # verified against a live response, so this is the most likely
+                # thing to fail and the least useful thing to swallow.
+                out["errors"].append({"kind": kind,
+                                      "ad_product": _ads.ad_product_of(kind),
+                                      "error": str(e)[:400]})
+                out["ok"] = False
+                continue
+            _job_add(conn, workspace_id, marketplace, kind, rid, w_start, w_end)
+            out["requested"].append({"kind": kind, "report_id": rid,
+                                     "start": w_start, "end": w_end,
+                                     "ad_product": _ads.ad_product_of(kind)})
     conn.commit()
     return out
 

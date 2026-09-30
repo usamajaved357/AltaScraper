@@ -161,7 +161,11 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         avail = _avail(aid, mkt)
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
         now = _pa.totals_for(CONFIG_PATH, aid, mkt, start, end)
-        before = _pa.totals_for(CONFIG_PATH, aid, mkt, pstart, pend)
+        # LIKE WITH LIKE: the days this window's ad data covers against the same
+        # number just before them, or no arrow and the reason (30 Sep 2026).
+        cmpd = _pa.compare(CONFIG_PATH, aid, mkt, start, end, now)
+        pstart, pend = cmpd["compare_start"], cmpd["compare_end"]
+        before = cmpd["previous"]
         # WHICH DAYS HAVE FINISHED BEING ATTRIBUTED, worked out once for the
         # whole page so every panel agrees (Rule 12). The money columns keep the
         # full window; the judgements -- cohort, opportunity score -- are made
@@ -174,7 +178,14 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         # The panels the mockup draws that are not simple totals. Each is
         # computed once here rather than per panel, because they all read the
         # same daily rows and the same measured rates.
-        terms = _pa.terms(CONFIG_PATH, aid, mkt, rates)
+        # THE PICKED DAYS AND EVERY TERM (30 Sep 2026): the branded split read
+        # the newest report whatever the date picker said, cut to 1,000 terms.
+        # Dated rows follow the picker (the Search Terms page's own rule).
+        _dwo = _pv_mod.dated_window(CONFIG_PATH, aid, mkt)
+        _fo = bool((_dwo or {}).get("can_follow_picker"))
+        terms = _pa.terms(CONFIG_PATH, aid, mkt, rates, limit=None,
+                          start=(start if _fo else None),
+                          end=(end if _fo else None))
         # NO "PREVIOUS WASTED SPEND". It used to be fetched for the earlier
         # window and compared -- but wasted_spend reads the stored Search Term
         # Report, which is ONE fixed window with no day breakdown, so the two
@@ -197,8 +208,11 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "efficiency": _pa.efficiency_trend(
                 days, rates.get("breakeven_acos_pct")),
             # With the brand words, so the panel can name what it matched on.
-            "branded": _pa.branded_split(
+            "branded": dict(_pa.branded_split(
                 terms, _pv_mod.brand_terms(CONFIG_PATH, aid)),
+                window_note=("" if _fo else
+                             "From the stored search term report, which has no "
+                             "day-by-day rows, so it does not follow the dates.")),
             "ok": True, "account": aid, "marketplace": mkt,
             # The money on this page is in this currency (review, 30 Sep 2026:
             # it was never sent, so every marketplace read in pounds).
@@ -211,12 +225,14 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "previous": before,
             # None per metric when the previous window has no data. A move from
             # nothing to something is not a rise, and +100% would read as one.
-            "change": _pa.change(now, before),
+            # Like with like (ppc_analytics.compare).
+            "change": cmpd["change"],
             # Why an arrow is blank when it is blank. A dash with no reason
             # reads as missing data; this says the data is there and it is the
             # COMPARISON that would be meaningless -- a prior TACOS of 0.4%
             # rising to 12% is arithmetic, not news.
-            "change_floor": _pa.change_floor(now, before),
+            "change_floor": cmpd["change_floor"],
+            "compare_note": cmpd["note"],
             "daily": days,
             # The days still being attributed, so the charts can mark them and
             # the page can say why the judgements stop short of the last day.
@@ -279,7 +295,10 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
                          start=(start if _follows else None),
                          end=(end if _follows else None))
         now = _pa.totals_for(CONFIG_PATH, aid, mkt, start, end)
-        before = _pa.totals_for(CONFIG_PATH, aid, mkt, pstart, pend)
+        # Like with like, the same rule as the overview (ppc_analytics.compare).
+        cmpd = _pa.compare(CONFIG_PATH, aid, mkt, start, end, now)
+        pstart, pend = cmpd["compare_start"], cmpd["compare_end"]
+        before = cmpd["previous"]
 
         return jsonify({
             "ok": True, "account": aid, "marketplace": mkt,
@@ -291,11 +310,12 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "availability": _avail(aid, mkt),
             "rates": rates,
             "totals": now, "previous": before,
-            "change": _pa.change(now, before),
+            "change": cmpd["change"],
             # Which change is in points (ACOS, CTR, CVR) and which in %: the
             # summary strip printed "%" on all of them (review, 30 Sep 2026).
             "change_units": _pa.change_units(now),
-            "change_floor": _pa.change_floor(now, before),
+            "change_floor": cmpd["change_floor"],
+            "compare_note": cmpd["note"],
             "terms": rows,
             "term_count": len(rows),
             "report": meta,

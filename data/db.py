@@ -1606,6 +1606,11 @@ _ADDED_COLUMNS = [
     ("finance_daily", "ads_charged", "REAL"),
     ("finance_daily", "ads_charged_tax", "REAL"),
     ("finance_daily", "adjustments", "REAL"),
+    # WHICH ATTRIBUTION WINDOW an ad row's sales are on ('7d' / '14d' / '30d').
+    # NULL on rows stored before (30 Sep 2026): they were pulled on 30-day
+    # columns, and ads_sync.resync_windows re-pulls any such day in the last 60.
+    ("ads_daily", "attribution", "TEXT"),
+    ("ads_campaign_daily", "attribution", "TEXT"),
     ("sourcing_sources", "shipping_override", "REAL"),
     # The percentage profit target. In SCHEMA too, for databases created after
     # this; here so the ones that already exist gain it without being rebuilt.

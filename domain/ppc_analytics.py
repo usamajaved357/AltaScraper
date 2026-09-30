@@ -201,11 +201,16 @@ def maturity(config_path, workspace_id, marketplace, start, end):
     """
     days = immature_days(config_path, workspace_id, marketplace, start, end)
     cut = mature_end(config_path, workspace_id, marketplace)
+    from domain import ads_sync as _as
     return {
         "immature_days": days,
         "mature_end": cut,
         "immature_count": len(days),
         "window_days": IMMATURE_DAYS,
+        # Days whose SPEND is not final yet either -- read too soon after the
+        # day (ads_sync.settling_days; 27 Sep read at 15.11, final 29.34).
+        "settling_days": _as.settling_days(config_path, workspace_id,
+                                           marketplace, start, end),
         "why": (
             "Amazon credits a sale to the day of the CLICK, and a click can be "
             "credited up to 7 days later (14 on Sponsored Brands). The last %d "
@@ -338,6 +343,7 @@ def rates(config_path, workspace_id, marketplace, start, end):
     # setting -- the owner's decision of 28 Sep 2026 that every profit figure
     # follows it. Ad sales are what buyers paid, VAT included, so on jack_uk a
     # sixth of every attributed pound was being counted as profit.
+    _v = None
     try:
         from config import settings as _settings
         from domain import sales_data as _sd
@@ -398,14 +404,22 @@ def rates(config_path, workspace_id, marketplace, start, end):
 
     # THE VAT ON AD SPEND, for an account that cannot reclaim it (domain/
     # ad_cost, the rule every profit screen uses since 30 Sep 2026). 0 when
-    # registered or not set.
+    # registered or not set. NEVER A SILENT 0: with no ad invoice stored it was
+    # 0 with nothing said (nestwell, 30 Sep 2026) -- ad_vat() now estimates the
+    # UK's 20% or says it is left out, and the note goes to the page.
     out["ad_vat_ratio"] = 0.0
+    out["ad_vat_basis"] = ""
+    out["ad_vat_note"] = ""
     try:
         from domain import ad_cost as _adc
-        out["ad_vat_ratio"] = float(_adc.product_ratio(
-            config_path, workspace_id, marketplace, end, _v) or 0.0)
-    except Exception:
-        pass
+        _av = _adc.ad_vat(config_path, workspace_id, marketplace, end,
+                          _adc.vat_registered(_v))
+        out["ad_vat_ratio"] = float((_av["ratio"] if _adc.vat_registered(_v) is False
+                                     else None) or 0.0)
+        out["ad_vat_basis"] = _av["basis"]
+        out["ad_vat_note"] = _av["note"]
+    except Exception as e:
+        out["ad_vat_note"] = "Ad VAT could not be worked out (%s)." % str(e)[:80]
     fee, cogs = out["fee_rate"], out["cogs_rate"]
     if fee is not None and cogs is not None:
         # What is left of a pound of revenue after the VAT, Amazon's fee and
@@ -630,8 +644,13 @@ def today_bar(config_path, workspace_id, marketplace):
     now = totals_for(config_path, workspace_id, marketplace, latest, latest)
     prev = totals_for(config_path, workspace_id, marketplace, prev_day, prev_day)
     today = _dt.date.today()
+    from domain import ads_sync as _as
     return {"date": latest, "compare_date": prev_day,
             "is_today": (d == today),
+            # STILL SETTLING: read before Amazon finished counting it, so it is
+            # shown as provisional, not final (30 Sep 2026).
+            "settling": latest in _as.settling_days(
+                config_path, workspace_id, marketplace, latest, latest),
             # HOW FAR BEHIND AMAZON IS, so the screen can say so rather than
             # letting somebody read two-day-old figures as this morning's.
             "lag_days": (today - d).days,
@@ -685,6 +704,9 @@ def trail(config_path, workspace_id, marketplace, days=7, start=None, end=None):
     # "Today" means the real calendar today, NOT the last card. When the window
     # ends in August the last card is not today and must not be badged as it.
     today_s = _dt.date.today().isoformat()
+    from domain import ads_sync as _as
+    settling = set(_as.settling_days(config_path, workspace_id, marketplace,
+                                     start_s, end_s))
     run, out = 0.0, []
     for r in rows:
         sp = r["spend"]
@@ -696,6 +718,7 @@ def trail(config_path, workspace_id, marketplace, days=7, start=None, end=None):
             "orders": r["orders"],
             "cumulative": round(run, 2),
             "today": (r["date"] == today_s),
+            "settling": (r["date"] in settling),
         })
     return out
 
@@ -884,6 +907,58 @@ def change_units(now=None):
     return {k: ("pts" if k in _POINT_METRICS else "pct") for k in keys}
 
 
+def _ad_day_span(conn, workspace_id, marketplace, start, end):
+    r = conn.execute(
+        "SELECT MIN(date) a, MAX(date) b, COUNT(DISTINCT date) n FROM ads_daily "
+        "WHERE workspace_id=? AND marketplace=? AND asin=? AND date>=? AND date<=?",
+        (workspace_id, marketplace, ACCOUNT_TOTAL, start, end)).fetchone()
+    return (r["a"], r["b"], int(r["n"] or 0)) if r and r["a"] else (None, None, 0)
+
+
+def compare(config_path, workspace_id, marketplace, start, end, now=None):
+    """THE CHANGE ARROWS, LIKE WITH LIKE (30 Sep 2026). -> dict with previous,
+    change, change_floor, compare_start, compare_end, note.
+
+    The previous period was the same number of CALENDAR days, whatever each
+    held: nestwell's 30 days had 28 days of ad data against the previous
+    period's 23 (ads start 8 Aug), so spend and sales "rose" by the missing
+    days. Now the span this window's ad data actually covers is compared with
+    the same number of days just before it -- and when those days hold fewer
+    ad days, no arrow is shown, and the reason is given."""
+    conn = _db.get_db(config_path)
+    a, b, n = _ad_day_span(conn, workspace_id, marketplace, start, end)
+    if now is None:
+        now = totals_for(config_path, workspace_id, marketplace, start, end)
+    if not a:
+        s, e, ps, pe = window((_dt.date.fromisoformat(end)
+                               - _dt.date.fromisoformat(start)).days + 1, end)
+        before = totals_for(config_path, workspace_id, marketplace, ps, pe)
+        return {"previous": before, "change": change(now, before),
+                "change_floor": change_floor(now, before),
+                "compare_start": ps, "compare_end": pe, "note": ""}
+    da, db_ = _dt.date.fromisoformat(a), _dt.date.fromisoformat(b)
+    span = (db_ - da).days + 1
+    pe = (da - _dt.timedelta(days=1)).isoformat()
+    ps = (da - _dt.timedelta(days=span)).isoformat()
+    now_cmp = (now if (a == start and b == end)
+               else totals_for(config_path, workspace_id, marketplace, a, b))
+    before = totals_for(config_path, workspace_id, marketplace, ps, pe)
+    pn = _ad_day_span(conn, workspace_id, marketplace, ps, pe)[2]
+    out = {"previous": before, "compare_start": ps, "compare_end": pe,
+           "now_start": a, "now_end": b, "note": ""}
+    if pn < n:
+        note = ("No comparison: the %d days before %s have ad data on only %d "
+                "(this window: %d)." % (span, a, pn, n))
+        out["note"] = note
+        out["change"] = {k: None for k in (now or {})}
+        out["change_floor"] = {k: note for k, v in (now or {}).items()
+                               if isinstance(v, (int, float))}
+        return out
+    out["change"] = change(now_cmp, before)
+    out["change_floor"] = change_floor(now_cmp, before)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Campaigns
 # ---------------------------------------------------------------------------
@@ -1050,8 +1125,17 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
             "opportunity": j_opp,
             # So the row can say which days its verdict rests on, and so the
             # two numbers being different is legible rather than looking wrong.
-            "judged_to": (jend if judged else ""),
+            # jend whenever judging -- `judged` can be an empty dict (no
+            # campaign ran in the mature days) and the date still applies.
+            "judged_to": (jend if (judging and judged is not None) else ""),
             "judged_profit": j_profit,
+            # THE SPEND THE LABEL DOES NOT COVER: money from the last days,
+            # still settling, shown in the columns but left out of the verdict
+            # (spec §4). Said on the row, so a spend beside "No sales" is
+            # explainable (30 Sep 2026 audit).
+            "settling_spend": (round(max(0.0, (spend or 0.0)
+                                         - (_f(j["spend"]) or 0.0)), 2)
+                               if (judging and j is not None) else 0.0),
         })
         out.append(d)
     out.sort(key=lambda x: (x["spend"] is None, -(x["spend"] or 0)))
