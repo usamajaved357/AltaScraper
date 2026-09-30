@@ -50,6 +50,11 @@ GLOBAL_OK = {
     # rows to the viewer's accounts, and the Account filter adds ?account=.
     "/activity/summary": "team-wide, limited server-side to the viewer's accounts",
     "/activity/list": "team-wide, limited server-side to the viewer's accounts",
+    "/activity/breakdown": "team-wide, limited server-side to the viewer's accounts (30 Sep 2026)",
+    # A viewer of every account asks AI spend for all of them; a limited one
+    # names the open account (aiusage.js _aiScope). The route keeps only the
+    # accounts the caller may see (routes/aiusage_routes.py caller_may_see).
+    "/aiusage/summary": "all visible accounts, limited server-side (caller_may_see)",
     "/brand/list": "brands across accounts",
     "/sync/capabilities": "one row per visible account",
     "/monitor/overview": "the ASIN monitor is app-wide",

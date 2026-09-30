@@ -30,9 +30,10 @@ function sellerImportRender(){
   if(!host) return;
   let h = '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
     + 'border:1px solid var(--line2);border-radius:6px">'
-    + 'Find everything an eBay seller lists, look through it with the pictures, '
-    + 'and draft the ones you want. <b>Nothing is sent to Amazon</b> — the ones '
-    + 'you keep become drafts here, and you publish them the usual way.</div>';
+    + '<b>Nothing is sent to Amazon</b> — kept items become drafts. '
+    + uiHint('Find everything an eBay seller lists, look through it with the pictures, '
+      + 'and draft the ones you want. Nothing is sent to Amazon — the ones '
+      + 'you keep become drafts here, and you publish them the usual way.') + '</div>';
 
   h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">'
     + '<input id="simp_seller" placeholder="eBay username, or a link to any of their items" '
@@ -45,11 +46,12 @@ function sellerImportRender(){
   // knows the second. Said here rather than left to be discovered, because when
   // it is wrong eBay does not say so -- it answers with its whole catalogue.
   h += '<div class="cc" style="font-size:11.5px;margin:0 0 12px">'
-    + 'The <b>username</b>, not the shop name — they are often different. '
-    + 'A shop at <code>ebay.co.uk/str/…</code> shows the shop name; the username '
-    + 'is on any of their listings under “Sold by”. '
-    + 'Easiest: <b>paste a link to anything they are selling</b> and the username '
-    + 'is read off it.</div>';
+    + 'The <b>username</b>, not the shop name — or <b>paste a link</b> to any item. '
+    + uiHint('The username, not the shop name — they are often different. '
+      + 'A shop at ebay.co.uk/str/… shows the shop name; the username '
+      + 'is on any of their listings under “Sold by”. '
+      + 'Easiest: paste a link to anything they are selling and the username '
+      + 'is read off it.') + '</div>';
 
   h += '<div id="simp_results"></div>';
   host.innerHTML = h;
@@ -135,8 +137,9 @@ function sellerImportResults(){
                        + _siEsc(x.t)+'</span>').join("")
       +  '</div>'
       +  '<div class="cc" style="font-size:11px;margin-top:6px">'
-      +  'Click any tile below to read exactly why — the reasons are carried onto '
-      +  'the draft, so they are still there when you come back to it.</div>'
+      +  'Click any tile below to read exactly why. '
+      +  uiHint('Click any tile below to read exactly why — the reasons are carried onto '
+         +  'the draft, so they are still there when you come back to it.') + '</div>'
       +  '</div>';
   }
 

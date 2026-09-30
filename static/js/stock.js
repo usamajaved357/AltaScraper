@@ -623,9 +623,7 @@ function _skCoverage(){
       {k: "Window", v: (c.start && c.end) ? (c.start + " → " + c.end) : ""},
       {k: "History", v: hist.days ? (hist.days + " day(s), from " + hist.first)
                                   : "none yet"},
-    ], "The pace counts only the days a product was IN STOCK. Amazon keeps no "
-     + "stock history for a merchant-fulfilled seller, so this one is ours and "
-     + "starts the day recording started.");
+    ], "The pace counts only the days a product was IN STOCK.");
   }
   if(typeof uiStats === "function"){
     h += uiStats([
@@ -644,10 +642,21 @@ function _skCoverage(){
   }
   // A ZERO WITH NO DENOMINATOR IS NOT AN ANSWER, and neither is a pace with no
   // history behind it. Both notes are shown, always.
-  h += '<div class="cc" style="font-size:11.5px;line-height:1.55;max-width:790px;'
-    + 'margin:0 0 12px">' + _skEsc(c.note || "") + " " + _skEsc(c.estimate_note || "")
-    + " " + _skEsc(c.gap_is_not_a_po || "")
-    + ((n.stale_pace || 0) ? " " + _skEsc(c.stale_note || "") : "") + "</div>";
+  // Microcopy pass, 30 Sep 2026: the notes are still shown on every load, as
+  // one line with the full text behind the (i). A quiet pace is the one that
+  // costs money, so it keeps a warning tone rather than an info one.
+  const _covNotes = [(c.note || ""), (c.estimate_note || ""),
+    (c.gap_is_not_a_po || ""),
+    ((n.stale_pace || 0) ? (c.stale_note || "") : ""),
+    "Amazon keeps no stock history for a merchant-fulfilled seller, so this one "
+    + "is ours and starts the day recording started."]
+    .filter(Boolean).join(" ");
+  h += '<div style="max-width:790px;margin:0 0 12px">'
+    + _skNote((n.stale_pace || 0) ? "warn" : "info",
+              (n.stale_pace || 0)
+                ? "Some paces have gone quiet — check before ordering."
+                : "Forward figures are estimates, not purchase orders.",
+              _covNotes) + "</div>";
   // OUT OF THE SCREEN AND INTO A SPREADSHEET. This is the one list somebody
   // works THROUGH -- ordering against it, checking it with a supplier -- and it
   // was the only screen of its kind with no way to get the list out. The file
@@ -737,10 +746,10 @@ function _skCoverage(){
   t += '</tbody></table></div>';
 
   return h + ((typeof uiPanel === "function")
-    ? uiPanel("Every product, worst first",
-        "The pace is measured over the days each product was in stock. A "
-        + "product out of stock for most of the month has a HIGHER real pace "
-        + "than the calendar suggests, not a lower one.", t)
+    ? uiPanel("Every product, worst first", "Pace over in-stock days only.", t,
+        {right: _skHint("The pace is measured over the days each product was in "
+          + "stock. A product out of stock for most of the month has a HIGHER "
+          + "real pace than the calendar suggests, not a lower one.")})
     : t);
 }
 
@@ -821,9 +830,10 @@ function _skMoneyBack(){
     + '<span class="stk-eyebrow">Candidates</span>'
     + '<div class="stk-headline is-warn">' + _skEsc(owed) + ' across '
     + _skNum(m.count) + ' order' + (m.count === 1 ? '' : 's') + '</div>'
-    + '<div class="stk-sub">Called candidates on purpose: Amazon has exceptions '
-    + 'this cannot see — a promotional fee, a category minimum, a refund settled '
-    + 'across two events. Check the sum before you raise a case.</div></div>'
+    + '<div class="stk-sub">Candidates only — check each sum before raising a case. '
+    + _skHint('Called candidates on purpose: Amazon has exceptions this cannot '
+    + 'see — a promotional fee, a category minimum, a refund settled across two '
+    + 'events. Check the sum before you raise a case.') + '</div></div>'
     + '<table class="stk-table"><thead><tr>'
     + '<th>Order</th><th>Settled</th><th class="r">Sale</th>'
     + '<th class="r">Refunded</th><th class="r">Fee taken</th>'
@@ -906,9 +916,23 @@ function _skFooter(c){
   return '<div class="odp-note" style="margin-top:10px">'
     + (STOCK.marketplace ? 'Marketplace: <b>' + _skEsc(STOCK.marketplace)
                            + '</b>. ' : '')
-    + 'As at ' + _skDate(c.as_at) + '. Sales are the last ' + c.window_days
-    + ' whole days, to yesterday. Cover is the listed quantity divided by that rate; a product is '
-    + 'flagged when its cover is shorter than the time its supplier takes to '
-    + 'send more. Nothing here changes anything on Amazon.'
+    + 'As at ' + _skDate(c.as_at) + '. Sales: last ' + c.window_days
+    + ' whole days. Read-only. '
+    + _skHint('Sales are the last ' + c.window_days + ' whole days, to yesterday. '
+      + 'Cover is the listed quantity divided by that rate; a product is flagged '
+      + 'when its cover is shorter than the time its supplier takes to send more. '
+      + 'Nothing here changes anything on Amazon.')
     + '</div>';
+}
+
+/* The page's (i) and one-line callout, from static/js/pageui.js. Guarded the
+ * way uiSource/uiPanel are above: if pageui.js is missing, the full text is
+ * shown inline rather than lost. */
+function _skHint(text){
+  return (typeof uiHint === "function") ? uiHint(text)
+    : '<span class="cc">(' + _skEsc(text) + ')</span>';
+}
+function _skNote(tone, short, detail){
+  return (typeof uiNote === "function") ? uiNote(tone, short, detail)
+    : '<div class="cc">' + _skEsc(short) + ' ' + _skEsc(detail) + '</div>';
 }

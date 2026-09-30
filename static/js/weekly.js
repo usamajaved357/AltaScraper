@@ -293,10 +293,11 @@ function weeklyRender(){
   if(WK.fellBack){
     h += '<div class="odp-note" style="padding:11px 13px;margin-bottom:12px">'
       + '<b>No pack for the week of ' + _wkEsc(WK.fellBack) + '.</b> '
-      + 'Showing the most recent one instead — the week of '
-      + _wkEsc(w.week_start) + ', below. Nothing is missing; that week was '
-      + 'simply never built. Press Build from connected account, or upload its '
-      + 'reports, to store it.</div>';
+      + 'Showing the week of ' + _wkEsc(w.week_start) + ' instead. '
+      + uiHint('Showing the most recent one instead — the week of '
+        + w.week_start + ', below. Nothing is missing; that week was '
+        + 'simply never built. Press Build from connected account, or upload its '
+        + 'reports, to store it.') + '</div>';
   }
 
   // TWO MARKETPLACES IN ONE PACK. Named rather than averaged away: a Business
@@ -373,9 +374,10 @@ function weeklyRender(){
     + 'money that was never winning new customers.">i</span></div>';
   if(!(WK.brandTerms || []).length){
     h += '<div class="odp-note" style="padding:11px 14px">'
-      + '<b>No brand terms are set</b>, so every campaign counts as '
-      + 'non-branded. That is a setting, not a finding — add your brand words '
-      + 'on the PPC screen and this splits properly.</div>';
+      + '<b>No brand terms are set</b> — all campaigns count as non-branded. '
+      + uiHint('No brand terms are set, so every campaign counts as '
+        + 'non-branded. That is a setting, not a finding — add your brand words '
+        + 'on the PPC screen and this splits properly.') + '</div>';
   }
   h += '<table class="stk-table"><thead><tr><th></th>'
     + '<th class="r">Campaigns</th><th class="r">Spend</th>'

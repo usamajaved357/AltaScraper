@@ -57,6 +57,8 @@ function makeSandbox(){
     // it or every row that renders a click handler throws.
     jsArg: s => "'" + String(s == null ? "" : s).replace(/\\/g, "\\\\")
                        .replace(/'/g, "\\'") + "'",
+    // Defined in pageui.js (30 Sep 2026 microcopy pass): same reason as jsArg.
+    uiHint: t => t ? '<i class="ti ti-info-circle ui-hint" title="' + String(t) + '"></i>' : "",
     CUR_ACCOUNT: {id: "jack_uk", label: "Jack"},
     WS_MARKET: "UK",
     els,

@@ -7,7 +7,7 @@
            .sub + .db-chip is what Listings, Sales, Returns and the rest use. -->
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
-        <div class="sub">Who else is selling on the ASINs you watch. Read-only — it never writes to, or affects, the listings it watches.</div></div>
+        <div class="sub">Who else sells on your watched ASINs. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Who else is selling on the ASINs you watch. Read-only — it never writes to, or affects, the listings it watches." title="Who else is selling on the ASINs you watch. Read-only — it never writes to, or affects, the listings it watches."></i></div></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="db-chip btn-primary" id="mon_checkbtn" onclick="monCheckNow()"><i class="ti ti-refresh"></i> Check now</button>
           <button class="db-chip" id="mon_rescanbtn" onclick="monRescanAll()" title="Check EVERY selected marketplace once, including ones currently skipped as having no offers — use after expanding into a new marketplace"><i class="ti ti-world-search"></i> Re-scan all markets</button>
@@ -62,6 +62,6 @@
       <div id="mon_list" style="margin-top:16px"></div>
 
       <div class="cc" style="margin-top:16px;font-size:11.5px;opacity:.8">
-        Automatic checking follows the schedule set above (off unless you turn it on). Hit <b>Check now</b> above to run it immediately (the first check just records a baseline; changes after that raise alerts). Use the <b>History</b> button on any ASIN to see its offer timeline.
+        Checks run on the schedule above, or via <b>Check now</b>. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Automatic checking follows the schedule set above (off unless you turn it on). Hit Check now above to run it immediately (the first check just records a baseline; changes after that raise alerts). Use the History button on any ASIN to see its offer timeline." title="Automatic checking follows the schedule set above (off unless you turn it on). Hit Check now above to run it immediately (the first check just records a baseline; changes after that raise alerts). Use the History button on any ASIN to see its offer timeline."></i>
       </div>
     </div>

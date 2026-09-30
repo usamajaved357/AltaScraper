@@ -72,10 +72,11 @@ function ntfRender() {
     '<button class="primary" onclick="ntfAdd()"><i class="ti ti-plus"></i> Add</button>' +
     "</div>" +
     '<div class="cc" style="font-size:11.5px;line-height:1.55;margin-top:9px;max-width:720px">' +
-    "It arrives <b>switched off</b>. Send a test first, then turn it on — that way a " +
+    "It arrives <b>switched off</b>. Send a test first, then turn it on. " +
+    uiHint("It arrives switched off. Send a test first, then turn it on — that way a " +
     "mistyped address never posts into somebody else's channel. For Slack, create an " +
-    "<b>Incoming Webhook</b> in your workspace and paste the URL. For anything else " +
-    "(Zapier, Make, n8n, a WhatsApp bridge) use Webhook and the whole alert is posted as JSON." +
+    "Incoming Webhook in your workspace and paste the URL. For anything else " +
+    "(Zapier, Make, n8n, a WhatsApp bridge) use Webhook and the whole alert is posted as JSON.") +
     "</div>");
 
   // ---- channels -----------------------------------------------------------
@@ -137,18 +138,20 @@ function ntfRender() {
         "</tr>";
     });
     t += "</tbody></table></div>";
-    html += uiPanel("Where alerts go", "The address is always shown redacted — the full " +
-      "webhook URL is a password and never leaves the server.", t);
+    html += uiPanel("Where alerts go", "Addresses are always shown redacted.", t,
+      { right: uiHint("The address is always shown redacted — the full " +
+        "webhook URL is a password and never leaves the server.") });
   }
 
   // ---- send now -----------------------------------------------------------
   html += uiToolbar(
     '<button class="db-chip" onclick="ntfSendNow()"><i class="ti ti-bell-ringing"></i> ' +
     "Send what is off target now</button>",
-    '<div class="cc" style="font-size:11.5px;max-width:560px;text-align:right">Sends the ' +
-    "current tracker alerts to every channel that is on. The same alert is not repeated " +
-    "within " + NTF.quiet + " hours — an unchanged problem sent every hour is how a " +
-    "channel ends up muted.</div>");
+    '<div class="cc" style="font-size:11.5px;max-width:560px;text-align:right">Sends to ' +
+    "every channel that is on. " +
+    uiHint("Sends the current tracker alerts to every channel that is on. The same alert " +
+    "is not repeated within " + NTF.quiet + " hours — an unchanged problem sent every " +
+    "hour is how a channel ends up muted.") + "</div>");
 
   // ---- log ----------------------------------------------------------------
   if (!NTF.log.length) {
@@ -171,9 +174,10 @@ function ntfRender() {
         "</tr>";
     });
     t += "</tbody></table></div>";
-    html += uiPanel("What has been sent",
-      "A failure's reason is shown rather than swallowed — a notification system whose " +
-      "failures are invisible turns “nobody told me” into “the app said it was fine”.", t);
+    html += uiPanel("What has been sent", "Every send, with any failure reason.", t,
+      { right: uiHint("A failure's reason is shown rather than swallowed — a notification " +
+        "system whose failures are invisible turns “nobody told me” into “the app said it " +
+        "was fine”.") });
   }
 
   box.innerHTML = html;

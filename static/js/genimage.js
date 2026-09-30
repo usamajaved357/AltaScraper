@@ -252,7 +252,7 @@ async function studioLoadModels(){
   }
   // text hint: which models are good for the product-reading job
   const th=document.getElementById("studio_text_hint");
-  if(th) th.innerHTML="Tip: a strong vision model (e.g. one that can read images well) reads your label text more accurately. This AI examines your product and writes the detailed prompt.";
+  if(th) th.innerHTML="Tip: a strong vision model reads labels best. "+uiHint("Tip: a strong vision model (e.g. one that can read images well) reads your label text more accurately. This AI examines your product and writes the detailed prompt.");
   studioModelHint();
 }
 function studioModelHint(){
@@ -284,7 +284,7 @@ function renderStudio(){
           <option value="medium">Medium — balanced</option>
           <option value="creative">Creative — allow more artistic freedom</option>
         </select>
-        <div class="cc smodelhint">Higher fidelity keeps the shape, colours and proportions closest to your real product. Note: how well this works depends heavily on the image model — reference-preserving models (Seedream, FLUX) keep the product far better than Gemini Flash.</div>
+        <div class="cc smodelhint">Higher keeps your real product closest. ${uiHint("Higher fidelity keeps the shape, colours and proportions closest to your real product. Note: how well this works depends heavily on the image model — reference-preserving models (Seedream, FLUX) keep the product far better than Gemini Flash.")}</div>
       </div>
       <div class="smodel" style="grid-column:1/-1">
         <label class="cc"><i class="ti ti-message-2-cog"></i> Your standing instructions (the AI remembers these for every image)</label>
@@ -293,7 +293,7 @@ function renderStudio(){
           <button class="ib" onclick="saveStudioInstructions()"><i class="ti ti-device-floppy"></i> Save instructions</button>
           <span class="cc" id="studio_ci_status" style="font-size:11px"></span>
         </div>
-        <div class="cc smodelhint">These are added on top of the strategist's creative brief for every image you generate or edit — so your rules are always applied without retyping.</div>
+        <div class="cc smodelhint">Applied to every image you generate or edit. ${uiHint("These are added on top of the strategist's creative brief for every image you generate or edit — so your rules are always applied without retyping.")}</div>
       </div>
     </div>
     <div class="studiotabs">
@@ -311,8 +311,8 @@ function renderStudio(){
     <div id="studio_creative" class="studiopane">
       <div class="ideabox">
         <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-bulb"></i> Option A — Let the AI strategist invent the ideas</div>
-        <div class="cc" style="margin-bottom:8px">Instead of you supplying the idea, the AI thinks like a top Amazon conversion strategist <i>and</i> like your customer — what stops them scrolling, what makes them feel "this is the one" — then proposes concrete photo concepts for <b>this</b> product. You pick which to generate. (Main images stay pure white; creativity is in angle, lighting &amp; touches like droplets.)</div>
-        <label class="cc" style="display:block;margin-bottom:3px">Instructions for the strategist (optional, not saved) — e.g. "don't show pets", "show the product in only some images, not all"</label>
+        <div class="cc" style="margin-bottom:8px">The AI proposes photo concepts; you pick which to generate. ${uiHint('Instead of you supplying the idea, the AI thinks like a top Amazon conversion strategist and like your customer — what stops them scrolling, what makes them feel "this is the one" — then proposes concrete photo concepts for this product. You pick which to generate. (Main images stay pure white; creativity is in angle, lighting & touches like droplets.)')}</div>
+        <label class="cc" style="display:block;margin-bottom:3px">Instructions for the strategist (optional, not saved) ${uiHint('e.g. "don\'t show pets", "show the product in only some images, not all"')}</label>
         <textarea id="strat_instr_main" class="ed" rows="2" placeholder='e.g. no people; show one close-up of the texture; keep it minimal' style="margin-bottom:8px"></textarea>
         <button class="primary" onclick="studioStrategize('main')"><i class="ti ti-sparkles"></i> Suggest image ideas</button>
         <button class="primary" onclick="studioStrategize('main', true)" style="margin-left:6px" title="Ask the strategist for ideas AND generate them all automatically — no manual picking"><i class="ti ti-bolt"></i> Suggest &amp; auto-generate${batch?(' ('+n+' products)'):''}</button>
@@ -323,7 +323,7 @@ function renderStudio(){
       <div class="ordiv"><span>OR</span></div>
       <div class="buildbox">
         <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-adjustments"></i> Option B — Use the 3 ready-made variations</div>
-        <div class="cc" style="margin-bottom:8px">Generates 3 fixed treatments — straight-on hero, flattering angle, and a creative "personality" shot — all on pure white, product kept identical.</div>
+        <div class="cc" style="margin-bottom:8px">3 fixed shots on pure white, product kept identical. ${uiHint('Generates 3 fixed treatments — straight-on hero, flattering angle, and a creative "personality" shot — all on pure white, product kept identical.')}</div>
         <label class="cc">Optional inspiration (a link, image URL, or a few words)</label>
         <input id="studio_inspo" class="ed" placeholder="e.g. https://… or 'bright airy bathroom, marble surface'">
         <div style="margin-top:10px"><button class="primary" onclick="studioRun('creative')"><i class="ti ti-sparkles"></i> ${batch?('Generate 3 variations for each of '+n+' products'):'Generate 3 variations'}</button></div>
@@ -460,7 +460,7 @@ function sourcePaneHTML(batch,n){
   // otherwise assume 'competitor' (dropshipping/scrape -> remove logo)
   const looksBrand = !!(STUDIO.brand && STUDIO.brand.trim());
   return `
-    <div class="cc" style="margin-bottom:8px">Turn the <b>source product photo</b> (from eBay/Amazon, or your brand's own upload) into a clean Amazon main image — <b>pure white background, product kept identical</b>. ${batch?('Applies to each of '+n+' selected products.'):''}</div>
+    <div class="cc" style="margin-bottom:8px">Source photo → clean <b>pure white</b> main image. ${batch?('Applies to each of '+n+' selected products.'):''} ${uiHint("Turn the source product photo (from eBay/Amazon, or your brand's own upload) into a clean Amazon main image — pure white background, product kept identical.")}</div>
     ${batch?'':refPickerHTML()}
     ${brandPaneHTML()}
     <div class="secrow" style="margin-top:10px">
@@ -495,7 +495,7 @@ function refPickerHTML(){
     const manual = STUDIO.manualRef || "";
     return `
       <div class="refpicker">
-        <div class="cc" style="margin-bottom:6px;color:var(--warn)">No source image was found for this product automatically. Add one below so the AI can keep your real product (otherwise it generates from the text description only).</div>
+        <div class="cc" style="margin-bottom:6px;color:var(--warn)">No source image found — add one below. ${uiHint("No source image was found for this product automatically. Add one below so the AI can keep your real product (otherwise it generates from the text description only).")}</div>
         <div class="secrow" style="gap:8px;align-items:center;flex-wrap:wrap">
           <button class="ib" onclick="document.getElementById('manual_ref_file').click()"><i class="ti ti-upload"></i> Upload product image</button>
           <span class="cc" style="font-size:11px">or paste an image URL:</span>
@@ -514,7 +514,7 @@ function refPickerHTML(){
     </div>`).join("");
   return `
     <div class="refpicker">
-      <div class="cc" style="margin-bottom:6px"><b>Choose the reference image</b> — tap the eBay/source photo that best shows the product (cleanest, least text). The first is auto-selected.</div>
+      <div class="cc" style="margin-bottom:6px"><b>Choose the reference image</b> ${uiHint("Choose the reference image — tap the eBay/source photo that best shows the product (cleanest, least text). The first is auto-selected.")}</div>
       <div class="refrow">${thumbs}</div>
     </div>`;
 }
@@ -616,22 +616,22 @@ function secondaryPaneHTML(batch,n){
   return `
     <div class="ideabox">
       <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-bulb"></i> Option A — Let the AI strategist design the set</div>
-      <div class="cc" style="margin-bottom:8px">The AI thinks like a conversion strategist + your customer and proposes secondary-image concepts (which benefit to lead with, what objection to kill, what lifestyle moment sells it) for <b>this</b> product. Click below, then pick which ideas to generate.</div>
-      <label class="cc" style="display:block;margin-bottom:3px">Instructions for the strategist (optional, not saved) — e.g. "don't show pets", "pour the medicine into the tub in one image", "show the product in only some images, not all"</label>
+      <div class="cc" style="margin-bottom:8px">The AI proposes concepts; you pick which to generate. ${uiHint("The AI thinks like a conversion strategist + your customer and proposes secondary-image concepts (which benefit to lead with, what objection to kill, what lifestyle moment sells it) for this product. Click below, then pick which ideas to generate.")}</div>
+      <label class="cc" style="display:block;margin-bottom:3px">Instructions for the strategist (optional, not saved) ${uiHint('e.g. "don\'t show pets", "pour the medicine into the tub in one image", "show the product in only some images, not all"')}</label>
       <textarea id="strat_instr_secondary" class="ed" rows="2" placeholder='e.g. no pets; one image pouring liquid into a tub; show product in ~half the images so the buyer still knows what it is' style="margin-bottom:8px"></textarea>
       <button class="primary" onclick="studioStrategize('secondary')"><i class="ti ti-sparkles"></i> Suggest secondary ideas</button>
       <button class="primary" onclick="studioStrategize('secondary', true)" style="margin-left:6px" title="Ask the strategist for ideas AND generate them all automatically — no manual picking"><i class="ti ti-bolt"></i> Suggest &amp; auto-generate${batch?(' ('+n+' products)'):''}</button>
       <span id="sec_strat_status" class="cc" style="margin-left:8px"></span>
       ${howWorks('secAI')}
       <div id="sec_concepts" style="margin-top:10px"></div>
-      <div class="cc" style="font-size:11px;margin-top:6px;opacity:.75">↑ The "Generate all ideas" button appears here <i>after</i> the AI suggests ideas — it generates the AI's concepts.</div>
+      <div class="cc" style="font-size:11px;margin-top:6px;opacity:.75">↑ "Generate all ideas" appears here after suggestions. ${uiHint("The \"Generate all ideas\" button appears here after the AI suggests ideas — it generates the AI's concepts.")}</div>
     </div>
 
     <div class="ordiv"><span>OR</span></div>
 
     <div class="buildbox">
       <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-adjustments"></i> Option B — Build the set yourself</div>
-      <div class="cc" style="margin-bottom:8px">You choose the roles and details. Secondary images each do <b>one job</b> — clean and premium, not cluttered. ${batch?('Applies to each of '+n+' selected products.'):''}</div>
+      <div class="cc" style="margin-bottom:8px">You choose the roles; each image does <b>one job</b>. ${batch?('Applies to each of '+n+' selected products.'):''} ${uiHint("You choose the roles and details. Secondary images each do one job — clean and premium, not cluttered.")}</div>
       <div class="secrow">
         <label class="cc">Mode</label>
         <select id="sec_mode" class="ed" onchange="secModeChange()">
@@ -671,7 +671,7 @@ function secondaryPaneHTML(batch,n){
               <option value="direct">Direct reference</option>
             </select>
           </div>`).join("")}
-        <div class="cc" style="font-size:11px;margin-top:4px"><b>Describe style</b>: AI extracts the look (lighting, angle, effects like oil-drops) and reapplies it to your product — recommended, avoids copying. <b>Direct</b>: feeds the competitor image to the model directly.</div>
+        <div class="cc" style="font-size:11px;margin-top:4px"><b>Describe style</b> is recommended — avoids copying. ${uiHint("Describe style: AI extracts the look (lighting, angle, effects like oil-drops) and reapplies it to your product — recommended, avoids copying. Direct: feeds the competitor image to the model directly.")}</div>
       </div>
       <div style="margin-top:12px"><button class="primary" onclick="studioRunSecondary()"><i class="ti ti-sparkles"></i> ${batch?('Generate my hand-built set for all '+n+' products'):'Generate my hand-built set'}</button></div>
       ${howWorks('secManual')}
@@ -744,11 +744,11 @@ let APLUS_MODULES={basic:[],premium:[]};
 function aplusPaneHTML(batch,n){
   return `
     <div class="aplusnote">
-      <b>A+ Content</b> requires <b>Amazon Brand Registry</b>. <b>Premium A+</b> additionally requires a Brand Story on all your ASINs and 15+ approved A+ submissions in the last 12 months. This tool generates module images at Amazon's <b>exact pixel dimensions</b> plus draft copy — you then upload them in Seller Central's A+ builder.
+      <b>A+ Content</b> requires <b>Amazon Brand Registry</b>. ${uiHint("A+ Content requires Amazon Brand Registry. Premium A+ additionally requires a Brand Story on all your ASINs and 15+ approved A+ submissions in the last 12 months. This tool generates module images at Amazon's exact pixel dimensions plus draft copy — you then upload them in Seller Central's A+ builder.")}
     </div>
     <div class="ideabox" style="margin-top:10px">
       <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-bulb"></i> Option A — Let the AI strategist design your A+ story</div>
-      <div class="cc" style="margin-bottom:8px">The AI thinks like a brand strategist + your customer and proposes a coherent A+ module sequence (hero banner, key benefits, how-to-use, ingredients, lifestyle, why-us, trust) for <b>this</b> product. Pick which modules to generate.</div>
+      <div class="cc" style="margin-bottom:8px">The AI proposes an A+ module sequence; you pick. ${uiHint("The AI thinks like a brand strategist + your customer and proposes a coherent A+ module sequence (hero banner, key benefits, how-to-use, ingredients, lifestyle, why-us, trust) for this product. Pick which modules to generate.")}</div>
       <div class="secrow" style="margin-bottom:8px;align-items:center;gap:8px">
         <label class="cc">Tier</label>
         <select id="ap_strat_tier" class="ed" style="max-width:280px">
@@ -759,7 +759,7 @@ function aplusPaneHTML(batch,n){
       <button class="primary" onclick="studioStrategize('aplus')"><i class="ti ti-sparkles"></i> Suggest A+ modules</button>
       <button class="primary" onclick="studioStrategize('aplus', true)" style="margin-left:6px" title="Ask the strategist for A+ modules AND generate them all automatically — no manual picking"><i class="ti ti-bolt"></i> Suggest &amp; auto-generate${batch?(' ('+n+' products)'):''}</button>
       <span id="ap_strat_status" class="cc" style="margin-left:8px"></span>
-      <label class="cc" style="display:block;margin:8px 0 3px">Instructions for the strategist (optional, not saved) — e.g. "don't show pets", "include a how-to-use module", "show the product in only some modules"</label>
+      <label class="cc" style="display:block;margin:8px 0 3px">Instructions for the strategist (optional, not saved) ${uiHint('e.g. "don\'t show pets", "include a how-to-use module", "show the product in only some modules"')}</label>
       <textarea id="strat_instr_aplus" class="ed" rows="2" placeholder='e.g. no people or pets; one module showing it poured into a bath; keep palette blue/white'></textarea>
       <div id="ap_concepts" style="margin-top:10px"></div>
     </div>

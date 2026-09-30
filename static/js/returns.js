@@ -160,6 +160,7 @@ const RET_REPORTS = {
     name: "FBA Customer Returns",
     where: "Seller Central → Reports → Fulfilment → Customer Concessions → "
          + "FBA Customer Returns",
+    short: "everything, incl. condition and customer comments.",
     gives: "Everything on this page, including the condition each return came "
          + "back in and the customers' own comments — two things Amazon's API "
          + "will not give a seller-fulfilled account at all.",
@@ -167,11 +168,20 @@ const RET_REPORTS = {
   mfn: {
     name: "Seller-fulfilled returns",
     where: "Seller Central → Reports → Return Reports → Seller-fulfilled returns",
+    short: "reasons, dates, quantities, refunds — no grading.",
     gives: "Reasons, dates, quantities and the amount actually refunded. No "
          + "condition grading and no customer comments — Amazon never handles "
          + "these returns, so it has nothing to grade or record.",
   },
 };
+
+/* The page's (i), from static/js/pageui.js (microcopy pass, 30 Sep 2026: long
+   captions became one line with the full text behind it). Guarded because a
+   page without pageui.js must still show the text, not lose it. */
+function _rHint(text){
+  return (typeof uiHint === "function") ? uiHint(text)
+    : '<span class="cc">(' + _rEsc(text) + ')</span>';
+}
 
 let RET_WANT = "";
 
@@ -605,11 +615,11 @@ function returnsRender(){
         +  'For a returns page that is good news rather than a fault.</div>';
     }
     h += '<div class="ri-samplebar" style="border-color:var(--line);'
-      +  'background:var(--panel2)"><b>The figures below are placeholders, not '
-      +  'your data.</b> Every one of them is dimmed and in italics so the '
-      +  'layout can be judged now. They are not stored, they are never mixed '
-      +  'in with real ones, and they disappear entirely the moment a report '
-      +  'lands.</div>';
+      +  'background:var(--panel2)"><b>Sample figures below — not your data.</b> '
+      +  _rHint('The figures below are placeholders, not your data. Every one '
+      +  'of them is dimmed and in italics so the layout can be judged now. They '
+      +  'are not stored, they are never mixed in with real ones, and they '
+      +  'disappear entirely the moment a report lands.') + '</div>';
 
     // WHICH REPORTS, named, with where to find each and what each one can
     // actually fill in. Amazon's own naming is not guessable: the FBA one
@@ -624,7 +634,8 @@ function returnsRender(){
             + '<div class="cc" style="font-size:11.5px;line-height:1.6">'
             + '<b>Where:</b> ' + _rEsc(r.where) + '</div>'
             + '<div class="cc" style="font-size:11.5px;line-height:1.6;margin-top:6px">'
-            + '<b>Fills in:</b> ' + _rEsc(r.gives) + '</div></div>';
+            + '<b>Fills in:</b> ' + _rEsc(r.short) + ' ' + _rHint(r.gives)
+            + '</div></div>';
         }).join("")
       + '</div>';
   }
@@ -747,8 +758,9 @@ function returnsRender(){
       }).join("")
     + '</div>'
     + '<div class="cc" style="font-size:11px;margin-top:10px;line-height:1.5">'
-    + 'Fifty reason codes grouped into the four things you can actually do '
-    + 'something about.</div>';
+    + '50 reason codes, four actionable groups. '
+    + _rHint('Fifty reason codes grouped into the four things you can actually '
+    + 'do something about.') + '</div>';
 
   h += '<div class="ri-2-1">'
     + _riCard("Daily Returns Volume",
@@ -928,9 +940,10 @@ function returnsRender(){
     + '</tbody></table></div>'
     + '<div class="cc" style="font-size:11px;margin-top:8px">'
     + (lines.length
-        ? 'Lines are worked out from ' + _rEsc(d.lines_from || "the product names")
+        ? 'Lines from ' + _rEsc(d.lines_from || "the product names") + '. '
+          + _rHint('Lines are worked out from ' + (d.lines_from || "the product names")
           + ' — Amazon sends no product line of its own. The SKUs in each are in '
-          + 'the table below.'
+          + 'the table below.')
         : (noData
             ? 'Sample shape — your own product lines appear here.'
             : 'Your returns are loaded but this app has not grouped them into '
@@ -991,8 +1004,10 @@ function returnsRender(){
       + '</tbody></table></div>'
       + '<div class="cc" style="font-size:11px;margin-top:8px;line-height:1.5">'
       + 'Grouped by ' + _rEsc((parents[0] || {}).grouped_by || "the product name")
-      + '. Trend compares the last three complete months with the first three, '
-      + 'so a quarter either way is noise and anything past that is a direction.'
+      + '. Trend: last 3 full months vs first 3. '
+      + _rHint('Trend compares the last three complete months with the first '
+      + 'three, so a quarter either way is noise and anything past that is a '
+      + 'direction.')
       + '</div>';
     h += '<div style="margin-bottom:24px">'
       + _riCard("By Parent Product",
@@ -1031,9 +1046,11 @@ function returnsRender(){
               + '</tr>'; }).join("")
         + '</tbody></table></div>'
         + (part ? '<div class="cc" style="font-size:11px;margin-top:8px">'
-                  + '* the last month is not finished — it is shown, and left '
-                  + 'out of the trend, because three weeks against a full month '
-                  + 'reads as a collapse that has not happened.</div>' : "");
+                  + '* unfinished month — shown, but left out of the trend. '
+                  + _rHint('The last month is not finished — it is shown, and '
+                  + 'left out of the trend, because three weeks against a full '
+                  + 'month reads as a collapse that has not happened.')
+                  + '</div>' : "");
       h += '<div style="margin-bottom:24px">'
         + _riCard("Month by Month", months.length + " months", mTable)
         + '</div>';
@@ -1091,10 +1108,11 @@ function returnsRender(){
       + _riCard("Amazon's Returns Badge",
                 showing.length + ' already badged · ' + soon.length + ' at risk',
                 '<div class="cc" style="font-size:11.5px;line-height:1.6;'
-                + 'margin-bottom:10px">A badged listing shows shoppers a '
-                + '"frequently returned item" warning, and it costs conversion '
-                + 'on every visit from then on. "At risk" means it is not '
-                + 'showing yet — the cheaper half of the list.</div>' + rTable)
+                + 'margin-bottom:10px">Badged costs sales; at risk is fixable now. '
+                + _rHint('A badged listing shows shoppers a "frequently returned '
+                + 'item" warning, and it costs conversion on every visit from '
+                + 'then on. "At risk" means it is not showing yet — the cheaper '
+                + 'half of the list.') + '</div>' + rTable)
       + '</div>';
   } else {
     h += '<div style="margin-bottom:24px">'
@@ -1216,10 +1234,13 @@ function returnsRender(){
                 // not saying so reads as the whole picture.
                 + '<div class="cc" style="font-size:11px;margin-top:12px;'
                 + 'line-height:1.6">' + th.unplaced + ' comment'
+                + (th.unplaced === 1 ? " matches" : "s match")
+                + ' no theme — read them raw above. '
+                + _rHint(th.unplaced + ' comment'
                 + (th.unplaced === 1 ? " says" : "s say")
                 + ' something this app has no rule for, and are not counted '
                 + 'above. They are worth reading raw in the panel above — that '
-                + 'is where a theme nobody has thought of yet shows up.</div>')
+                + 'is where a theme nobody has thought of yet shows up.') + '</div>')
       + '</div>';
   }
 

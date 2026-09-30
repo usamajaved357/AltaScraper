@@ -327,9 +327,10 @@ function monChart(s){
     + '<span class="cc">' + total + ' across ' + keys.length + ' market'
     + (keys.length !== 1 ? 's' : '') + ' · worst is ' + esc(keys[0]) + '</span></div>'
     + '<div class="monbars">' + bars + '</div>'
-    + '<div class="cc moncard-foot">A seller this app has not been told about. '
-    + 'Name one and it stops counting here — use <b>Import seller names</b> for '
-    + 'a list of them.</div></div>';
+    + '<div class="cc moncard-foot">Name a seller to stop counting it. '
+    + uiHint('A seller this app has not been told about. Name one and it stops '
+      + 'counting here — use Import seller names for a list of them.')
+    + '</div></div>';
 }
 
 function monAsinBlock(r){

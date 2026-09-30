@@ -1,12 +1,12 @@
     <div id="sec_miles" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2>Miles Lubricants Import</h2>
-        <div class="sub">Harvest products from mileslubricants.com by item number — pulls page text, spec table, and the PDF spec/SDS sheets into Drive, then drafts Amazon listings with compliance &amp; IP checks.</div></div>
+        <div class="sub">Item numbers in, checked Amazon drafts out. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Harvest products from mileslubricants.com by item number — pulls page text, spec table, and the PDF spec/SDS sheets into Drive, then drafts Amazon listings with compliance &amp; IP checks." title="Harvest products from mileslubricants.com by item number — pulls page text, spec table, and the PDF spec/SDS sheets into Drive, then drafts Amazon listings with compliance &amp; IP checks."></i></div></div>
       </div>
 
       <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
         <div style="font-size:13px;opacity:.85;margin-bottom:10px">
-          <b>Step 1.</b> Upload a CSV or Excel file with one column of item numbers (e.g. <code>M001000603</code>). One item number = one product = one listing.
+          <b>Step 1.</b> Upload a CSV or Excel of item numbers. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Upload a CSV or Excel file with one column of item numbers (e.g. M001000603). One item number = one product = one listing." title="Upload a CSV or Excel file with one column of item numbers (e.g. M001000603). One item number = one product = one listing."></i>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <input type="file" id="miles_file" aria-label="Item-number file (CSV or Excel)" accept=".csv,.xlsx,.xls" onchange="milesPickFile(this)"
@@ -18,7 +18,7 @@
 
       <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
         <div style="font-size:13px;opacity:.85;margin-bottom:10px">
-          <b>Step 2.</b> Where should the listing copy go? Paste the Google Sheet ID (or full URL) and the tab name. Leave blank to use the account default.
+          <b>Step 2.</b> Output Google Sheet and tab (blank = account default). <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Where should the listing copy go? Paste the Google Sheet ID (or full URL) and the tab name. Leave blank to use the account default." title="Where should the listing copy go? Paste the Google Sheet ID (or full URL) and the tab name. Leave blank to use the account default."></i>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <input type="text" id="miles_sheet" placeholder="Output Sheet ID or URL" onchange="milesSavePref()"
@@ -29,11 +29,11 @@
                  style="width:170px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,var(--as-bg-shell));color:inherit">
         </div>
         <div style="font-size:11px;opacity:.6;margin-top:8px">
-          Columns written: SKU, Title, Bullet Point 1-5, Description, Backend Keywords, Compliance Report, Uploaded. Enter a number (e.g. 5) to generate just that many this run.
+          Columns written, and how many to run. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Columns written: SKU, Title, Bullet Point 1-5, Description, Backend Keywords, Compliance Report, Uploaded. Enter a number (e.g. 5) to generate just that many this run." title="Columns written: SKU, Title, Bullet Point 1-5, Description, Backend Keywords, Compliance Report, Uploaded. Enter a number (e.g. 5) to generate just that many this run."></i>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="miles_use_ba" style="width:16px;height:16px">
-          Use real Amazon search data (Brand Analytics) to seed keywords — needs Brand Registry on the account
+          Seed keywords from Brand Analytics <i class="ti ti-info-circle ui-hint" onclick="event.preventDefault()" tabindex="0" role="img" aria-label="Use real Amazon search data (Brand Analytics) to seed keywords — needs Brand Registry on the account." title="Use real Amazon search data (Brand Analytics) to seed keywords — needs Brand Registry on the account."></i>
         </label>
       </div>
 
@@ -45,8 +45,8 @@
       </div>
 
       <div class="reqnote" style="margin-bottom:10px">
-        Files are saved to your Drive master folder, one subfolder per item number. Industrial lubricants are hazmat on Amazon — the SDS sheet drives the compliance fields.
-        <br><b>Optimize live listings</b> pulls each ASIN's real Search Query Performance (the searches that actually drove sales) and rewrites the copy to front-load those — use it 2–4 weeks after listings go live.
+        Files go to Drive; the SDS sheet drives hazmat fields. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Files are saved to your Drive master folder, one subfolder per item number. Industrial lubricants are hazmat on Amazon — the SDS sheet drives the compliance fields." title="Files are saved to your Drive master folder, one subfolder per item number. Industrial lubricants are hazmat on Amazon — the SDS sheet drives the compliance fields."></i>
+        <br><b>Optimize live listings</b>: use 2–4 weeks after going live. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Optimize live listings pulls each ASIN&#39;s real Search Query Performance (the searches that actually drove sales) and rewrites the copy to front-load those — use it 2–4 weeks after listings go live." title="Optimize live listings pulls each ASIN&#39;s real Search Query Performance (the searches that actually drove sales) and rewrites the copy to front-load those — use it 2–4 weeks after listings go live."></i>
       </div>
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
