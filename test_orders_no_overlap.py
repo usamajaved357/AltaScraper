@@ -10,9 +10,10 @@ content and never scrolled -- the text ran into the next cell. And the side
 panel opened beside the table on the assumption the table needs 760px when its
 nine columns need ~960px.
 
-Fix: the board lays out by content (`table-layout:auto`), the side panel opens
-beside it only when 980 + 380 + gutter fits, and 641-900px uses the phone's
-card rows. tools/browser_smoke.py measures the real thing ("no_overprint").
+Fix: the board lays out by content (`table-layout:auto`), beside an open order
+the list goes compact (.ord-compact, five columns) so 520 + 400 + gutter is
+enough (every desktop window; was 980 + 380, which sent laptops inline), and
+641-900px uses the phone's card rows. tools/browser_smoke.py measures the real thing ("no_overprint").
 """
 import os
 import re
@@ -43,8 +44,16 @@ check("641-900px uses card rows",
 check("the countdown stays on one line",
       re.search(r"\.ord-due\s*\{\s*white-space\s*:\s*nowrap", css) is not None)
 m = re.search(r"const ORD_SIDE_MIN\s*=\s*([^;]+);", js)
-check("the side panel opens beside the table only when 980px of table fits",
-      bool(m) and m.group(1).replace(" ", "").startswith("980+380"))
+# Re-pinned 30 Sep 2026 (master-detail): beside the panel the list is compact
+# (.ord-compact: tick, order, item, state, profit), which fits in ~520px, so the
+# panel is used on every desktop window again. The full nine columns only ever
+# show with no panel beside them.
+check("the side panel opens beside the list only when 520px of compact list fits",
+      bool(m) and m.group(1).replace(" ", "").startswith("520+400"))
+check("  and beside the panel the list hides the columns that do not fit",
+      "table.ord-board-table.ord-compact{ min-width: 0 !important; }" in css
+      and all('ord-compact [data-label="%s"]' % c in css
+              for c in ("Account", "Channel", "Due / next", "Cost", "Next step")))
 check("browser smoke measures overprinting cells, not only the scroller",
       'osd["no_overprint"]' in smoke and '"no_overprint"' in smoke.split('osd["no_overprint"]', 1)[1])
 

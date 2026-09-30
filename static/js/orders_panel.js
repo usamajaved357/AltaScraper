@@ -130,7 +130,6 @@ function _opCards(r, t, cur, o, items){
   };
   const dash = '<span class="cc">—</span>';
   const profit = _opNum(t.profit);
-  const paid = _opNum(t.revenue);
   // WHY THE DASH IS THERE, under the dash.
   //
   //     "Summary cards: show '—' with 'No cost set' in 9px muted text below."
@@ -162,7 +161,10 @@ function _opCards(r, t, cur, o, items){
   const hand = _opHandling(r, items);
   return '<div class="o-cards">'
     + card(profit === null ? dash : _oEsc(_oMoney(profit, cur)),
-           paid === null ? "Profit" : ("Profit at " + _oMoney(paid, cur)),
+           // "Profit", not "Profit at £24.99" (30 Sep 2026): the longer label
+           // was cut off on a card a quarter of the panel wide, and what the
+           // buyer paid is the first line of Earnings just below.
+           "Profit",
            profit === null ? "" : (profit < 0 ? "bad" : "good"),
            profit === null
              ? "No cost is recorded for part of this order, so there is no profit figure — it is left blank rather than counting the missing cost as nothing."
@@ -362,15 +364,23 @@ function _opDelivery(o){
     // metric hit. So the line carries both -- the date, and how many days that
     // is from today.
     const left = _opDaysLeft(o.ship_by);
-    bits.push("Post by " + _oWhen(o.ship_by)
-              + (left.text ? " (" + left.text + ")" : ""));
+    bits.push(["Post by", _oWhen(o.ship_by) + (left.text ? " (" + left.text + ")" : "")]);
   }
-  if(o.deliver_by) bits.push("Must arrive by " + _oWhen(o.deliver_by));
-  if(o.region) bits.push("Going to " + o.region);
+  if(o.deliver_by) bits.push(["Arrive by", _oWhen(o.deliver_by)]);
+  if(o.region) bits.push(["Going to", o.region]);
   if(!bits.length) return "";
+  // LABEL AND VALUE AS A PAIR (30 Sep 2026). Under a row it is still one line;
+  // beside the list (.ord-side) the same pairs lay out as a two-column grid,
+  // label left, value right and free to wrap -- "Post by Oct 01, 2026, 05:00
+  // PM (1 day) · Must arrive by ..." wrapped into itself at panel width.
   return '<div class="o-deliv" title="Amazon counts a dispatch late after the '
     + 'post-by date, and the arrive-by date is what the buyer was promised.">'
-    + '<i class="ti ti-truck-delivery"></i> ' + _oEsc(bits.join(" · ")) + '</div>';
+    + '<i class="ti ti-truck-delivery"></i> '
+    + bits.map(function(b){
+        return '<span class="o-deliv-i"><span class="o-deliv-k">' + _oEsc(b[0])
+          + '</span> <span class="o-deliv-v">' + _oEsc(b[1]) + '</span></span>';
+      }).join('<span class="o-dot"> · </span>')
+    + '</div>';
 }
 
 /* The pills along the bottom: what this panel is assuming, in three words each.
@@ -489,7 +499,10 @@ function ordPanelHtml(r, d){
     // flow is the number the box changes, and a control on its own line under a
     // sum reads as a separate action rather than as the way to correct the
     // figure two inches to its left.
-    h += _opFlow(t, cur, _opCostBox(bd, r));
+    // A short heading per group; drawn only beside the list (orders_panel.css
+    // .o-sec-h), where the flow and the delivery become label/value lists.
+    h += '<div class="o-sec-h"><b><i class="ti ti-coin"></i> Earnings</b></div>'
+       + _opFlow(t, cur, _opCostBox(bd, r));
   }
 
   // WHETHER IT WAS BOUGHT, before the delivery and the parcel: bought, then
@@ -497,7 +510,8 @@ function ordPanelHtml(r, d){
   // long fallback panel (Rule 12).
   h += (typeof ordPurchasePanel === "function")
          ? ordPurchasePanel(r, _opBestSource(d, items), o.purchases) : "";
-  h += _opDelivery(o);
+  const _deliv = _opDelivery(o);
+  if(_deliv) h += '<div class="o-sec-h"><b><i class="ti ti-truck-delivery"></i> Delivery</b></div>' + _deliv;
   // WHERE THE PARCEL IS, right under where it is going.
   //
   // _opDelivery says what was PROMISED -- post by, must arrive by. This says

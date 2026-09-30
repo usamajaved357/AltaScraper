@@ -27,10 +27,24 @@ def truthy(label, cond):
 
 
 truthy("side mode is decided at 1100px", '"(min-width: 1100px)"' in JS)
-truthy("  and only when the table keeps its width beside the panel",
-       # 980, re-pinned 30 Sep 2026: measured, the nine columns need ~960px;
-       # at 760 the panel opened and the cells overprinted (test_orders_no_overlap.py).
-       "ORD_SIDE_MIN = 980 + 380" in JS and "b.clientWidth >= ORD_SIDE_MIN" in JS)
+truthy("  and only when the compact list keeps its width beside the panel",
+       # 520 + 400, re-pinned 30 Sep 2026 (master-detail): beside an open order
+       # the list is compact (.ord-compact, five columns), so it needs ~520px, not
+       # the nine-column 980 -- which had pushed every laptop to the inline
+       # "dropdown" the owner did not want.
+       "ORD_SIDE_MIN = 520 + 400" in JS and "b.clientWidth >= ORD_SIDE_MIN" in JS)
+truthy("the list goes compact while the panel is open",
+       "(_openRow ? ' ord-compact' : '')" in JS
+       and re.search(r"ord-compact \[data-label=\"Due / next\"\]", CSS)
+       and re.search(r"ord-compact \[data-label=\"Next step\"\][^{]*\{\s*display:\s*none", CSS))
+truthy("  the headings carry the same column names as the cells",
+       "'<th data-label=\"' + _oEsc(t) + '\"'" in JS)
+truthy("the panel is 400-480px wide", "clamp(400px, 32vw, 480px)" in CSS)
+truthy("Escape closes the panel through the one global handler",
+       "function ordersCloseSide" in JS
+       and "ordersCloseSide" in open(os.path.join(HERE, "static", "js", "escape.js"), encoding="utf-8").read())
+truthy("the harness expects the panel on every desktop width",
+       'osd["side_on_desktop"]' in SMOKE and '"side_on_desktop"' in SMOKE.split('osd["side_on_desktop"]', 1)[1])
 truthy("the panel is a second column (.ord-split), not an overlay",
        "ord-split" in JS and re.search(r"\.ord-split\s*\{[^}]*grid-template-columns", CSS))
 truthy("the panel has no scrim and is not position:fixed",

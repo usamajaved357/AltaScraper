@@ -640,6 +640,13 @@ def main(argv):
                         "() => _ordSideMode() ? (!!document.querySelector('.ord-side') && !document.querySelector('tr.orddetail'))"
                         "       : (!document.querySelector('.ord-side') && !!document.querySelector('tr.orddetail'))")
                     osd["side_mode"] = page.evaluate("() => _ordSideMode()")
+                    # EVERY DESKTOP WINDOW USES THE PANEL (owner, 30 Sep 2026: he
+                    # did not want the order opening under its row on a laptop).
+                    # Beside it the list is compact (.ord-compact), which is what
+                    # lets it fit; below 1100px the order still opens inline.
+                    osd["side_on_desktop"] = osd["side_mode"] == wide
+                    osd["compact_with_panel"] = page.evaluate(
+                        "() => !!document.querySelector('table.ord-compact') === !!document.querySelector('.ord-side')")
                     # And beside the panel the table never scrolls sideways.
                     osd["table_fits"] = page.evaluate(
                         "() => { const s = document.querySelector('.ord-main div[style*=overflow-x]');"
@@ -659,6 +666,16 @@ def main(argv):
                     osd["enter_closes"] = page.evaluate("() => ORD.open === ''")
                     page.keyboard.press("Enter")
                     page.wait_for_timeout(300)
+                    if osd["side_mode"]:
+                        # Escape closes the panel and leaves the keyboard on the row.
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(300)
+                        osd["esc_closes"] = page.evaluate(
+                            "() => ORD.open === '' && !document.querySelector('.ord-side')"
+                            " && !document.querySelector('table.ord-compact')"
+                            " && !!(document.activeElement && document.activeElement.classList.contains('ordrow'))")
+                        page.keyboard.press("Enter")
+                        page.wait_for_timeout(300)
                     page.evaluate("id => enterAccount(id)", b)
                     page.wait_for_timeout(1200)
                     osd["switch_closes"] = page.evaluate("() => ORD.open === ''")
@@ -747,8 +764,10 @@ def main(argv):
                or not log["modal_keyboard"].get("focus_inside")))
            or (log.get("orders_side") and (log["orders_side"].get("error")
                or (log["orders_side"].get("rows") and not all(log["orders_side"].get(k)
-                   for k in ("panel_where_expected", "table_fits", "no_overprint", "focus_kept", "swaps",
-                             "enter_closes", "switch_closes")))))
+                   for k in ("panel_where_expected", "side_on_desktop", "compact_with_panel",
+                             "table_fits", "no_overprint", "focus_kept", "swaps",
+                             "enter_closes", "switch_closes"))
+                   or log["orders_side"].get("esc_closes") is False)))
            or (log.get("floating") and (log["floating"].get("covered")
                or log["floating"].get("missing") or log["floating"].get("error")))
            or log.get("two_tab_unnamed_requests"))

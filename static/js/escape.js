@@ -64,6 +64,12 @@ function _escOpenLayers(){
       });
     });
   }catch(e){}
+  // The order open beside the Orders list (orders.js). It sits in the page, not
+  // over it, so any drawer or modal (higher z-index) closes first.
+  try{
+    const os = document.querySelector("#ordbody .ord-side");
+    if(os && typeof ordersCloseSide === "function") add(os, ordersCloseSide);
+  }catch(e){}
   // The icon rail's group menu (navrail.js), which may not hold focus.
   try{
     const fly = document.getElementById("nrfly");

@@ -747,8 +747,14 @@ function ordersRender(){
   const _openRow = _side && ORD.open
     ? ORD.rows.filter(function(r){ return r.order_id === ORD.open; })[0] : null;
   if(_openRow) h += '<div class="ord-split"><div class="ord-main">';
+  // THE LIST GOES COMPACT WHILE AN ORDER IS OPEN BESIDE IT (owner, 30 Sep
+  // 2026: "i liked the previous version ... but the words in each other").
+  // Nine columns beside a panel is what overprinted; with the order open, the
+  // list keeps the tick, the order, the item, the state and the profit, and the
+  // rest is in the panel. CSS only (.ord-compact) -- the cells are the same.
   h += '<div class="panelcard" style="padding:0;overflow:hidden">'
-    +  '<div style="overflow-x:auto"><table class="kv ordtable ord-board-table" '
+    +  '<div style="overflow-x:auto"><table class="kv ordtable ord-board-table'
+    +  (_openRow ? ' ord-compact' : '') + '" '
     +  'style="width:100%;min-width:760px">'
     +  '<thead><tr>'
     +  cols.map(function(t){
@@ -758,7 +764,7 @@ function ordersRender(){
          }
          // One word per heading; what it holds is the hover text (owner,
          // 30 Sep 2026: "too much text scattered").
-         return '<th' + (t === 'Item' ? ' style="width:28%"' : '')
+         return '<th data-label="' + _oEsc(t) + '"' + (t === 'Item' ? ' style="width:28%"' : '')
               + (_COLSUB[t] ? ' title="' + _oEsc(_COLSUB[t]) + '"' : '') + '>'
               + (t === 'Due / next' ? 'Due' : t === 'Next step' ? '' : t)
               + '</th>'; }).join("")
@@ -1977,9 +1983,13 @@ function _ordShipMs(shipBy){
  * its 760px beside a 380px panel. The window alone was not enough -- with the
  * sidebar open on a 1366 laptop the table lost Profit, Margin and ROI behind a
  * sideways scroll, which is the panel replacing the table after all. */
-// 980, not 760 (30 Sep 2026): measured, the nine columns need ~960px to show
-// without overprinting; below that the order opens under its row instead.
-const ORD_SIDE_MIN = 980 + 380 + 16;
+// 520 (30 Sep 2026, master-detail): beside an open order the list is COMPACT
+// (.ord-compact -- tick, order, item, state, profit), which fits in ~520px, so
+// every desktop window (>=1100px) opens the order on the right again. The
+// nine-column table needed 980px here, which pushed a normal laptop back to
+// the under-the-row "dropdown" the owner did not want. The panel is 400-480px
+// (orders_panel.css .ord-split); 400 is the narrowest it gets.
+const ORD_SIDE_MIN = 520 + 400 + 16;
 function _ordSideMode(){
   try{
     if(!(window.matchMedia && window.matchMedia("(min-width: 1100px)").matches)) return false;
@@ -2005,6 +2015,16 @@ async function ordersToggle(orderId, accountId){
     cache[orderId] = {error: String(e)};
   }
   if(ORD.details === cache && ORD.open === orderId) ordersRender();
+}
+
+/* Escape closes the order open beside the list (escape.js's one handler calls
+ * this for .ord-side) and puts the keyboard back on its row. */
+function ordersCloseSide(){
+  const oid = ORD.open;
+  if(!oid) return;
+  ORD.open = "";
+  ordersRender();
+  _ordRefocus(oid);
 }
 
 /* Enter or Space on a focused row opens it, as a click does. */
