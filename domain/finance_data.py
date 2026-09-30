@@ -186,6 +186,7 @@ class _Acc:
         self.unmapped_skus = set()
         self.fallback = ""
         self.unattributed = 0.0        # money that had no date of its own
+        self.collect = None            # a list: undated charges kept for placing
 
     def _get(self, date, asin):
         k = (date, asin)
@@ -238,6 +239,12 @@ class _Acc:
             return
         if not date:
             # Undated: keep the money rather than lose it, and say so.
+            if self.collect is not None:
+                # Placed later, on a stable day (place_undated).
+                self.collect.append({"field": field, "sku": sku,
+                                     "amount": value, "currency": currency})
+                self.unattributed = round(self.unattributed + abs(value), 2)
+                return
             if not self.fallback:
                 return
             self.unattributed = round(self.unattributed + abs(value), 2)
@@ -255,7 +262,8 @@ class _Acc:
                 r["currency"] = currency
 
 
-def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None):
+def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None,
+                 undated=None):
     """Amazon's FinancialEvents -> rows ready for finance_daily.
 
     Returns (rows, notes). `notes` carries what could not be classified, so an
@@ -268,11 +276,18 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
     undated charge is placed on the fallback day and its amount reported in
     `unattributed`. The day it lands on is a guess; the period total is not, and
     of the two the total is the one that must not be wrong.
+
+    `undated`, when given, replaces the fallback day: it is called once with
+    every undated charge and returns where each belongs ([{date, field, sku,
+    amount, currency}]) -- finance_fetch passes undated_placer(), which gives
+    each charge a stable day so a re-sync replaces it instead of adding it.
     """
     ev = ((payload or {}).get("FinancialEvents")
           if isinstance(payload, dict) else None) or {}
     acc = _Acc(sku_to_asin)
     acc.fallback = str(fallback_date or "")[:10]
+    if undated is not None:
+        acc.collect = []
 
     # ---- shipments: the sale itself, its fees and any promo you funded -------
     for sh in (ev.get("ShipmentEventList") or []):
@@ -393,6 +408,15 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
 
     _parse_other_money(ev, acc)
 
+    placed_on = acc.fallback
+    if acc.collect is not None:
+        placements = undated(acc.collect) or []
+        for p in placements:
+            acc.add(p["date"], p.get("sku"), p["field"], p["amount"],
+                    p.get("currency") or "")
+        placed_on = ", ".join(sorted({p["date"] for p in placements})) \
+            or "the day each was first seen"
+
     rows = [r for r in acc.rows.values() if r["date"]]
     tot_u = sum(r["units"] for r in rows if r["asin"] == "*")
     kno_u = sum(r["cogs_units"] for r in rows if r["asin"] == "*")
@@ -408,7 +432,7 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
                  "%.2f of charges arrived with no date of their own (Amazon sends "
                  "the monthly subscription fee this way) and were placed on %s. The "
                  "period total is right; that one day is approximate."
-                 % (acc.unattributed, acc.fallback)) if acc.unattributed else ""}
+                 % (acc.unattributed, placed_on)) if acc.unattributed else ""}
     return rows, notes
 
 
@@ -562,6 +586,135 @@ def store(config_path, workspace_id, marketplace, rows, source="finances_api"):
     return n
 
 
+# UNDATED CHARGES: COUNTED PER HALF-MONTH, EXACTLY (review, 30 Sep 2026).
+#
+# Amazon sends the monthly Professional subscription as a ServiceFeeEvent with
+# NO PostedDate, no order and no settlement group -- three identical
+# {"FeeType": "Subscription", -30.00 GBP} events in a 90-day pull, nothing to
+# tell them apart. Each pull put them all on ITS last day, and store() replaces
+# only the days a pull returns, so earlier placements survived: a re-sync ending
+# one day earlier counted 180.00 for a window holding 90.00.
+#
+# The settlement group would date each one, but that is two more Amazon
+# endpoints. Instead finance_fetch pulls on a FIXED GRID of half-months (1st-15th,
+# 16th-end; see finance_fetch.periods): every past half-month is fetched WHOLE,
+# and the current one only ever grows. Amazon filters by the posting date it
+# does not show us, so a half-month fetched whole returns every undated charge
+# posted in it -- an exact count. Each charge is recorded once in finance_undated
+# on its half-month's last day (today, for the current one); a later pull of the
+# same half-month adds only the ones beyond those already recorded there. No
+# window ever cuts a half-month in two, so no count is ever ambiguous: neither
+# 180.00 for 90.00, nor a new month's charge hidden behind an old backfill.
+#
+# Placed ONLY for a half-month fetched completely (finance_fetch decides): a day
+# row is replaced whole by store(), and a partial pull must never replace a real
+# day's trade with a placement-only row.
+_UNDATED_LOCK = __import__("threading").Lock()
+
+
+def _undated_key(field, sku, amount, currency):
+    return (str(field or ""), str(sku or "").strip().upper(),
+            round(float(amount or 0.0), 2), str(currency or ""))
+
+
+def place_undated(config_path, workspace_id, marketplace, charges, start, end):
+    """Record this half-month's new undated charges; return all its placements.
+
+    [start, end] is ONE half-month (its end clamped to today), fetched whole.
+    -> [{date, field, sku, amount, currency}], for parse_events to add back.
+
+    Read-then-insert under a process lock AND an IMMEDIATE transaction, so two
+    syncs of one account at once (the refresher and the Finance button) cannot
+    both see "none recorded" and both insert the same 30.00 for good.
+    """
+    seen = {}
+    for c in (charges or []):
+        k = _undated_key(c.get("field"), c.get("sku"), c.get("amount"), c.get("currency"))
+        seen[k] = seen.get(k, 0) + 1
+    conn = _db.get_db(config_path)
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    with _UNDATED_LOCK:
+        if conn.in_transaction:
+            conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            placed = {}
+            for r in conn.execute(
+                    "SELECT field, sku, amount, currency, placed_on FROM finance_undated "
+                    "WHERE workspace_id=? AND marketplace=? AND placed_on>=? "
+                    "AND placed_on<=? ORDER BY placed_on, id",
+                    (workspace_id, marketplace, str(start), str(end))).fetchall():
+                placed.setdefault(_undated_key(r["field"], r["sku"], r["amount"],
+                                               r["currency"]), []).append(r["placed_on"])
+            for k, n in seen.items():
+                for _i in range(n - len(placed.get(k, []))):
+                    conn.execute(
+                        "INSERT INTO finance_undated (workspace_id, marketplace, field, "
+                        "sku, amount, currency, placed_on, first_seen_at) "
+                        "VALUES (?,?,?,?,?,?,?,?)",
+                        (workspace_id, marketplace, k[0], k[1], k[2], k[3], str(end), now))
+                    placed.setdefault(k, []).append(str(end))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+    return [{"date": d, "field": k[0], "sku": k[1] or None, "amount": k[2],
+             "currency": k[3]}
+            for k, days in placed.items() for d in days]
+
+
+def stored_placements(config_path, workspace_id, marketplace, start, end):
+    """The undated charges ALREADY recorded on start..end, recording nothing.
+
+    For a day read on its own (a half-month too busy to read whole): its row is
+    replaced, so the charges placed on it must go back in -- but a day's count
+    of undated charges is not the half-month's, so nothing new is recorded.
+    """
+    return [{"date": r["placed_on"], "field": r["field"], "sku": r["sku"] or None,
+             "amount": r["amount"], "currency": r["currency"]}
+            for r in _db.get_db(config_path).execute(
+                "SELECT field, sku, amount, currency, placed_on FROM finance_undated "
+                "WHERE workspace_id=? AND marketplace=? AND placed_on>=? "
+                "AND placed_on<=? ORDER BY placed_on, id",
+                (workspace_id, marketplace, str(start), str(end))).fetchall()]
+
+
+def undated_placer(config_path, workspace_id, marketplace, start, end):
+    """place_undated bound to one half-month, in the shape parse_events(undated=) takes."""
+    return lambda charges: place_undated(config_path, workspace_id, marketplace,
+                                         charges, start, end)
+
+
+def clear_undated_leftovers(config_path, workspace_id, marketplace, start, end,
+                            kept_dates):
+    """After a half-month was fetched WHOLE: remove no-trade rows it no longer
+    returns. -> the dates removed.
+
+    Those are undated charges an older pull filed on its own last day (the
+    fallback before place_undated). A dated event is returned again by every
+    pull that covers its day, so a day missing from a complete re-pull holds
+    nothing Amazon still reports. Only no-trade rows (no units, no sales, no
+    refunds) are removed -- the same test undated_lumps uses to recognise them --
+    and on those days only: the account total AND any per-product row the old
+    fallback filed beside it (an undated charge carrying a SellerSKU), each
+    checked for trade on its own.
+    """
+    conn = _db.get_db(config_path)
+    _no_trade = ("COALESCE(units,0)=0 AND COALESCE(principal,0)=0 "
+                 "AND COALESCE(refunds,0)=0")
+    rows = conn.execute(
+        "SELECT date FROM finance_daily WHERE workspace_id=? AND marketplace=? "
+        "AND asin='*' AND date>=? AND date<=? AND " + _no_trade,
+        (workspace_id, marketplace, str(start), str(end))).fetchall()
+    gone = sorted(r["date"] for r in rows if r["date"] not in (kept_dates or set()))
+    for d in gone:
+        conn.execute("DELETE FROM finance_daily WHERE workspace_id=? AND "
+                     "marketplace=? AND date=? AND " + _no_trade,
+                     (workspace_id, marketplace, d))
+    conn.commit()
+    return gone
+
+
 def sku_map(config_path, account_id, marketplace):
     """SKU -> ASIN from the catalogue the app already holds, AND from what sold.
 
@@ -633,9 +786,9 @@ def undated_lumps(config_path, workspace_id, marketplace, start, end):
 
     Amazon sends the monthly Subscription fee as a ServiceFeeEvent with NO
     PostedDate. parse_events keeps it rather than dropping it -- losing it would
-    understate fees by thirty pounds a month -- and places it on the last day of
-    the window being pulled, reporting the amount in `unattributed` so the caller
-    can say so. That note is returned by the SYNC and never stored, so by the
+    understate fees by thirty pounds a month -- and places it on the day it was
+    first seen (place_undated; before 30 Sep 2026, the last day of every pull),
+    reporting the amount in `unattributed` so the caller can say so. That note is returned by the SYNC and never stored, so by the
     time a screen draws the day, nothing knows the charge was undated.
 
     Measured on nestwell_goods/UK: 2026-09-07 carries 30.00 of other_fees with
