@@ -165,28 +165,29 @@ def record(config_path, action, *, category, ok=True, workspace_id="", marketpla
 # ---- reading --------------------------------------------------------------
 
 def _where(since, until, *, user_id=None, workspaces=None, marketplace=None,
-           category=None, ok=None):
+           category=None, ok=None, t=""):
     """SQL WHERE for the filters. `workspaces` None = every account (a viewer
-    with "*"); a list = only those accounts, and never a row without one."""
-    w, a = ["ts >= ?", "ts < ?"], [float(since), float(until)]
+    with "*"); a list = only those accounts, and never a row without one.
+    `t` is a table alias with its dot ("a.") for a query that joins the log."""
+    w, a = [t + "ts >= ?", t + "ts < ?"], [float(since), float(until)]
     if user_id is not None:
-        w.append("COALESCE(user_id,'') = ?")
+        w.append("COALESCE(" + t + "user_id,'') = ?")
         a.append(str(user_id))
     if workspaces is not None:
         ids = [str(x) for x in workspaces if str(x or "").strip()]
         if not ids:
             w.append("0")
         else:
-            w.append("workspace_id IN (%s)" % ",".join("?" * len(ids)))
+            w.append(t + "workspace_id IN (%s)" % ",".join("?" * len(ids)))
             a.extend(ids)
     if marketplace:
-        w.append("marketplace = ?")
+        w.append(t + "marketplace = ?")
         a.append(str(marketplace).upper())
     if category:
-        w.append("category = ?")
+        w.append(t + "category = ?")
         a.append(str(category))
     if ok is not None:
-        w.append("ok = ?")
+        w.append(t + "ok = ?")
         a.append(1 if ok else 0)
     return " AND ".join(w), a
 
@@ -248,3 +249,95 @@ def summary(config_path, since, until, **filters):
         if row and row[0]:
             p["label"] = row[0]
     return sorted(people.values(), key=lambda p: (-p["total"], p["label"]))
+
+
+# Work that CHANGED A LISTING after it had been sent to Amazon: an edit, a
+# price/stock change or a re-push on a SKU the same account had already
+# submitted. A fact from the record, not a judgement -- a price change after
+# launch is normal work; the count is shown, never scored.
+_SENT = ("amazon.submit",)
+_CHANGED_AFTER = ("listing.edit", "amazon.push", "amazon.push_optimized")
+
+
+def _action_label(action):
+    """The catalogue's own words for an action ("Edited a listing"), never the
+    code. Imported here: domain/activity_catalog imports this module."""
+    try:
+        from domain import activity_catalog as _cat
+        for e in _cat.CATALOG:
+            if e[4] == action:
+                return e[5]
+        for modes in _cat._BODY_MODES.values():
+            for code, phrase in modes.values():
+                if code == action:
+                    return phrase
+    except Exception:
+        pass
+    return action
+
+
+def breakdown(config_path, since, until, *, tz_minutes=0, **filters):
+    """The shapes the overview draws, from the same rows summary() counts.
+
+    days    [{day, actions, failed, people}] -- `day` in the VIEWER's calendar
+            (tz_minutes = JS getTimezoneOffset(), minutes WEST of UTC)
+    by_day  {user_id: {day: actions}}
+    places  [{workspace_id, marketplace, actions, failed}]
+    actions [{category, action, actions, failed, last_error}]  -- busiest first
+    after_sent {edits, skus} -- see _CHANGED_AFTER
+    """
+    from data import db as _db
+    where, args = _where(since, until, **filters)
+    shift = -float(tz_minutes or 0) * 60.0          # local = utc - offset
+    conn = _db.get_db(config_path)
+    day = "strftime('%Y-%m-%d', ts + ?, 'unixepoch')"
+    days, by_day = {}, {}
+    for r in conn.execute(
+            "SELECT " + day + " AS d, COALESCE(user_id,'') AS uid, COUNT(*) AS n, "
+            "SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) AS failed "
+            "FROM activity_log WHERE " + where + " GROUP BY d, uid", [shift] + args):
+        d = days.setdefault(r["d"], {"day": r["d"], "actions": 0, "failed": 0, "people": 0})
+        d["actions"] += int(r["n"] or 0)
+        d["failed"] += int(r["failed"] or 0)
+        d["people"] += 1
+        by_day.setdefault(r["uid"], {})[r["d"]] = int(r["n"] or 0)
+    places = [{"workspace_id": r["w"], "marketplace": r["m"], "actions": int(r["n"] or 0),
+               "failed": int(r["f"] or 0)} for r in conn.execute(
+        "SELECT COALESCE(workspace_id,'') AS w, COALESCE(marketplace,'') AS m, COUNT(*) AS n, "
+        "SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) AS f FROM activity_log WHERE " + where +
+        " GROUP BY w, m ORDER BY n DESC", args)]
+    actions = []
+    for r in conn.execute(
+            "SELECT category, action, COUNT(*) AS n, "
+            "SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) AS f FROM activity_log WHERE " + where +
+            " GROUP BY category, action ORDER BY n DESC LIMIT 40", args):
+        a = {"category": r["category"], "action": r["action"], "label": _action_label(r["action"]),
+             "actions": int(r["n"] or 0), "failed": int(r["f"] or 0), "last_error": ""}
+        if a["failed"]:
+            e = conn.execute(
+                "SELECT summary, detail FROM activity_log WHERE " + where +
+                " AND action = ? AND ok = 0 ORDER BY ts DESC, id DESC LIMIT 1",
+                args + [r["action"]]).fetchone()
+            if e:
+                try:
+                    det = json.loads(e["detail"] or "null") or {}
+                except Exception:
+                    det = {}
+                a["last_error"] = str(det.get("error") or ("refused" if det.get("refused") else "")
+                                      or e["summary"] or "")[:200]
+        actions.append(a)
+    # Changed after it was sent: the change is in the period; the submit may be
+    # any time before it, in the same account, on the same SKU.
+    ph_c = ",".join("?" * len(_CHANGED_AFTER))
+    ph_s = ",".join("?" * len(_SENT))
+    wa, aa = _where(since, until, t="a.", **filters)
+    ca = conn.execute(
+        "SELECT COUNT(*) AS n, COUNT(DISTINCT a.workspace_id || '|' || a.entity_id) AS k "
+        "FROM activity_log a WHERE " + wa +
+        " AND a.action IN (" + ph_c + ") AND a.ok = 1 AND COALESCE(a.entity_id,'') <> '' "
+        "AND EXISTS (SELECT 1 FROM activity_log s WHERE s.action IN (" + ph_s + ") AND s.ok = 1 "
+        "AND s.entity_id = a.entity_id AND s.workspace_id = a.workspace_id AND s.ts < a.ts)",
+        aa + list(_CHANGED_AFTER) + list(_SENT)).fetchone()
+    return {"days": sorted(days.values(), key=lambda d: d["day"]),
+            "by_day": by_day, "places": places, "actions": actions,
+            "after_sent": {"edits": int(ca["n"] or 0), "skus": int(ca["k"] or 0)}}
