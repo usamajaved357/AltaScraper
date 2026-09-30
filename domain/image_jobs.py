@@ -59,13 +59,56 @@ def _new_img_job(total, label="", plan=None):
              # images are filed under -- labelled with the server's open one,
              # Stop in the other tab ended it (two-tab review).
              "account": _rqa_current(_app._state)})
+    _prune_img_jobs()
+    return jid
+
+
+_IMG_JOB_TTL = 3600          # a finished batch is kept this long for its progress screen
+
+
+def _prune_img_jobs(now=None):
+    """Drop finished batches older than the TTL. Never raises.
+
+    30 Sep 2026 RAM investigation: this ran only when a NEW batch started, so the
+    last batches of the day (each holding its images) stayed in memory until the
+    next restart. It now also runs on every status read (routes/genimage_routes).
+    A RUNNING batch is never dropped at one hour -- a long batch lost its own
+    progress bar mid-run -- only after six, when its worker must be gone
+    (_run_img_jobs_bg always retires the job it ran)."""
+    import time as _t
+    now = _t.time() if now is None else now
     try:
         with _IMG_JOBS_LOCK:
-            for k in [k for k, v in _IMG_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
+            for k in [k for k, v in _IMG_JOBS.items()
+                      if now - v.get("ts", 0) > (_IMG_JOB_TTL * 6 if v.get("status") == "running"
+                                                 else _IMG_JOB_TTL)]:
                 _IMG_JOBS.pop(k, None)
     except Exception:
         pass
-    return jid
+
+
+def _slim_saved_result(result):
+    """Once a saved image has been DELIVERED, keep only its link (30 Sep 2026 RAM
+    investigation). A result held the whole picture as a base64 data: URL
+    (~5 MB each) for the life of the job, and every 2-second status poll
+    re-serialised all of them.
+
+    Called by /genimage/job_status AFTER it has sent a result, never before:
+    the studio card that first draws an image keeps data_url for Refine, and
+    /genimage/refine resolves a "/media/..." path from the app folder, not the
+    persistent disk, so a link there would not refine in production. A later
+    reader (a reopened panel) gets the saved /media link, which <img>,
+    download and Save/Drive (they skip, saved_url is set) all accept.
+    A result whose save failed keeps its bytes: they are the only copy.
+    _payload is kept: "Redo this" re-sends it as it is."""
+    try:
+        if (isinstance(result, dict) and result.get("saved_url")
+                and str(result.get("data_url") or "").startswith("data:")):
+            result["data_url"] = result["saved_url"]
+            result.pop("image_b64", None)
+    except Exception:
+        pass
+    return result
 
 
 def _job_push(jid, result):

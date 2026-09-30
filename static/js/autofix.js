@@ -73,14 +73,23 @@ async function suggestFields(sku){
       '<button class="sgall" onclick="applyAllSuggestions(' + jsArg(sku) + ')">Apply all</button></div>'+rows;
   }catch(e){ box.innerHTML='<div class="gendiag bad">\u2717 '+esc(String(e))+'</div>'; }
 }
-async function applySuggestion(sku, field, sidv){
+// Returns true only when the save was confirmed. It used to post a bare /edit
+// (no account named -- Rule 14) and mark the row "Applied" whatever came back,
+// so a refused save read as done (bug round, 30 Sep 2026). Now through the one
+// shared editField (Rule 12), with the account the action started in.
+async function applySuggestion(sku, field, sidv, acct){
   var ta=document.getElementById('sgval_'+sidv);
   var val=ta?ta.value:'';
   var btn=document.querySelector('#sg_'+sidv+' .sgapply');
   if(btn){ btn.disabled=true; btn.textContent='Applying…'; }
   try{
-    await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sku:sku,target:'attr',key:field,value:val})});
+    var pinned = acct || ((typeof acctId === 'function') ? acctId() : '');
+    var res = await editField(sku, 'attr', field, val, pinned || undefined);
+    if(!res || !res.ok){
+      if(btn){ btn.disabled=false; btn.textContent='Apply this'; }
+      toast('Not applied: '+((res && res.error) || 'the save was refused'), {err:true});
+      return false;
+    }
     var rowEl=document.getElementById('sg_'+sidv);
     if(rowEl){ rowEl.classList.add('applied'); }
     if(btn){ btn.textContent='\u2713 Applied'; }
@@ -98,18 +107,22 @@ async function applySuggestion(sku, field, sidv){
         if(host && fr){ host.innerHTML=fullData(fr); }
       }
     }catch(e){}
-  }catch(e){ if(btn){ btn.disabled=false; btn.textContent='Apply this'; } toast('Could not apply: '+e); }
+    return true;
+  }catch(e){ if(btn){ btn.disabled=false; btn.textContent='Apply this'; } toast('Could not apply: '+e, {err:true}); return false; }
 }
 async function applyAllSuggestions(sku){
   var box=document.getElementById('suggestbox_'+sid(sku));
   if(!box) return;
+  // Every write goes to the account this started in, even if the screen moves.
+  var acct=(typeof acctId === 'function') ? acctId() : '';
   var rows=box.querySelectorAll('.sgrow:not(.applied)');
+  var ok=0, bad=0;
   for(var i=0;i<rows.length;i++){
     var id=rows[i].id.replace('sg_','');
     var field=rows[i].querySelector('.sgfield').textContent;
-    await applySuggestion(sku, field, id);
+    if(await applySuggestion(sku, field, id, acct)) ok++; else bad++;
   }
-  toast('Applied all suggestions');
+  toast(bad ? ('Applied '+ok+', '+bad+' not applied') : ('Applied all '+ok+' suggestions'), bad ? {err:true} : undefined);
   loadRows();
 }
 

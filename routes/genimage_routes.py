@@ -170,6 +170,8 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         are accountable for what it costs."""
         import time as _t
         from domain import job_owner as _jo
+        from domain import image_jobs as _ij
+        _ij._prune_img_jobs()          # 30 Sep 2026 RAM investigation (see job_status)
         # AND BY ACCOUNT. Owner alone was not enough: one person working across
         # several workspaces saw a Nestwell batch's progress bar while looking at
         # Jack Reacherd, describing work that belongs to a different business and
@@ -255,6 +257,10 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
     @app.route("/genimage/job_status")
     def genimage_job_status():
         from domain import job_owner as _jo
+        from domain import image_jobs as _ij
+        # 30 Sep 2026 RAM investigation: finished batches past their hour are
+        # dropped here too, not only when a new batch starts.
+        _ij._prune_img_jobs()
         jid = request.args.get("job", "")
         with _IMG_JOBS_LOCK:
             j = _IMG_JOBS.get(jid)
@@ -264,10 +270,16 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 # Same answer as "not found" on purpose: whether a job id exists
                 # is itself information about someone else's work.
                 return jsonify({"ok": False, "error": "job not found"}), 404
-            return jsonify({"ok": True, "status": j["status"], "total": j["total"],
+            resp = jsonify({"ok": True, "status": j["status"], "total": j["total"],
                             "done": j["done"], "results": j["results"], "error": j["error"],
                             "plan": j.get("plan", []), "cancel": j.get("cancel", False),
                             "products": _by_product(j)})
+            # The body is serialised above, so each saved image has now been
+            # delivered once with its bytes; from here on the job keeps only its
+            # /media link (domain/image_jobs._slim_saved_result says why).
+            for _r in j["results"]:
+                _ij._slim_saved_result(_r)
+            return resp
 
     @app.route("/genimage/instructions", methods=["GET", "POST"])
     def genimage_instructions():

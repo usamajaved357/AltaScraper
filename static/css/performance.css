@@ -14,17 +14,10 @@
 
 .perf-two{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:12px; }
 
-.perf-bars{ display:flex; flex-direction:column; gap:7px; padding:4px 0; }
-.perf-bar-row{ display:grid; grid-template-columns:minmax(90px, 38%) 1fr auto; gap:10px; align-items:center; font-size:12px; }
-.perf-bar-k{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.perf-bar-track{ position:relative; height:8px; border-radius:4px; background:var(--line); overflow:hidden; }
-.perf-bar-track > span{ position:absolute; top:0; left:0; height:100%; border-radius:4px; }
-.perf-bar-track > .perf-bar-bad{ background:var(--red); border-radius:0 4px 4px 0; }
-.perf-bar-v{ white-space:nowrap; font-variant-numeric:tabular-nums; }
+/* The bar lists are the shared uiBars now: .ui-bars in datatable.css. */
 
 @media (max-width: 640px){
   .perf-two{ grid-template-columns:1fr; }
-  .perf-bar-row{ grid-template-columns:minmax(70px, 34%) 1fr auto; }
 }
 
 /* Panels in the pair line up and keep the page's gap (seen at 1440px). */

@@ -225,10 +225,11 @@ change needs it, via register injection.
   can_publish). READ; owner to confirm the intended gate.
 
 ## Activity log — left open (29 Sep 2026 reviews)
-- Some callers post a catalogued write naming NO account (`autofix.js` /edit,
-  `howworks.js` /approve; `_srcBody`'s `__all__`), so that work is filed under
-  no account and only a viewer of every account sees it. Existing Rule 14 gaps
-  in those callers, not in the log. READ.
+- Some callers post a catalogued write naming NO account (`_srcBody`'s
+  `__all__`), so that work is filed under no account and only a viewer of every
+  account sees it. (`autofix.js` applySuggestion and `howworks.js` setStatus
+  FIXED 30 Sep 2026: both name their account; applySuggestion also stopped
+  marking a refused save "Applied"; test_suggestion_apply_honest.py.) READ.
 - Auto-fix posts /edit in its own loop, so its automatic edits count as edits by
   whoever started it. READ, not traced further; owner may want them separate.
 - An upload's activity row does not link to its upload_log entry (no upload id
@@ -236,10 +237,16 @@ change needs it, via register injection.
 - The hook parses a JSON body again (third parse for large base64 uploads);
   the insert happens before the reply is sent (busy_timeout 30s under a long
   write lock). READ, low.
-- "Changed after sending" (Employee Performance, 30 Sep 2026) can only match a
-  product submitted ON ITS OWN: a batch /run/api_submit is recorded as a count
-  with no SKU list, so edits after a batch submit are not counted. The tile's
-  (i) says so. Fix would be one activity row per submitted SKU. READ.
+- FIXED on the dev branch (30 Sep 2026) -- "Changed after sending" (Employee
+  Performance) could only match a product submitted ON ITS OWN: a batch
+  /run/api_submit was one row with a count and no SKU list. By the owner's
+  decision (30 Sep 2026) a batch that names its SKUs is now recorded as ONE ROW
+  PER PRODUCT (domain/activity_catalog.rows; shared detail.batch_id and
+  batch_size; cap 1000, the rest counted as batch_overflow on the last row; a
+  refused batch stays one row). So a 20-product submit is 20 submits in the
+  per-person counts. A /run/api_submit with no SKUs ("every approved row")
+  still names no products and stays one row. test_activity_breakdown.py,
+  test_activity_recording.py.
 
 ## Left open after the 30 Sep 2026 bug round (reviews)
 - Variation "already in another family" reads `child_parent_sku_relationship`
@@ -653,14 +660,17 @@ redesign) listed seven items; the five kept here were re-checked in the code:
 
 ## Deferred by the owner (asked, not yet decided)
 
-- **COGS, three items** (shown 18 Aug 2026, he asked to be asked again):
-  1. Orders reads COGS System A (live), the Sales profit card reads System B
-     (frozen per order): they agree only by coincidence. Recommended first.
-  2. `/cogs/order` (correct one order's cost) has no UI.
-  3. Two cost-sheet uploads with two parsers (`/cogs/upload_sheet` and
-     `/cogs/upload`; the latter accepts a column named `price`, which on a
-     listings export is the selling price).
-  (memory: cogs-two-systems-followup)
+- **COGS, three items of 18 Aug 2026: all RESOLVED (verified 30 Sep 2026).**
+  Orders reads the same per-order cost as Sales (`order_cogs.line_cost_fn`,
+  test_cogs_one_answer); `/cogs/order` has a Cost box in the order panel
+  (test_cogs_order_reachable); both cost uploads post the file to
+  `/cogs/upload_sheet`, and `price` is not a cost column (test_cogs_one_reader).
+  Owner's two-method rule (30 Sep 2026) now also holds under "Work costs out
+  again": `freeze_range` never re-costs an order-specific cost, and retired
+  'sku'/'tracked' frozen figures give way to the product cost
+  (test_cogs_two_methods). Still open: finance_daily.cogs is costed when a day
+  is pulled, so a later order cost reaches the settled Sales cards only after
+  that day is re-pulled. Inventory: active/cogs-inventory-2026-09-30.md.
 - **Latent: `/row`, `/edit`, `/delete`, `/live/pull_row` locate a row by SKU in
   the session's workspace** unless the request names one; with shared SKUs this
   could edit another account's row. Fixing touches about 16 JS call sites, so it

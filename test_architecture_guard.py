@@ -45,7 +45,9 @@ BASELINE_SIZE = {
     "large-function": 27,
     "background-open-account": 8,
     # Added from lessons (docs/lessons.md), 29 Sep 2026, via --baseline-new-rule:
-    "swallowed-write-failure": 66,
+    # 66 -> 65 (30 Sep 2026): miles_clear_history no longer wipes the shared
+    # text store in a swallowed try (per-account history, domain/miles_history.py).
+    "swallowed-write-failure": 65,
     "config-path-literal": 9,
 }
 

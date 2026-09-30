@@ -139,27 +139,63 @@ def record(config_path, action, *, category, ok=True, workspace_id="", marketpla
         if category not in CATEGORIES:
             return None
         from data import db as _db
-        uid, label = actor(config_path, user_id)
-        safe = redact(detail) if detail else None
         conn = _db.get_db(config_path)
-        cur = conn.execute(
-            "INSERT INTO activity_log (ts, user_id, user_label, workspace_id, marketplace, "
-            "category, action, entity_type, entity_id, entity_count, summary, ok, "
-            "http_status, detail, method, path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (float(ts if ts is not None else time.time()), uid, label,
-             str(workspace_id or "")[:80], str(marketplace or "").upper()[:10],
-             category, str(action or "")[:60], str(entity_type or "")[:30],
-             str(entity_id or "")[:200],
-             int(entity_count) if entity_count is not None else None,
-             str(summary or "")[:400], 1 if ok else 0,
-             int(http_status) if http_status is not None else None,
-             json.dumps(safe, ensure_ascii=False, default=str) if safe else None,
-             str(method or "")[:8], str(path or "")[:200]))
-        rid = cur.lastrowid
+        rid = _insert(conn, config_path, action, category=category, ok=ok,
+                      workspace_id=workspace_id, marketplace=marketplace,
+                      entity_type=entity_type, entity_id=entity_id,
+                      entity_count=entity_count, summary=summary, detail=detail,
+                      http_status=http_status, method=method, path=path,
+                      user_id=user_id, ts=ts)
         conn.commit()
         return rid
     except Exception:
         return None
+
+
+def record_many(config_path, items, **common):
+    """Keep several pieces of work at once (a batch: one row per product), in
+    one commit. `items` are record()'s keyword arguments with "action";
+    `common` (method, path, ...) applies to each. -> how many were kept."""
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        n, who = 0, {}
+        for it in items:
+            it = dict(common, **it)
+            if it.get("category") not in CATEGORIES:
+                continue
+            u = it.get("user_id")
+            if u not in who:
+                who[u] = actor(config_path, u)
+            _insert(conn, config_path, it.pop("action"), who=who[u], **it)
+            n += 1
+        conn.commit()
+        return n
+    except Exception:
+        return 0
+
+
+def _insert(conn, config_path, action, *, category, ok=True, workspace_id="", marketplace="",
+            entity_type="", entity_id="", entity_count=None, summary="", detail=None,
+            http_status=None, method="", path="", user_id=None, ts=None, who=None):
+    """One INSERT of record()'s row (no commit). -> the row id. `who` is
+    actor()'s answer when the caller already has it (a batch asks once)."""
+    uid, label = who or actor(config_path, user_id)
+    safe = redact(detail) if detail else None
+    cur = conn.execute(
+        "INSERT INTO activity_log (ts, user_id, user_label, workspace_id, marketplace, "
+        "category, action, entity_type, entity_id, entity_count, summary, ok, "
+        "http_status, detail, method, path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (float(ts if ts is not None else time.time()), uid, label,
+         str(workspace_id or "")[:80], str(marketplace or "").upper()[:10],
+         category, str(action or "")[:60], str(entity_type or "")[:30],
+         str(entity_id or "")[:200],
+         int(entity_count) if entity_count is not None else None,
+         str(summary or "")[:400], 1 if ok else 0,
+         int(http_status) if http_status is not None else None,
+         json.dumps(safe, ensure_ascii=False, default=str) if safe else None,
+         str(method or "")[:8], str(path or "")[:200]))
+    return cur.lastrowid
 
 
 # ---- reading --------------------------------------------------------------
@@ -336,6 +372,8 @@ def breakdown(config_path, since, until, *, tz_minutes=0, **filters):
         "FROM activity_log a WHERE " + wa +
         " AND a.action IN (" + ph_c + ") AND a.ok = 1 AND COALESCE(a.entity_id,'') <> '' "
         "AND EXISTS (SELECT 1 FROM activity_log s WHERE s.action IN (" + ph_s + ") AND s.ok = 1 "
+        # A batch submit is one row PER SKU (activity_catalog.rows), so every
+        # product it sent is found here by its own entity_id.
         "AND s.entity_id = a.entity_id AND s.workspace_id = a.workspace_id AND s.ts < a.ts)",
         aa + list(_CHANGED_AFTER) + list(_SENT)).fetchone()
     return {"days": sorted(days.values(), key=lambda d: d["day"]),

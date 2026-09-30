@@ -248,3 +248,21 @@
 .ui-callout.bad{border-color:var(--as-danger-border);background:var(--as-danger-bg);color:var(--as-danger)}
 .ui-callout.ok{border-color:var(--as-success-border, var(--as-neutral-border));background:var(--as-success-bg, var(--as-neutral-bg))}
 .ui-callout.ok > i:first-child{color:var(--ok)}
+
+/* uiBars (pageui.js, graph audit 30 Sep 2026): a labelled bar list -- name,
+ * bar against the largest row, figure. Was .perf-bar-* (Employee Performance);
+ * AI usage and the ASIN monitor had their own copies. "tight" is for short
+ * labels such as a marketplace code. */
+.ui-bars{display:flex;flex-direction:column;gap:7px;padding:4px 0}
+.ui-bar-row{display:grid;grid-template-columns:minmax(90px, 38%) 1fr auto;gap:10px;align-items:center;font-size:12px}
+.ui-bars.tight .ui-bar-row{grid-template-columns:40px 1fr auto}
+.ui-bar-k{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ui-bars.tight .ui-bar-k{font-weight:600;color:var(--ink2)}
+.ui-bar-track{position:relative;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.ui-bar-track > span{position:absolute;top:0;left:0;height:100%;border-radius:4px}
+.ui-bar-track > .ui-bar-bad{background:var(--red);border-radius:0 4px 4px 0}
+.ui-bar-v{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+@media (max-width: 640px){
+  .ui-bar-row{grid-template-columns:minmax(70px, 34%) 1fr auto}
+  .ui-bars.tight .ui-bar-row{grid-template-columns:40px 1fr auto}
+}

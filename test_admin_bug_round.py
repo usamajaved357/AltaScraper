@@ -140,8 +140,8 @@ try:
     miles_routes.register(mapp, _miles_set_pref=lambda *a: True, _miles_get_pref=lambda: {},
                           CONFIG_PATH=CFG, SCRIPT="x.py", _MILES_STATE={},
                           _active_account=lambda: open_acct,
-                          _miles_load_history=lambda: set(),
-                          _miles_save_history=lambda s: None,
+                          # the history is no longer injected: it is per account
+                          # in domain/miles_history.py (test_miles_history_per_account.py)
                           _run_lock=threading.Lock(), _running=_running)
     mc = mapp.test_client()
     r = mc.post("/miles/stop", json={"account": "mine"})

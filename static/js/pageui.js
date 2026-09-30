@@ -228,6 +228,43 @@ function uiNote(tone, short, detail) {
     (detail ? " " + uiHint(detail) : "") + "</div>";
 }
 
+/* A LABELLED BAR LIST: a name, a bar sized against the largest row, the figure.
+ * Lifted out of performance.js's perfBars (graph audit, 30 Sep 2026, CLAUDE.md
+ * Rule 12): Employee Performance, AI usage and the ASIN monitor each drew their
+ * own copy of this. Proportion is the point -- "which one is most of it" reads
+ * off bars faster than off a column of numbers.
+ *
+ * rows   the items, drawn in the order given (the caller sorts).
+ * o.label(r)  text for the row (escaped here).
+ * o.value(r)  the number the bar is sized by.
+ * o.text(r)   optional HTML for the figure; defaults to the value itself.
+ * o.bad(r)    optional part of the value that went wrong, drawn in red inside
+ *             the bar, so where things fail is visible without reading.
+ * o.colour(r) optional CSS colour of the bar (a token); default --as-info.
+ * o.hint(r)   optional extra HTML after the figure (usually a uiHint).
+ * o.empty     text when there are no rows (default "Nothing recorded.").
+ * o.cls       optional extra class: "tight" for short labels such as "DE". */
+function uiBars(rows, o) {
+  o = o || {};
+  const list = rows || [];
+  if (!list.length) return '<div class="cc" style="padding:8px 0">' + esc(o.empty || "Nothing recorded.") + "</div>";
+  const val = function (r) { const n = Number(o.value ? o.value(r) : 0); return isFinite(n) && n > 0 ? n : 0; };
+  const max = Math.max.apply(null, list.map(val)) || 1;
+  return '<div class="ui-bars' + (o.cls ? " " + esc(o.cls) : "") + '">' + list.map(function (r) {
+    const v = val(r), lab = String(o.label ? o.label(r) : "");
+    const w = 100 * v / max;
+    const bad = o.bad ? Math.min(v, Math.max(0, Number(o.bad(r)) || 0)) : 0;
+    const fw = v ? w * bad / v : 0;
+    return '<div class="ui-bar-row"><span class="ui-bar-k" title="' + esc(lab) + '">' + esc(lab) + "</span>"
+      + '<span class="ui-bar-track"><span style="width:' + w.toFixed(1) + "%;background:"
+      + (o.colour ? o.colour(r) : "var(--as-info)") + '"></span>'
+      + (fw ? '<span class="ui-bar-bad" style="left:' + (w - fw).toFixed(1) + "%;width:" + fw.toFixed(1) + '%"></span>' : "")
+      + "</span>"
+      + '<span class="ui-bar-v">' + (o.text ? o.text(r) : esc(String(o.value ? o.value(r) : "")))
+      + (o.hint ? " " + o.hint(r) : "") + "</span></div>";
+  }).join("") + "</div>";
+}
+
 // An empty state that says what to DO. Every screen has one and most of them
 // said "nothing here", which is indistinguishable from broken.
 function uiEmpty(title, body, action) {

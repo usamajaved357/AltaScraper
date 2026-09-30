@@ -311,22 +311,20 @@ function monChart(s){
       : '';
     return;
   }
-  const max = bm[keys[0]] || 1;
   const total = keys.reduce(function(a, k){ return a + bm[k]; }, 0);
-  const bars = keys.map(function(k){
-    const n = bm[k];
-    const pct = Math.round(n / max * 100);
-    return '<div class="monbar-row">'
-      + '<span class="monbar-lbl">' + esc(k) + '</span>'
-      + '<span class="monbar-track"><span class="monbar-fill" style="width:'
-      + pct + '%"></span></span>'
-      + '<span class="monbar-n">' + n + '</span></div>';
-  }).join("");
+  // The shared bar list (uiBars, pageui.js -- graph audit 30 Sep 2026), amber
+  // because an unknown seller is a warning, not a failure.
+  const bars = uiBars(keys, {
+    cls: "tight",
+    label: function(k){ return k; },
+    value: function(k){ return bm[k]; },
+    colour: function(){ return "var(--warn)"; },
+  });
   host.innerHTML = '<div class="moncard">'
     + '<div class="moncard-head"><b>Unknown sellers by marketplace</b>'
     + '<span class="cc">' + total + ' across ' + keys.length + ' market'
     + (keys.length !== 1 ? 's' : '') + ' · worst is ' + esc(keys[0]) + '</span></div>'
-    + '<div class="monbars">' + bars + '</div>'
+    + bars
     + '<div class="cc moncard-foot">Name a seller to stop counting it. '
     + uiHint('A seller this app has not been told about. Name one and it stops '
       + 'counting here — use Import seller names for a list of them.')

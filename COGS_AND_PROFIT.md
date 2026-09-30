@@ -286,26 +286,22 @@ in the formula. It tightens on its own as more orders settle.
 
 ### 5. Orders and Sales can disagree about the same order
 
-`/orders/detail` and `/orders/list` read **System A** (live, product-level).
-The Sales profit card goes through `order_profit.for_period` → `order_lines.cogs`
-— **System B** (frozen).
-
-They agree today only by coincidence: every frozen cost is marked `sku`, which is
-what System A returns too. The day a tracked supplier price lands, or anyone
-corrects a single order, **the same order will show one profit on Orders and a
-different one inside Sales.**
-
-Correcting one order (`/cogs/order`) is now wired up in `static/js/orders.js` —
-that part of the older note is out of date — which makes this divergence
-reachable rather than theoretical.
+**Resolved.** `/orders/list`, `/orders/detail` and the finance pull all price a
+line through `domain/order_cogs.line_cost_fn` — the cost stored on the order
+line (an order-specific cost, or the product cost frozen when the order was
+seen), else the product cost — which is what the Sales profit card reads.
+Correcting one order (`/cogs/order`) has a Cost box in the order panel.
+Owner's rule (30 Sep 2026): order-specific cost > product cost, for that order
+only; `freeze_range` never re-costs an order-specific cost, even on "Work costs
+out again" (test_cogs_two_methods.py).
 
 ### 6. Two upload paths for the same store
 
-Listings' "COGS CSV" → `/cogs/upload_sheet` (server-side, reads spreadsheets,
-per-row report). The Sales bar's "Upload a cost sheet" → `/cogs/upload`
-(browser-side, CSV only). Same destination, so nothing is lost — but its column
-matcher accepts a column named `price`, which on a listings export is the
-**selling** price, not the cost. A Rule 12 duplication with a real trap in it.
+**Resolved.** Both the Listings "Upload costs" and the Sales bar's "Upload a
+cost sheet" call `cogsUploadOpen()` and post the file to `/cogs/upload_sheet`
+(one server-side reader, `domain/cogs.COST_COLS`, which has never accepted a
+bare `price`). `/cogs/upload` survives only for callers that send parsed rows,
+and writes through `cogs_store.set_cost` like everything else.
 
 ### 7. One stale claim in the code
 

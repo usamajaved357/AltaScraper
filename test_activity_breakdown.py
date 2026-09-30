@@ -86,6 +86,54 @@ check("two edits on one product, after its submit, same account",
 check("a period that starts after the submit still sees it (the submit is any time before)",
       A.breakdown(CFG, T - 10, T + 100)["after_sent"], {"edits": 2, "skus": 1})
 
+print("\n== a BATCH submit is one row PER PRODUCT (owner, 30 Sep 2026) ==")
+from domain import activity_catalog as C      # noqa: E402
+
+
+class _Reply:                                  # a streamed run's reply
+    status_code = 200
+    is_streamed = True
+
+
+B0 = T + 10000
+rec("listing.edit", "listings", ts=B0 + 5, sku="B07")                      # before the batch
+twenty = ["B%02d" % i for i in range(1, 21)]
+batch = C.rows("GET", "/run/api_submit", {}, {"account": "acct_a", "marketplace": "UK",
+                                              "skus": ",".join(twenty)}, None, _Reply())
+check("a 20-product batch -> 20 rows, each one product",
+      (len(batch), [b["entity_id"] for b in batch], {b["entity_count"] for b in batch}),
+      (20, twenty, {1}))
+check("  all the same batch_id and batch_size, the same account and action",
+      (len({b["detail"]["batch_id"] for b in batch}), {b["detail"]["batch_size"] for b in batch},
+       {b["workspace_id"] for b in batch}, {b["action"] for b in batch}),
+      (1, {20}, {"acct_a"}, {"amazon.submit"}))
+check("  each says which product and that it was one of 20",
+      batch[7]["summary"], "Submitted listings to Amazon B08 (one of 20)")
+check("  kept in one go", A.record_many(CFG, [dict(b, ts=B0 + 10, user_id="u_ali") for b in batch],
+                                        method="GET", path="/run/api_submit"), 20)
+rec("listing.edit", "listings", ts=B0 + 20, sku="B08")                     # in the batch: counts
+rec("listing.edit", "listings", ts=B0 + 30, sku="B99")                     # not in it
+rec("listing.edit", "listings", ts=B0 + 40, sku="B08", ws="acct_b")        # other account's B08
+BW = (B0, B0 + 100)
+check("an edit on a product sent in a batch counts; B99, acct_b's B08 and the earlier B07 do not",
+      A.breakdown(CFG, *BW)["after_sent"], {"edits": 1, "skus": 1})
+people = {p["user_id"]: p for p in A.summary(CFG, *BW)}
+check("  the batch counts as 20 submits, 20 items (no double count)",
+      people["u_ali"]["by_category"]["amazon"], {"actions": 20, "failed": 0, "items": 20})
+
+check("a refused batch stays ONE row (nothing was attempted)",
+      len(C.rows("GET", "/run/api_submit", {}, {"account": "acct_a", "skus": "X1,X2,X3"},
+                 None, type("R", (), {"status_code": 403, "is_streamed": True})())), 1)
+big = C.rows("GET", "/run/api_submit", {}, {"account": "acct_a",
+             "skus": ",".join("Z%04d" % i for i in range(C.MAX_BATCH_ROWS + 5))}, None, _Reply())
+check("past the cap the rest are counted on the last row",
+      (len(big), big[-1]["detail"].get("batch_overflow"), "batch_overflow" in big[0]["detail"]),
+      (C.MAX_BATCH_ROWS, 5, False))
+check("one product is still one row with no batch", [
+      (r["entity_id"], "batch_id" in r["detail"]) for r in C.rows(
+          "GET", "/run/api_submit", {}, {"account": "acct_a", "skus": "ONE"}, None, _Reply())],
+      [("ONE", False)])
+
 print("\n== the summary's filters apply ==")
 check("one person", sorted(A.breakdown(CFG, *ALL, user_id="u_sara")["by_day"]), ["u_sara"])
 lim = A.breakdown(CFG, *ALL, workspaces=["acct_b"])

@@ -1763,14 +1763,14 @@ async function ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace){
   // it (master audit, UX #1). Clearing stays possible -- it is now a question.
   if(raw === "" && el && el.dataset && el.dataset.has === "1"){
     const _msg = "Clear the cost on this order? This line goes back to "
-               + "“not known”. (To change it, type the new cost instead.)";
+               + "the product's own cost (or “not known” if it has none). To change it, type the new cost instead.";
     const _ok = (typeof uiConfirm === "function") ? await uiConfirm(_msg) : false;
     if(!_ok) return;
   }
   try{
     const j = await (await fetch("/cogs/order", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      // account_id is the key request_account.named() reads. "account" is not.
+      // "account" is read by request_account.named() (ACCOUNT_KEYS) -- the ORDER'S account, not the open one.
       body: JSON.stringify({account: accountId || "",
                             marketplace: marketplace || "",
                             order_id: orderId, sku: sku || "",
@@ -1784,7 +1784,7 @@ async function ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace){
     }
     if(typeof toast === "function"){
       toast(raw === ""
-        ? "Cost cleared — that line is back to “not known”."
+        ? "Cost cleared — that line uses the product's own cost again."
         : "Saved at " + raw + " per unit. This order only.");
     }
     // Redraw from the server. The panel's figures AND the row's profit, margin

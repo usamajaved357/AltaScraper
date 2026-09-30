@@ -449,7 +449,7 @@ function sourcingRender(j){
     +  'same question about the price the rules would set instead.">Profit now</th>'
     +  '<th title="Today&#39;s profit as a share of the cash you put in">ROI now</th>'
     +  '<th title="What this SKU&#39;s cheapest supplier has been charging">Trend</th>'
-    +  '<th style="width:14px"></th>'
+    +  '<th style="width:58px" title="Armed (bolt) or dry run, which way the price may move (up only / both ways / = floor), and the status dot">Rule</th>'
     +  '</tr></thead><tbody id="rp_body">';
   // Filtered, and the INDEX is the row's real position in SRC_ROWS -- the panel
   // ids are built from it, and renumbering them under a filter would make

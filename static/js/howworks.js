@@ -581,8 +581,10 @@ async function setStatus(sku,status,btn){
   btn.disabled=true; const old=btn.textContent; btn.textContent="…";
   try{
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }   // multi-tab: target this card's tab
+    // Names its account (Rule 14; known-issues "Activity log"): SKUs are not
+    // unique across accounts, and an unnamed write lands in whichever is open.
     const res=await fetch("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku,status})});
+      body:JSON.stringify((typeof acctBody==="function") ? acctBody({sku,status}) : {sku,status})});
     const j=await res.json();
     if(j.ok){const r=ROWS.find(x=>x.sku===sku); if(r)r.status=status; render(); toast(status==="APPROVED"?"Approved":"Set to needs-review");}
     else {toast("Failed: "+j.error); btn.disabled=false; btn.textContent=old;}

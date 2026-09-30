@@ -65,8 +65,9 @@ light value derived by role: surfaces lighten, text darkens to >= 4.5:1, borders
 stay visible, see-through white becomes see-through ink). A colour within dE 4 of
 a token became the token. Exceptions, correct in both themes: black shadows and
 scrims, and pale text on a solid coloured ground. The PDP never snaps (exact
-mockup values). SVG charts colour by class (`.sc-grid`, `.sc-tick`, `.spc-grid`,
-`.ri-plot`), never `fill="#.."` (presentation attributes cannot take `var()`).
+mockup values). SVG charts colour by class (`.sc-grid`, `.sc-tick`, `.spc-axis`,
+`.ri-plot`) or a `style="fill:var(--x)"`, never `fill="#.."` (presentation
+attributes cannot take `var()`).
 New colour work: use a token; if none fits, add the literal to CSS and re-run the
 tool (`--apply FILE`). `color-mix()` needs Chrome 111+ / Safari 16.2+.
 test_light_theme.py pins all of this.
@@ -112,7 +113,8 @@ bottom-right corner and must win. Each `<link>` carries its reason.
 | Empty / error / loading | `uiEmpty`, `uiError`, `.empty`, motion.js skeletons | a failure never looks like "no data"; all-clear says what was checked |
 | Explanation [decided 30 Sep 2026, owner: "less text explanatory but more visual explanatory"] | `uiHint(text)` (an (i) with the text on hover/screen reader), `uiNote(tone, short, detail)` (one coloured line, detail behind its (i)); pageui.js + datatable.css `.ui-hint`/`.ui-callout` (NOT `.ui-note`, which is the stat card's note) | a screen never opens with a paragraph: numbers, chips and colour first; sentences go behind an (i) |
 | Plain P&L | pnl.js `pnlSummary/pnlPlainHtml`, pnl.css | reads the statement's own lines; rows always total "Your costs" |
-| Counts as shapes (Employee Performance, 30 Sep 2026) | performance.js `perfMix` (stacked share bar, counts in its title/aria-label), `perfBars` (labelled bar list, failed part in red inside the bar), per-day chart on `salesCombo` at `scChartWidth`; performance.css `.perf-*` | never a score; a one-day period draws no chart; candidate to lift `perfBars` into pageui.js (graph audit: ~8 hand-made bar lists) |
+| Counts as shapes (Employee Performance, 30 Sep 2026) | performance.js `perfMix` (stacked share bar, counts in its title/aria-label), `perfBars` (a thin wrapper on the shared `uiBars`), per-day chart on `salesCombo` at `scChartWidth`; performance.css `.perf-*` | never a score; a one-day period draws no chart |
+| Labelled bar list (graph audit, 30 Sep 2026) | pageui.js `uiBars(rows, {label, value, text, bad, colour, hint, empty, cls})`; datatable.css `.ui-bars` / `.ui-bar-*` (`.tight` for short labels). Used by Employee Performance, AI usage (`_aiBars`), ASIN monitor (`monChart`) | the red `bad` part sits inside the bar; rows drawn in the caller's order |
 | Orders board | `table.ordtable.ord-board-table{table-layout:auto}` | the board is NOT fixed-layout like other `table.kv`: its nine columns need ~960px; 641–900px uses the phone card rows |
 | Needs-attention list | daily.js `.dy-*` | card per group, count badge, 4px tone bar, area overline, one action |
 

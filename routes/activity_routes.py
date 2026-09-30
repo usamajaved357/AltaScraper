@@ -85,17 +85,19 @@ def register(app, *, CONFIG_PATH, APP_PASSWORD=""):
             ct = (request.content_type or "").lower()
             files = request.files if ct.startswith("multipart/form-data") else None
             from flask import g
-            d = _cat.describe(request.method, request.path, body, request.args,
-                              files, response, before=getattr(g, "_activity_before", None))
-            if d:
+            # One row -- or, for a batch naming its products, one per product
+            # (owner, 30 Sep 2026; domain/activity_catalog.rows).
+            ds = _cat.rows(request.method, request.path, body, request.args,
+                           files, response, before=getattr(g, "_activity_before", None))
+            if ds:
                 from domain import activity as _act
-                # A person as the entity (team work) is named, not shown as an id.
-                if d.get("entity_type") == "user" and d.get("entity_id"):
-                    p = _act.person(CONFIG_PATH, d["entity_id"])
-                    if p.get("label"):
-                        d["summary"] = d["summary"].replace(d["entity_id"], p["label"])
-                _act.record(CONFIG_PATH, d.pop("action"), method=request.method,
-                            path=request.path, **d)
+                for d in ds:
+                    # A person as the entity (team work) is named, not shown as an id.
+                    if d.get("entity_type") == "user" and d.get("entity_id"):
+                        p = _act.person(CONFIG_PATH, d["entity_id"])
+                        if p.get("label"):
+                            d["summary"] = d["summary"].replace(d["entity_id"], p["label"])
+                _act.record_many(CONFIG_PATH, ds, method=request.method, path=request.path)
         except Exception:
             pass
         return response

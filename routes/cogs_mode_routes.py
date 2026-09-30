@@ -282,7 +282,7 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account,
                 return jsonify({"ok": False,
                                 "error": "cost cannot be negative"}), 400
         else:
-            cost = None          # clearing it puts the order back to unknown
+            cost = None          # clearing it puts the order back on the product cost (owner rule, 30 Sep 2026)
         n = _oc.set_for_order(CONFIG_PATH, wsid, mkt, oid, cost,
                               sku=b.get("sku"))
         if not n:
