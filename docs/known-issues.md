@@ -196,10 +196,13 @@ change needs it, via register injection.
   handling.py), FBA included -- Amazon's behaviour not checked. READ, low.
 - Settlement tab ad spend uses per-product Ads API spend only (no invoice
   fallback). READ.
-- **PPC sales are 30-day attribution** (spCampaigns sales30d/purchases30d),
-  while Seller Central's Campaign Manager shows 7-day for sellers, so ad sales,
-  ACOS and ad profit read higher here. Needs one raw report with both columns
-  first (Rule 4). READ.
+- **PPC sales were 30-day attribution** -- FIXED 30 Sep 2026 from the
+  owner-approved capture (settled week: 30d was 48% above 7d): every Sponsored
+  Products report now asks for sales7d/purchases7d/unitsSoldClicks7d (all five
+  accepted by Amazon before the change) and MAPPING reads 7d first.
+  test_ads_attribution_7d.py. LEFT: ad rows already stored keep their 30-day
+  figures until those days are pulled again, so older days read higher than
+  newer ones until then. READ.
 - **Campaign controls cover Sponsored Products only** (Brands/Display need
   their own v3/v4 endpoints). Amazon "rules" (automation) are not built; the
   Dr PPC console's plans/rules only propose. READ.
