@@ -90,15 +90,27 @@ def rate(top, bottom, pct=True, nd=1):
 
 
 def brand_terms(config_path, workspace_id):
-    """The seller's own brand words, lower-cased. [] when none are set."""
+    """The seller's own brand words, lower-cased. [] when none are set.
+
+    WORDS OF TWO LETTERS OR MORE ONLY (owner, 30 Sep 2026: "branded keywords
+    in the ppc analytics is not counting brand keywords as words, it is
+    counting a l t as separate letters"). The save was fixed to keep "alta" as
+    one word and refuse single letters, but the letters stored BEFORE that fix
+    are still in ppc_brand_terms -- and a one-letter word is a substring of
+    nearly every search term, so it branded the whole account. This is the one
+    reader (Rule 12), so every screen (PPC analytics, Search terms, Weekly)
+    ignores them here; nothing is deleted."""
     from data import db as _db
     try:
         conn = _db.get_db(config_path)
-        return [str(r["term"]).strip().lower()
-                for r in conn.execute(
-                    "SELECT term FROM ppc_brand_terms WHERE workspace_id=? "
-                    "ORDER BY term", (workspace_id,))
-                if str(r["term"] or "").strip()]
+        out = []
+        for r in conn.execute(
+                "SELECT term FROM ppc_brand_terms WHERE workspace_id=? "
+                "ORDER BY term", (workspace_id,)):
+            w = str(r["term"] or "").strip().lower()
+            if len(w) >= 2 and w not in out:
+                out.append(w)
+        return out
     except Exception:
         return []
 
