@@ -171,8 +171,11 @@ try:
     by = {(i["date"], i["order_id"]): i for i in r["items"]}
     check("a refund sits on the day the money went back", by[("2026-08-18", "P-0")]["amount"], 15.0)
     check("  a full refund is called full", by[("2026-08-18", "P-0")]["ref"], "full refund of 15.00")
+    # Re-pinned 30 Sep 2026 (change review): S-1 is 2 units for 43.99 and ONE
+    # unit was refunded, so the refund is judged against that unit (22.00), not
+    # the whole order -- pnl_ledger.returned_price. Still partial.
     check("  a partial one says of what", by[("2026-08-25", "S-1")]["ref"],
-          "partial: 10.00 of 43.99")
+          "partial: 10.00 of 22.00")
     check("  Amazon's day total with no order held is its own item",
           by[("2026-08-18", "")]["amount"], 4.0)
     check("  an order posting missing from the day total is shown, and set against",

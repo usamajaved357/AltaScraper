@@ -696,15 +696,20 @@
       function returnsSetView(v){
         var an = document.getElementById("retbody");
         var li = document.getElementById("returns_list");
+        var rf = document.getElementById("returns_refunds");
         var ba = document.getElementById("retview_analysis");
         var bl = document.getElementById("retview_list");
+        var br = document.getElementById("retview_refunds");
         if(!an || !li) return;
-        var isList = (v === "list");
-        an.style.display = isList ? "none" : "";
+        var isList = (v === "list"), isRef = (v === "refunds");
+        an.style.display = (isList || isRef) ? "none" : "";
         li.style.display = isList ? "" : "none";
-        if(ba) ba.classList.toggle("on", !isList);
+        if(rf) rf.style.display = isRef ? "" : "none";
+        if(ba) ba.classList.toggle("on", !isList && !isRef);
         if(bl) bl.classList.toggle("on", isList);
+        if(br) br.classList.toggle("on", isRef);
         if(isList && typeof returnsListOnOpen === "function") returnsListOnOpen();
+        if(isRef && typeof refundsOnOpen === "function") refundsOnOpen();
       }
     </script>
 
@@ -1074,6 +1079,8 @@
      intelligence above it, and reads a different source (the stored returns,
      not the last pull). -->
 <script src="/static/js/returnslist.js?v={{ ASSET_V }}"></script>
+<!-- Refunds: was each return actually paid back (money vs the returns report). -->
+<script src="/static/js/returnrefunds.js?v={{ ASSET_V }}"></script>
 <!-- The weekly KPI pack. Same two-buttons-per-report shape as Returns above. -->
 <script src="/static/js/weekly.js?v={{ ASSET_V }}"></script>
 <!-- The daily round: the morning checklist, run by the app. -->

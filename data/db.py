@@ -392,7 +392,20 @@ CREATE TABLE IF NOT EXISTS returns (
     comment       TEXT,                -- FBA only
     source        TEXT,                -- 'report' | 'upload'
     first_seen    TEXT,
-    fetched_at    TEXT
+    fetched_at    TEXT,
+    -- Seller-fulfilled report only (see _ADDED_COLUMNS for why): the refund
+    -- screen's receipt date, tracking and claim flags.
+    order_date    TEXT,
+    rma_id        TEXT,
+    tracking_id   TEXT,
+    carrier       TEXT,
+    label_type    TEXT,
+    label_cost    REAL,
+    delivered     TEXT,                -- return delivery date (reached you)
+    a_to_z        TEXT,
+    in_policy     TEXT,
+    return_type   TEXT,
+    safet_state   TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_returns_identity
     ON returns(workspace_id, marketplace, identity);
@@ -1727,6 +1740,23 @@ _ADDED_COLUMNS = [
     # thing the app has ever pulled -- so the default back-fills them correctly
     # rather than leaving them unattributed. See the note in SCHEMA: without it
     # a Brands pull overwrites the Products figures for the same day.
+    # THE REFUNDS SCREEN (owner, 30 Sep 2026: "if we have already paid the
+    # refunds and what is the status of the returns"). The seller-fulfilled
+    # returns report always carried these columns and the parser dropped them;
+    # the delivery date is the one that matters most -- Amazon's refund clock
+    # for a seller-fulfilled return starts when the parcel reaches the seller.
+    # NULL on every older row until the next pull refreshes it.
+    ("returns", "order_date", "TEXT"),
+    ("returns", "rma_id", "TEXT"),
+    ("returns", "tracking_id", "TEXT"),
+    ("returns", "carrier", "TEXT"),
+    ("returns", "label_type", "TEXT"),
+    ("returns", "label_cost", "REAL"),
+    ("returns", "delivered", "TEXT"),
+    ("returns", "a_to_z", "TEXT"),
+    ("returns", "in_policy", "TEXT"),
+    ("returns", "return_type", "TEXT"),
+    ("returns", "safet_state", "TEXT"),
     ("ads_daily", "ad_product", "TEXT NOT NULL DEFAULT 'SPONSORED_PRODUCTS'"),
     ("ads_campaign_daily", "ad_product",
      "TEXT NOT NULL DEFAULT 'SPONSORED_PRODUCTS'"),

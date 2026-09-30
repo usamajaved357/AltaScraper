@@ -213,6 +213,69 @@ def _order_postings(conn, workspace_id, marketplace, start, end, col):
     return out
 
 
+def is_full_refund(back, price):
+    """THE one test of "was the buyer refunded in full" (Rule 12: refund_events
+    and domain/return_refunds ask this). `back` is what went back INCLUDING the
+    VAT Amazon itemised beside it; `price` is what the buyer paid for the order
+    (order_lines revenue + shipping, which is already net of any promotion)."""
+    return _n(back) >= _n(price) - 0.005
+
+
+def returned_price(lines, returned=None, refund_units=None, back=None):
+    """What the RETURNED part of an order cost the buyer -- the price a refund
+    is "full" against (Rule 12: refund_events and domain/return_refunds ask
+    this). Change review, 30 Sep 2026: comparing with the WHOLE order called a
+    full refund of one item out of two "partial".
+
+    lines         [{sku, units, gross}] -- the order's lines (gross = revenue +
+                  shipping, already net of any promotion).
+    returned      {SKU (upper case): qty} when the return names its items: the
+                  price of those lines, qty x the line's unit price.
+    refund_units  when only the COUNT of refunded units is known (Amazon's
+                  refund posting names no SKU): with one line, units x its unit
+                  price; with several, the one line whose price for that many
+                  units is closest to `back` (what went back).
+    Falls back to the whole order when nothing matches. None with no lines."""
+    ls = [L for L in (lines or []) if _n(L.get("gross")) > 0]
+    if not ls:
+        return None
+    whole = round(sum(_n(L["gross"]) for L in ls), 2)
+
+    def part(L, q):
+        u = int(_n(L.get("units")) or 1)
+        return _n(L["gross"]) / u * min(max(int(q), 1), u)
+
+    if returned:
+        hit = [(L, returned[str(L.get("sku") or "").upper()]) for L in ls
+               if str(L.get("sku") or "").upper() in returned]
+        if hit:
+            return round(sum(part(L, q) for L, q in hit), 2)
+        return whole
+    ru = int(_n(refund_units))
+    if ru > 0 and ru < sum(int(_n(L.get("units")) or 1) for L in ls):
+        cands = [part(L, ru) for L in ls]
+        if back is None:
+            return round(max(cands), 2)
+        return round(min(cands, key=lambda c: abs(c - _n(back))), 2)
+    return whole
+
+
+def _lines_for(conn, workspace_id, marketplace, order_ids):
+    """{order_id: [{sku, units, gross}]} for these orders, from order_lines."""
+    out = {}
+    ids = sorted({str(o) for o in order_ids if o})
+    for i in range(0, len(ids), 400):
+        chunk = ids[i:i + 400]
+        for r in conn.execute(
+                "SELECT order_id, COALESCE(sku,'') sku, COALESCE(units,0) units, "
+                "COALESCE(revenue,0)+COALESCE(shipping,0) gross FROM order_lines "
+                "WHERE workspace_id=? AND marketplace=? AND order_id IN (%s)"
+                % ",".join("?" * len(chunk)), [workspace_id, marketplace] + chunk):
+            out.setdefault(r["order_id"], []).append(
+                {"sku": r["sku"], "units": r["units"], "gross": r["gross"]})
+    return out
+
+
 def refund_events(config_path, workspace_id, marketplace, start, end):
     """THE per-order refund EVENTS reader (Rule 12: the P&L's Refunds breakdown
     and any other screen that lists refund events use this; order_finance.
@@ -229,19 +292,26 @@ def refund_events(config_path, workspace_id, marketplace, start, end):
     separately)."""
     conn = _db.get_db(config_path)
     out = []
-    for r in _order_postings(conn, workspace_id, marketplace, start, end, "refunds"):
+    posts = list(_order_postings(conn, workspace_id, marketplace, start, end, "refunds"))
+    lines = _lines_for(conn, workspace_id, marketplace, [r["order_id"] for r in posts])
+    for r in posts:
         a, price = _n(r["a"]), r["price"]
-        if price:
-            # What the buyer got back INCLUDING the VAT Amazon itemised beside
-            # it, against what they paid (which includes it): a full refund on
-            # a VAT-itemised order is otherwise ex-VAT and looks partial.
-            fp = "full" if a + _n(r["rt"]) >= _n(price) - 0.005 else "partial"
+        # What the buyer got back INCLUDING the VAT Amazon itemised beside it,
+        # against what they paid for the UNITS refunded (which includes it): a
+        # full refund on a VAT-itemised order is otherwise ex-VAT and looks
+        # partial, and one item of two refunded in full is not "partial".
+        back = a + _n(r["rt"])
+        basis = returned_price(lines.get(r["order_id"]), refund_units=r["ru"],
+                               back=back) if price else None
+        if basis:
+            fp = "full" if is_full_refund(back, basis) else "partial"
         else:
             fp = "unknown"
         out.append({"order_id": r["order_id"], "date": r["d"], "amount": a,
                     "refund_units": int(r["ru"] or 0), "refund_tax": _n(r["rt"]),
                     "sku": r["skus"] or "",
                     "order_price": (round(_n(price), 2) if price else None),
+                    "returned_price": basis,
                     "full_or_partial": fp, "source": "Amazon refund posting"})
     return out
 
@@ -255,9 +325,10 @@ def _by_posting_day(config_path, workspace_id, marketplace, start, end, key, col
     by_day = {}
     if col == "refunds":
         for e in refund_events(config_path, workspace_id, marketplace, start, end):
-            ref = {"full": "full refund of %.2f" % (e["order_price"] or 0),
+            basis = e.get("returned_price") or e["order_price"] or 0
+            ref = {"full": "full refund of %.2f" % basis,
                    "partial": "partial: %.2f of %.2f" % (e["amount"] + e["refund_tax"],
-                                                         e["order_price"] or 0),
+                                                         basis),
                    "unknown": "order not held here"}[e["full_or_partial"]]
             by_day.setdefault(e["date"], []).append(
                 _item(e["date"], e["amount"], e["source"], e["order_id"], e["sku"],

@@ -45,6 +45,15 @@ SOURCE_UPLOAD = "upload"
 _MUTABLE = ("status", "resolution", "refunded", "order_amount",
             "disposition", "comment", "name", "category")
 
+# The seller-fulfilled report's tracking, receipt and claim columns (the Refunds
+# screen reads them). They move as the return does -- a tracking id appears, the
+# parcel is delivered, a claim is opened -- so they are refreshed like _MUTABLE.
+# A later file WITHOUT these columns (an FBA file, an older upload) must not
+# blank what an earlier report stored, so a None never overwrites a value.
+_TRACKING = ("order_date", "rma_id", "tracking_id", "carrier", "label_type",
+             "label_cost", "delivered", "a_to_z", "in_policy", "return_type",
+             "safet_state")
+
 
 def identity_key(r):
     """The identity tuple, flattened to one string for the unique index."""
@@ -74,21 +83,27 @@ def store(config_path, workspace_id, marketplace, returns, source=SOURCE_REPORT)
                 (r.get("status"), r.get("resolution"), r.get("refunded"),
                  r.get("order_amount"), r.get("disposition"), r.get("comment"),
                  r.get("name"), r.get("category"), now, row["id"]))
+            conn.execute(
+                "UPDATE returns SET %s WHERE id=?"
+                % ", ".join("%s=COALESCE(?, %s)" % (c, c) for c in _TRACKING),
+                [r.get(c) for c in _TRACKING] + [row["id"]])
             updated += 1
             continue
         conn.execute(
             "INSERT INTO returns (workspace_id, marketplace, identity, kind, "
             "date, order_id, license_plate, asin, sku, name, qty, reason, "
             "reason_raw, nature, status, resolution, refunded, order_amount, "
-            "category, disposition, comment, source, first_seen, fetched_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "category, disposition, comment, source, first_seen, fetched_at, "
+            "%s) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,%s)"
+            % (", ".join(_TRACKING), ",".join("?" * len(_TRACKING))),
             (workspace_id, marketplace, key, r.get("kind"), r.get("date"),
              r.get("order_id"), r.get("license_plate"), r.get("asin"),
              r.get("sku"), r.get("name"), r.get("qty"), r.get("reason"),
              r.get("reason_raw"), r.get("nature"), r.get("status"),
              r.get("resolution"), r.get("refunded"), r.get("order_amount"),
              r.get("category"), r.get("disposition"), r.get("comment"),
-             source, now, now))
+             source, now, now) + tuple(r.get(c) for c in _TRACKING))
         added += 1
     conn.commit()
     return {"stored": added + updated, "added": added, "updated": updated}
