@@ -306,10 +306,9 @@ function perfAfterSent(bd) {
   if (!a || !a.edits) return null;
   return { label: "Changed after sending", value: String(a.edits),
            note: a.skus + (a.skus === 1 ? " product" : " products"),
-           // Honest about its reach (review, 30 Sep 2026): a batch submit is
-           // recorded as a count, not a list of products, so only products
-           // submitted one at a time can be matched.
-           title: "Edits or re-pushes to a product this account had already submitted to Amazon — products submitted one at a time only (a batch submit does not record which products it held). Normal work after a launch, shown so it can be seen, not judged." };
+           // A batch submit is recorded one row per product (owner, 30 Sep
+           // 2026), so products sent in a batch are matched too.
+           title: "Edits or re-pushes to a product this account had already submitted to Amazon, on its own or in a batch. Normal work after a launch, shown so it can be seen, not judged." };
 }
 
 function perfFillCategories(cats) {

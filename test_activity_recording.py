@@ -179,10 +179,16 @@ check("an HTTP error is a failure too", (rows()[0]["ok"], rows()[0]["http_status
 check("  and its summary says so", rows()[0]["summary"].endswith("failed: Amazon refused"), True)
 check("  a price value is on the safe list", rows()[0]["detail"]["values"].get("price"), 9.99)
 
+n = len(rows())
 c.get("/run/api_submit?account=acct_a&marketplace=UK&skus=A1,B2,C3")
 r = rows()[0]
 check("a GET that starts work (submit) is recorded, account from ?account=",
-      (r["category"], r["action"], r["workspace_id"], r["entity_count"]), ("amazon", "amazon.submit", "acct_a", 3))
+      (r["category"], r["action"], r["workspace_id"], r["entity_count"]), ("amazon", "amazon.submit", "acct_a", 1))
+sub = rows()[:3]
+check("  a batch of 3 is 3 rows, one per product, one batch_id (owner, 30 Sep 2026)",
+      (len(rows()) - n, sorted(x["entity_id"] for x in sub),
+       len({(x["detail"] or {}).get("batch_id") for x in sub}), {x["user_label"] for x in sub}),
+      (3, ["A1", "B2", "C3"], 1, {r["user_label"]}))
 c.get("/run/generate?account=acct_a&fail=1")
 check("an SSE '[error]' reply is a failure",
       (rows()[0]["action"], rows()[0]["ok"], rows()[0]["detail"].get("error")),
@@ -217,6 +223,8 @@ as_user(ali)
 c.post("/preview/enqueue", json={"sku": "ONE-1", "mode": "api_submit", "account": "acct_a"})
 check("one product's Submit through the queue is a SUBMIT, not a preview",
       (rows()[0]["action"], rows()[0]["category"]), ("amazon.submit", "amazon"))
+check("  one product is the entity itself, not a batch",
+      (rows()[0]["entity_id"], "batch_id" in (rows()[0]["detail"] or {})), ("ONE-1", False))
 c.post("/preview/enqueue", json={"sku": "ONE-1", "mode": "api", "account": "acct_a"})
 check("  and a queued preview stays a preview", rows()[0]["action"], "amazon.preview")
 n = len(rows())
@@ -356,7 +364,9 @@ as_user(boss)
 # As the acct_a manager: 6 from the first section + submit, preview, refusal, the
 # signed-in app2 submit, and 6 of the 7 before/after edits -- the one naming no
 # account is filed under none, which a scoped manager does not see.
-check("summary counts per person", [p["total"] for p in s["people"] if p["user_id"] == ali], [16])
+# 18, not 16, since 30 Sep 2026: the A1,B2,C3 batch submit is three products
+# of work, one row each (owner's decision), not one.
+check("summary counts per person", [p["total"] for p in s["people"] if p["user_id"] == ali], [18])
 check("a bad period is refused plainly",
       c.get("/activity/list?from=10&to=5").status_code, 400)
 f = c.get("/activity/list?from=0&to=4000000000&user=%s&ok=0" % ali).get_json()

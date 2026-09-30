@@ -248,8 +248,10 @@ def _first_list(body):
     return None, None
 
 
-def _entity(entity_type, path, body, args):
-    """(entity id or "", how many things). Bodies first, then the query string."""
+def _entity_ids(entity_type, body, args):
+    """(the ids the request names for its entity, how many things). Bodies
+    first, then the query string. The ids are [] when only a count is known
+    (a list under some other key); the count is None when nothing is named."""
     keys = _ENTITY_KEYS.get(entity_type, ())
     for src in (body or {}, args or {}):
         for k in keys:
@@ -260,20 +262,74 @@ def _entity(entity_type, path, body, args):
             except Exception:
                 v = None
             if isinstance(v, list):
-                if len(v) == 1:
-                    return str(v[0])[:200], 1
                 if v:
-                    return "", len(v)
+                    # Ids only when the list IS ids (not rows of objects).
+                    plain = all(isinstance(x, (str, int)) and str(x).strip() for x in v)
+                    return ([str(x)[:200] for x in v] if plain else []), len(v)
             elif isinstance(v, (str, int)) and str(v).strip():
                 s = str(v).strip()
                 if "," in s and k in ("skus", "orders", "order_ids"):
                     parts = [x for x in s.split(",") if x.strip()]
-                    return (parts[0] if len(parts) == 1 else ""), len(parts)
-                return s[:200], 1
+                    return parts, len(parts)
+                return [s[:200]], 1
     _k, lst = _first_list(body)
     if lst:
-        return "", len(lst)
-    return "", None
+        return [], len(lst)
+    return [], None
+
+
+def _entity(entity_type, path, body, args):
+    """(entity id or "", how many things, every id named): the id only when
+    exactly one is named."""
+    ids, count = _entity_ids(entity_type, body, args)
+    return (ids[0] if count == 1 and len(ids) == 1 else ""), count, ids
+
+
+MAX_BATCH_ROWS = 1000
+
+
+def rows(method, path, body, args, files, response, before=None):
+    """The log rows for one catalogued request: [] if it is not work, else
+    describe()'s one row -- or, for a BATCH that names its products (a SKU
+    list), ONE ROW PER PRODUCT.
+
+    Owner, 30 Sep 2026: "When a batch submission contains multiple
+    products/listings, record each product separately in employee activity"
+    -- so a 20-product batch is 20 products of work, and "changed after
+    sending" finds each by its own SKU. Each row carries the same
+    detail.batch_id and batch_size. The reply is one outcome for the whole
+    batch (a streamed run), so its ok/failed applies to every row. A refusal
+    stays ONE row: nothing was attempted. Past MAX_BATCH_ROWS the rest are
+    counted on the last row (detail.batch_overflow)."""
+    d, ids = _describe(method, path, body, args, files, response, before)
+    if not d:
+        return []
+    if (d.get("entity_type") != "sku" or len(ids) < 2
+            or (d.get("detail") or {}).get("refused")):
+        return [d]
+    import uuid
+    skus = [str(x).strip() for x in ids if str(x).strip()]
+    kept = skus[:MAX_BATCH_ROWS]
+    batch_id = uuid.uuid4().hex[:12]
+    base = (d.get("detail") or {})
+    out = []
+    for i, sku in enumerate(kept):
+        det = dict(base, batch_id=batch_id, batch_size=len(skus))
+        if i == len(kept) - 1 and len(skus) > len(kept):
+            det["batch_overflow"] = len(skus) - len(kept)
+        out.append(dict(d, entity_id=sku[:200], entity_count=1, detail=det,
+                        summary=_batch_summary(d["summary"], sku, len(skus))))
+    return out
+
+
+def _batch_summary(summary, sku, size):
+    """describe()'s sentence for one product of a batch: the "(N)" count
+    becomes the product and "one of N"."""
+    tail = " (%d)" % size
+    head, sep, rest = summary.partition(tail)
+    if not sep:
+        return "%s %s (one of %d)" % (summary, sku, size)
+    return "%s %s (one of %d)%s" % (head, sku, size, rest)
 
 
 def _fields(body):
@@ -330,9 +386,14 @@ def _outcome(response):
 
 def describe(method, path, body, args, files, response, before=None):
     """Everything the log needs about one catalogued request, or None."""
+    return _describe(method, path, body, args, files, response, before)[0]
+
+
+def _describe(method, path, body, args, files, response, before=None):
+    """(describe()'s row or None, every entity id the request named)."""
     hit = match(method, path)
     if not hit:
-        return None
+        return None, []
     _route, _how, category, action, phrase, etype = hit
     modes = _BODY_MODES.get(_route)
     if modes and isinstance(body, dict):
@@ -351,7 +412,7 @@ def describe(method, path, body, args, files, response, before=None):
                 break
         if mkt:
             break
-    eid, count = _entity(etype, path, body, args)
+    eid, count, ids = _entity(etype, path, body, args)
     detail = {}
     flds = _fields(body)
     if flds:
@@ -409,4 +470,4 @@ def describe(method, path, body, args, files, response, before=None):
     return {"category": category, "action": action, "ok": ok, "http_status": status,
             "workspace_id": accounts[0] if len(accounts) == 1 else "", "marketplace": mkt,
             "entity_type": etype, "entity_id": eid, "entity_count": count,
-            "summary": summary, "detail": detail}
+            "summary": summary, "detail": detail}, ids
