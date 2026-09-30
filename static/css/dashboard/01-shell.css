@@ -521,7 +521,7 @@
   .b-PARENT{background:var(--panel2);color:var(--ink2);border:1px dashed var(--accent)}
   table.kv{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;table-layout:fixed}
   table.kv td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-  table.kv td.k{color:var(--muted);width:38%;word-break:break-word;overflow-wrap:anywhere}
+  table.kv td.k{color:var(--muted);width:38%;word-break:break-word;overflow-wrap:anywhere;white-space:normal}  /* beats the global td.k nowrap: a fixed 38% column clipped long labels at 390px (responsive audit, 30 Sep 2026) */
   table.kv td.v{color:var(--ink);width:62%;word-break:break-word;overflow-wrap:anywhere}
   .kvsec{margin-top:10px;color:var(--accent2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
   pre.raw{display:none;margin:8px 0 0;padding:8px;background:var(--bg);border:1px solid var(--line);
