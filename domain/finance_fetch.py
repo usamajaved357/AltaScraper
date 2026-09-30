@@ -16,15 +16,29 @@ you already hold, so re-pulling replaces rather than skips.
 THE LAST FEW DAYS ARE INCOMPLETE
 Funds settle over days. The most recent day always looks light and fills in
 later, which is why recent days are re-pulled rather than trusted once.
+
+WHICH LIST (owner, 30 Sep 2026: "do the newer finance list switch")
+Finances 2024-06-19 listTransactions, not v0 listFinancialEvents: the old list
+leaves out money Amazon is still holding (delivery + 7 days for a new seller)
+and shows a released hold on the RELEASE day. The newer list shows it on the
+day it happened. finance_transactions.to_events writes each transaction back
+into the old event shape, so finance_data and order_finance parse it with
+their existing rules (Rule 12) -- see that module for the measurements.
 """
 import datetime as _dt
+import threading
 import time
 
 from domain import finance_data as _fd
+from domain import finance_transactions as _ftx
 
 PAGES_PER_PASS = 12          # a pass is bounded so a backfill cannot hang a request
 REVISE_DAYS = 7              # funds settle for about a week; re-pull that window
-PAUSE = 1                    # Finances is rate limited; be a good citizen
+# listTransactions allows 0.5 requests a second (burst 10); v0 allowed a burst
+# of 30, so the 1-second pause that suited it would be throttled on a 40-page
+# re-read. Two seconds keeps to Amazon's documented rate.
+PAUSE = 2
+FINANCES_VERSION = "2024-06-19"
 # The Finance screen's "Re-read the last 95 days": the same window the
 # background refresher asks for, in ONE pass with a bigger page budget, so the
 # pull is complete and can clear leftovers of older pulls (see sync()).
@@ -36,7 +50,37 @@ def _client(marketplace, creds):
     from sp_api.api import Finances
     from sp_api.base import Marketplaces
     mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.US
-    return Finances(credentials=creds, marketplace=mkt)
+    # The library's own versioned client (python-amazon-sp-api 2.x dispatches
+    # version="2024-06-19" to FinancesV20240619). Without a version it returns
+    # v0, which is what this used to read.
+    return Finances(credentials=creds, marketplace=mkt, version=FINANCES_VERSION)
+
+
+def _list_page(fc, after, before, token=None):
+    """One listTransactions page -> (transactions, nextToken).
+
+    NO marketplaceId: the old list was the whole account's money, filed under
+    its home marketplace by sync(); asking for one marketplace here would drop
+    the money of every other one the account sells in."""
+    kw = {"postedAfter": after, "postedBefore": before}
+    if token:
+        kw["nextToken"] = token
+    resp = fc.list_transactions(**kw)
+    pay = _payload(resp)
+    # A REPLY WITHOUT A TRANSACTIONS LIST IS AN ERROR, NOT "NO MONEY".
+    # The library raises only when the body carries "errors"; a timeout page,
+    # an HTML body or {"message": ...} comes back as an ordinary payload. Read
+    # as zero transactions with no next page, it would mark the part COMPLETE
+    # and clear_unreturned would delete that half-month (review, 30 Sep 2026).
+    if not isinstance(pay, dict) or not isinstance(pay.get("transactions"), list):
+        keys = sorted(pay)[:6] if isinstance(pay, dict) else type(pay).__name__
+        raise RuntimeError("listTransactions returned no transactions list "
+                           "(reply keys: %s) -- nothing stored or cleared" % (keys,))
+    # Measured 30 Sep 2026: the reply is {"payload": {"transactions": [...]},
+    # "statusCode": 200}, so nextToken sits inside the payload. The library
+    # also lifts a top-level nextToken into resp.next_token -- read both.
+    nxt = pay.get("nextToken") or getattr(resp, "next_token", None)
+    return list(pay["transactions"]), nxt
 
 
 def _payload(resp):
@@ -77,41 +121,36 @@ def raw_sample(marketplace, creds, start, end):
     """
     fc = _client(marketplace, creds)
     after, before = _window(start, end)
-    resp = fc.list_financial_events(PostedAfter=after, PostedBefore=before)
-    return _payload(resp)
+    return _payload(fc.list_transactions(postedAfter=after, postedBefore=before))
 
 
 def fetch_range(marketplace, creds, start, end, max_pages=PAGES_PER_PASS,
                 next_token=None, log=None):
     """Page through the range. Returns (merged_events, next_token, pages).
 
-    The pages are merged into one FinancialEvents shape before parsing, so the
-    parser sees the same structure whether the range took one page or twenty and
-    there is only one code path to be right.
+    Every page's transactions are gathered first and translated ONCE
+    (finance_transactions.to_events), so a transaction on two pages is counted
+    once and the parser sees the same FinancialEvents shape whether the range
+    took one page or twenty. merged_events["info"] says how many held
+    transactions were counted and how many releases were skipped.
     """
     fc = _client(marketplace, creds)
-    merged, pages, token = {}, 0, next_token
+    txs, pages, token = [], 0, next_token
     after, before = _window(start, end)
 
     while pages < int(max_pages):
-        if token:
-            resp = fc.list_financial_events(NextToken=token)
-        else:
-            resp = fc.list_financial_events(PostedAfter=after, PostedBefore=before)
-        pay = _payload(resp) or {}
-        ev = (pay.get("FinancialEvents") or {}) if isinstance(pay, dict) else {}
-        for k, v in ev.items():
-            if isinstance(v, list):
-                merged.setdefault(k, []).extend(v)
+        got, token = _list_page(fc, after, before, token)
+        txs += got
         pages += 1
-        token = pay.get("NextToken") if isinstance(pay, dict) else None
         if log:
-            log("finance page %d (%d event lists)" % (pages, len(ev)))
+            log("finance page %d (%d transactions)" % (pages, len(got)))
         if not token:
             break
         time.sleep(PAUSE)
 
-    return {"FinancialEvents": merged}, token, pages
+    events, info = _ftx.to_events(txs)
+    events["info"] = info
+    return events, token, pages
 
 
 def _today():
@@ -240,23 +279,22 @@ def _parse_periods(parts, smap, cost, config_path, workspace_id, marketplace):
     whole, and a part-read day -- its fees on this page, its refunds on the
     next -- would overwrite a complete one with part of it.
 
-    New undated charges are recorded only from a whole half-month (the count is
-    exact only there). A single day read on its own gets back the placements
-    already recorded for it, so its row never loses a subscription.
+    NO UNDATED CHARGES ANY MORE. The old list sent the monthly subscription
+    with no date, hence finance_undated and its half-month counting; the newer
+    list dates it (measured 30 Sep 2026: "Subscription", -30.00, posted
+    2026-09-19). Anything that did still arrive undated is kept on the part's
+    last day and reported in `unattributed` -- never dropped.
     """
     rows, notes = [], {}
     for p in parts:
         if not p["complete"]:
             continue
-        if p["kind"] == "half":
-            und = _fd.undated_placer(config_path, workspace_id, marketplace,
-                                     p["start"], p["end"])
-        else:
-            und = (lambda charges, _p=p: _fd.stored_placements(
-                config_path, workspace_id, marketplace, _p["start"], _p["end"]))
-        r, n = _fd.parse_events(p["events"], smap, cost_lookup=cost, undated=und)
+        r, n = _fd.parse_events(p["events"], smap, cost_lookup=cost,
+                                fallback_date=p["end"])
         rows += r
         _merge_notes(notes, n)
+        for k, v in ((p["events"] or {}).get("info") or {}).items():
+            notes[k] = notes.get(k, 0) + int(v or 0)
     tot, kno = notes.get("units", 0), notes.get("cogs_units", 0)
     notes["cogs_coverage_pct"] = round(kno / tot * 100, 1) if tot else None
     notes["unmapped_skus"] = sorted(notes.get("unmapped_skus", []))[:50]
@@ -285,7 +323,8 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
     # ONE ACCOUNT'S FINANCES ARE PULLED ONCE, NOT ONCE PER MARKETPLACE.
     #
     # Amazon's Finances API is not segmented by marketplace: listFinancialEvents
-    # takes no marketplace and returns everything the seller has settled. The
+    # took no marketplace, and listTransactions is asked for none (_list_page),
+    # so it returns everything the seller has settled. The
     # refresher walks (account, marketplace) pairs, so this ran once for each of
     # the account's marketplaces and stored the SAME events again under each.
     #
@@ -330,6 +369,36 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
                          "would store a second copy of the same money."
                          % _default)}
 
+    # ONE PULL OF AN ACCOUNT AT A TIME. The refresher, Sales Sync and the
+    # Re-read job can overlap, and a pull that deletes what it did not return
+    # must not run beside one that has read but not yet stored (review, 30 Sep
+    # 2026). A pull that cannot get the account within LOCK_WAIT stores nothing.
+    lock = _account_lock(account_id or workspace_id)
+    if not lock.acquire(timeout=LOCK_WAIT):
+        return {"ok": False, "busy": True, "rows": 0, "order_fee_rows": 0,
+                "error": ("Finances not pulled: another finance pull of this "
+                          "account is still running. Nothing was changed; try "
+                          "again when it finishes.")}
+    try:
+        return _pull(config_path, workspace_id, marketplace, creds, account_id,
+                     days_back, max_pages, next_token, log, cogs_overrides)
+    finally:
+        lock.release()
+
+
+LOCK_WAIT = 180              # seconds; a 95-day re-read takes about two minutes
+_LOCKS = {}  # arch-ok: module-mutable-global -- per-account pull locks must be process-wide; guarded by _LOCKS_GUARD
+_LOCKS_GUARD = threading.Lock()
+
+
+def _account_lock(account):
+    with _LOCKS_GUARD:
+        return _LOCKS.setdefault(str(account or ""), threading.Lock())
+
+
+def _pull(config_path, workspace_id, marketplace, creds, account_id, days_back,
+          max_pages, next_token, log, cogs_overrides):
+    """sync()'s read + store + clear, run under the account's lock."""
     end = _today()
     start = end - _dt.timedelta(days=int(days_back))
     try:
@@ -372,22 +441,9 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
         from domain import cogs as _cogs
         _cost = _cogs.lookup(cogs_overrides, _aid)
 
-    # UNDATED CHARGES (the monthly subscription) are counted per half-month and
-    # placed only for a half-month read WHOLE -- see finance_data.place_undated.
-    # They used to land on the last day of EVERY pull, and a re-sync ending on
-    # another day kept both copies (measured: 180.00 for a window holding 90.00).
     rows, notes = _parse_periods(parts, smap, _cost, config_path,
                                  workspace_id, marketplace)
     written = _fd.store(config_path, workspace_id, marketplace, rows)
-    # A half-month read whole is Amazon's whole answer for it, so a no-trade day
-    # it no longer returns was an undated charge an older pull filed there.
-    removed = []
-    for p in parts:
-        if p["complete"] and p["kind"] == "half":
-            removed += _fd.clear_undated_leftovers(
-                config_path, workspace_id, marketplace, p["start"], p["end"],
-                {r["date"] for r in rows})
-    notes["stale_undated_days_removed"] = removed
 
     # THE SAME EVENTS, KEPT AGAINST THEIR ORDERS.
     #
@@ -400,14 +456,49 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
     #
     # Best effort and never fatal: the money-basis rows above are already stored,
     # and losing the order-basis copy must not lose them too.
+    order_keys = None
     try:
         from domain import order_finance as _of
         by_order, _skipped = _of.parse_by_order(events)
         out_of = _of.store(config_path, workspace_id, marketplace, by_order)
+        order_keys = {(r["order_id"], r["posted_date"]) for r in by_order}
     except Exception as ex:
         by_order, _skipped, out_of = [], 0, 0
         notes = dict(notes or {})
         notes["order_fees_error"] = str(ex)[:200]
+
+    # A PART READ WHOLE IS AMAZON'S WHOLE ANSWER FOR IT, so whatever an older
+    # pull stored there and this one did not return is gone: an undated charge
+    # an old pull filed on its own last day (and its finance_undated
+    # placement), or -- after the switch to the newer list -- a held sale or
+    # refund the old list showed on its RELEASE day, now counted on the day it
+    # happened. Left in place, those would be counted twice.
+    #
+    # TWO RAILS (review, 30 Sep 2026). A read that returned NO transactions at
+    # all for a part that already holds rows deletes nothing -- that is far
+    # likelier a bad reply than a half-month with no money -- and is reported.
+    # With no SKU map, product rows are left alone: this read could not have
+    # written any, so their absence says nothing.
+    removed, not_cleared = [], []
+    day_keys = {(r["date"], r.get("asin") or "*") for r in rows}
+    for p in parts:
+        if not p["complete"]:
+            continue
+        n_tx = ((p["events"] or {}).get("info") or {}).get("transactions")
+        if n_tx == 0 and _fd.has_rows(config_path, workspace_id, marketplace,
+                                      p["start"], p["end"]):
+            not_cleared.append("%s to %s" % (p["start"], p["end"]))
+            continue
+        removed += _fd.clear_unreturned(
+            config_path, workspace_id, marketplace, p["start"], p["end"],
+            day_keys, order_keys, products=bool(smap))
+    notes["stale_days_removed"] = sorted(set(removed))
+    if not_cleared:
+        notes["empty_reads_not_cleared"] = not_cleared
+        notes["empty_reads_note"] = (
+            "Amazon returned no transactions at all for %s, where the app already "
+            "holds figures -- nothing was deleted there. Re-read later to confirm."
+            % "; ".join(not_cleared))
 
     out = {"ok": True, "pages": pages, "rows": written, "days": len({r["date"] for r in rows}),
            "start": s, "end": e,

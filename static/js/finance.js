@@ -235,6 +235,10 @@ async function financeLoad(){
 // account in the body (Rule 14); the reply is dropped if the screen has moved
 // to another account meanwhile. Loading: the button spins and is disabled.
 // Error: a toast with the server's sentence. After: the screen reloads.
+// The pull runs on the SERVER as a job (it outlives a web request at Amazon's
+// rate limit): POST starts it and returns, then /finance/resync/status is
+// asked every 3 s and the button shows the pages read so far. Leaving the
+// screen or switching account stops the polling, not the pull.
 async function financeResync(btn){
   const id = (typeof acctId === "function") ? acctId() : "";
   if(!id){ toast("Open an account first."); return; }
@@ -248,12 +252,29 @@ async function financeResync(btn){
     const r = await fetch("/finance/resync", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(acctBodyFor({}, id))});
-    const j = await r.json().catch(function(){ return null; });
+    const s = await r.json().catch(function(){ return null; });
     if(_sc && !screenStillIn(_sc)) return;
-    if(!j || !j.ok){ toast((j && (j.error || j.note)) || "Could not re-read the finances"); return; }
+    if(!s || !s.ok){ toast((s && (s.error || s.note)) || "Could not re-read the finances"); return; }
+    let job = s.job || {};
+    while(job && job.status === "running"){
+      await new Promise(function(res){ setTimeout(res, 3000); });
+      if(_sc && !screenStillIn(_sc)) return;
+      const q = await fetch("/finance/resync/status?account=" + encodeURIComponent(id))
+        .then(function(x){ return x.json(); }).catch(function(){ return null; });
+      if(_sc && !screenStillIn(_sc)) return;
+      if(!q || !q.ok){ toast("Lost track of the re-read; it may still be running."); return; }
+      job = q.job || {};
+      if(btn && job.status === "running"){
+        btn.innerHTML = '<span class="genspin"></span> reading… ' + (job.pages || 0) + " page"
+          + (job.pages === 1 ? "" : "s");
+      }
+    }
+    const j = (job && job.result) || {};
+    if(!j.ok){ toast(j.error || j.note || "Could not re-read the finances"); return; }
     let msg = "Re-read " + (j.start || "") + " to " + (j.end || "") + " under " + (j.marketplace || "")
       + " · " + (j.days || 0) + " day" + (j.days === 1 ? "" : "s") + " with money";
     if(j.more) msg += " · NOT complete: Amazon had more than one pass can read, so older days may still be short";
+    if(j.empty_reads_note) msg += " · " + j.empty_reads_note;
     toast(msg);
     financeLoad();
   }catch(e){ toast("Re-read failed: " + ((e && e.message) || e)); }

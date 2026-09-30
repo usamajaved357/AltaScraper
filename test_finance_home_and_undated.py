@@ -15,7 +15,15 @@ Faults found on real data (finance audit + review, 30 Sep 2026):
      record one charge twice.
 
 No Amazon call is made: fetch_range is replaced by a fake that answers each
-window the way Amazon does -- by a posting date, hidden for undated charges.
+window the way Amazon does -- by a posting date.
+
+RE-PINNED 30 Sep 2026 for the switch to Finances 2024-06-19 (owner: "do the
+newer finance list switch"). The newer list DATES the subscription, so the fake
+now serves listTransactions-shaped transactions (translated by the real
+finance_transactions.to_events), the subscription is counted on its own day
+instead of a half-month's last day, finance_undated stays empty, and a part
+read whole removes every row it no longer returns (not only no-trade ones) --
+that is what clears the old list's release-day copies of held money.
 """
 import os as _os_repo
 _REPO = _os_repo.path.dirname(_os_repo.path.abspath(__file__))
@@ -51,39 +59,49 @@ ORIG_UTCNOW = ff._utcnow
 NOW = {"d": dt.date(2026, 9, 30), "t": dt.time(23, 0)}
 ff._utcnow = lambda: dt.datetime.combine(NOW["d"], NOW["t"])
 
+from domain import finance_transactions as ftx
+
 def money(v):
-    return {"CurrencyAmount": v, "CurrencyCode": "GBP"}
+    return {"currencyAmount": v, "currencyCode": "GBP"}
+
+def node(t, v, kids=()):
+    return {"breakdownType": t, "breakdownAmount": money(v), "breakdowns": list(kids)}
 
 def sub(posted):
-    # "_T" is the posting date Amazon keeps to itself: it decides which window
-    # returns the charge, and the parser never sees it.
-    return {"_T": posted, "FeeList": [{"FeeType": "Subscription", "FeeAmount": money(-30.0)}]}
+    # Finances 2024-06-19 sends the subscription WITH its date (measured).
+    return {"transactionId": "sub-" + posted, "transactionType": "ServiceFee",
+            "transactionStatus": "RELEASED", "postedDate": posted + "T23:40:31Z",
+            "totalAmount": money(-30.0), "relatedIdentifiers": [],
+            "items": [{"totalAmount": money(-30.0), "contexts": [],
+                       "breakdowns": [node("AmazonFees", -30.0, [node("Subscription", -30.0, [
+                           node("Base", -25.0), node("Tax", -5.0)])])]}]}
 
 def ship(posted, units=1):
-    return {"AmazonOrderId": "203-" + posted, "PostedDate": posted + "T10:00:00Z",
-            "ShipmentItemList": [{"SellerSKU": "SKU-A", "QuantityShipped": units,
-                                  "ItemChargeList": [{"ChargeType": "Principal",
-                                                      "ChargeAmount": money(20.0)}],
-                                  "ItemFeeList": [{"FeeType": "Commission",
-                                                   "FeeAmount": money(-3.0)}]}]}
+    return {"transactionId": "ship-" + posted, "transactionType": "Shipment",
+            "transactionStatus": "RELEASED", "postedDate": posted + "T10:00:00Z",
+            "totalAmount": money(17.0),
+            "relatedIdentifiers": [{"relatedIdentifierName": "ORDER_ID",
+                                    "relatedIdentifierValue": "203-" + posted}],
+            "items": [{"totalAmount": money(17.0),
+                       "contexts": [{"contextType": "ProductContext", "sku": "SKU-A",
+                                     "quantityShipped": units}],
+                       "breakdowns": [node("ProductCharges", 20.0, [node("OurPricePrincipal", 20.0)]),
+                                      node("AmazonFees", -3.0, [node("Commission", -3.0, [
+                                          node("Base", -2.5), node("Tax", -0.5)])])]}]}
 
-FEED = {"ShipmentEventList": [ship("2026-09-20")],
-        "ServiceFeeEventList": [sub("2026-07-05"), sub("2026-08-05"), sub("2026-09-05")]}
+FEED = [ship("2026-09-20"), sub("2026-07-05"), sub("2026-08-05"), sub("2026-09-05")]
 PARTIAL = set()          # half-month starts Amazon answers with "more pages"
 BUSY_DAYS = set()        # single days Amazon answers with "more pages"
 CALLS = []
 
 def fake_fetch(marketplace, creds, start, end, max_pages=12, next_token=None, log=None):
     CALLS.append((start, end))
-    out = {}
-    for k, items in FEED.items():
-        for e in items:
-            d = e.get("_T") or str(e.get("PostedDate", ""))[:10]
-            if start <= d <= end:
-                out.setdefault(k, []).append({x: y for x, y in e.items() if x != "_T"})
+    got = [t for t in FEED if start <= t["postedDate"][:10] <= end]
     more = ((start != end and start in PARTIAL)
             or (start == end and start in BUSY_DAYS))
-    return {"FinancialEvents": out}, ("more" if more else None), 1
+    ev, info = ftx.to_events(got)
+    ev["info"] = info
+    return ev, ("more" if more else None), 1
 ff.fetch_range = fake_fetch
 
 
@@ -128,15 +146,15 @@ json.dump({"accounts": [{"id": "x", "marketplaces": ["UK", "DE"]}]},
 check("no default and two marketplaces: no guess",
       accts.home_marketplace(os.path.join(TMP, "two.json"), "x")[0], "")
 
-print("\n== 2. the undated subscription is counted once, per half-month ==")
+print("\n== 2. the subscription is counted once, on the day Amazon dates it ==")
 check("half-months, aligned down: 16 Jun .. 30 Sep",
       (ff.periods(dt.date(2026, 6, 27), dt.date(2026, 9, 30))[0],
        ff.periods(dt.date(2026, 6, 27), dt.date(2026, 9, 30))[-1]),
       ((dt.date(2026, 6, 16), dt.date(2026, 6, 30)), (dt.date(2026, 9, 16), dt.date(2026, 9, 30))))
 check("first 95-day pull: 90.00", subs(), 90.0)
-check("  each on its own half-month's last day",
+check("  each on its own posting day (the newer list dates it)",
       [r["date"] for r in rows() if r["other_fees"]],
-      ["2026-07-15", "2026-08-15", "2026-09-15"])
+      ["2026-07-05", "2026-08-05", "2026-09-05"])
 sync()
 check("re-sync: still 90.00 (was 180.00)", subs(), 90.0)
 sync(days=30)
@@ -144,11 +162,11 @@ check("a 30-day re-sync: still 90.00", subs(), 90.0)
 NOW["d"] = dt.date(2026, 9, 29)
 sync()
 check("a window ending yesterday: still 90.00", subs(), 90.0)
-check("three placements recorded, no more",
-      _db.get_db(CFG).execute("SELECT COUNT(*) FROM finance_undated").fetchone()[0], 3)
+check("nothing is placed in finance_undated any more",
+      _db.get_db(CFG).execute("SELECT COUNT(*) FROM finance_undated").fetchone()[0], 0)
 
 print("\n== 3. a NEW month's charge after a backfill is counted (review #2) ==")
-FEED["ServiceFeeEventList"].append(sub("2026-10-05"))
+FEED.append(sub("2026-10-15"))
 NOW["d"] = dt.date(2026, 10, 30)
 sync(days=30)
 check("a 30-day pull a month later adds October's 30.00", subs(), 120.0)
@@ -156,7 +174,7 @@ sync(days=95)
 check("  and a 95-day pull after it does not add it again", subs(), 120.0)
 
 print("\n== 4. a part-read pull never replaces a real day (review #1) ==")
-FEED["ShipmentEventList"].append(ship("2026-10-15", units=2))
+FEED.append(ship("2026-10-15", units=2))
 sync(days=30)
 before = [dict(r) for r in rows() if r["date"] == "2026-10-15"]
 check("15 Oct holds the sale AND the subscription",
@@ -175,11 +193,11 @@ check("  read day by day instead: 15 Oct keeps its sale AND its 30.00", after, b
 check("  what the 12-page budget could not reach is named, not 15 Oct",
       res.get("periods_not_stored"), ["2026-10-01 to 2026-10-05", "2026-09-16 to 2026-09-30"])
 check("  no placement recorded from a single day",
-      _db.get_db(CFG).execute("SELECT COUNT(*) FROM finance_undated").fetchone()[0], 4)
+      _db.get_db(CFG).execute("SELECT COUNT(*) FROM finance_undated").fetchone()[0], 0)
 PARTIAL.clear()
 
 print("\n== 4b. a BUSY current half-month still stores recent days (review 2 #1) ==")
-FEED["ShipmentEventList"] += [ship("2026-10-28"), ship("2026-10-10")]
+FEED.extend([ship("2026-10-28"), ship("2026-10-10")])
 PARTIAL.add("2026-10-16")
 BUSY_DAYS.add("2026-10-25")
 CALLS.clear()
@@ -202,19 +220,63 @@ for asin in ("*", "B0STALE001"):      # the old fallback: account total AND a pr
     conn.execute("INSERT INTO finance_daily (workspace_id, marketplace, date, asin, "
                  "other_fees, units, principal) VALUES ('nw','UK','2026-10-20',?,30.0,0,0)",
                  (asin,))
+# What the OLD list stored on a hold's RELEASE day: a sale the newer list shows
+# on the day it happened. Amazon no longer returns anything on 21 Oct.
 conn.execute("INSERT INTO finance_daily (workspace_id, marketplace, date, asin, "
              "referral_fees, units, principal) VALUES ('nw','UK','2026-10-21','*',1.0,1,9.0)")
+conn.execute("INSERT INTO order_fees (workspace_id, marketplace, order_id, posted_date, "
+             "principal, units) VALUES ('nw','UK','203-OLD','2026-10-21',9.0,1)")
+conn.execute("INSERT INTO finance_undated (workspace_id, marketplace, field, amount, "
+             "placed_on) VALUES ('nw','UK','other_fees',30.0,'2026-10-20')")
 conn.commit()
 PARTIAL.add("2026-10-16")
+BUSY_DAYS.update({"2026-10-21", "2026-10-20"})
 sync(days=30)
-check("a part-read half-month removes nothing", "2026-10-20" in [r["date"] for r in rows()], True)
-PARTIAL.clear()
+check("a day not read whole removes nothing",
+      ("2026-10-20" in [r["date"] for r in rows()], "2026-10-21" in [r["date"] for r in rows()]),
+      (True, True))
+PARTIAL.clear(); BUSY_DAYS.clear()
 res = sync(days=30)
-check("read whole: the stale no-trade 30.00 goes", res.get("stale_undated_days_removed"),
-      ["2026-10-20"])
-check("  its product row goes too", len(rows(asin="B0STALE001")), 0)
+check("read whole: every row Amazon no longer returns goes", res.get("stale_days_removed"),
+      ["2026-10-20", "2026-10-21"])
+# No catalogue here, so the read could write no product rows: their absence
+# says nothing, and they are kept (review rail, 30 Sep 2026). test_finance_
+# transactions checks a product row IS removed when the SKU map exists.
+check("  with no SKU map, its product row is left alone", len(rows(asin="B0STALE001")), 1)
 check("  the total is right again", subs(), 120.0)
-check("  a day with trade is left alone", "2026-10-21" in [r["date"] for r in rows()], True)
+check("  the old list's release-day order row goes too",
+      conn.execute("SELECT COUNT(*) FROM order_fees WHERE order_id='203-OLD'").fetchone()[0], 0)
+check("  and a real order in the window is kept",
+      conn.execute("SELECT COUNT(*) FROM order_fees WHERE order_id='203-2026-10-28'").fetchone()[0], 1)
+check("  the old undated placement in the window goes",
+      conn.execute("SELECT COUNT(*) FROM finance_undated WHERE placed_on='2026-10-20'").fetchone()[0], 0)
+
+print("\n== 5b. rails on the delete (change review, 30 Sep 2026) ==")
+_feed_saved = list(FEED)
+FEED[:] = []                          # Amazon answers every window with nothing
+before_n = len(rows())
+res = sync(days=30)
+check("a read with ZERO transactions deletes nothing", len(rows()), before_n)
+check("  and says so", bool(res.get("empty_reads_not_cleared")) and
+      "nothing was deleted" in (res.get("empty_reads_note") or ""), True)
+FEED[:] = _feed_saved
+conn.execute("INSERT INTO finance_daily (workspace_id, marketplace, date, asin, principal) "
+             "VALUES ('nw','UK','2026-10-22','B0PROD0001',5.0)")
+conn.commit()
+check("with a SKU map, an unreturned product row is removed",
+      (fd.clear_unreturned(CFG, "nw", "UK", "2026-10-22", "2026-10-22", set(), None,
+                           products=True), len(rows(asin="B0PROD0001"))),
+      (["2026-10-22"], 0))
+_lk = ff._account_lock("nw")
+_lk.acquire()
+_wait, ff.LOCK_WAIT = ff.LOCK_WAIT, 0.05
+try:
+    res = sync(days=30)
+finally:
+    ff.LOCK_WAIT = _wait
+    _lk.release()
+check("a second pull of the same account while one runs: refused, nothing changed",
+      (res.get("ok"), res.get("busy")), (False, True))
 
 print("\n== 6. two syncs at once record a charge once (review #4) ==")
 errs = []
@@ -272,11 +334,22 @@ def _fake_sync(config_path, ws, mkt, creds, **kw):
 _real_sync, ff.sync = ff.sync, _fake_sync
 c = app.test_client()
 r = c.post("/finance/resync", json={"account": "nw", "marketplace": "IT"})
-check("named account: 200", r.status_code, 200)
+check("named account: 200, returns at once with a job", (r.status_code,
+      (r.get_json() or {}).get("started")), (200, True))
+import time as _time
+for _i in range(100):                  # the pull runs as a background job
+    st = (c.get("/finance/resync/status?account=nw").get_json() or {}).get("job") or {}
+    if st.get("status") != "running":
+        break
+    _time.sleep(0.05)
+check("  the status route reports it finished, with the result",
+      (st.get("status"), (st.get("result") or {}).get("marketplace")), ("done", "UK"))
 check("  pulled under UK, 95 days, one bigger pass", (seen.get("ws"), seen.get("mkt"),
       seen.get("days"), seen.get("pages")), ("nw", "UK", 95, ff.RESYNC_PAGES))
 check("  the refresher stands aside while it runs", seen.get("busy"), True)
 check("  and is released after", _lr._USER["active"].get("nw"), 0)
+check("  status with no account named: 400",
+      c.get("/finance/resync/status").status_code, 400)
 seen.clear()
 r = c.post("/finance/resync", json={})
 check("no account named: refused, nothing pulled", (r.status_code, seen), (400, {}))

@@ -1,7 +1,9 @@
 """domain/finance_data.py -- what Amazon charged, and what went back to buyers.
 
 WHERE IT COMES FROM
-The Finances API (listFinancialEvents). This is a different question from the
+The Finances API -- since 30 Sep 2026 the 2024-06-19 listTransactions, written
+back into the v0 listFinancialEvents shape this parser reads (see
+domain/finance_transactions.py). This is a different question from the
 Sales & Traffic report, not a better answer to the same one:
 
     Sales & Traffic  ->  what was ORDERED, by order date
@@ -279,8 +281,9 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
 
     `undated`, when given, replaces the fallback day: it is called once with
     every undated charge and returns where each belongs ([{date, field, sku,
-    amount, currency}]) -- finance_fetch passes undated_placer(), which gives
-    each charge a stable day so a re-sync replaces it instead of adding it.
+    amount, currency}]) -- undated_placer() gives each charge a stable day so
+    a re-sync replaces it instead of adding it. (The sync no longer needs it:
+    the newer Finances list dates every charge -- see finance_transactions.)
     """
     ev = ((payload or {}).get("FinancialEvents")
           if isinstance(payload, dict) else None) or {}
@@ -609,6 +612,12 @@ def store(config_path, workspace_id, marketplace, rows, source="finances_api"):
 # Placed ONLY for a half-month fetched completely (finance_fetch decides): a day
 # row is replaced whole by store(), and a partial pull must never replace a real
 # day's trade with a placement-only row.
+#
+# NOT USED BY THE SYNC SINCE 30 SEP 2026. The sync now reads Finances
+# 2024-06-19 (listTransactions), which DATES the subscription, so there is
+# nothing to place; a complete re-read deletes the old placements in its window
+# (clear_unreturned). Kept for parse_events(undated=) and for reading rows the
+# old list stored.
 _UNDATED_LOCK = __import__("threading").Lock()
 
 
@@ -685,34 +694,69 @@ def undated_placer(config_path, workspace_id, marketplace, start, end):
                                          charges, start, end)
 
 
-def clear_undated_leftovers(config_path, workspace_id, marketplace, start, end,
-                            kept_dates):
-    """After a half-month was fetched WHOLE: remove no-trade rows it no longer
-    returns. -> the dates removed.
+def has_rows(config_path, workspace_id, marketplace, start, end):
+    """True when finance_daily already holds an account row on start..end."""
+    return _db.get_db(config_path).execute(
+        "SELECT 1 FROM finance_daily WHERE workspace_id=? AND marketplace=? "
+        "AND asin='*' AND date>=? AND date<=? LIMIT 1",
+        (workspace_id, marketplace, str(start), str(end))).fetchone() is not None
 
-    Those are undated charges an older pull filed on its own last day (the
-    fallback before place_undated). A dated event is returned again by every
-    pull that covers its day, so a day missing from a complete re-pull holds
-    nothing Amazon still reports. Only no-trade rows (no units, no sales, no
-    refunds) are removed -- the same test undated_lumps uses to recognise them --
-    and on those days only: the account total AND any per-product row the old
-    fallback filed beside it (an undated charge carrying a SellerSKU), each
-    checked for trade on its own.
+
+def clear_unreturned(config_path, workspace_id, marketplace, start, end,
+                     kept_days, kept_orders=None, products=True):
+    """After start..end was fetched WHOLE: remove what it no longer returns.
+    -> the dates whose finance_daily rows were removed.
+
+    A complete read is Amazon's whole answer for those days, and a dated
+    transaction is returned by every read that covers its day, so a row missing
+    from it holds nothing Amazon still reports. Two kinds were measured:
+
+      * an undated charge (the monthly subscription) an old pull filed on its
+        own last day -- the newer Finances list dates it, so its finance_undated
+        placement goes too;
+      * a held sale or refund the OLD list showed on the day the hold was
+        RELEASED. The newer list shows it on the day it happened (finance_
+        transactions), so the release-day copy would count it twice
+        (026-4940553-7399509: refunded 18 Aug, shown by the old list 26 Aug).
+
+    kept_days: {(date, asin)} this read returned. kept_orders: {(order_id,
+    posted_date)} it returned for order_fees, or None to leave order_fees alone
+    (its parse failed, so nothing is known about it). products=False leaves
+    per-product rows alone (a read with no SKU map could not have written any).
+
+    order_fees is order_finance's table; the delete sits here beside the
+    finance_daily one because it is the same rule for the same read.
     """
     conn = _db.get_db(config_path)
-    _no_trade = ("COALESCE(units,0)=0 AND COALESCE(principal,0)=0 "
-                 "AND COALESCE(refunds,0)=0")
-    rows = conn.execute(
-        "SELECT date FROM finance_daily WHERE workspace_id=? AND marketplace=? "
-        "AND asin='*' AND date>=? AND date<=? AND " + _no_trade,
-        (workspace_id, marketplace, str(start), str(end))).fetchall()
-    gone = sorted(r["date"] for r in rows if r["date"] not in (kept_dates or set()))
-    for d in gone:
-        conn.execute("DELETE FROM finance_daily WHERE workspace_id=? AND "
-                     "marketplace=? AND date=? AND " + _no_trade,
-                     (workspace_id, marketplace, d))
+    s, e = str(start), str(end)
+    kept_days = kept_days or set()
+    gone = set()
+    for r in conn.execute(
+            "SELECT date, asin FROM finance_daily WHERE workspace_id=? AND "
+            "marketplace=? AND date>=? AND date<=?",
+            (workspace_id, marketplace, s, e)).fetchall():
+        if not products and r["asin"] != "*":
+            continue
+        if (r["date"], r["asin"]) not in kept_days:
+            conn.execute("DELETE FROM finance_daily WHERE workspace_id=? AND "
+                         "marketplace=? AND date=? AND asin=?",
+                         (workspace_id, marketplace, r["date"], r["asin"]))
+            gone.add(r["date"])
+    conn.execute("DELETE FROM finance_undated WHERE workspace_id=? AND "
+                 "marketplace=? AND placed_on>=? AND placed_on<=?",
+                 (workspace_id, marketplace, s, e))
+    if kept_orders is not None:
+        for r in conn.execute(
+                "SELECT order_id, posted_date FROM order_fees WHERE workspace_id=? "
+                "AND marketplace=? AND posted_date>=? AND posted_date<=?",
+                (workspace_id, marketplace, s, e)).fetchall():
+            if (r["order_id"], r["posted_date"]) not in kept_orders:
+                conn.execute("DELETE FROM order_fees WHERE workspace_id=? AND "
+                             "marketplace=? AND order_id=? AND posted_date=?",
+                             (workspace_id, marketplace, r["order_id"],
+                              r["posted_date"]))
     conn.commit()
-    return gone
+    return sorted(gone)
 
 
 def sku_map(config_path, account_id, marketplace):
@@ -837,8 +881,8 @@ def undated_lumps(config_path, workspace_id, marketplace, start, end):
     if out["amount"]:
         out["why"] = (
             "%.2f of the fees in this window sit on %s, %s that sold nothing at "
-            "all. Amazon sends its monthly subscription with no date of its own, "
-            "so it is filed on whichever day the figures were last pulled. The "
+            "all: account charges such as the monthly subscription, not the "
+            "cost of any sale. The "
             "window's total is right; over a short window it makes the profit "
             "look worse than the trading was."
             % (out["amount"],
