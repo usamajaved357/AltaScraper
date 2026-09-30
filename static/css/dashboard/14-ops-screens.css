@@ -427,15 +427,8 @@
 .moncard-head .cc{ font-size:11px; }
 .moncard-foot{ font-size:10px; margin-top:9px; line-height:1.5; }
 .moncard-clean{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ok); }
-.monbars{ display:flex; flex-direction:column; gap:5px; }
-.monbar-row{ display:flex; align-items:center; gap:9px; font-size:12px; }
-.monbar-lbl{ flex:0 0 34px; color:var(--ink2); font-weight:600; }
-.monbar-track{
-  flex:1 1 auto; height:9px; border-radius:5px; background:var(--panel2);
-  border:1px solid var(--line); overflow:hidden;
-}
-.monbar-fill{ display:block; height:100%; background:var(--warn); }
-.monbar-n{ flex:0 0 34px; text-align:right; font-weight:600; color:var(--ink); }
+/* The unknown-sellers bars are the shared uiBars (.ui-bars.tight, datatable.css)
+   since the graph audit, 30 Sep 2026. */
 
 /* THE ASIN MONITOR'S PROGRESS BAR. A nine-minute run used to show the word
    "checking…" and nothing else, which is indistinguishable from a hung one. */

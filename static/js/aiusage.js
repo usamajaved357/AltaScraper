@@ -246,30 +246,20 @@ function _aiChart(d){
 
 // A bar per row, drawn in plain HTML. Proportion is the whole point of this
 // picture — "which account is most of the bill" — and a bar answers it faster
-// than a column of numbers, without a second chart engine.
+// than a column of numbers, without a second chart engine. The bars themselves
+// are the shared uiBars (pageui.js, graph audit 30 Sep 2026).
 function _aiBars(title, rows, labelKey, note){
   if(!rows || !rows.length) return "";
-  const max = rows.reduce(function(m, r){
-    return Math.max(m, Number(r.cost || 0));
-  }, 0) || 1;
-  const bars = rows.slice(0, 12).map(function(r){
-    const label = String(r[labelKey] || "") || "not attributed";
-    const cost = Number(r.cost || 0);
-    const pct = Math.max(1.5, (cost / max) * 100);
-    const col = _aiColour(label);
-    return '<div style="display:flex;align-items:center;gap:10px;margin:5px 0">'
-      + '<div style="width:190px;font-size:12px;overflow:hidden;'
-      + 'text-overflow:ellipsis;white-space:nowrap" title="' + _aiEsc(label) + '">'
-      + _aiEsc(label) + '</div>'
-      + '<div style="flex:1;background:var(--panel);border-radius:5px;height:16px;'
-      + 'position:relative;overflow:hidden">'
-      + '<div style="width:' + pct.toFixed(1) + '%;height:100%;background:'
-      + col + ';opacity:.75"></div></div>'
-      + '<div style="width:96px;text-align:right;font-size:12px">'
-      + _aiEsc(_aiMoney(r.cost)) + '</div>'
-      + '<div class="cc" style="width:74px;text-align:right;font-size:11px">'
-      + _aiEsc(_aiNum(r.calls)) + ' calls</div></div>';
-  }).join("");
+  const name = function(r){ return String(r[labelKey] || "") || "not attributed"; };
+  const bars = uiBars(rows.slice(0, 12), {
+    label: name,
+    value: function(r){ return Number(r.cost || 0); },
+    colour: function(r){ return _aiColour(name(r)); },
+    text: function(r){
+      return _aiEsc(_aiMoney(r.cost)) + ' <span class="cc" style="font-size:11px">'
+        + _aiEsc(_aiNum(r.calls)) + ' calls</span>';
+    },
+  });
   // min-width:min(420px,100%), not a flat 420px. The floor is there to stop the
   // two panels squeezing into unreadable columns on a wide screen, but on a
   // 390px phone a flat 420 is 30px wider than the screen itself, so the panel

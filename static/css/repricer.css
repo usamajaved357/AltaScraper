@@ -288,7 +288,7 @@
   pointer-events:none;box-shadow:0 3px 10px rgba(0,0,0,.45);
   font-variant-numeric:tabular-nums;color:var(--ink);z-index:2}
 
-/* The repricer chart's grid and crosshair (sourcing_chart.js): a faint white
-   wash on the dark theme, as classes so the light theme gets a faint ink one. */
-.spc-grid{ stroke:color-mix(in srgb, var(--as-lit-ffffff-ov) 6%, transparent); }
+/* The repricer chart's crosshair (sourcing_chart.js): a faint white wash on the
+   dark theme, as a class so the light theme gets a faint ink one. Its grid is
+   the shared .sc-grid since the graph audit, 30 Sep 2026. */
 .spc-axis{ stroke:color-mix(in srgb, var(--as-lit-ffffff-ov) 22%, transparent); }

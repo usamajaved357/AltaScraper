@@ -186,7 +186,10 @@ for _hex in ("#7a1f1f", "#8a1010", "#5a2ea6", "#7fe0c0", "#8a5a1e"):
 
 print("\n== there is a chart, and it is the one worth having ==")
 truthy("unknown sellers by marketplace", "monChart" in J)
-truthy("  drawn as bars", ".monbar-fill" in C and "monbar-row" in J)
+# re-pinned 30 Sep 2026: graph audit, shared helper (the monitor's own
+# .monbar-* list became the shared uiBars in pageui.js / .ui-bars in datatable.css)
+truthy("  drawn as bars", "uiBars(keys" in J
+       and ".ui-bar-track" in read("static", "css", "datatable.css"))
 truthy("  biggest first", "bm[b] - bm[a]" in J)
 truthy("a clean account gets a sentence, not an empty frame",
        "No unknown sellers on any tracked ASIN" in J)

@@ -225,10 +225,11 @@ change needs it, via register injection.
   can_publish). READ; owner to confirm the intended gate.
 
 ## Activity log — left open (29 Sep 2026 reviews)
-- Some callers post a catalogued write naming NO account (`autofix.js` /edit,
-  `howworks.js` /approve; `_srcBody`'s `__all__`), so that work is filed under
-  no account and only a viewer of every account sees it. Existing Rule 14 gaps
-  in those callers, not in the log. READ.
+- Some callers post a catalogued write naming NO account (`_srcBody`'s
+  `__all__`), so that work is filed under no account and only a viewer of every
+  account sees it. (`autofix.js` applySuggestion and `howworks.js` setStatus
+  FIXED 30 Sep 2026: both name their account; applySuggestion also stopped
+  marking a refused save "Applied"; test_suggestion_apply_honest.py.) READ.
 - Auto-fix posts /edit in its own loop, so its automatic edits count as edits by
   whoever started it. READ, not traced further; owner may want them separate.
 - An upload's activity row does not link to its upload_log entry (no upload id

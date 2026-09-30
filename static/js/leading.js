@@ -45,23 +45,20 @@ function leadStatus(st) {
   return '<span class="ld-pill unk">Not enough to say</span>';
 }
 
-// A bare sparkline, drawn as an inline SVG. No library: the whole point is a
-// shape, and the shape is fourteen points.
+// A bare sparkline: the shape of the last fortnight. Drawn by the shared
+// ppcSparkline (ppcshared.js, loaded on every page, used at call time) since
+// the graph audit, 30 Sep 2026 -- this was a third copy of the same drawing
+// (CLAUDE.md Rule 12). The .ld-spark box keeps it 92x22 in the cell's own
+// colour (currentColor). A value that is not a number is left out, never drawn
+// as zero -- and left out rather than passed as a gap, because ppcSparkline's
+// gap tooltip explains an ADVERTISING gap, which is not what this is.
 function leadSpark(trail) {
   if (!trail || trail.length < 2) return "";
-  const vs = trail.map(function (p) { return Number(p.v); }).filter(function (n) { return !isNaN(n); });
+  const vs = trail.map(function (p) {
+    return (p && p.v !== null && p.v !== undefined && p.v !== "") ? Number(p.v) : NaN;
+  }).filter(function (n) { return !isNaN(n); });
   if (vs.length < 2) return "";
-  const min = Math.min.apply(null, vs), max = Math.max.apply(null, vs);
-  const span = (max - min) || 1;
-  const w = 92, h = 22;
-  const pts = vs.map(function (v, i) {
-    const x = (i / (vs.length - 1)) * w;
-    const y = h - ((v - min) / span) * h;
-    return x.toFixed(1) + "," + y.toFixed(1);
-  }).join(" ");
-  return '<svg class="ld-spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h +
-         '" preserveAspectRatio="none"><polyline points="' + pts + '" fill="none" ' +
-         'stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  return '<div class="ld-spark">' + ppcSparkline(vs, "currentColor") + "</div>";
 }
 
 function leadRender() {

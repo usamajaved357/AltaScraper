@@ -347,42 +347,6 @@ async function returnsExport(){
   }catch(e){ toast(String(e)); }
 }
 
-function _retBars(obj, colourFn, total){
-  const keys = Object.keys(obj || {});
-  if(!keys.length) return '<div class="cc" style="font-size:11.5px">nothing yet</div>';
-  const max = Math.max.apply(null, keys.map(k => obj[k]));
-  return keys.map(function(k){
-    const n = obj[k], pct = total ? (n / total * 100) : 0;
-    const col = colourFn ? colourFn(k) : "var(--accent)";
-    return '<div style="margin-bottom:7px">'
-      + '<div style="display:flex;justify-content:space-between;font-size:11.5px;'
-      + 'margin-bottom:2px"><span>' + _rEsc(k.replace(/_/g, " ").toLowerCase())
-      + '</span><span class="cc">' + n
-      + (total ? ' · ' + pct.toFixed(0) + '%' : '') + '</span></div>'
-      + '<div style="height:6px;background:var(--sidebar);border-radius:3px;overflow:hidden">'
-      + '<div style="height:100%;width:' + (max ? (n / max * 100) : 0) + '%;'
-      + 'background:' + col + '"></div></div></div>';
-  }).join("");
-}
-
-function _retSpark(daily){
-  const days = Object.keys(daily || {});
-  if(!days.length) return "";
-  const vals = days.map(d => daily[d]);
-  const max = Math.max.apply(null, vals) || 1;
-  const W = 720, H = 90, pad = 8;
-  const x = i => pad + (days.length === 1 ? (W-2*pad)/2 : i*(W-2*pad)/(days.length-1));
-  const y = v => H - pad - (v / max) * (H - 2*pad);
-  const d = days.map((k,i) => (i?"L":"M") + x(i).toFixed(1) + " " + y(daily[k]).toFixed(1)).join(" ");
-  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="height:auto;display:block;'
-    + 'background:var(--sidebar);border:1px solid var(--line2);border-radius:8px">'
-    + '<path d="'+d+'" fill="none" stroke="#ef5350" stroke-width="2" stroke-linejoin="round"/>'
-    + days.map(function(k,i){
-        return '<rect x="'+(x(i)-6)+'" y="'+pad+'" width="12" height="'+(H-2*pad)+'" '
-             + 'fill="transparent"><title>'+_rEsc(k)+': '+daily[k]+'</title></rect>'; }).join("")
-    + '</svg>';
-}
-
 /* ---- the page, laid out as the Returns Intelligence report ------------
  *
  * Same six figures across the top, same nine panels, same order, same type
@@ -413,23 +377,38 @@ function _riCard(title, meta, inner, cls){
     + '</div>' + inner + '</div>';
 }
 
-/* Horizontal bars, biggest first, each showing its share. */
-function _riHbars(rows, colourFor, total){
+/* Horizontal bars, biggest first, each showing its share.
+ *
+ * ONE implementation (CLAUDE.md Rule 12). The comment-themes panel had its own
+ * hand-copied version of this markup; it now calls this with `opt`:
+ *   opt.cls    the row's class ("ri-theme" instead of "ri-hbar")
+ *   opt.limit  how many rows (default 10; the themes panel shows them all)
+ * and each row may carry
+ *   r.sub      a muted note after the name (the theme's nature)
+ *   r.pctText  the share, already written (the server's own figure)
+ *   r.after    markup under the bar (the theme's quotes)
+ * colourFor is handed the whole row as its second argument. */
+function _riHbars(rows, colourFor, total, opt){
+  const o = opt || {};
   if(!rows || !rows.length){
     return '<div class="cc" style="font-size:12px;padding:10px 0">'
          + 'Nothing recorded for this period.</div>';
   }
   const max = rows.reduce(function(m, r){ return Math.max(m, r.n || 0); }, 0) || 1;
-  return rows.slice(0, 10).map(function(r){
+  const shown = (o.limit === 0) ? rows : rows.slice(0, o.limit || 10);
+  return shown.map(function(r){
     const pct = total ? Math.round((r.n / total) * 100) : 0;
-    return '<div class="ri-hbar">'
+    const share = (r.pctText !== undefined) ? r.pctText : (total ? pct + '%' : '');
+    return '<div class="' + (o.cls || "ri-hbar") + '">'
       + '<div class="ri-hbar-head"><span class="ri-hbar-name">' + _rEsc(r.name)
+      + (r.sub ? ' <span class="cc" style="font-weight:400">' + _rEsc(r.sub) + '</span>' : '')
       + '</span><span class="ri-hbar-val">' + r.n
-      + (total ? ' <span class="cc" style="font-weight:400">' + pct + '%</span>' : '')
+      + (share ? ' <span class="cc" style="font-weight:400">' + share + '</span>' : '')
       + '</span></div>'
       + '<div class="ri-hbar-track"><div class="ri-hbar-fill" style="width:'
       + Math.round((r.n / max) * 100) + '%;background:'
-      + (colourFor ? colourFor(r.name) : "var(--accent2)") + '"></div></div></div>';
+      + (colourFor ? colourFor(r.name, r) : "var(--accent2)") + '"></div></div>'
+      + (r.after || '') + '</div>';
   }).join("");
 }
 
@@ -1210,22 +1189,17 @@ function returnsRender(){
   const th = intel.themes || {};
   const themes = th.themes || [];
   if(themes.length){
-    const tmax = themes[0].count || 1;
-    const themeHtml = themes.map(function(t){
-      return '<div class="ri-theme">'
-        + '<div class="ri-hbar-head"><span class="ri-hbar-name">'
-        + _rEsc(t.theme) + ' <span class="cc" style="font-weight:400">'
-        + _rEsc(t.nature) + '</span></span>'
-        + '<span class="ri-hbar-val">' + t.count
-        + ' <span class="cc" style="font-weight:400">' + _rPct(t.share)
-        + '</span></span></div>'
-        + '<div class="ri-hbar-track"><div class="ri-hbar-fill" style="width:'
-        + Math.round(t.count / tmax * 100) + '%;background:'
-        + (RET_NATURE_COLOUR[t.nature] || "var(--accent2)") + '"></div></div>'
-        + '<div class="ri-quotes">' + (t.quotes || []).map(function(q){
-            return '<div class="ri-quote">“' + _rEsc(q) + '”</div>';
-          }).join("") + '</div></div>';
-    }).join("");
+    // The same bar list every other panel on this page uses (_riHbars), with
+    // the theme's nature beside its name and its quotes under the bar.
+    const themeHtml = _riHbars(themes.map(function(t){
+      return {name: t.theme, n: t.count, sub: t.nature, nature: t.nature,
+              pctText: _rPct(t.share),
+              after: '<div class="ri-quotes">' + (t.quotes || []).map(function(q){
+                  return '<div class="ri-quote">“' + _rEsc(q) + '”</div>';
+                }).join("") + '</div>'};
+    }), function(name, r){
+      return RET_NATURE_COLOUR[r.nature] || "var(--accent2)";
+    }, 0, {cls: "ri-theme", limit: 0});
     h += '<div style="margin-bottom:24px">'
       + _riCard("What Customers Actually Wrote",
                 th.placed + " of " + th.comments_read + " comments grouped",

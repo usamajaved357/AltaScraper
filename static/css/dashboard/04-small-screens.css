@@ -251,7 +251,9 @@
   .ld-warn{color:var(--as-lit-e3c98a-fg);font-weight:600}
   .ld-bad{color:var(--as-lit-f0928f-fg);font-weight:600}
   .ld-sparkcell{color:var(--ink3);min-width:100px}
-  .ld-spark{display:block;opacity:.85}
+  .ld-spark{display:block;width:92px;opacity:.85}
+  /* The shared ppcSparkline sets 28px inline; the leading table's is 22. */
+  .ld-spark .spark{display:block;height:22px !important}
 
   /* ---- TRACKERS ----
      Three states, and the third is the one that matters: "not known" must not

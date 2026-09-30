@@ -268,20 +268,18 @@ function perfLegend(keys, cats) {
 
 // A labelled bar list (account · marketplace, kinds of work). The failed part
 // of each bar is drawn in red inside it, so where things go wrong is visible
-// without reading a number.
+// without reading a number. Drawn by the shared uiBars (pageui.js) since the
+// graph audit (30 Sep 2026); this only says which numbers of a row are which.
 function perfBars(rows, label, colour, hint) {
-  if (!rows.length) return '<div class="cc" style="padding:8px 0">Nothing recorded.</div>';
-  const max = Math.max.apply(null, rows.map(function (r) { return r.actions || 0; })) || 1;
-  return '<div class="perf-bars">' + rows.map(function (r) {
-    const w = 100 * (r.actions || 0) / max, fw = r.actions ? w * (r.failed || 0) / r.actions : 0;
-    return '<div class="perf-bar-row"><span class="perf-bar-k" title="' + esc(label(r)) + '">' + esc(label(r)) + "</span>"
-      + '<span class="perf-bar-track"><span style="width:' + w.toFixed(1) + "%;background:" + colour(r) + '"></span>'
-      + (fw ? '<span class="perf-bar-bad" style="left:' + (w - fw).toFixed(1) + "%;width:" + fw.toFixed(1) + '%"></span>' : "")
-      + "</span>"
-      + '<span class="perf-bar-v">' + (r.actions || 0)
-      + (r.failed ? ' <span style="color:var(--red)">· ' + r.failed + " failed</span>" : "")
-      + (hint ? " " + hint(r) : "") + "</span></div>";
-  }).join("") + "</div>";
+  return uiBars(rows || [], {
+    label: label, colour: colour, hint: hint,
+    value: function (r) { return r.actions || 0; },
+    bad: function (r) { return r.failed || 0; },
+    text: function (r) {
+      return (r.actions || 0)
+        + (r.failed ? ' <span style="color:var(--red)">· ' + r.failed + " failed</span>" : "");
+    },
+  });
 }
 
 function perfPlace(r) {

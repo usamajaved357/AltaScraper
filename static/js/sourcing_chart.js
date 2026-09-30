@@ -171,8 +171,11 @@ function srcChart(title, json, anchor){
   // Which way it has gone decides the colour: cheaper is good for us.
   const first = vals[0], last = vals[vals.length - 1];
   const move = first ? ((last - first) / first) * 100 : 0;
-  const col = flat || Math.abs(move) < 1 ? '#22c55e'
-            : (move < 0 ? '#22c55e' : '#f0b429');
+  // Tokens, as the row sparkline above uses (graph audit, 30 Sep 2026). They
+  // go through style="" below: an SVG presentation attribute does not reliably
+  // take var().
+  const col = flat || Math.abs(move) < 1 ? 'var(--ok)'
+            : (move < 0 ? 'var(--ok)' : 'var(--gold)');
   const gid = 'rpg_' + Math.random().toString(36).slice(2, 8);
 
   // ---- monotone cubic tangents (Fritsch-Carlson) ----------------------
@@ -212,12 +215,13 @@ function srcChart(title, json, anchor){
   // ---- the axes --------------------------------------------------------
   // THREE GRID LINES, at amounts that are actually in range. A grid drawn at
   // round numbers outside the data would imply the price had been there.
+  // Dashed and classed as salesCombo's (.sc-grid), one chart language.
   let grid = '', yl = '';
   for(let k = 0; k <= 2; k++){
     const v = lo0 + (hi0 - lo0) * (k / 2);
     const y = Y(v).toFixed(1);
     grid += '<line x1="' + PAD.l + '" y1="' + y + '" x2="' + (W - PAD.r)
-         +  '" y2="' + y + '" class="spc-grid" stroke-width="1"/>';
+         +  '" y2="' + y + '" class="sc-grid" stroke-width="1" stroke-dasharray="3 3"/>';
     yl += '<text x="' + (PAD.l - 6) + '" y="' + (+y + 3.5)
        +  '" text-anchor="end" class="rp-ax">' + _sesc(_smoney(v)) + '</text>';
   }
@@ -255,21 +259,21 @@ function srcChart(title, json, anchor){
     const dead = String(usable[i].status || '') === 'gone';
     dots += '<g class="rp-pt" data-i="' + i + '">'
          +  '<circle cx="' + xs[i].toFixed(1) + '" cy="' + ys[i].toFixed(1)
-         +  '" r="4" fill="' + (dead ? '#ef4444' : col) + '"/>'
+         +  '" r="4" style="fill:' + (dead ? 'var(--red)' : col) + '"/>'
          +  '<circle cx="' + xs[i].toFixed(1) + '" cy="' + ys[i].toFixed(1)
-         +  '" r="2" fill="#fff"/></g>';
+         +  '" r="2" style="fill:var(--as-lit-ffffff-bg)"/></g>';
   }
 
   const svg =
       '<svg class="rp-chart" viewBox="0 0 ' + W + ' ' + H + '" width="' + W
     + '" height="' + H + '">'
     + '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">'
-    + '<stop offset="0" stop-color="' + col + '" stop-opacity=".20"/>'
-    + '<stop offset="1" stop-color="' + col + '" stop-opacity="0"/>'
+    + '<stop offset="0" style="stop-color:' + col + ';stop-opacity:.20"/>'
+    + '<stop offset="1" style="stop-color:' + col + ';stop-opacity:0"/>'
     + '</linearGradient></defs>'
     + grid
     + '<path d="' + area + '" fill="url(#' + gid + ')"/>'
-    + '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="2" '
+    + '<path d="' + d + '" fill="none" style="stroke:' + col + '" stroke-width="2" '
     + 'stroke-linecap="round" stroke-linejoin="round"/>'
     + '<line class="rp-cross spc-axis" x1="0" y1="' + PAD.t + '" x2="0" y2="'
     + (PAD.t + ih) + '" stroke-width="1" '
