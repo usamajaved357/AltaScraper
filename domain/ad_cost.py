@@ -88,6 +88,20 @@ def ad_vat(config_path, workspace_id, marketplace, end, registered):
     profit left out 20% of its ad spend with nothing on the page to say so."""
     if registered is True:
         return {"ratio": None, "basis": "registered", "note": ""}
+    # "ALL MARKETPLACES" IS NOT A PLACE (owner's screenshot, 30 Sep 2026: Finance
+    # on nestwell with the marketplace picker on "All" still showed ads with no
+    # VAT). Ad invoices are account-wide and stored under the account's HOME
+    # marketplace (accounts.home_marketplace, the same rule the Finances sync
+    # files them by), so a sentinel or blank marketplace is read as that one --
+    # both for the measured rate and for the UK estimate.
+    mk = str(marketplace or "").strip()
+    if not mk or mk.startswith("__") or mk.lower() in ("all", "*"):
+        try:
+            from domain import accounts as _acc
+            mk = (_acc.home_marketplace(config_path, workspace_id) or ("", ""))[0] or mk
+        except Exception:
+            pass
+        marketplace = mk
     if registered is None:
         return {"ratio": None, "basis": "unset",
                 "note": ("This account's VAT rate is not set, so VAT on ads is not "
