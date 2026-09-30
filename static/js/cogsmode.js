@@ -135,7 +135,11 @@ async function cogsRefreeze(){
   if(j === null) return;
   if(!j || !j.ok){ toast((j && j.error) || "Could not re-cost that period"); return; }
   toast("Costed " + (j.priced || 0) + " line(s)"
-        + (j.unpriced ? ", " + j.unpriced + " still have no cost" : ""));
+        + (j.unpriced ? ", " + j.unpriced + " still have no cost" : "")
+        // Order-specific costs are never re-costed (domain/order_cogs
+        // freeze_range) -- said, so the owner is not left wondering.
+        + (j.kept_order_costs ? "; " + j.kept_order_costs
+             + " cost(s) you set for a single order were kept" : ""));
   if(typeof salesReload === "function") salesReload();
 }
 

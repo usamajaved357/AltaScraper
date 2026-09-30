@@ -60,6 +60,13 @@ MODE_SKU = "sku"
 MODES = (MODE_TRACKED, MODE_SKU)
 DEFAULT_MODE = MODE_SKU
 
+# THE TWO METHODS, as they are written on an order line (owner, 30 Sep 2026):
+#   'manual-order'  METHOD 2, a cost set for that one order (set_for_order)
+#   'manual'        METHOD 1, the product's cost, frozen when the order was seen
+# Anything else on a line with a cost is from a source that no longer exists.
+ORDER_SOURCE = "manual-order"
+RETIRED_SOURCES = ("sku", "tracked")
+
 
 def mode_for(config, workspace_id):
     """Which costing mode this account is on. Per account, like VAT."""
@@ -263,29 +270,55 @@ def freeze_range(config_path, workspace_id, marketplace, start, end, mode,
     frozen stays frozen, which is the whole point. Returns a short report.
     """
     conn = _db.get_db(config_path)
-    q = ("SELECT id, sku, asin, purchase_date, cogs FROM order_lines "
+    q = ("SELECT id, sku, asin, purchase_date, cogs, cogs_source FROM order_lines "
          "WHERE workspace_id=? AND marketplace=? "
          "  AND substr(purchase_date,1,10) >= ? "
          "  AND substr(purchase_date,1,10) <= ?")
     rows = conn.execute(q, (workspace_id, marketplace, str(start), str(end))).fetchall()
 
     now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    priced = unpriced = skipped = 0
+    priced = unpriced = skipped = kept_order = 0
     for r in rows:
+        src_now = str(r["cogs_source"] or "")
+        # AN ORDER-SPECIFIC COST IS NEVER RE-COSTED, force or not (owner, 30 Sep
+        # 2026: "ORDER-SPECIFIC COST > PRODUCT-LEVEL COST for that order").
+        # force=True is what the Sales bar's "Work costs out again" sends, and
+        # it used to write the product cost over the owner's figure for that
+        # one order -- the GBP8 became GBP10 again. test_cogs_two_methods.py.
+        if r["cogs"] is not None and src_now == ORDER_SOURCE:
+            kept_order += 1
+            continue
+        # A RETIRED SOURCE IS NOT ONE OF THE TWO METHODS. 'sku' and 'tracked'
+        # lines were frozen before costs became something the owner sets; where
+        # the product now has a cost, that is the product-level answer and
+        # replaces them -- but ONLY on the owner's explicit "Work costs out
+        # again" (force). Opening Sales calls this on a GET; rewriting old
+        # windows there would move figures he has already seen with no word on
+        # screen, and Orders (which reads the stored cost) would disagree until
+        # then (review, 30 Sep 2026). Where the product has no cost, the old
+        # figure stays -- blanking a number is his decision, not a side effect.
+        legacy = r["cogs"] is not None and src_now in RETIRED_SOURCES
         if r["cogs"] is not None and not force:
             skipped += 1
             continue
         cost, src = resolve(config_path, workspace_id, marketplace,
                             r["sku"], r["purchase_date"], mode, overrides)
         if cost is None:
-            unpriced += 1
+            if legacy:
+                skipped += 1
+            else:
+                unpriced += 1
             continue
+        # Never over an order cost saved between the read above and this write
+        # (a /cogs/order landing while a re-cost runs).
         conn.execute("UPDATE order_lines SET cogs=?, cogs_source=?, cogs_at=? "
-                     "WHERE id=?", (cost, src, now, r["id"]))
+                     "WHERE id=? AND NOT (COALESCE(cogs_source,'') = ? "
+                     "AND cogs IS NOT NULL)",
+                     (cost, src, now, r["id"], ORDER_SOURCE))
         priced += 1
     conn.commit()
     return {"priced": priced, "unpriced": unpriced, "already_had_one": skipped,
-            "mode": mode}
+            "kept_order_costs": kept_order, "mode": mode}
 
 
 def set_for_order(config_path, workspace_id, marketplace, order_id, cost,
@@ -297,7 +330,7 @@ def set_for_order(config_path, workspace_id, marketplace, order_id, cost,
     """
     conn = _db.get_db(config_path)
     now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    args = [None if cost is None else round(float(cost), 4), "manual-order", now,
+    args = [None if cost is None else round(float(cost), 4), ORDER_SOURCE, now,
             workspace_id, marketplace, str(order_id)]
     q = ("UPDATE order_lines SET cogs=?, cogs_source=?, cogs_at=? "
          "WHERE workspace_id=? AND marketplace=? AND order_id=?")
