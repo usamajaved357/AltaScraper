@@ -834,6 +834,7 @@ function ppccCohorts(j, cur){
     +   uiHint('By estimated profit on the days whose sales have landed: a loss '
     +   'is unprofitable, under 10% of spend is marginal. No sales spent money '
     +   'and got nothing back; no activity did not run.') + '</div>'
+    + ppcJudgedNote(j.maturity)
     + '<div style="margin-bottom:14px"></div>'
     + bar + cards + '</div>';
 }
@@ -1026,7 +1027,14 @@ function ppccTable(j, cur){
       + '<td>' + ppcMoney(r.cpc, cur) + '</td>'
       + '<td>' + ppcMoney(r.cpa, cur,
           "No attributed orders, so there is no cost per order.") + '</td>'
-      + '<td style="font-weight:500">' + ppcMoney0(r.spend, cur) + '</td>'
+      + '<td style="font-weight:500">' + ppcMoney0(r.spend, cur)
+      // Spend from the settling days the label is judged without (spec §4).
+      +   (Number(r.settling_spend || 0) > 0
+            ? ' <span class="ppc-q" title="' + _pEsc(Number(r.settling_spend).toFixed(2)
+              + ' of this is from '
+              + (r.judged_to ? 'days after ' + r.judged_to : 'the last days')
+              + ', still settling. The label and score are judged without it.') + '">settling</span>'
+            : '') + '</td>'
       + '<td>' + ppcMoney0(r.sales, cur) + '</td>'
       + '<td>' + ppcPct(r.acos_pct,
           "No attributed sales, so ACOS is undefined — not 0%.") + '</td>'

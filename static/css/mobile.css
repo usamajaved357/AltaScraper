@@ -490,3 +490,13 @@ body.navopen #workspace .sidebar{
 @media (prefers-reduced-motion: reduce){
   #workspace .sidebar, .navscrim{ transition-duration:.01ms !important; }
 }
+
+/* NOT ON A DESKTOP (owner, 30 Sep 2026: "I STILL SEE that side show menu 3
+   lines close to the app logo, we decided to finish it on desktop view").
+   Above the phone breakpoint the icon rail is always drawn, and its own
+   "Menu" button (static/js/navrail.js, data-nr="-menu") opens this same
+   drawer -- so the corner button was a second way to the same place. On a
+   phone (<= 860px, MNAV_BREAKPOINT) there is no rail and it stays. */
+@media (min-width: 861px){
+  #navburger{ display:none; }
+}

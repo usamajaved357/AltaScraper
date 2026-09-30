@@ -29,6 +29,7 @@ was ever shipped.
 """
 
 import datetime as _dt
+import re as _re
 
 from data import db as _db
 
@@ -86,6 +87,58 @@ def stored_items(config_path, workspace_id, marketplace, order_id):
          str(order_id or ""))).fetchall()
 
 
+# Amazon's OrderStatus values (Orders API v0). Anything else is not stored.
+ORDER_STATUSES = frozenset((
+    "PendingAvailability", "Pending", "Unshipped", "PartiallyShipped", "Shipped",
+    "InvoiceUnconfirmed", "Canceled", "Unfulfillable"))
+_ISO = _re.compile(r"^\d{4}-\d{2}-\d{2}"
+                   r"(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$")
+
+
+def clean_header(purchase_date, status):
+    """An order's date and status as a CALLER supplied them -> (date, status),
+    each "" unless it is a well-formed ISO date / a known Amazon status. For
+    values that arrive from a browser request before they are stored."""
+    pd = str(purchase_date or "").strip()
+    st = str(status or "").strip()
+    if not _ISO.match(pd):
+        pd = ""
+    else:
+        try:
+            _dt.date.fromisoformat(pd[:10])
+        except ValueError:
+            pd = ""
+    if st not in ORDER_STATUSES:
+        st = ""
+    return pd, st
+
+
+def fill_blanks(config_path, workspace_id, marketplace, order_id, purchase_date,
+                status=""):
+    """Give an order's stored lines the date / status they were stored without.
+    -> rows changed. Only BLANKS are filled; a stored value is never replaced.
+    For a caller that already knows the order's header (the Orders screen reads
+    lines from the store and so never reaches store_lines' upsert again)."""
+    pd, st = str(purchase_date or "").strip(), str(status or "").strip()
+    if not order_id or not (pd or st):
+        return 0
+    conn = _db.get_db(config_path)
+    n = 0
+    if pd:
+        n += conn.execute(
+            "UPDATE order_lines SET purchase_date=? WHERE workspace_id=? AND "
+            "marketplace=? AND order_id=? AND TRIM(COALESCE(purchase_date,''))=''",
+            (pd, workspace_id, marketplace, str(order_id))).rowcount or 0
+    if st:
+        n += conn.execute(
+            "UPDATE order_lines SET status=? WHERE workspace_id=? AND "
+            "marketplace=? AND order_id=? AND TRIM(COALESCE(status,''))=''",
+            (st, workspace_id, marketplace, str(order_id))).rowcount or 0
+    if n:
+        conn.commit()
+    return n
+
+
 def store_lines(config_path, workspace_id, marketplace, lines):
     """Write order lines, ignoring ones already there."""
     if not lines:
@@ -108,7 +161,22 @@ def store_lines(config_path, workspace_id, marketplace, lines):
                 "ON CONFLICT(workspace_id, marketplace, order_id, asin, sku) "
                 "DO UPDATE SET shipping=excluded.shipping, "
                 "              revenue=excluded.revenue, "
-                "              status=excluded.status, "
+                # A BLANK NEVER WINS, A BLANK IS ALWAYS FILLED (30 Sep 2026).
+                # The Orders screen stored lines with no purchase date and no
+                # status; this upsert never filled them, and every reader of
+                # sales counts by purchase_date -- 26 lines, 393.16, missing
+                # from nestwell's total sales (TACOS read too high). Nor may a
+                # later blank status wipe out a real one.
+                "              purchase_date=CASE WHEN TRIM(COALESCE("
+                "                  order_lines.purchase_date,''))='' "
+                "                  THEN excluded.purchase_date "
+                "                  ELSE order_lines.purchase_date END, "
+                "              status=CASE WHEN TRIM(COALESCE(excluded.status,''))='' "
+                "                  THEN order_lines.status ELSE excluded.status END, "
+                "              title=CASE WHEN TRIM(COALESCE(order_lines.title,''))='' "
+                "                  THEN excluded.title ELSE order_lines.title END, "
+                "              currency=CASE WHEN TRIM(COALESCE(order_lines.currency,''))='' "
+                "                  THEN excluded.currency ELSE order_lines.currency END, "
                 "              fetched_at=excluded.fetched_at",
                 (workspace_id, marketplace, L["order_id"], L["purchase_date"],
                  L.get("asin") or "", L.get("sku") or "", L.get("title") or "",

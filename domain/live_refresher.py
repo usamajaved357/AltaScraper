@@ -147,6 +147,10 @@ def status():
                  "result": _STATE["results"].get(k, "")}
                 for k, v in sorted(_STATE["last"].items())
             ],
+            # The sales/finance catch-up's last word per pair -- including a
+            # finance pull that was refused -- which the list above never showed.
+            "sales_results": {k: v for k, v in sorted(_STATE["results"].items())
+                              if k.endswith(" sales")},
         }
 
 
@@ -669,6 +673,14 @@ def _sales_one(app, aid, mkt):
             note += ", %s still behind" % data["still_missing"]
         if (data.get("failed") or []):
             note += ", %d refused" % len(data["failed"])
+        # The finance half's refusal (no home marketplace) or failure, said in
+        # the result the refresher status shows and the log prints -- it used
+        # to be dropped, so an account's fees silently stopped updating.
+        fin = data.get("finance") or {}
+        if fin.get("ok") is False:
+            note += "; FINANCE NOT UPDATED: %s" % str(fin.get("error", ""))[:160]
+        elif fin.get("not_updated"):
+            note += "; %s" % str(fin["not_updated"])[:200]
         return note
     except Exception as e:
         return "error: %s" % str(e)[:70]

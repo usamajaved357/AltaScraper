@@ -204,7 +204,9 @@
    its full height and every row stays clickable. The panel sticks under the top
    bar and scrolls on its own, so a long order never pushes the table away. */
 .ord-split{
-  display: grid; grid-template-columns: minmax(0, 1fr) 380px;
+  /* 400-480px: roomy enough for the four cards in one row and a label/value
+     list that never wraps into itself. ORD_SIDE_MIN in orders.js assumes 400. */
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(400px, 32vw, 480px);
   gap: var(--as-space-4, 16px); align-items: start;
 }
 .ord-main{ min-width: 0; }
@@ -214,6 +216,10 @@
   background: var(--as-surface-1); border: 1px solid var(--as-border);
   border-radius: var(--as-radius-lg, 10px);
   box-shadow: var(--as-shadow-dropdown);
+  /* Room under the last field for the floating Ask Claude buttons (bottom
+     right, static/css/floating.css), which otherwise sit on the supplier and
+     tracking boxes: scrolled to the end, everything clears them. */
+  padding-bottom: 104px;
 }
 .ord-side-h{
   position: sticky; top: 0; z-index: 1;
@@ -233,8 +239,75 @@
 /* The selected row, clearly marked while its order is on the right. */
 .ord-split table.ordtable tbody tr.ordrow.isopen{
   box-shadow: inset 3px 0 0 var(--as-action);
+  background: var(--as-surface-3);
 }
-/* 380px, always: ORD_SIDE_MIN in orders.js is worked out on this width. */
+
+/* ---- THE COMPACT LIST beside an open order (master-detail, 30 Sep 2026) ----
+   Owner: "i liked the previous version of it but ... the words in each other".
+   Nine columns in what is left beside the panel is what overprinted. While an
+   order is open the list keeps only what picks the next order -- the tick, the
+   order (id, date, amount), the item, Amazon's state and the profit -- and the
+   rest is one click away in the panel. Same cells, hidden by CSS; closing the
+   panel brings the full table back. */
+table.ord-board-table.ord-compact{ min-width: 0 !important; }
+table.ord-board-table.ord-compact [data-label="Account"],
+table.ord-board-table.ord-compact [data-label="Channel"],
+table.ord-board-table.ord-compact [data-label="Due / next"],
+table.ord-board-table.ord-compact [data-label="Cost"],
+table.ord-board-table.ord-compact [data-label="Next step"]{ display: none; }
+table.ord-board-table.ord-compact td[data-label="Item"]{ min-width: 0 !important; }
+table.ord-board-table.ord-compact td[data-label="Order"]{ min-width: 0 !important; }
+table.ord-board-table.ord-compact .ord-chev{ display: none; }
+
+/* ---- THE PANEL'S CONTENT, beside the list ------------------------------------
+   Same markup as under a row; here the earnings flow and the delivery line
+   become label/value lists -- label left, number right-aligned, the value free
+   to wrap on its own side -- because at panel width the one-line versions
+   wrapped into each other. */
+.o-sec-h{ display: none; }
+.ord-side .opanel{ padding: 0; }
+/* Styled as the "Bought from supplier" / "Tracking" headings below it
+   (.odp-note > b, 19-order-panel.css), so the panel has one heading style. */
+.ord-side .o-sec-h{
+  display: block; margin: var(--as-space-3, 12px) 0 var(--as-space-1, 4px);
+  font-size: 10px; line-height: 1.5; color: var(--ink3);
+}
+.ord-side .o-flow{
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 0;
+  padding: var(--as-space-1, 4px) var(--as-space-3, 12px); margin: 0 0 var(--as-space-2, 8px);
+}
+.ord-side .o-arrow{ display: none; }
+.ord-side .o-step{
+  display: flex; flex-direction: row-reverse; justify-content: space-between;
+  align-items: baseline; gap: var(--as-space-3, 12px);
+  text-align: left; min-width: 0; padding: 5px 0;
+  border-bottom: 1px solid var(--as-border-subtle);
+}
+.ord-side .o-step-v{ font-size: 13px; text-align: right; white-space: nowrap; }
+.ord-side .o-step-l{
+  margin: 0; font-size: 11px; letter-spacing: 0; text-transform: none;
+  color: var(--as-text-secondary);
+}
+/* The profit line is the answer: a rule above it, and bolder. */
+.ord-side .o-step.good, .ord-side .o-step.bad{
+  border-top: 1px solid var(--as-border); border-bottom: 0; margin-top: 2px;
+}
+.ord-side .o-step.good .o-step-v, .ord-side .o-step.bad .o-step-v{ font-size: 14px; font-weight: 700; }
+.ord-side .o-costfix{
+  margin: 0; padding: 6px 0 2px; justify-content: flex-end;
+  border-top: 1px dashed var(--as-border-subtle);
+}
+.ord-side .o-deliv{
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px;
+  border-top: 0; padding-top: 0; margin-top: 0;
+  font-size: 12px; color: var(--as-text-primary);
+}
+.ord-side .o-deliv > i, .ord-side .o-deliv > .o-dot{ display: none; }
+.ord-side .o-deliv-i{ display: contents; }
+.ord-side .o-deliv-k{ color: var(--as-text-secondary); white-space: nowrap; }
+.ord-side .o-deliv-v{ text-align: right; overflow-wrap: anywhere; }
+.ord-side .o-item{ margin-top: var(--as-space-1, 4px); }
+.ord-side .o-badges{ margin-top: var(--as-space-3, 12px); }
 
 /* ---- THE ORDERS LAYOUT (orders_board.js; design package "Orders") -----------
    Tabs by what each order needs, the next ship-by, a channel filter, the bulk

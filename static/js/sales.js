@@ -1236,6 +1236,10 @@ async function salesSync(btn){
     let msg="Pulled "+(j.fetched||0)+" day"+((j.fetched===1)?"":"s");
     if(j.still_missing) msg+=" · "+j.still_missing+" still to fetch — press Sync again";
     if((j.failed||[]).length) msg+=" · "+j.failed.length+" Amazon would not return";
+    // The fees-and-refunds half can fail while the sales half succeeds -- say
+    // so, or an account whose finances stopped updating looks fine.
+    if(j.finance && j.finance.ok === false) msg+=" · Fees and refunds NOT updated: "+(j.finance.error||"no reason given");
+    else if(j.finance && j.finance.not_updated) msg+=" · "+j.finance.not_updated;
     toast(msg);
     salesReload();
   }catch(e){ toast("Sync failed: "+((e&&e.message)||e)); }

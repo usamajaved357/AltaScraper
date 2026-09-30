@@ -23,7 +23,9 @@ LEFT = {
     "routes/daily_routes.py": 4,
     "routes/drive_routes.py": 2,
     "routes/ppc_analytics_routes.py": 1,
-    "routes/returns_routes.py": 2,
+    # 2 -> 1 (30 Sep 2026): the buyer_messages read moved to
+    # domain/buyer_inbox.sent_for, shared with Customer messages.
+    "routes/returns_routes.py": 1,
     "routes/sourcing_routes.py": 1,
     "routes/variations_routes.py": 2,
     "routes/weekly_routes.py": 1,

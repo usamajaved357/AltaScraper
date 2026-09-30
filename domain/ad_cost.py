@@ -15,8 +15,10 @@ THE RULE
   * Otherwise the invoices: the right TOTAL, dated by the invoice.
   * VAT on ads is a cost only to an account that is NOT VAT-registered (it
     cannot reclaim it). For ads_daily it is added at the rate MEASURED on the
-    account's own invoices (tax / base, last 365 days) -- 20.0% on nestwell,
-    30 Sep 2026 -- and left out, with a note, when no invoice has been seen.
+    account's own invoices (tax / base, last 365 days, else any stored
+    period) -- 20.0% on nestwell, 30 Sep 2026. With no invoice read yet: the
+    UK's 20%, said on the page as an estimate; elsewhere left out, said.
+    ad_vat() is that rule.
 
 Measured, nestwell_goods, 90 days to 30 Sep 2026: three invoices, 423.49 +
 84.70 VAT = 508.19; the account is not VAT-registered, so 84.70 of real cost
@@ -50,6 +52,63 @@ def vat_ratio(config_path, workspace_id, marketplace, end=None):
     return round(tax / base, 4)
 
 
+def _ratio_any_period(config_path, workspace_id, marketplace):
+    """VAT / base over EVERY ad invoice stored for this account and marketplace,
+    whatever its date -> float or None. The fallback when the 365 days before a
+    window's end hold none (an old window, or invoices read after it)."""
+    r = _db.get_db(config_path).execute(
+        "SELECT SUM(COALESCE(ads_charged,0)) b, SUM(COALESCE(ads_charged_tax,0)) t "
+        "FROM finance_daily WHERE workspace_id=? AND marketplace=? AND asin='*'",
+        (workspace_id, marketplace)).fetchone()
+    base = _f(r["b"] if r else 0)
+    if base <= 0:
+        return None
+    return round(_f(r["t"] if r else 0) / base, 4)
+
+
+# THE UK VAT RATE Amazon Ads charges a seller that is not VAT-registered. Used
+# ONLY until one of the account's own ad invoices has been read -- the measured
+# rate always wins. Measured on nestwell_goods' own invoices: 20.0% (30 Sep 2026).
+UK_AD_VAT = 0.20
+_UK = ("UK", "GB")
+
+
+def ad_vat(config_path, workspace_id, marketplace, end, registered):
+    """THE ONE ANSWER to "what VAT goes on this account's ad spend" (Rule 12).
+
+    `registered` is vat_registered()'s answer. -> {ratio: float|None, basis,
+    note}. basis is one of:
+      registered   the account reclaims it -- nothing added, nothing to say
+      unset        the account's VAT setting is blank -- nothing added, SAID
+      measured     from the account's own ad invoices (365 days to `end`, else
+                   any stored period)
+      estimated    not registered, UK, no invoice read yet: 20%, SAID
+      unknown      not registered, no invoice, not the UK -- nothing added, SAID
+    It used to be a silent 0 whenever no invoice was stored: nestwell's PPC
+    profit left out 20% of its ad spend with nothing on the page to say so."""
+    if registered is True:
+        return {"ratio": None, "basis": "registered", "note": ""}
+    if registered is None:
+        return {"ratio": None, "basis": "unset",
+                "note": ("This account's VAT rate is not set, so VAT on ads is not "
+                         "included -- set it in the account's settings.")}
+    ratio = None
+    try:
+        ratio = vat_ratio(config_path, workspace_id, marketplace, end)
+        if ratio is None:
+            ratio = _ratio_any_period(config_path, workspace_id, marketplace)
+    except Exception:
+        ratio = None
+    if ratio is not None:
+        return {"ratio": ratio, "basis": "measured", "note": ""}
+    if str(marketplace or "").upper() in _UK:
+        return {"ratio": UK_AD_VAT, "basis": "estimated",
+                "note": "Ad VAT estimated at 20% until an ad invoice is read."}
+    return {"ratio": None, "basis": "unknown",
+            "note": "Ad VAT not included: no ad invoice has been read yet for "
+                    "this account."}
+
+
 def vat_registered(vat_rate):
     """The account's VAT setting -> True (registered: VAT is reclaimed), False
     (set to 0: it is a cost), None (never set: UNKNOWN -- the app's rule for a
@@ -65,10 +124,11 @@ def vat_registered(vat_rate):
 
 def product_ratio(config_path, workspace_id, marketplace, end, vat_rate):
     """The VAT ratio to put on per-PRODUCT Ads API spend -> float or None.
-    Only an account set as NOT registered (rate 0) pays it; unset adds none."""
+    Only an account set as NOT registered (rate 0) pays it; unset adds none.
+    ad_vat() decides the rate (measured, else the UK estimate)."""
     if vat_registered(vat_rate) is not False:
         return None
-    return vat_ratio(config_path, workspace_id, marketplace, end)
+    return ad_vat(config_path, workspace_id, marketplace, end, False)["ratio"]
 
 
 def uplift(spend_by_key, ratio):
@@ -110,8 +170,10 @@ def by_day(config_path, workspace_id, marketplace, start, end, vat_registered):
     notes, used = [], set()
     first = api_start(conn, workspace_id, marketplace)
     add_vat = vat_registered is False
+    vatinfo = ad_vat(config_path, workspace_id, marketplace, end, vat_registered)
+    info["vat_basis"] = vatinfo["basis"]
     if first and first <= end:
-        ratio = vat_ratio(config_path, workspace_id, marketplace, end) if add_vat else None
+        ratio = vatinfo["ratio"] if add_vat else None
         info["vat_ratio"] = ratio
         for r in conn.execute(
                 "SELECT date, SUM(COALESCE(spend,0)) s FROM ads_daily WHERE workspace_id=? "
@@ -122,9 +184,9 @@ def by_day(config_path, workspace_id, marketplace, start, end, vat_registered):
             days[r["date"]] = round(base + vat, 4)
             info["vat_added"] += vat
             used.add("ads_api")
-        if add_vat and ratio is None and "ads_api" in used:
-            notes.append("VAT on ad spend is not included: no Amazon Ads invoice has "
-                         "been seen yet for this account to measure it from.")
+        if add_vat and vatinfo["note"] and "ads_api" in used:
+            # Estimated (UK) or not included (elsewhere) -- said, never silent.
+            notes.append(vatinfo["note"])
     inv_end = end if not first else min(end, _day_before(first))
     if start <= inv_end:
         for r in conn.execute(

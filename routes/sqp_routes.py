@@ -100,6 +100,15 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
             # so this does not pick one -- picking would send somebody hunting a
             # sales problem that does not exist, or the reverse. Both are named,
             # with the way to tell them apart.
+            _amz = str(getattr(ex, "amazon_error", "") or "")
+            if status == "FATAL" and _amz:
+                # Amazon SAID why (its error document) -- show that, not a guess
+                # (captured 30 Sep 2026: "A client error occurred. Please double
+                # check that your parameters are valid ...").
+                return jsonify({
+                    "ok": False, "reason": "fatal",
+                    "error": "Amazon could not produce this report. Its reason: " + _amz,
+                    "amazon_error": _amz, "detail": msg[:200]}), 502
             if status == "FATAL":
                 return jsonify({
                     "ok": False, "reason": "fatal",

@@ -2968,6 +2968,12 @@ def build_app(backend=None):
     import routes.recipes_routes as _recipes_routes
     _recipes_routes.register(app, _active_brand=_active_brand, _load_recipes=_load_recipes,
                              _save_recipes=_save_recipes, _media_root=_media_root)
+    # Wiring only: the AI image helpers resolve a "/media/..." link to a file
+    # under THIS media root (on Railway /data/media, beside config.json). Unset,
+    # they looked under the working directory (/app/media), so Refine on a
+    # saved or library image could not find the file (30 Sep 2026).
+    from domain import ai_providers as _aip_media
+    _aip_media.DEFAULT_MEDIA_ROOT = _media_root()
     import routes.media_routes as _media_routes
     _media_routes.register(app, _media_root=_media_root, _safe_sku=_safe_sku,
                            _sku_dir=_sku_dir, _state=_state, _active_account=_active_account,
@@ -3016,6 +3022,10 @@ def build_app(backend=None):
     _order_purchase_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
     import routes.order_ship_routes as _order_ship_routes
     _order_ship_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
+    # Customer messages, read from the mailbox Seller Central emails them to
+    # (Amazon's API cannot read them). Its own file (Rule 7).
+    import routes.buyer_inbox_routes as _buyer_inbox_routes
+    _buyer_inbox_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg, _state=_state)
     import routes.asin_charges_routes as _asin_charges_routes
     _asin_charges_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                   _state=_state, _active_account=_active_account)

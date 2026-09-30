@@ -302,10 +302,17 @@ function ppcaToday(j, cur){
   const lag = d.lag_days;
   const heading = d.is_today ? "TODAY"
     : (lag === 1 ? "YESTERDAY" : "LATEST DAY");
+  // STILL SETTLING: read before Amazon finished counting the day, so these
+  // figures will still rise (27 Sep read at 15.11, final 29.34 -- 30 Sep 2026).
+  const settle = d.settling
+    ? ' · <b style="color:var(--ppc-orange)">still settling</b>'
+      + uiHint("Amazon was still counting this day when it was read. The next "
+        + "sync reads it again; until then treat these figures as provisional.")
+    : "";
   const sub = !d.date ? "no advertising data"
     : (d.is_today ? _pEsc(d.date)
        : (_pEsc(d.date) + " · Amazon is " + lag + " day"
-          + (lag === 1 ? "" : "s") + " behind"));
+          + (lag === 1 ? "" : "s") + " behind")) + settle;
   return '<div class="ppc-today">'
     + '<div class="ppc-today-label"><b>' + heading + '</b><span title="'
     + 'Amazon publishes advertising figures a day or two in arrears, so the '
@@ -379,7 +386,10 @@ function ppcaTrail(j, cur){
     h += '<div class="ppc-trail-card" title="' + _pEsc(tip) + '" '
       + 'onclick="ppcaZoomTo(' + jsArg(r.date) + ',' + jsArg(r.date) + ')">'
       + '<div class="ppc-trail-head"><span class="d">' + _pEsc(lbl) + '</span>'
-      +   (r.today ? '<span class="t">Today</span>' : '') + '</div>'
+      +   (r.today ? '<span class="t">Today</span>' : '')
+      // Read before Amazon finished counting it (ads_sync.settling_days).
+      +   (r.settling ? '<span class="t" title="Still settling: Amazon was still '
+           + 'counting this day when it was read.">Settling</span>' : '') + '</div>'
       + '<div class="ppc-trail-chart">'
       +   ppcMiniLine(cum.slice(0, i + 1), "var(--ppc-cyan)") + '</div>'
       + '<div class="ppc-trail-spend">'
@@ -394,6 +404,12 @@ function ppcaTrail(j, cur){
   return h + '</div>';
 }
 
+/* Why an arrow is blank: the server's reason (too small a base, or the
+ * previous period has fewer days of ad data -- ppc_analytics.compare). */
+function _ppcaWhy(j, k){
+  return ((j && j.change_floor) || {})[k] || (j && j.compare_note) || "";
+}
+
 /* ---- 3. the two KPI rows ------------------------------------------------- */
 function ppcaKpis(j, cur, t, ch){
   const d = j.daily || [];
@@ -406,39 +422,39 @@ function ppcaKpis(j, cur, t, ch){
 
   return '<div class="ppc-kpis">'
     + ppcKpi({label: "SPEND", value: ppcMoney0(t.spend, cur),
-              change: ppcChangeBare(ch.spend, "down", "", cu.spend),
+              change: ppcChangeBare(ch.spend, "down", _ppcaWhy(j, "spend"), cu.spend),
               spark: ppcSparkline(col("spend"), "var(--ppc-red)"),
               help: "What Amazon charged for the ads in this window."})
     + ppcKpi({label: "SALES", value: ppcMoney0(t.sales, cur),
-              change: ppcChangeBare(ch.sales, "up", "", cu.sales),
+              change: ppcChangeBare(ch.sales, "up", _ppcaWhy(j, "sales"), cu.sales),
               spark: ppcSparkline(col("ad_sales"), "var(--ppc-green)"),
               help: "Sales Amazon attributes to those ads. An organic sale is "
                   + "not in here."})
     + ppcKpi({label: "ACOS", value: ppcPct(t.acos_pct),
-              change: ppcChangeBare(ch.acos_pct, "down", "", cu.acos_pct),
+              change: ppcChangeBare(ch.acos_pct, "down", _ppcaWhy(j, "acos_pct"), cu.acos_pct),
               spark: ppcSparkline(col("acos_pct"), "var(--ppc-orange)"),
               help: "Spend divided by AD sales. How much of the advertised "
                   + "revenue the advertising ate. Lower is better."})
     + ppcKpi({label: "ROAS", value: ppcX(t.roas),
-              change: ppcChangeBare(ch.roas, "up", "", cu.roas),
+              change: ppcChangeBare(ch.roas, "up", _ppcaWhy(j, "roas"), cu.roas),
               spark: ppcSparkline(col("roas"), "var(--ppc-blue)"),
               help: "Ad sales for every pound of spend."})
     + '</div>'
     + '<div class="ppc-kpis last">'
     + ppcKpi({label: "IMPRESSIONS", value: ppcNum(t.impressions),
-              change: ppcChangeBare(ch.impressions, "up", "", cu.impressions),
+              change: ppcChangeBare(ch.impressions, "up", _ppcaWhy(j, "impressions"), cu.impressions),
               spark: ppcSparkline(col("impressions"), "var(--ppc-blue)"),
               help: "How many times the ads were shown."})
     + ppcKpi({label: "CLICKS", value: ppcNum(t.clicks),
-              change: ppcChangeBare(ch.clicks, "up", "", cu.clicks),
+              change: ppcChangeBare(ch.clicks, "up", _ppcaWhy(j, "clicks"), cu.clicks),
               spark: ppcSparkline(col("clicks"), "var(--ppc-green)"),
               help: "How many times somebody clicked one."})
     + ppcKpi({label: "CTR", value: ppcPct(t.ctr_pct, "", 2),
-              change: ppcChangeBare(ch.ctr_pct, "up", "", cu.ctr_pct),
+              change: ppcChangeBare(ch.ctr_pct, "up", _ppcaWhy(j, "ctr_pct"), cu.ctr_pct),
               spark: ppcSparkline(col("ctr_pct"), "var(--ppc-magenta)"),
               help: "Clicks per impression."})
     + ppcKpi({label: "PURCHASES", value: ppcNum(t.orders),
-              change: ppcChangeBare(ch.orders, "up", "", cu.orders),
+              change: ppcChangeBare(ch.orders, "up", _ppcaWhy(j, "orders"), cu.orders),
               spark: ppcSparkline(col("orders"), "var(--ppc-green)"),
               help: "Orders Amazon attributes to the ads."})
     + '</div>';
@@ -447,8 +463,10 @@ function ppcaKpis(j, cur, t, ch){
 /* ---- 4. branded vs non-branded ------------------------------------------ */
 function ppcaBranded(j, cur){
   const b = j.branded || {};
+  // Which days the split covers, when it cannot follow the picker (30 Sep 2026).
   const head = '<div class="ppc-panel">'
-    + '<div class="ppc-panel-title">Branded vs Non-Branded Analysis</div>';
+    + '<div class="ppc-panel-title">Branded vs Non-Branded Analysis'
+    + (b.window_note ? uiHint(b.window_note) : '') + '</div>';
 
   if(b.why || (!b.branded && !b.non_branded)){
     // ppc_view.is_branded answers NULL, not False, when no brand words are set
@@ -619,7 +637,7 @@ function ppcaProfitability(j, cur){
     + flow
     + '<div class="ppc-grid3 ppc-mb12">'
     +   ppcSubCard({label: "TACOS", value: ppcPct(t.tacos_pct),
-                    change: ppcChangeText((j.change || {}).tacos_pct, "down", "", (j.change_units||{}).tacos_pct),
+                    change: ppcChangeText((j.change || {}).tacos_pct, "down", _ppcaWhy(j, "tacos_pct"), (j.change_units||{}).tacos_pct),
                     note: period,
                     // The divisor is stated, because it is NOT simply the
                     // window's sales: Amazon's advertising feed runs about two

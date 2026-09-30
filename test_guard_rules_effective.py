@@ -84,6 +84,9 @@ INTENDED_OPEN = {
     ("GET", "/settings/ads"): _SETTINGS_READ,
     ("GET", "/settings/tracking"): _SETTINGS_READ,
     ("GET", "/settings/ebay"): _SETTINGS_READ,
+    # Customer messages mailbox (30 Sep 2026): host, port, address, and whether
+    # a password is stored + its last 4 -- never the password.
+    ("GET", "/settings/mailbox"): _SETTINGS_READ,
     ("GET", "/genimage/jobs_active"): "which image jobs are running (progress only)",
     ("GET", "/run/plan"): "a generation PLAN: spends and writes nothing (WORK_OVER_GET_EXCEPT)",
     ("GET", "/preview/jobs"): "preview-queue status, filtered per job by who may see its account",

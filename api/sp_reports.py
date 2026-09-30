@@ -122,7 +122,17 @@ def create_and_wait(rc, report_type, marketplace_ids=None, options=None,
                        "request and then could not produce it. That is usually "
                        "either an empty date range or a report this account is "
                        "not entitled to.")
-            raise ReportError(msg, status=status)
+            err = ReportError(msg, status=status)
+            # AMAZON'S OWN REASON, when it gives one. Captured 30 Sep 2026
+            # (owner-approved read-only check): a FATAL Search Query Performance
+            # report carries a reportDocumentId whose document is
+            # {"errorDetails": "A client error occurred. Please double check that
+            # your parameters are valid ..."} -- a reason the app used to guess
+            # instead of reading.
+            err.amazon_error = _error_details(rc, pay.get("reportDocumentId"))
+            if err.amazon_error:
+                err.args = (msg + " Amazon's reason: " + err.amazon_error,)
+            raise err
         if on_wait:
             try:
                 on_wait(attempt)
@@ -133,6 +143,19 @@ def create_and_wait(rc, report_type, marketplace_ids=None, options=None,
     raise ReportError("Amazon is still generating the report. Large accounts can "
                       "take several minutes -- try again shortly and it will "
                       "usually be ready instantly.")
+
+
+def _error_details(rc, document_id):
+    """The errorDetails text of a FATAL report's document, or "" (never raises)."""
+    if not document_id:
+        return ""
+    try:
+        import json as _json
+        txt = download(rc, document_id)
+        d = _json.loads(txt) if isinstance(txt, str) else {}
+        return str((d or {}).get("errorDetails") or "").strip()[:400]
+    except Exception:
+        return ""
 
 
 def download(rc, document_id):

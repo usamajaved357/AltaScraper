@@ -1,0 +1,12 @@
+    <div id="sec_inbox" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2 title="What buyers wrote, read from the mailbox Seller Central emails them to. Opening a message here does not mark it read in your mailbox."><i class="ti ti-message-circle"></i> Customer messages</h2></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" id="ibx_check" onclick="inboxRefresh()"
+                  title="Check the mailbox now. It is also checked every 10 minutes.">
+            <i class="ti ti-mail-down"></i> Check now</button>
+          <button class="db-chip" onclick="inboxLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="ibx_body"></div>
+    </div>

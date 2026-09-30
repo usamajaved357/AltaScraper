@@ -17,11 +17,11 @@ function check(label, got, want){
 }
 const read = p => fs.readFileSync(path.join(__dirname, p), "utf8");
 
-let tick = null, onVis = null;
+let tick = null, onVis = null, gap = null;
 const doc = {hidden: false,
              addEventListener: (t, f) => { if(t === "visibilitychange") onVis = f; }};
 const ctx = {document: doc, setTimeout, clearTimeout,
-             setInterval: (f) => { tick = f; return 1; }, clearInterval(){}};
+             setInterval: (f, ms) => { tick = f; gap = ms; return 1; }, clearInterval(){}};
 vm.createContext(ctx);
 vm.runInContext(read("static/js/poller.js"), ctx);
 
@@ -33,6 +33,15 @@ doc.hidden = true; tick(); tick();
 check("a hidden tab asks nothing", calls, 1);
 doc.hidden = false; onVis();
 check("shown again, it asks at once", calls, 2);
+
+// THE CALLERS' ORDER. All three write altaEvery(fn, ms), the setInterval way;
+// before 30 Sep 2026 that passed the function as the DELAY and a number as the
+// callback, so none of them ever polled again (the bell stayed stale).
+let calls2 = 0;
+vm.runInContext("altaEvery", ctx)(() => { calls2++; }, 120000);
+check("called (fn, ms): the delay is the number", gap, 120000);
+tick();
+check("  and each tick calls the function", calls2, 1);
 
 console.log("\n  the three always-on pollers use it:");
 for(const [f, fn] of [["static/js/listings.js", "pollHealth"],

@@ -158,6 +158,7 @@ CATALOG = [
     (W, "/settings/ads",            "=", "team", "team.settings_ads", "Changed the Amazon Ads connection", ""),
     (W, "/settings/tracking",       "=", "team", "team.settings_tracking", "Changed the tracking connection", ""),
     (W, "/settings/ebay",           "=", "team", "team.settings_ebay", "Changed the eBay connection", ""),
+    (W, "/settings/mailbox",        "=", "team", "team.settings_mailbox", "Changed the customer messages mailbox", ""),
 ]
 
 # /preview/enqueue carries what it will do in its body -- the guard reads the

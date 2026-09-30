@@ -771,6 +771,7 @@ async def _fetch_page(url: str, timeout: int = 30000, delay: float = 3.0,
     When click_tabs=True, click each product tab (Specifications / SDS Sheet /
     Additional Info) before capturing, so files behind inactive tabs are present
     in the HTML. Returns ('', '') on failure."""
+    import asyncio
     try:
         from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
     except Exception:
@@ -799,8 +800,15 @@ async def _fetch_page(url: str, timeout: int = 30000, delay: float = 3.0,
     if click_tabs:
         run_kwargs["js_code"] = tab_js
     run_cfg = CrawlerRunConfig(**run_kwargs)
-    try:
-        async with AsyncWebCrawler(config=cfg) as crawler:
+
+    async def _run():
+        # start()/close() by hand, as listing/scrape_helpers._scrape does (30 Sep
+        # 2026 RAM investigation): with `async with`, a failure or cancel while
+        # the browser was still LAUNCHING skipped __aexit__ and left that
+        # Chromium running, holding its memory. The finally closes it always.
+        crawler = AsyncWebCrawler(config=cfg)
+        try:
+            await crawler.start()
             result = await crawler.arun(url=url, config=run_cfg)
             html = (getattr(result, "html", "") or
                     getattr(result, "cleaned_html", "") or
@@ -814,7 +822,17 @@ async def _fetch_page(url: str, timeout: int = 30000, delay: float = 3.0,
             else:
                 md = getattr(_m, "raw_markdown", "") or getattr(_m, "fit_markdown", "") or str(_m or "")
             return html, md
-    except Exception:
+        finally:
+            try:
+                await asyncio.wait_for(asyncio.shield(crawler.close()), timeout=15)
+            except (Exception, asyncio.CancelledError):
+                pass
+
+    try:
+        # A hard ceiling past the page timeout: a browser stuck launching can
+        # never hold the harvest (and its memory) forever.
+        return await asyncio.wait_for(_run(), timeout=(timeout / 1000.0) + 20)
+    except (Exception, asyncio.TimeoutError):
         return "", ""
 
 

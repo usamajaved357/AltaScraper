@@ -329,7 +329,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 if done >= cap:
                     break
                 try:
-                    items = _items_for(r["order_id"], r["account_id"], r.get("purchased") or "")
+                    items = _items_for(r["order_id"], r["account_id"], r.get("purchased") or "",
+                                       r.get("status") or "")
                 except _ol.NoMarketplace as _nm:
                     mkt_problems.add(str(_nm))
                     continue
@@ -569,8 +570,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             vat_rate=_vat_of(account_id), order_total=order_total)
         return d
 
-    def _store_items(account_id, marketplace, order_id, items, purchased=""):
-        """Keep what Amazon just told us, so the next visit is free."""
+    def _store_items(account_id, marketplace, order_id, items, purchased="",
+                     status=""):
+        """Keep what Amazon just told us, so the next visit is free.
+
+        WITH THE ORDER'S DATE AND STATUS. The browser never sent them, so these
+        lines were stored with a blank purchase_date -- and every sales total
+        counts by that date (26 lines, 393.16 on nestwell, 30 Sep 2026)."""
         try:
             from domain import hourly_week as _hw
             _hw.store_lines(CONFIG_PATH, str(account_id or ""),
@@ -584,14 +590,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                               "revenue": it.get("price") or 0,
                               "shipping": it.get("shipping") or 0,
                               "currency": it.get("currency") or "",
-                              "status": it.get("status") or ""}
+                              "status": it.get("status") or str(status or "")}
                              for it in (items or [])])
         except Exception as _e:
             # a cache must never be the reason this fails -- but say so, or a
             # store that never writes costs an Amazon call on every visit.
             print("[orders] could not keep the lines of %s: %s" % (order_id, _e))
 
-    def _items_for(order_id, account_id, purchased=""):
+    def _items_for(order_id, account_id, purchased="", status=""):
         """One order's lines, or None if Amazon would not say.
 
         Reads the store first -- see _items_from_store. Only an order nobody has
@@ -606,6 +612,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         mkt = _marketplace(acc)
         cached = _items_from_store(account_id, mkt, order_id)
         if cached:
+            # Lines kept before the date/status were sent carry blanks; fill
+            # them now the order's header is in hand (only blanks, 30 Sep 2026).
+            try:
+                from domain import hourly_week as _hw
+                _hw.fill_blanks(CONFIG_PATH, str(account_id or ""), mkt,
+                                order_id, purchased, status)
+            except Exception as _e:
+                print("[orders] could not date the lines of %s: %s" % (order_id, _e))
             return cached
         # The account's own marketplace or nothing -- the rule the Sales screen's
         # reader uses too (domain/orders_live.orders_marketplace). It used to
@@ -621,7 +635,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return None
         # Kept, so the next visit to this screen does not pay for it again.
         if got:
-            _store_items(account_id, mkt, order_id, got, purchased)
+            _store_items(account_id, mkt, order_id, got, purchased, status)
         return got
 
 
@@ -669,7 +683,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             if not oid:
                 continue
             try:
-                items = _items_for(oid, aid, str(w.get("purchased") or ""))
+                # FROM THE REQUEST BODY, so checked before anything is stored:
+                # a malformed date or unknown status is dropped, never written.
+                from domain import hourly_week as _hwc
+                _pd, _st = _hwc.clean_header(w.get("purchased"), w.get("status"))
+                items = _items_for(oid, aid, _pd, _st)
             except _ol.NoMarketplace as _nm:
                 mkt_problems.add(str(_nm))
                 continue

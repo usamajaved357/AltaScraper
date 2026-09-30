@@ -74,7 +74,12 @@ def country_of(marketplace):
     Derived from the site id rather than kept as a third table, so a marketplace
     added to SITE_FOR is covered without anything else being edited.
     """
-    site = site_for(marketplace)
+    # AN eBAY SITE ID IS TAKEN AS IT IS. site_for() only knows AMAZON codes, so
+    # "EBAY_US" fell through to the UK default and a US supplier was costed as
+    # delivery to GB -- captured 30 Sep 2026: $136.44 international vs $68.15
+    # domestic on the same item. Only an Amazon code goes through site_for.
+    raw = str(marketplace or "").upper()
+    site = raw if raw.startswith("EBAY_") else site_for(marketplace)
     tail = str(site or "").rsplit("_", 1)[-1].upper()
     # EBAY_GB -> GB. EBAY_MOTORS and anything else without a two-letter tail is
     # not a country, so fall back to the UK, which is where this app sources.

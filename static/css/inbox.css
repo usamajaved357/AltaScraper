@@ -1,0 +1,98 @@
+/* Customer messages (static/js/inbox.js). Tokens only (docs/design-system.md).
+   The same master-detail shape as Orders (.ord-split): the list on the left,
+   the conversation beside it as a second grid column, stacked on a phone. */
+
+.ibx-meta{ margin: 0 0 var(--as-space-2, 8px); font: var(--as-text-small); }
+.ibx-wait{ padding: var(--as-space-4, 16px); }
+
+.ibx-split{
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--as-space-4, 16px); align-items: start;
+}
+.ibx-list{
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--as-surface-1); border: 1px solid var(--as-border);
+  border-radius: var(--as-radius-lg, 10px); overflow: hidden;
+}
+.ibx-row{
+  display: flex; align-items: flex-start; gap: var(--as-space-2, 8px);
+  width: 100%; text-align: left; cursor: pointer; min-height: 44px;
+  padding: var(--as-space-2, 8px) var(--as-space-3, 12px);
+  background: none; border: 0; border-bottom: 1px solid var(--as-border-subtle);
+  color: var(--as-text-primary); font: var(--as-text-body);
+}
+.ibx-row:last-child{ border-bottom: 0; }
+.ibx-row:hover{ background: var(--as-surface-3); }
+.ibx-row.on{ background: var(--as-surface-3); box-shadow: inset 3px 0 0 var(--as-action); }
+.ibx-row:focus-visible{ outline: var(--as-focus-w, 2px) solid var(--as-focus-ring); outline-offset: -2px; }
+.ibx-dot{
+  flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%;
+  background: transparent;
+}
+.ibx-row.unread .ibx-dot{ background: var(--as-action); }
+.ibx-row.unread .ibx-subj{ font-weight: 600; }
+.ibx-row-main{ display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ibx-row-top{ display: flex; align-items: baseline; gap: var(--as-space-2, 8px); min-width: 0; }
+.ibx-oid{ font: var(--as-text-id); color: var(--as-text-link); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibx-mkt{
+  flex: none; font: var(--as-text-caption); color: var(--as-text-secondary);
+  border: 1px solid var(--as-border); border-radius: var(--as-radius-xs, 4px); padding: 0 4px;
+}
+.ibx-when{ margin-left: auto; flex: none; font: var(--as-text-caption); color: var(--as-text-muted); }
+.ibx-subj, .ibx-snip{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ibx-snip{ font: var(--as-text-small); color: var(--as-text-secondary); }
+.ibx-count{
+  flex: none; align-self: center; min-width: 20px; padding: 0 6px; text-align: center;
+  border-radius: var(--as-radius-pill, 999px); background: var(--as-action); color: var(--as-action-fg);
+  font: var(--as-text-caption); font-weight: 600;
+}
+.ibx-sr{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.ibx-thread{
+  position: sticky; top: 48px; max-height: calc(100vh - 64px); overflow: auto; min-width: 0;
+  /* The last message scrolls clear of the floating corner buttons (floating.css),
+     as .ord-side does. */
+  padding-bottom: 104px;
+  background: var(--as-surface-1); border: 1px solid var(--as-border);
+  border-radius: var(--as-radius-lg, 10px); box-shadow: var(--as-shadow-dropdown);
+}
+.ibx-pick{ padding: var(--as-space-6, 24px); text-align: center; }
+.ibx-th-h{
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--as-space-2, 8px); padding: var(--as-space-2, 8px) var(--as-space-3, 12px);
+  background: var(--as-surface-2); border-bottom: 1px solid var(--as-border);
+}
+.ibx-order{
+  display: inline-flex; align-items: center; gap: 4px; min-height: 44px;
+  font: var(--as-text-id); color: var(--as-text-link); text-decoration: none; overflow-wrap: anywhere;
+}
+.ibx-th-sp{ flex: 1; }
+.ibx-x{
+  width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--as-radius-sm, 6px); background: none; border: 1px solid transparent;
+  color: var(--as-text-secondary); cursor: pointer; font-size: 16px;
+}
+.ibx-x:hover{ background: var(--as-surface-3); color: var(--as-text-primary); }
+.ibx-msgs{ display: flex; flex-direction: column; gap: var(--as-space-3, 12px); padding: var(--as-space-3, 12px); }
+.ibx-msg{
+  max-width: 92%; padding: var(--as-space-2, 8px) var(--as-space-3, 12px);
+  background: var(--as-surface-2); border: 1px solid var(--as-border-subtle);
+  border-radius: var(--as-radius-md, 8px);
+}
+.ibx-msg.app{ align-self: flex-end; background: var(--as-action-subtle); border-color: var(--as-action-subtle-border); }
+.ibx-msg-h{ display: flex; justify-content: space-between; gap: var(--as-space-2, 8px); font: var(--as-text-small); }
+.ibx-msg-sub{ margin-top: 2px; font: var(--as-text-small); color: var(--as-text-secondary); }
+.ibx-msg-b{ margin-top: var(--as-space-2, 8px); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The same red count as the other nav badges (inv_badge, alr_badge). */
+.ibx-badge{
+  margin-left: 4px; padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 600;
+  background: var(--as-danger-solid); color: #fff;
+}
+
+@media (max-width: 720px){
+  .ibx-split{ grid-template-columns: minmax(0, 1fr); }
+  .ibx-thread{ position: static; max-height: none; }
+  /* A conversation open on a phone: the list steps aside for it. */
+  .ibx-split.has-open .ibx-list{ display: none; }
+}

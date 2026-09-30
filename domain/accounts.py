@@ -107,6 +107,42 @@ def get_account(cfg: dict, account_id: str, config_path: str = None) -> dict:
     return {}
 
 
+def home_marketplace(config_path: str, account_id: str):
+    """(marketplace, why) -- where an account's ACCOUNT-WIDE money is kept.
+
+    Amazon's Finances feed is not per marketplace, so the app files it under
+    ONE marketplace: the account's default. When the account says nothing else
+    and sells in exactly one marketplace, that one. Otherwise ("", why) -- and
+    the caller must REFUSE rather than guess.
+
+    A LIGHTWEIGHT READ, ON PURPOSE. This used config.settings.load_settings(),
+    which validates keys that have nothing to do with accounts and raises when
+    one is missing (google_service_account_json on the live server). The caller
+    swallowed that and stored nestwell_goods' account-wide money under IT, the
+    marketplace it happened to be asked about (measured 28 Sep 2026: the UK
+    Finance page stopped at 7 Sep; refunds 38.48 shown vs 140.62 real).
+    """
+    from config import settings as _settings
+    raw = _settings.read_raw(config_path) if config_path else _settings.read_raw()
+    if not raw:
+        return "", "the settings file could not be read"
+    acc = next((a for a in load_accounts(raw, config_path, persist=False)
+                if isinstance(a, dict)
+                and str(a.get("id") or "") == str(account_id or "")), None)
+    if acc is None:
+        return "", "there is no account called %r" % str(account_id or "")
+    dflt = str(acc.get("default_marketplace") or "").strip().upper()
+    if dflt:
+        return dflt, ""
+    own = sorted({str(m or "").strip().upper() for m in (acc.get("marketplaces") or [])}
+                 - {"", "__ALL__"})
+    if len(own) == 1:
+        return own[0], ""
+    return "", ("%s has no default marketplace set%s"
+                % (acc.get("label") or account_id,
+                   (" and sells in %d" % len(own)) if own else ""))
+
+
 def by_seller_id(cfg: dict, seller_id: str, config_path: str = None,
                  marketplace: str = "") -> dict:
     """The workspace that already holds this Amazon merchant token, or {}.

@@ -229,6 +229,37 @@ async function financeLoad(){
   financeRender();
 }
 
+// RE-READ THE LAST 95 DAYS OF THIS ACCOUNT'S MONEY FROM AMAZON (/finance/resync).
+// One complete pull, filed under the account's home marketplace whatever
+// marketplace is on screen (Amazon's Finances feed is account-wide). Names its
+// account in the body (Rule 14); the reply is dropped if the screen has moved
+// to another account meanwhile. Loading: the button spins and is disabled.
+// Error: a toast with the server's sentence. After: the screen reloads.
+async function financeResync(btn){
+  const id = (typeof acctId === "function") ? acctId() : "";
+  if(!id){ toast("Open an account first."); return; }
+  if(!await uiConfirm("Re-read the last 95 days of this account's fees, refunds and "
+      + "ad invoices from Amazon?\n\nIt replaces what the app holds for those days "
+      + "and can take a minute or two.")) return;
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  const old = btn ? btn.innerHTML : "";
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="genspin"></span> reading…'; }
+  try{
+    const r = await fetch("/finance/resync", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(acctBodyFor({}, id))});
+    const j = await r.json().catch(function(){ return null; });
+    if(_sc && !screenStillIn(_sc)) return;
+    if(!j || !j.ok){ toast((j && (j.error || j.note)) || "Could not re-read the finances"); return; }
+    let msg = "Re-read " + (j.start || "") + " to " + (j.end || "") + " under " + (j.marketplace || "")
+      + " · " + (j.days || 0) + " day" + (j.days === 1 ? "" : "s") + " with money";
+    if(j.more) msg += " · NOT complete: Amazon had more than one pass can read, so older days may still be short";
+    toast(msg);
+    financeLoad();
+  }catch(e){ toast("Re-read failed: " + ((e && e.message) || e)); }
+  finally{ if(btn){ btn.disabled = false; btn.innerHTML = old; } }
+}
+
 function financeSort(key){
   if(FIN.sort === key){ FIN.desc = !FIN.desc; } else { FIN.sort = key; FIN.desc = true; }
   financeRender();

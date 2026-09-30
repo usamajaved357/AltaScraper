@@ -1346,6 +1346,9 @@ function navTo(sec){
     if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
     if(sec==="sourcing"){ if(typeof sourcingOnOpen==="function") sourcingOnOpen(); }
     if(sec==="orders"){   if(typeof ordersOnOpen==="function")   ordersOnOpen(); }
+    // Reads the messages already stored; the mailbox is read by the 10-minute
+    // job or the Check now button, never by opening the screen.
+    if(sec==="inbox"){    if(typeof inboxOnOpen==="function")    inboxOnOpen(); }
     if(sec==="returns"){  if(typeof returnsOnOpen==="function")  returnsOnOpen(); }
   if(sec==="daily"){    if(typeof dailyOnOpen==="function")    dailyOnOpen(); }
   if(sec==="weekly"){   if(typeof weeklyOnOpen==="function")   weeklyOnOpen(); }
@@ -1480,7 +1483,7 @@ function enterWorkspaceBlank(){
 // bookmark to it now falls through to the default section instead.
 const ALTA_SECTIONS = ["home","listings","imagerefs","setup",
                        "sales","traffic","hourly","ppc","inventory","sync","monitor","miles",
-                       "weekly","daily","orders","returns","variations","sellerimport",
+                       "weekly","daily","orders","inbox","returns","variations","sellerimport",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
                        "compliance","categories","drppc","permissions","team","performance",

@@ -426,12 +426,18 @@ MAPPING = {
     "impressions": ("impressions",),
     "clicks": ("clicks",),
     "spend": ("cost", "spend"),
-    # 30d first (Sponsored Products, verified), then 14d (Brands and Display,
-    # whose longest window is 14 days). One row only ever carries one of them,
-    # so the order is a preference, not a fallback that could double count.
-    "orders": ("purchases30d", "purchases14d", "attributedConversions30d",
-               "purchases", "orders"),
-    "sales": ("sales30d", "sales14d", "attributedSales30d", "sales",
+    # 7d FIRST (30 Sep 2026): Seller Central's Campaign Manager shows sellers
+    # 7-day attribution, and the owner-approved read-only capture measured the
+    # 30-day window 48% higher on a settled week (nestwell UK, 18-24 Aug:
+    # sales7d GBP72.46 vs sales30d GBP107.45) -- so ad sales, ACOS and ad profit
+    # read higher here than Amazon's own screen. Every SP report type the app
+    # pulls was re-created with 7d columns and ACCEPTED (spCampaigns,
+    # spSearchTerm, spAdvertisedProduct, spTargeting, placement). 30d stays as
+    # a fallback for a row that carries only it; 14d is Brands/Display. One
+    # row only ever carries one window, so the order is a preference.
+    "orders": ("purchases7d", "purchases30d", "purchases14d",
+               "attributedConversions30d", "purchases", "orders"),
+    "sales": ("sales7d", "sales30d", "sales14d", "attributedSales30d", "sales",
               "attributedSales1d"),
     "search_term": ("searchTerm", "query", "search_term"),
     "keyword": ("keywordText", "targeting", "keyword", "matchedTarget"),
@@ -441,7 +447,8 @@ MAPPING = {
     # API pull that left them empty would make the same screen worse depending
     # on where its rows came from.
     "ad_group": ("adGroupName", "adGroup", "ad_group"),
-    "units": ("unitsSoldClicks30d", "unitsSoldClicks14d", "unitsSoldClicks1d",
+    "units": ("unitsSoldClicks7d", "unitsSoldClicks30d", "unitsSoldClicks14d",
+              "unitsSoldClicks1d",
               "units", "unitsSold"),
     "asin": ("advertisedAsin", "asin", "promotedAsin"),
     # Where the ad appeared. Amazon's own word for it, taken from the column it
@@ -469,7 +476,19 @@ def _row(d):
               "search_term", "keyword", "match_type", "asin", "date",
               "ad_group", "placement"):
         out[k] = str(out[k]) if out.get(k) is not None else ""
+    # WHICH ATTRIBUTION WINDOW THE SALES ARE ON, from the column Amazon actually
+    # sent ("7d" / "14d" / "30d", "" when none). Stored beside the row so the
+    # sync can find days still held on the old 30-day columns (30 Sep 2026).
+    out["attribution"] = attribution_of(d)
     return out
+
+
+def attribution_of(d):
+    """A raw report row -> "7d" | "14d" | "30d" | "" (the sales column it has)."""
+    for w in ("7d", "14d", "30d"):
+        if isinstance(d, dict) and ("sales" + w) in d:
+            return w
+    return ""
 
 
 def raw_sample(creds, marketplace, what="campaigns"):
@@ -531,7 +550,7 @@ REPORT_TYPES = {
         "reportTypeId": "spCampaigns",
         "groupBy": ["campaign"],
         "columns": ["campaignId", "campaignName", "impressions", "clicks",
-                    "cost", "purchases30d", "sales30d", "campaignStatus",
+                    "cost", "purchases7d", "sales7d", "campaignStatus",
                     "campaignBudgetAmount"],
     },
     # The Search Term Report, which until now could only be downloaded from
@@ -545,13 +564,13 @@ REPORT_TYPES = {
         "groupBy": ["searchTerm"],
         "columns": ["campaignId", "campaignName", "adGroupName", "searchTerm",
                     "keyword", "matchType", "impressions", "clicks", "cost",
-                    "purchases30d", "sales30d", "unitsSoldClicks30d"],
+                    "purchases7d", "sales7d", "unitsSoldClicks7d"],
     },
     "advertised_product": {
         "reportTypeId": "spAdvertisedProduct",
         "groupBy": ["advertiser"],
         "columns": ["campaignId", "campaignName", "advertisedAsin",
-                    "impressions", "clicks", "cost", "purchases30d", "sales30d"],
+                    "impressions", "clicks", "cost", "purchases7d", "sales7d"],
     },
     # WHAT WAS TARGETED, AND ON WHICH MATCH TYPE -- the only source of match
     # type at a daily grain.
@@ -576,7 +595,7 @@ REPORT_TYPES = {
         "groupBy": ["targeting"],
         "columns": ["campaignId", "campaignName", "adGroupId", "keywordId",
                     "keyword", "matchType", "targeting", "impressions",
-                    "clicks", "cost", "purchases30d", "sales30d"],
+                    "clicks", "cost", "purchases7d", "sales7d"],
     },
     # WHERE THE AD ACTUALLY APPEARED -- top of search, a product page, or
     # somewhere else on Amazon. Two ads costing the same are not the same buy if
@@ -594,8 +613,8 @@ REPORT_TYPES = {
         "reportTypeId": "spCampaigns",
         "groupBy": ["campaign", "campaignPlacement"],
         "columns": ["campaignId", "campaignName", "placementClassification",
-                    "impressions", "clicks", "cost", "purchases30d",
-                    "sales30d"],
+                    "impressions", "clicks", "cost", "purchases7d",
+                    "sales7d"],
     },
     # ---- SPONSORED BRANDS -- UNVERIFIED, never run. See the note above. ------
     # Brands does not offer the 30-day attribution window Products does; 14 days

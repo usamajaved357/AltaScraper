@@ -116,6 +116,12 @@ if(typeof document !== "undefined" && document.addEventListener){
  * tabs"). Hidden: skipped. Shown again: asked at once, not after the gap.
  * Milestone 11. */
 function altaEvery(ms, fn){
+  // EITHER ORDER. Every caller writes it the setInterval way -- (fn, ms) --
+  // because setInterval is its fallback, and with (ms, fn) that handed
+  // setInterval a FUNCTION as its delay: a zero-delay loop calling a number,
+  // so the bell, the monitor badge and the health check never polled again
+  // after page load (found building Customer messages, 30 Sep 2026).
+  if(typeof ms === "function"){ const t = ms; ms = fn; fn = t; }
   const safe = function(){ try{ const r = fn(); if(r && r.catch) r.catch(function(){}); }catch(e){} };
   const id = setInterval(function(){
     if(typeof document !== "undefined" && document.hidden) return;

@@ -128,8 +128,10 @@ truthy("  an order with no listing row here says so, rather than borrowing one",
 # summary cards."
 truthy("  the post-by countdown moved to the delivery line",
        "function _opDaysLeft" in P and "_opDaysLeft(o.ship_by)" in fn(P, "_opDelivery"))
+# Re-pinned 30 Sep 2026: each fact is now a [label, value] pair, so beside the
+# list it can lay out as a two-column grid instead of one wrapping sentence.
 truthy("    keeping both the date and how long is left",
-       '"Post by " + _oWhen(o.ship_by)' in P)
+       '["Post by", _oWhen(o.ship_by) + (left.text' in P)
 truthy("    and overdue is still called overdue", '"overdue"' in P)
 truthy("the value is 16px bold", "font-size:16px" in rule(CSS, ".o-card-v{"))
 truthy("  the label 9px uppercase", "font-size:9px" in rule(CSS, ".o-card-l{")
@@ -175,8 +177,13 @@ truthy("  and blank still clears it", "not known" in fn(P, "_opCostBox"))
 
 print("\n=== 2f. delivery on one line ===")
 truthy("one line", "function _opDelivery" in P)
-for fact in ("Post by", "Must arrive by", "Going to"):
+# "Arrive by", not "Must arrive by" (30 Sep 2026): short labels, so the label
+# column of the side panel's key/value grid stays narrow.
+for fact in ("Post by", "Arrive by", "Going to"):
     truthy("  " + fact, '"' + fact in P)
+truthy("  beside the list, label/value pairs in a two-column grid",
+       "o-deliv-k" in P and "o-deliv-v" in P
+       and "grid-template-columns: auto minmax(0, 1fr)" in rule(CSS, ".ord-side .o-deliv{"))
 truthy("  absent rather than blank when Amazon did not say",
        "if(!bits.length) return" in P)
 truthy("  10px and muted", "font-size:10px" in rule(CSS, ".o-deliv{"))

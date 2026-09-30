@@ -357,8 +357,13 @@ function ppcRatesNote(r){
   if(Number(r.vat_share || 0) > 0){
     bits.push("VAT on sales " + (Number(r.vat_share) * 100).toFixed(1) + "% of each sale");
   }
+  // Estimated (UK, no ad invoice read yet) or left out: said, with the reason
+  // behind the (i) -- never a silent 0 (30 Sep 2026).
   if(Number(r.ad_vat_ratio || 0) > 0){
-    bits.push("VAT on ad spend +" + (Number(r.ad_vat_ratio) * 100).toFixed(1) + "%");
+    bits.push("VAT on ad spend +" + (Number(r.ad_vat_ratio) * 100).toFixed(1) + "%"
+      + (r.ad_vat_basis === "estimated" ? " (estimated)" + uiHint(r.ad_vat_note || "") : ""));
+  } else if(r.ad_vat_note && bits.length){
+    bits.push("ad VAT not included" + uiHint(r.ad_vat_note));
   }
   if(!bits.length){
     return '<div class="ppc-note warn"><b>Profit cannot be worked out for this '
@@ -374,6 +379,19 @@ function ppcRatesNote(r){
       + "rates.")
     + (r.why ? ' <span style="color:var(--ppc-orange)"><i class="ti ti-alert-triangle"></i> '
                + 'caveat' + uiHint(r.why) + '</span>' : '')
+    + '</div>';
+}
+
+/* WHICH DAYS THE CAMPAIGN LABELS ARE JUDGED ON, said in one line (30 Sep 2026
+ * audit): the money columns run to the window's end, the labels stop before
+ * the last 2 days (spec §4), and nothing on screen said so. */
+function ppcJudgedNote(mat){
+  if(!mat || !mat.mature_end || !(mat.immature_days || []).length) return "";
+  return '<div style="font-size:12px;color:var(--ppc-muted);margin:2px 0 8px">'
+    + 'Labels judged to ' + _pEsc(mat.mature_end) + ' · last days still settling'
+    + uiHint("The last " + (mat.window_days || 2) + " days are still being "
+      + "attributed, so the groups and scores leave them out. Their spend is in "
+      + "the money columns, marked 'settling'.")
     + '</div>';
 }
 

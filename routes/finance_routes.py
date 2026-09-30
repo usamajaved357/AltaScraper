@@ -212,6 +212,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "pays out in arrears; those days will fill in." % last)})
         except Exception:
             pass
+        # ACCOUNT-WIDE MONEY FILED UNDER THE WRONG MARKETPLACE, said first and
+        # in red: the figures below then include money that is not this
+        # marketplace's. Reported, never deleted (domain/finance_coverage).
+        try:
+            _mis = _fcov.misfiled(CONFIG_PATH, wsid, mkt)
+        except Exception as _e:
+            _mis = {"level": "warn", "text": (
+                "Could not check whether this marketplace holds account-wide "
+                "money filed here by mistake (%s)." % str(_e)[:120])}
+        if _mis:
+            notes.insert(0, _mis)
 
         # WHAT THE ACCOUNT WAS CHARGED THAT NO PRODUCT ROW CARRIES, plus the
         # costs Amazon never sees. Together these are the gap between what the
@@ -232,6 +243,62 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                                       basis),
                         "ads_connected": totals.get("ad_spend") is not None,
                         "currency": totals.get("currency") or ""})
+
+    @app.route("/finance/resync", methods=["POST"])
+    def finance_resync():
+        """Re-read the last 95 days of this account's money from Amazon.
+
+        The Sales screen's Sync pulls 30 days, and the background refresher's
+        95-day pull stops after a small page budget. After a fix to how the
+        money is filed, the owner needs one complete re-read per account: this
+        is it. Always under the account's HOME marketplace, because the feed is
+        account-wide (domain/finance_fetch.sync decides and refuses to guess).
+
+        The account is the one the PAGE named (acctBody, Rule 14) -- never the
+        server's open account -- and the guard checks it like any write.
+        """
+        import domain.request_account as _req_acct
+        from domain import accounts as _acc_mod
+        from domain import finance_fetch as _ff
+        aid = _req_acct.named(request)
+        if not aid:
+            return jsonify({"ok": False, "error": (
+                "Which account? The request did not name one, so nothing was "
+                "pulled. Reload the Finance screen and try again.")}), 400
+        acc = _load_account(aid)
+        if not acc:
+            return jsonify({"ok": False, "error":
+                            "There is no account called %r in this app." % aid}), 404
+        if not _acc_mod.seller_scope_allowed(acc):
+            return jsonify({"ok": False, "error": (
+                "%s has no Amazon connection of its own, so it has no finances "
+                "to read." % (acc.get("label") or aid))}), 400
+        home, why = _acc_mod.home_marketplace(CONFIG_PATH, aid)
+        if not home:
+            return jsonify({"ok": False, "error": (
+                "Nothing was pulled: %s. Set the account's default marketplace "
+                "first." % why)}), 400
+        try:
+            from domain import cogs_store as _cs
+            overrides = _cs.all_overrides(CONFIG_PATH)
+        except Exception:
+            overrides = None
+        # A PERSON'S SYNC: the background refresher stands aside for this
+        # account while it runs (and briefly after), as it does for a forced
+        # catalogue sync -- two finance pulls of one account at once compete
+        # for the same Amazon quota.
+        import domain.live_refresher as _refresher
+        _key = "%s::%s" % (aid, home)
+        _refresher.user_sync_started(_key)
+        try:
+            res = _ff.sync(CONFIG_PATH, aid, home, _acc_mod.account_creds(acc),
+                           account_id=aid, days_back=_ff.RESYNC_DAYS,
+                           max_pages=_ff.RESYNC_PAGES, cogs_overrides=overrides)
+        finally:
+            _refresher.user_sync_finished(_key)
+        res["marketplace"] = home
+        res["account"] = aid
+        return jsonify(res), (200 if res.get("ok") else 502)
 
     # Both panels live in domain/finance_view.py (architecture batch A8).
     def _finance_previous(wsid, mkt, start, end, basis):

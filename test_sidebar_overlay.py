@@ -62,10 +62,15 @@ truthy("the sidebar is fixed and off-canvas globally",
        and "translateX(-100%)" in GLOBAL.split("#workspace .sidebar{")[1].split("}")[0])
 truthy("  and slides in when the menu is open",
        "body.navopen #workspace .sidebar{" in GLOBAL)
-truthy("the button that opens it is drawn at every width",
+# RE-PINNED 30 Sep 2026: the corner button is hidden above 860px, where the
+# icon rail's Menu button opens the same drawer (owner: "we decided to finish
+# it on desktop view"). Its base rule still draws it; only that block hides it.
+truthy("the corner button's base rule draws it (phones use it)",
        "display:flex" in GLOBAL.split("#navburger{")[1].split("}")[0])
-falsy("  it is no longer hidden above the breakpoint",
+falsy("  it is not hidden globally",
       re.search(r"#navburger\{\s*display:none", GLOBAL) is not None)
+truthy("  it is hidden on a desktop, where the rail's Menu opens the drawer",
+       re.search(r"@media \(min-width: 861px\)\{\s*#navburger\{ display:none; \}", CSS) is not None)
 truthy("the scrim is drawn at every width",
        "display:block" in GLOBAL.split(".navscrim{")[1].split("}")[0])
 

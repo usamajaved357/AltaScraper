@@ -28,6 +28,32 @@ def span(config_path, wsid, mkt):
         (wsid, mkt)).fetchone()
 
 
+def misfiled(config_path, wsid, mkt):
+    """A note when this marketplace holds account-wide money it should not, else None.
+
+    Amazon's Finances feed is for the whole account, and the app keeps it under
+    the account's home marketplace (accounts.home_marketplace). Rows under any
+    other marketplace are a copy filed there by mistake -- 28 Sep 2026:
+    nestwell_goods' money under IT. REPORTED, NOT DELETED and not hidden: which
+    rows go is the owner's call, and silently dropping them from one screen
+    would leave the others disagreeing with it.
+    """
+    from domain import accounts as _accounts
+    home, _why = _accounts.home_marketplace(config_path, wsid)
+    if not home or str(mkt or "").strip().upper() == home:
+        return None
+    r = span(config_path, wsid, mkt)
+    if not r or not r["n"]:
+        return None
+    return {"level": "bad", "text": (
+        "These Amazon fees, refunds and ad invoices are the whole account's, not "
+        "%s's. Amazon reports them for the account, and this app keeps them under "
+        "%s; %d row(s) from %s to %s were filed under %s by an earlier sync. "
+        "Read the account's money on %s (re-read its last 95 days there if it "
+        "looks short). These rows have been left in place, not deleted."
+        % (mkt, home, r["n"], r["a"], r["b"], mkt, home))}
+
+
 def rows_per_marketplace(config_path, wsid):
     """Finance row count per marketplace for this account."""
     return _db.get_db(config_path).execute(

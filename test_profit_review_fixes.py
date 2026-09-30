@@ -82,7 +82,13 @@ ins("ads_daily", workspace_id=W1, marketplace="UK", date="2026-08-10", asin="*",
     spend=10.0)
 conn.commit()
 st = _sd.totals(None, W1, "UK", "2026-08-01", "2026-08-31", vat_rate=0)
-check("the Sales profit: 100 - 15 fees - 30 stock - 10 ads", st.get("profit"), 45.0)
+# Re-pinned 30 Sep 2026: vat_rate=0 (not registered) in the UK with no ad
+# invoice stored now adds the UK's 20% ad VAT as an estimate (ad_cost.ad_vat)
+# instead of a silent 0 -- so 10 ads cost 12. net_profit below reads the
+# account's config, where this test account has no VAT setting (unset: no VAT
+# added, said), so it stays 45.
+check("the Sales profit: 100 - 15 fees - 30 stock - 10 ads - 2 ad VAT (est.)",
+      st.get("profit"), 43.0)
 npf = _pa.net_profit(None, W1, "UK", "2026-08-01", "2026-08-31",
                      totals={"spend": 10.0})
 check("PPC Analytics states the same figure", npf.get("net_profit"), 45.0)

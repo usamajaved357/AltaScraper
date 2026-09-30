@@ -137,8 +137,18 @@ truthy("the button exists in the page", 'id="navburger"' in HTMLC)
 #
 # -- so the button that opens it has to exist wherever the drawer does. If it
 # were still display:none above the breakpoint there would be no way in.
-check("it is no longer hidden on a desktop",
-      re.search(r"#navburger\s*\{\s*display\s*:\s*none", CSSC) is not None, False)
+# RE-PINNED 30 Sep 2026 (owner: "I STILL SEE that side show menu 3 lines close
+# to the app logo, we decided to finish it on desktop view"): above the phone
+# breakpoint the icon rail's own "Menu" button opens the drawer, so the corner
+# button is hidden there -- and ONLY there; a phone (no rail) still has it.
+_desk = re.search(r"@media\s*\(min-width:\s*861px\)\s*\{\s*#navburger\s*\{\s*display\s*:\s*none", CSSC)
+check("hidden on a desktop, inside the min-width:861px block only", _desk is not None, True)
+check("  not hidden globally (a phone still needs it)",
+      re.search(r"#navburger\s*\{\s*display\s*:\s*none", re.split(r"@media", CSSC)[0]) is not None, False)
+_NR = open(_os_repo.path.join(_os_repo.path.dirname(_os_repo.path.abspath(__file__)), "static", "js", "navrail.js"),
+           encoding="utf-8").read()
+truthy("  because the rail's Menu button opens the same drawer",
+       'data-nr="-menu"' in _NR and "mnavOpen()" in _NR)
 truthy("  because the drawer is now an overlay at every width",
        "translateX(-100%)" in re.split(r"@media", CSSC)[0])
 truthy("it is 40px square, the size measured off Orbit",
