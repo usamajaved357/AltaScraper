@@ -100,8 +100,13 @@ truthy("the save takes an account and a marketplace",
 # the canonical name, and the resolver genuinely accepts it.
 _RA = open(os.path.join(HERE, "domain", "request_account.py"),
            encoding="utf-8").read()
+# Re-pinned 30 Sep 2026: the fetch moved into ordPostOrderCost (the one caller
+# of /cogs/order, shared with the P&L's missing-cost list), which the save calls.
+_post = CODE.split("async function ordPostOrderCost")[1].split("\n}\n")[0]
+truthy("  the save goes through ordPostOrderCost with the row's account",
+       "ordPostOrderCost(orderId, sku," in _save and "accountId, marketplace)" in _save)
 truthy("  and sends account -- the key request_account.named() reads",
-       re.search(r"\baccount:\s*accountId", _save))
+       re.search(r"\baccount:\s*accountId", _post))
 truthy("named() really does read account", 'get(key)' in _RA
        and '"account"' in _RA)
 truthy("  and still accepts the older account_id, so nothing silently breaks",

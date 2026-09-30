@@ -88,6 +88,20 @@ def ad_vat(config_path, workspace_id, marketplace, end, registered):
     profit left out 20% of its ad spend with nothing on the page to say so."""
     if registered is True:
         return {"ratio": None, "basis": "registered", "note": ""}
+    # "ALL MARKETPLACES" IS NOT A PLACE (owner's screenshot, 30 Sep 2026: Finance
+    # on nestwell with the marketplace picker on "All" still showed ads with no
+    # VAT). Ad invoices are account-wide and stored under the account's HOME
+    # marketplace (accounts.home_marketplace, the same rule the Finances sync
+    # files them by), so a sentinel or blank marketplace is read as that one --
+    # both for the measured rate and for the UK estimate.
+    mk = str(marketplace or "").strip()
+    if not mk or mk.startswith("__") or mk.lower() in ("all", "*"):
+        try:
+            from domain import accounts as _acc
+            mk = (_acc.home_marketplace(config_path, workspace_id) or ("", ""))[0] or mk
+        except Exception:
+            pass
+        marketplace = mk
     if registered is None:
         return {"ratio": None, "basis": "unset",
                 "note": ("This account's VAT rate is not set, so VAT on ads is not "
@@ -156,17 +170,24 @@ def api_start(conn, workspace_id, marketplace):
     return (r["d"] if r else None) or None
 
 
-def by_day(config_path, workspace_id, marketplace, start, end, vat_registered):
+def by_day(config_path, workspace_id, marketplace, start, end, vat_registered,
+           detail=False):
     """{date: cost} for the window, and a dict saying how it was measured.
 
     Day by day: the Ads API from the first day it reports, Amazon's ad
     invoices before that. `vat_registered` is vat_registered()'s answer; None
     (not set) adds no VAT and says so.
 
+    detail=True adds info["detail"] = {date: {source, base, vat, ...}} -- the
+    P&L ledger's per-day parts (domain/pnl_ledger).
+
     -> (days, info) where info = {source: "ads_api" | "invoices" | "both" |
        None, vat_added: float, vat_ratio: float|None, note: str}"""
     conn = _db.get_db(config_path)
     days, info = {}, {"source": None, "vat_added": 0.0, "vat_ratio": None, "note": ""}
+    # Each day's parts, so the P&L ledger can show the VAT apart from the
+    # spend (domain/pnl_ledger); `days` stays the sum the totals are made of.
+    det = {}
     notes, used = [], set()
     first = api_start(conn, workspace_id, marketplace)
     add_vat = vat_registered is False
@@ -183,6 +204,8 @@ def by_day(config_path, workspace_id, marketplace, start, end, vat_registered):
             vat = round(base * ratio, 4) if ratio else 0.0
             days[r["date"]] = round(base + vat, 4)
             info["vat_added"] += vat
+            det[r["date"]] = {"source": "ads_api", "base": base,
+                                         "vat": vat, "vat_ratio": ratio}
             used.add("ads_api")
         if add_vat and vatinfo["note"] and "ads_api" in used:
             # Estimated (UK) or not included (elsewhere) -- said, never silent.
@@ -199,6 +222,9 @@ def by_day(config_path, workspace_id, marketplace, start, end, vat_registered):
                 continue
             used.add("invoices")
             days[r["date"]] = round(base + (tax if add_vat else 0.0), 4)
+            det[r["date"]] = {"source": "invoices", "base": base,
+                                         "vat": (tax if add_vat else 0.0),
+                                         "vat_invoiced": tax}
             if add_vat:
                 info["vat_added"] += tax
         if "invoices" in used:
@@ -218,6 +244,8 @@ def by_day(config_path, workspace_id, marketplace, start, end, vat_registered):
     info["source"] = ("both" if len(used) == 2 else (next(iter(used)) if used else None))
     info["note"] = " ".join(notes)
     info["vat_added"] = round(info["vat_added"], 2)
+    if detail:
+        info["detail"] = det
     return days, info
 
 

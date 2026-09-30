@@ -1777,14 +1777,8 @@ async function ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace){
     if(!_ok) return;
   }
   try{
-    const j = await (await fetch("/cogs/order", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      // "account" is read by request_account.named() (ACCOUNT_KEYS) -- the ORDER'S account, not the open one.
-      body: JSON.stringify({account: accountId || "",
-                            marketplace: marketplace || "",
-                            order_id: orderId, sku: sku || "",
-                            cost: raw === "" ? null : raw})
-    })).json();
+    const j = await ordPostOrderCost(orderId, sku, raw === "" ? null : raw,
+                                     accountId, marketplace);
     if(!j || !j.ok){
       if(typeof toast === "function"){
         toast("Could not save that cost: " + ((j && j.error) || "unknown"));
@@ -1807,6 +1801,21 @@ async function ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace){
   }catch(e){
     if(typeof toast === "function") toast("Could not save that cost: " + e);
   }
+}
+
+/* THE ONE CALLER OF /cogs/order: one order line's own cost (null clears it,
+ * and the line goes back to the product cost). Returns the server's reply
+ * ({ok, error}); throws only on a network failure. Shared by the Orders panel
+ * below and the P&L's missing-cost list (pnl.js) -- Rule 12. */
+async function ordPostOrderCost(orderId, sku, cost, accountId, marketplace){
+  return await (await fetch("/cogs/order", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    // "account" is read by request_account.named() (ACCOUNT_KEYS) -- the ORDER'S account, not the open one.
+    body: JSON.stringify({account: accountId || "",
+                          marketplace: marketplace || "",
+                          order_id: orderId, sku: sku || "",
+                          cost: cost})
+  })).json();
 }
 
 /* THE ORDER PANEL, IN SECTIONS.

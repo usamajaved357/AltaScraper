@@ -125,6 +125,8 @@ async function returnsLoad(force){
     }
     RET.range = null;
     RET.data = j; returnsRender();
+    // A pull stores new returns; the Refunds view re-reads them next time.
+    if(typeof refundsForget === "function") refundsForget();
   }catch(e){
     if(!_retCurrent(t)) return;
     body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
@@ -142,6 +144,8 @@ async function returnsLoad(force){
    here makes the next look re-read the store, and a list already on screen is
    reloaded now. */
 function _retListForget(){
+  // The Refunds view reads the same store, so it forgets too.
+  if(typeof refundsForget === "function") refundsForget();
   if(typeof RETL === "undefined" || !RETL) return;
   RETL.rows = []; RETL.statuses = {}; RETL.coverage = {};
   RETL.open = null; RETL.detail = null; RETL.action = "";

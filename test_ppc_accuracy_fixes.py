@@ -70,6 +70,18 @@ check("  product_ratio (per-product screens) uses the same rule",
 _it = _adc.ad_vat(None, "__a1__", "IT", "2026-09-29", False)
 check("not registered, not UK, no invoice -> not added", _it["ratio"], None)
 check("  but SAID, not silent", bool(_it["note"]), True)
+# The owner's screenshot (30 Sep 2026): Finance with the marketplace picker on
+# "All" showed ads with no VAT -- "__all__" is not the UK. Ad invoices are
+# account-wide, so a sentinel is read as the account's home marketplace.
+from domain import accounts as _acc_mod
+_orig_home = _acc_mod.home_marketplace
+_acc_mod.home_marketplace = lambda cp, aid: ("UK", "default")
+try:
+    for _sent in ("__all__", "", "All"):
+        check("marketplace %r -> the home marketplace (UK): 20%% estimated" % _sent,
+              _adc.ad_vat(None, "__a1__", _sent, "2026-09-29", False)["ratio"], 0.20)
+finally:
+    _acc_mod.home_marketplace = _orig_home
 check("registered -> nothing added",
       _adc.ad_vat(None, "__a1__", "UK", "2026-09-29", True)["ratio"], None)
 check("unset -> nothing added, and said",

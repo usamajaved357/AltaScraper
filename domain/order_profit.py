@@ -166,6 +166,24 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
         "no settled history to measure yet" % (DEFAULT_REFERRAL_RATE * 100))
 
 
+def line_cogs(L):
+    """What one order line's stock cost -> float, or None when it has no cost
+    (NOT zero -- the owner's rule). The one answer for_lines adds up and the
+    P&L ledger lists line by line (domain/pnl_ledger)."""
+    L = L or {}
+    cost = L.get("cogs")
+    if cost is None:
+        return None
+    try:
+        qty = int(L.get("units") or 0)
+    except (TypeError, ValueError):
+        qty = 0
+    try:
+        return float(cost) * qty
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def for_lines(lines, rate, vat_rate=None, charge_of=None, promos_by_order=None):
     """Profit across order lines, and exactly what it does not cover.
 
@@ -207,18 +225,15 @@ def for_lines(lines, rate, vat_rate=None, charge_of=None, promos_by_order=None):
         postage += ship
         units += qty
 
-        cost = (L or {}).get("cogs")
-        if cost is None:
+        line_cost = line_cogs(L)
+        if line_cost is None:
             # Counted, named, and reported -- NOT treated as zero silently. The
             # figure is knowingly overstated by this line's cost, and the reply
             # says by how many units and which products.
             missing[sku or asin or "(no sku)"] = \
                 missing.get(sku or asin or "(no sku)", 0) + qty
         else:
-            try:
-                cogs += float(cost) * qty
-            except (TypeError, ValueError):
-                pass
+            cogs += line_cost
             costed_units += qty
             covered_revenue += line_rev
 
@@ -559,7 +574,7 @@ def lines_between(config_path, workspace_id, marketplace, start, end):
     conn = _db.get_db(config_path)
     rows = conn.execute(
         "SELECT order_id, sku, asin, units, revenue, shipping, cogs, "
-        "       cogs_source, currency, status, purchase_date "
+        "       cogs_source, currency, status, purchase_date, title "
         "FROM order_lines "
         "WHERE workspace_id=? AND marketplace=? "
         "  AND substr(purchase_date, 1, 10) >= ? "

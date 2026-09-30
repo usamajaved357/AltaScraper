@@ -331,15 +331,19 @@ function _supTable(r){
       // mean the × button, which is how a probe for the Floor editor ended up
       // opening a delete confirmation instead.
       + '<td style="width:18px"><button class="rp-xrm" '
-      + 'onclick="event.stopPropagation();sourcingRemoveSource(' + s.source_id
+      + 'onclick="event.stopPropagation();sourcingRemoveSource(' + Number(s.source_id)
       + ')" title="Remove this supplier link">&times;</button></td>'
       + '</tr>';
     // WHEN EBAY SAYS IT WILL ARRIVE, and why it was passed over -- both under
     // the row they belong to rather than in a column. A date is a sentence, not
     // a figure, and putting it in a cell would either truncate it or make every
     // other column narrower to fit it.
+    // delivery_min/max, which _srcDeliveryLine reads -- it was handed
+    // delivery_text, which it never looks at, so the window never showed
+    // (repricer review, 30 Sep 2026).
     const line = _srcDeliveryLine({carrier: s.carrier, postage_text: s.postage_text,
-                                   delivery_text: s.delivery_text,
+                                   delivery_min: s.delivery_min,
+                                   delivery_max: s.delivery_max,
                                    delivery_postcode: s.delivery_postcode});
     const rej = why[s.source_id];
     if(line || rej){

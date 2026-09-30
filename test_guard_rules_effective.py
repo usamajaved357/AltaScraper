@@ -88,6 +88,7 @@ INTENDED_OPEN = {
     # a password is stored + its last 4 -- never the password.
     ("GET", "/settings/mailbox"): _SETTINGS_READ,
     ("GET", "/genimage/jobs_active"): "which image jobs are running (progress only)",
+    ("GET", "/finance/resync/status"): "progress of this account's Re-read 95 days (pages read, done/failed); starting it is the POST, which needs edit",
     ("GET", "/run/plan"): "a generation PLAN: spends and writes nothing (WORK_OVER_GET_EXCEPT)",
     ("GET", "/preview/jobs"): "preview-queue status, filtered per job by who may see its account",
 }

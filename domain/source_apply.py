@@ -28,8 +28,10 @@ is refused and says so rather than inventing a shape and hoping.
 """
 import copy
 import datetime as _dt
+import threading
 
 from api import amazon_listings as _al
+from domain import currency as _currency
 from domain import source_repo as _repo
 from domain import source_run as _run
 from domain import sourcing as _sourcing
@@ -439,7 +441,9 @@ def _notify_push(config_path, ws, mkt, sku, decision, current):
              if b.get("profit") is not None and b.get("cost") else None),
         marketplace=mkt,
         large=bool(decision.get("large_move")),
-        sym=("$" if str(mkt).upper() == "US" else "£"))
+        # The listing's own marketplace currency, from the shared map (was "$"
+        # for the US and "£" for every other marketplace, EU included).
+        sym=_currency.symbol_for_marketplace(mkt))
 
 
 def run_live(config_path, cfg, creds_for, now=None, workspace_id=None,
@@ -454,6 +458,28 @@ def run_live(config_path, cfg, creds_for, now=None, workspace_id=None,
         return {"ok": True, "pushed": 0, "skipped": 0,
                 "note": "the repricer's master switch is off -- nothing was pushed"}
 
+    # ONE PUSH RUN AT A TIME. The four-hourly job and the "Push now" button
+    # are separate callers; running together, both read the cooldown before
+    # either had recorded its push, so the same SKU could be patched twice
+    # and the 4-hour rest period meant nothing (repricer review, 30 Sep 2026).
+    # One process only -- the app runs a single worker.
+    if not _RUN_LOCK.acquire(False):
+        return {"ok": True, "pushed": 0, "skipped": 0, "busy": True,
+                "note": ("another push run is already going -- nothing was "
+                         "pushed twice. Try again in a minute.")}
+    try:
+        return _run_live_locked(config_path, cfg, creds_for, now,
+                                workspace_id, marketplace, log)
+    finally:
+        _RUN_LOCK.release()
+
+
+_RUN_LOCK = threading.Lock()
+
+
+def _run_live_locked(config_path, cfg, creds_for, now, workspace_id,
+                     marketplace, log):
+    """run_live's body, run while holding _RUN_LOCK."""
     rows = [r for r in _repo.enrolled(config_path, workspace_id, marketplace)
             if str(r.get("mode") or "dry_run") == "live"]
     pushed = failed = skipped = 0

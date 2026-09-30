@@ -27,6 +27,8 @@ let SRC_DEFAULT_TARGET = {};
 let SRC_FILTER = "";
 // The last /sourcing/list answer, so a filter can redraw without refetching.
 let SRC_LAST_J = null;
+// Bumped by every sourcingLoad; only the newest one's reply is drawn.
+let SRC_LOAD_SEQ = 0;
 
 // Every /sourcing call says WHICH account and marketplace it means.
 //
@@ -165,9 +167,12 @@ async function sourcingLoad(quiet){
   // switch is not painted (master audit S5). _srcScopeNow/_srcStillIn are this
   // screen's own copy of screenScope, kept for its bulk loops.
   const _sc = _srcScopeNow();
+  // AND ONLY THE NEWEST LOAD PAINTS: two quick saves start two reloads, and
+  // the older reply landing last redrew the older state (repricer bug hunt).
+  const _seq = ++SRC_LOAD_SEQ;
   try{ j = await (await fetch(_srcUrl("/sourcing/list"))).json(); }
   catch(e){
-    if(!_srcStillIn(_sc)) return;
+    if(!_srcStillIn(_sc) || _seq !== SRC_LOAD_SEQ) return;
     // A quiet refresh that fails leaves what is on screen alone and says so in
     // a toast. Replacing a working table with an error because a background
     // refresh timed out would be worse than the stale table.
@@ -176,7 +181,7 @@ async function sourcingLoad(quiet){
       + 'Could not load: ' + _sesc(String(e)) + '</div>';
     return;
   }
-  if(!_srcStillIn(_sc)) return;
+  if(!_srcStillIn(_sc) || _seq !== SRC_LOAD_SEQ) return;
   if(!j || !j.ok){
     if(quiet){ toast((j && j.error) || "Could not refresh"); return; }
     body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'
@@ -191,11 +196,11 @@ async function sourcingLoad(quiet){
   // is currently allowed to change prices is not something to guess at.
   // Read into a local and checked BEFORE it is kept: assigned first, a late
   // reply put A's auto-pricing on/off into B until B's load finished.
-  let _master = false;
-  try{ _master = !!(await (await fetch(_srcUrl("/sourcing/master"))).json()).enabled; }
-  catch(e){ _master = false; }
-  if(!_srcStillIn(_sc)) return;
-  SRC_MASTER = _master;
+  // FROM THIS SAME REPLY (master_enabled, the value /sourcing/master reads).
+  // A second fetch that failed set it to false, so the toolbar said
+  // "Auto-pricing: off" when the real state was simply not known (repricer
+  // review, 30 Sep 2026); one reply cannot disagree with itself.
+  SRC_MASTER = !!j.master_enabled;
   sourcingRender(j);
   if(quiet){
     open.forEach(function(id){

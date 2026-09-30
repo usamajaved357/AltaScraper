@@ -716,6 +716,20 @@ def tracking_check(workspace_id=None):
     return {"checked": checked, "failed": failed, "accounts": accounts}
 
 
+def returns_sync(workspace_id=None):
+    """Pull the seller-fulfilled returns report and keep it (read-only).
+
+    domain/returns_sync.py owns the fetch (the same one the "Pull from Amazon"
+    button uses) and the rule that a borrowed login is never used. DAILY: the
+    report covers 60 days, so a daily pass can never miss a return, and it
+    keeps the Returns screen's Refunds view current without a button press.
+    """
+    from domain import returns_sync as _rsync
+    _app, config_path, cfg = _need("app", "config_path", "cfg")
+    conf = cfg() if callable(cfg) else cfg
+    return _rsync.sync_all(config_path, conf, workspace_id=workspace_id)
+
+
 def buyer_inbox_check(workspace_id=None):
     """Read each connected mailbox for new buyer messages.
 
@@ -738,6 +752,9 @@ def buyer_inbox_check(workspace_id=None):
 register_job("buyer_inbox", buyer_inbox_check, hours=1 / 6.0,
              description="Read each connected mailbox for new buyer messages "
                          "(read-only; does nothing until a mailbox is connected)")
+register_job("returns_sync", returns_sync, hours=24,
+             description="Pull Amazon's seller-fulfilled returns report and keep "
+                         "it (daily, read-only)")
 register_job("tracking_check", tracking_check, hours=6,
              description="Ask the carriers where each uploaded parcel is "
                          "(does nothing until a tracking key is set)")

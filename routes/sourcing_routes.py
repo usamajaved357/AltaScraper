@@ -195,6 +195,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             _promos_by_sku = _promos.measured(CONFIG_PATH, wsid, mkt)
         except Exception:
             _promos_by_sku = {}
+        _policy_days = _run.shipping_policy_days(CONFIG_PATH)
         rows = []
         for d in run["decisions"]:
             pairs = _repo.pairs_for(CONFIG_PATH, d["workspace_id"],
@@ -237,6 +238,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             _fr = ((d.get("decision") or {}).get("breakdown") or {}).get("fee_rate")
             if _fr:
                 _rule["referral_rate"] = _fr
+            # AND THE POSTAGE DAYS decide_one used, so the glance's handling
+            # time is the one being set, not the 2-day module default whatever
+            # the setting says (repricer review, 30 Sep 2026).
+            _rule["shipping_policy_days"] = _policy_days
             # THE SUPPLIER LINKS, RANKED, on the row itself.
             #
             #     "i want to be shown all the available supplier/ source links
@@ -297,9 +302,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                         # can show the value in force rather than the module
                         # default, which would read as "2 days" on an account
                         # that had changed it to 1.
-                        "shipping_policy_days": int(
-                            _read_config().get("shipping_policy_days")
-                            or _sourcing.SHIPPING_POLICY_DAYS),
+                        "shipping_policy_days": _policy_days,
                         # Which marketplace these rows are from, so the money
                         # editors show the right currency symbol rather than
                         # guessing from whichever screen was opened last.
@@ -1465,7 +1468,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         # NOT THE PAGE'S TO SET: the fee rate, VAT and currency are measured or
         # come from the account, and a value saved here overrode them per SKU
         # (repricer review, 30 Sep 2026).
-        for _k in ("referral_rate", "vat_rate", "vat_unknown", "currency"):
+        for _k in ("referral_rate", "vat_rate", "vat_unknown", "currency",
+                   "shipping_policy_days"):
             vals.pop(_k, None)
         # THE PLAIN NUMBERS MUST BE NUMBERS. Text or a negative saved here made
         # decide() fail for that SKU on every run, so it was never priced.
@@ -1704,10 +1708,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         which is per SKU and is added rather than subtracted.
         """
         if request.method == "GET":
-            raw = _read_config()
             return jsonify({"ok": True,
-                            "days": int(raw.get("shipping_policy_days")
-                                        or _sourcing.SHIPPING_POLICY_DAYS)})
+                            "days": _run.shipping_policy_days(CONFIG_PATH)})
         b = _body()
         try:
             d = int(str(b.get("days")).strip())

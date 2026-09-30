@@ -193,13 +193,17 @@ async function sourcingHoldPrice(sku, btn){
  * would leave the owner believing his prices were built on Amazon's figures
  * when they are still built on an average.
  */
-async function sourcingGetFees(btn){
+async function sourcingGetFees(btn, sku){
+  // ONE SKU when called with its SKU (the "Amazon fee" pill in an open row).
+  // The pill passed the SKU in the button's place, so the body was empty and
+  // Amazon was asked about EVERY tracked SKU (repricer review, 30 Sep 2026).
+  if(typeof btn === "string"){ sku = btn; btn = null; }
   const was = btn ? btn.innerHTML : "";
   if(btn){ btn.disabled = true; btn.textContent = "Asking Amazon…"; }
   try{
     const j = await (await fetch(_srcUrl("/sourcing/fees"), {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: _srcBody({})})).json();
+      body: _srcBody(sku ? {skus: [sku]} : {})})).json();
     if(!j || !j.ok){ toast((j && j.error) || "Could not ask Amazon"); return; }
     toast(j.note || (j.quoted + " quoted"));
     // The ones Amazon would not answer for are the point of the second dialog:

@@ -40,9 +40,36 @@ function _srcModal(title, bodyHtml, onOk, onCancel){
   document.addEventListener("keydown", key, true);
   wrap.querySelector("#srcmodal_cancel").onclick = function(){ close(true); };
   wrap.onclick = function(e){ if(e.target === wrap) close(true); };
-  wrap.querySelector("#srcmodal_ok").onclick = async function(){
-    const ok = await onOk();
-    if(ok !== false) close(false);   // a refusal keeps the boxes and their values
+  // ONE SAVE AT A TIME, AND A FAILED ONE SAYS SO (repricer bug hunt, 30 Sep
+  // 2026). The button stayed live, so a double click saved twice; and a network
+  // error or a non-JSON reply threw out of onOk, leaving the dialog open with
+  // no message at all. Every dialog on this screen goes through here.
+  const okBtn = wrap.querySelector("#srcmodal_ok");
+  // The account the dialog was OPENED in. Its saves read the account at Save
+  // time, so a switch while it was open would have written this dialog's
+  // values (another account's floor, say) into the new one.
+  const openScope = _srcScopeNow();
+  okBtn.onclick = async function(){
+    if(okBtn.disabled) return;
+    if(!_srcStillIn(openScope)){
+      if(typeof toast === "function")
+        toast("The account or marketplace changed while this was open, so nothing was saved.");
+      close(true);
+      return;
+    }
+    const label = okBtn.innerHTML;
+    okBtn.disabled = true;
+    okBtn.innerHTML = '<span class="genspin"></span> Saving…';
+    let ok = false;
+    try{ ok = await onOk(); }
+    catch(e){
+      ok = false;
+      if(typeof toast === "function")
+        toast("Not saved: " + String((e && e.message) || e || "the server did not answer"));
+    }
+    if(ok !== false){ close(false); return; }   // a refusal keeps the boxes and their values
+    okBtn.disabled = false;
+    okBtn.innerHTML = label;
   };
   const first = wrap.querySelector("input");
   if(first) first.focus();
@@ -114,7 +141,8 @@ async function sourcingTrackAll(btn){
             + " — " + j.linked + " with the supplier the app already had on file";
     if(j.no_link) msg += ", " + j.no_link + " still need a supplier link";
     toast(msg + ".");
-    SRC_LASTBULK = j.rows || [];
+    // NOT stored as the "last sheet upload": this is not one, and its bare
+    // list of rows drew "undefined attached" there (repricer bug hunt).
     sourcingLoad();
   }catch(e){ toast(String(e)); }
   finally{ if(btn){ btn.disabled = false; btn.innerHTML = old; } }
@@ -210,7 +238,7 @@ async function sourcingUpload(inp){
   }catch(e){ toast(String(e)); return; }
   finally{ inp.value = ""; }
 
-  if(!j.ok){ toast(j.error || "Could not read that sheet"); return; }
+  if(!j || !j.ok){ toast((j && j.error) || "Could not read that sheet"); return; }
   SRC_LASTBULK = j;
   toast(j.attached + " supplier" + (j.attached === 1 ? "" : "s") + " attached"
         + (j.already ? (", " + j.already + " already had one") : "")
@@ -222,7 +250,8 @@ async function sourcingUpload(inp){
 // and it is only interesting until you have read it.
 function sourcingUploadReport(){
   const j = SRC_LASTBULK;
-  if(!j) return '';
+  // Only a sheet upload's reply is a report; anything else draws nothing.
+  if(!j || Array.isArray(j) || j.attached == null) return '';
   const bad = (j.rows || []).filter(function(r){ return r.status !== "attached"; });
   return '<details class="foldgroup" style="margin-bottom:12px"><summary>'
     + '<i class="ti ti-table-import"></i> Last sheet upload &mdash; '

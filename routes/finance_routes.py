@@ -287,18 +287,41 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # account while it runs (and briefly after), as it does for a forced
         # catalogue sync -- two finance pulls of one account at once compete
         # for the same Amazon quota.
+        #
+        # RUN AS A BACKGROUND JOB (review, 30 Sep 2026): at one Finances call
+        # every two seconds a 95-day re-read outlives a proxied web request.
+        # This returns at once; GET /finance/resync/status reports progress.
         import domain.live_refresher as _refresher
+        from domain import finance_resync_job as _job
         _key = "%s::%s" % (aid, home)
-        _refresher.user_sync_started(_key)
-        try:
-            res = _ff.sync(CONFIG_PATH, aid, home, _acc_mod.account_creds(acc),
-                           account_id=aid, days_back=_ff.RESYNC_DAYS,
-                           max_pages=_ff.RESYNC_PAGES, cogs_overrides=overrides)
-        finally:
-            _refresher.user_sync_finished(_key)
-        res["marketplace"] = home
-        res["account"] = aid
-        return jsonify(res), (200 if res.get("ok") else 502)
+        creds = _acc_mod.account_creds(acc)
+
+        def _run(log):
+            _refresher.user_sync_started(_key)
+            try:
+                res = _ff.sync(CONFIG_PATH, aid, home, creds, account_id=aid,
+                               days_back=_ff.RESYNC_DAYS, max_pages=_ff.RESYNC_PAGES,
+                               cogs_overrides=overrides, log=log)
+            finally:
+                _refresher.user_sync_finished(_key)
+            res["marketplace"] = home
+            res["account"] = aid
+            return res
+
+        job, started = _job.start(aid, _run)
+        return jsonify({"ok": True, "started": started, "running": True,
+                        "account": aid, "marketplace": home, "job": job})
+
+    @app.route("/finance/resync/status")
+    def finance_resync_status():
+        """The named account's Re-read job: running (pages read so far), or
+        finished with the sync's result. Reads only; names its account."""
+        import domain.request_account as _req_acct
+        from domain import finance_resync_job as _job
+        aid = _req_acct.named(request)
+        if not aid:
+            return jsonify({"ok": False, "error": "Which account?"}), 400
+        return jsonify({"ok": True, "account": aid, "job": _job.get(aid)})
 
     # Both panels live in domain/finance_view.py (architecture batch A8).
     def _finance_previous(wsid, mkt, start, end, basis):

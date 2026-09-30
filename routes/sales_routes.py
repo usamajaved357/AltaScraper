@@ -434,6 +434,31 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         for k, label, sign in _pnl.LINES]
         return jsonify(got)
 
+    @app.route("/sales/pnl/ledger")
+    def sales_pnl_ledger():
+        """The items behind ONE line of /sales/pnl, for the same account,
+        marketplace and dates (owner, 30 Sep 2026: "every detailed breakdown
+        ... and also references so i can verify them").
+
+        Reads only. Scoped exactly as /sales/pnl (the same _scope and _range),
+        so a line and its items cannot describe different accounts or windows.
+        domain/pnl_ledger owns what each line is made of.
+        """
+        from domain import pnl_ledger as _pl
+        from domain import sales_data as _sd
+        _acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        start, end, _preset = _range()
+        line = str(request.args.get("line") or "")
+        try:
+            got = _pl.ledger(CONFIG_PATH, wsid, mkt, start, end, line,
+                             vat_rate=_sd.vat_rate_for(_cfg, wsid))
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "%s: %s" % (type(e).__name__, str(e)[:200])}), 500
+        return jsonify(got), (200 if got.get("ok") else 400)
+
     @app.route("/sales/campaigns")
     def sales_campaigns():
         """Every advertising campaign that ran in this window, with its figures.

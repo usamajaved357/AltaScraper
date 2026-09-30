@@ -51,7 +51,7 @@ const SCREEN_BODIES = {
   finance:      ["finbody", "fin_pnl"],   // fin_pnl: the account statement (30 Sep 2026)
   orders:       ["ordbody"],
   inbox:        ["ibx_body"],   // buyer messages: one account's customers
-  returns:      ["retbody", "returns_list", "returns_detail"],
+  returns:      ["retbody", "returns_list", "returns_detail", "returns_refunds"],
   aiusage:      ["aiu_body"],
   variations:   ["varbody", "varfamilies"],
   asinstudio:   ["asinstudiobody"],
@@ -156,6 +156,10 @@ function _screenResetHeld(){
   if(typeof RET   !== "undefined") T(RET,   o => { o.data = null; o.busy = false; o.range = null; });
   if(typeof RETL  !== "undefined") T(RETL,  o => { o.rows = []; o.statuses = {}; o.action = ""; o.currency = "";
     o.coverage = {}; o.note = ""; o.open = null; o.detail = null; o.loading = false; });
+  // Refunds (30 Sep 2026): one account's orders and money; a late reply from A
+  // lands nowhere under B (the sequence number moves on).
+  if(typeof RREF  !== "undefined") T(RREF,  o => { o.data = null; o.error = "";
+    o.loading = false; o.cls = ""; o.seq = (o.seq || 0) + 1; });
   if(typeof HRLY  !== "undefined") T(HRLY,  o => { o.data = null; o.busy = false;
     o.seq = (o.seq||0) + 1; o.status = ""; o.open = ""; });
   if(typeof TRAF  !== "undefined") T(TRAF,  o => { o.data = null; o.busy = false;
@@ -222,7 +226,9 @@ function _screenResetHeld(){
     try{ if(typeof inboxBadgePoll === "function") inboxBadgePoll(); }catch(e){}
   }, 800);
   if(typeof PNL   !== "undefined") T(PNL,   o => { o.data = null; o.expenses = null;
-    o.loading = false; o.seq = (o.seq || 0) + 1; o.qs = null; o.host = "pnl_body"; });
+    o.loading = false; o.seq = (o.seq || 0) + 1; o.qs = null; o.host = "pnl_body";
+    // The line breakdowns and the missing-cost list are one account's orders.
+    o.open = {}; o.ledgers = {}; o.missingOpen = false; o.scopeKey = ""; });
   if(typeof KWH    !== "undefined") T(KWH,    o => { o.weeks = []; o.rows = [];
     o.movers = []; o.counts = null; o.note = ""; o.week = ""; o.prev = "";
     o.loading = false; });
@@ -292,6 +298,18 @@ function _screenResetHeld(){
   if(typeof SRC_ROW_RULES !== "undefined") T(SRC_ROW_RULES, o => { for(const k in o) delete o[k]; });
   if(typeof SRC_RULE    !== "undefined") { try{ SRC_RULE = null; }catch(e){} }
   if(typeof SRC_MASTER  !== "undefined") { try{ SRC_MASTER = false; }catch(e){} }
+  // The rest of the Repricer's held state (repricer bug hunt, 30 Sep 2026): B
+  // opened with A's card filter, A's "last sheet upload" report, A's rows and
+  // A's ticked SKUs -- and A's chart overlay stayed open across the switch.
+  try{ if(typeof SRC_ROWS !== "undefined") SRC_ROWS = []; }catch(e){}
+  try{ if(typeof SRC_LAST_J !== "undefined") SRC_LAST_J = null; }catch(e){}
+  try{ if(typeof SRC_FILTER !== "undefined") SRC_FILTER = ""; }catch(e){}
+  try{ if(typeof SRC_LASTBULK !== "undefined") SRC_LASTBULK = null; }catch(e){}
+  try{ if(typeof SRC_DEFAULT_TARGET !== "undefined") SRC_DEFAULT_TARGET = {}; }catch(e){}
+  try{ if(typeof SRC_MKT !== "undefined") SRC_MKT = ""; }catch(e){}
+  if(typeof SRC_SEL !== "undefined") T(SRC_SEL, o => o.clear());
+  if(typeof SRC_PICK_SEQ !== "undefined") { try{ SRC_PICK_SEQ++; }catch(e){} }
+  try{ const ov = document.getElementById("rp_ov"); if(ov && ov.remove) ov.remove(); }catch(e){}
   if(typeof LR_RULES_ASKED  !== "undefined") { try{ LR_RULES_ASKED = false; }catch(e){} }
   if(typeof LR_RULES_LOADED !== "undefined") { try{ LR_RULES_LOADED = false; }catch(e){} }
   if(typeof LR_FAMILIES !== "undefined") { try{ LR_FAMILIES = null; }catch(e){} }

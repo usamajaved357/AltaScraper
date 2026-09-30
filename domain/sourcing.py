@@ -139,6 +139,12 @@ DEFAULT_RULE = {
     # the same "helpful" default the three pricing allowances were removed for.
     # Set it per SKU, on the supplier that has actually let you down.
     "handling_buffer_days": 0,
+    # THE POSTAGE-TRANSIT SETTING, stamped on by source_run from config.json
+    # (never stored per SKU). It has to be a key here: rule_with_defaults keeps
+    # only DEFAULT_RULE's keys, so without it the setting was dropped before
+    # handling_days() ever saw it and every handling time used 2 whatever the
+    # owner had saved (repricer review, 30 Sep 2026). None = the 2-day default.
+    "shipping_policy_days": None,
     "referral_rate":        DEFAULT_REFERRAL_RATE,
     # The account's VAT rate, attached by source_repo.rule_for -- never stored
     # per SKU. None (not registered, or not said) changes nothing.
@@ -455,6 +461,22 @@ def usable(source, check, rule, now):
             return False, "dispatches in %d days, limit is %d" % (int(d), int(md))
 
     return True, ""
+
+
+def policy_days(value):
+    """The saved postage-transit setting as whole days; the default when unset.
+
+    ZERO IS A REAL ANSWER. Every reader wrote `value or SHIPPING_POLICY_DAYS`,
+    so a policy saved as 0 read back as 2 on the settings menu, the list and
+    the breakdown, while handling_days() used the 0 -- the screen described a
+    handling time the repricer was not setting (repricer review, 30 Sep 2026).
+    """
+    if value in (None, ""):
+        return SHIPPING_POLICY_DAYS
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return SHIPPING_POLICY_DAYS
 
 
 def handling_days(dispatch_days, rule=None, shipping_policy_days=None):
@@ -811,6 +833,8 @@ def target_status(price, cost, rule=None):
 def _blind(check, rule, now):
     """True when this check told us nothing we can act on.
 
+    `rule` must already be complete (rule_with_defaults) -- decide() passes it so.
+
     A CONFIRMED 'gone' is NOT blind -- an ended listing is a fact about the
     world. A single unconfirmed 'gone' is treated exactly like a read that
     failed, because that is precisely what it might be, and the branch below
@@ -826,7 +850,32 @@ def _blind(check, rule, now):
     if st != FETCHED:
         return True
     age = age_minutes(check, now)
-    return age is None or age > rule["stale_after_hours"] * 60.0
+    if age is None or age > rule["stale_after_hours"] * 60.0:
+        return True
+    # A FRESH READING THAT DID NOT SAY THE ONE THING THE RULE NEEDS IS BLIND TOO.
+    # usable() rejects these -- "stock unknown", "price or postage unknown",
+    # "the supplier's currency is unknown", "dispatch time unknown" -- and they
+    # used to fall through to out_of_stock, zeroing a live listing on a reading
+    # that said nothing about stock (repricer review, 30 Sep 2026). eBay leaving
+    # out the postage or the availability is common; it is not an ended listing.
+    # Unknown is not out of stock: hold, like a failed read.
+    #
+    # BUT A SUPPLIER THAT SAYS "OUT OF STOCK" HAS SAID THE ONE THING THAT
+    # MATTERS (review, 30 Sep 2026): eBay may leave out postage or a delivery
+    # date on a sold-out item, and holding then would keep selling something
+    # the supplier cannot supply -- while the screen (order_sources._state)
+    # already calls that link dead. A definite "no" is never blind.
+    if check.get("in_stock") is False:
+        return False
+    if landed_cost(check) is None:
+        return True
+    if rule.get("currency") and not str(check.get("currency") or "").strip():
+        return True
+    if rule.get("require_in_stock") and check.get("in_stock") is None:
+        return True
+    if rule.get("max_dispatch_days") is not None and check.get("dispatch_days") is None:
+        return True
+    return False
 
 
 def decide(current, pairs, rule=None, now=None, listing_state=None):
@@ -920,7 +969,8 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
             out["blocked_by"] = ("no usable data from %d of %d sources"
                                  % (len(blind), len(live)))
             out["reason"] = ("nothing can be sourced from the sources we CAN read, "
-                             "and %d could not be read -- leaving the listing "
+                             "and %d could not be read, or did not say its "
+                             "stock, postage or currency -- leaving the listing "
                              "exactly as it is" % len(blind))
             return out
         out["action"] = "out_of_stock"
@@ -1147,8 +1197,7 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         # The postage days already promised separately, taken off the handling
         # time rather than promised twice. Carried so the screen can show the
         # subtraction instead of a number that looks two days short.
-        "shipping_policy_days": int(rule.get("shipping_policy_days")
-                                    or SHIPPING_POLICY_DAYS),
+        "shipping_policy_days": policy_days(rule.get("shipping_policy_days")),
         "lead_days": lead,
         # Which floor actually decided the price. Without this the breakdown
         # says "1.00 profit" while the price is really being set by a 20% target,

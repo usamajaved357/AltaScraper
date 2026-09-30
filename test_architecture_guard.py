@@ -42,7 +42,10 @@ BASELINE_SIZE = {
     "lower-imports-upper": 1,
     "module-mutable-global": 38,
     "duplicate-function": 0,
-    "large-function": 27,
+    # 27 -> 26 (30 Sep 2026): order_finance.complete_by_order_date split into
+    # its pieces (placed_orders / settled_orders / order_money / refund_rows)
+    # for the P&L ledger (domain/pnl_ledger.py).
+    "large-function": 26,
     "background-open-account": 8,
     # Added from lessons (docs/lessons.md), 29 Sep 2026, via --baseline-new-rule:
     # 66 -> 65 (30 Sep 2026): miles_clear_history no longer wipes the shared

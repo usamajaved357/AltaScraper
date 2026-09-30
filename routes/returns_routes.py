@@ -38,8 +38,9 @@ import domain.request_account as _req_acct
 from routes import scope as _scope_mod
 
 # Amazon refuses a wider window on this report -- measured: 90 days comes back
-# FATAL, 60 works.
-MAX_DAYS = 60
+# FATAL, 60 works. Kept in domain/returns_sync.py, which owns the fetch.
+from domain import returns_sync as _rsync
+MAX_DAYS = _rsync.MAX_DAYS
 
 # The last analysis each workspace loaded, so the export can write exactly what
 # the screen was shown. Keyed by workspace id, and capped.
@@ -160,80 +161,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return {}
 
     def _fetch(acc, mkt, days):
-        """The seller-fulfilled returns report. -> (headers, rows, error)."""
-        from domain import accounts as _acc_mod
-        try:
-            from sp_api.api import Reports
-            from sp_api.base import Marketplaces
-        except Exception as e:
-            return [], [], "SP-API Reports is unavailable: %s" % str(e)[:120]
-        enum = getattr(Marketplaces, str(mkt).upper(), Marketplaces.UK)
-        # BUILDING THE CLIENT CAN FAIL, and it was the one call here not guarded.
-        # sp_api validates credentials in the constructor and raises
-        # MissingCredentials, which escaped as an HTTP 500 with a raw exception
-        # string -- on a screen whose whole design is to answer with no data and a
-        # reason rather than an error page. Measured on miles_lubricants: "server
-        # error: Credentials are missing: lwa_app_id, lwa_client_secret".
-        try:
-            rc = Reports(credentials=_acc_mod.account_creds(acc), marketplace=enum)
-        except Exception as e:
-            return [], [], ("This account's Amazon credentials are incomplete, so "
-                            "the returns report cannot be requested: %s"
-                            % str(e)[:160])
-        now = _dt.datetime.now(_dt.timezone.utc)
-        start = now - _dt.timedelta(days=days)
-        iso = lambda d: d.isoformat(timespec="seconds").replace("+00:00", "Z")
-        try:
-            cr = rc.create_report(
-                reportType="GET_FLAT_FILE_RETURNS_DATA_BY_RETURN_DATE",
-                dataStartTime=iso(start), dataEndTime=iso(now),
-                marketplaceIds=[_acc_mod.marketplace_id(mkt)])
-            rid = (cr.payload if hasattr(cr, "payload") else cr)["reportId"]
-        except Exception as e:
-            return [], [], "Amazon refused the report request: %s" % str(e)[:200]
+        """The seller-fulfilled returns report. -> (headers, rows, error).
 
-        import time as _t
-        doc = None
-        for _ in range(24):
-            _t.sleep(5)
-            try:
-                g = rc.get_report(rid)
-                p = g.payload if hasattr(g, "payload") else g
-                st = p.get("processingStatus")
-            except Exception as e:
-                return [], [], "Could not read the report back: %s" % str(e)[:160]
-            if st == "DONE":
-                doc = p.get("reportDocumentId")
-                break
-            if st in ("CANCELLED", "FATAL"):
-                # CANCELLED means Amazon had nothing to give, which is not an
-                # error and must not read as one.
-                return [], [], ("__EMPTY__" if st == "CANCELLED" else
-                                "Amazon could not build the report (FATAL) — "
-                                "usually the window is too wide; this one is "
-                                "limited to %d days." % MAX_DAYS)
-        if not doc:
-            return [], [], ("Amazon is still building the report. Try again in "
-                            "a minute — they can be slow.")
-        try:
-            d = rc.get_report_document(doc, download=True)
-            body = (d.payload if hasattr(d, "payload") else d) or {}
-            text = str(body.get("document") or "")
-        except Exception as e:
-            return [], [], "Could not download the report: %s" % str(e)[:160]
-        return _split(text)
+        Moved to domain/returns_sync.fetch (30 Sep 2026) so the daily job and
+        this button reach Amazon the same way (Rule 12). "__EMPTY__" still
+        means Amazon had nothing to give, not a failure."""
+        return _rsync.fetch(acc, mkt, days)
 
     def _split(text):
         """A tab- or comma-separated report -> (headers, rows, error)."""
-        lines = [l for l in str(text or "").splitlines() if l.strip()]
-        if not lines:
-            return [], [], "__EMPTY__"
-        delim = "\t" if lines[0].count("\t") >= lines[0].count(",") else ","
-        rdr = csv.reader(io.StringIO("\n".join(lines)), delimiter=delim)
-        rows = list(rdr)
-        if not rows:
-            return [], [], "__EMPTY__"
-        return rows[0], rows[1:], ""
+        return _rsync.split(text)
 
     def _ccy(mkt):
         """The marketplace's currency code, or "" when it is not one we know.
@@ -322,42 +259,34 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         end = _dt.date.today()
         start = end - _dt.timedelta(days=days - 1)
 
-        headers, rows, err = _fetch(acc, mkt, days)
-        if err == "__EMPTY__":
+        # ONE fetch-parse-store path (Rule 12): domain/returns_sync.pull_and_store,
+        # the same call the daily job makes. It fetches through _fetch, parses
+        # with returns_view.parse_rows and KEEPS the rows -- Amazon caps this
+        # report at 60 days, so history is only possible if it is accumulated;
+        # returns_store de-duplicates on returns_view.identity(), so overlapping
+        # windows correct rather than double count. Storing is never fatal.
+        got = _rsync.pull_and_store(CONFIG_PATH, acc, wsid, mkt, days, fetcher=_fetch)
+        if got.get("empty"):
+            # "__EMPTY__" from Amazon: nothing to give, which is not a failure.
             return jsonify(_answer([], "mfn", wsid, mkt, start.isoformat(),
                                    end.isoformat(),
                                    note=("Amazon returned nothing for the last "
                                          "%d days — which for returns is good "
                                          "news, not a failure." % days)))
-        if err:
+        if not got.get("ok"):
             # NOT AN ERROR PAGE. Amazon being slow, or an account that is
             # seller-fulfilled and has no FBA report to give, are ordinary
             # states -- and a red message where the screen should be tells you
             # nothing about returns and hides the layout entirely.
             #
-            # So the page is still answered, with no data and the reason. The
-            # screen draws its own placeholders and marks every one of them;
-            # nothing is invented here, and the moment a real report lands the
-            # same answer carries real figures.
+            # So the page is still answered, with no data and the reason (an
+            # unrecognised report included). The screen draws its own
+            # placeholders and marks every one of them; nothing is invented.
             return jsonify(_answer([], "", wsid, mkt, start.isoformat(),
-                                   end.isoformat(), no_report=err))
-        returns, kind, skipped = _rv.parse_rows(headers, rows)
-        if not kind:
-            return jsonify(_answer(
-                [], "", wsid, mkt, start.isoformat(), end.isoformat(),
-                no_report=("That report's columns were not recognised. "
-                           "Found: %s"
-                           % ", ".join(str(h) for h in headers[:12]))))
-        # KEEP THEM. Amazon caps this report at 60 days, so year-to-date is four
-        # or five downloads and history is only possible if it is accumulated.
-        # Until now the parsed rows lived in a dict in memory and a restart lost
-        # them -- the same shape as the search-term bug, where the app could act
-        # on a report once and could never show you what it said afterwards.
-        # domain/returns_store.py de-duplicates on returns_view.identity(), so
-        # overlapping windows correct rather than double count.
-        _keep(wsid, mkt, returns, _rstore.SOURCE_REPORT)
-        return jsonify(_answer(returns, kind, wsid, mkt, start.isoformat(),
-                               end.isoformat(), skipped))
+                                   end.isoformat(), no_report=got.get("error") or ""))
+        return jsonify(_answer(got["returns"], got["kind"], wsid, mkt,
+                               start.isoformat(), end.isoformat(),
+                               got.get("skipped") or 0))
 
     @app.route("/returns/list")
     def returns_list():
@@ -410,6 +339,56 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                      "file — Amazon caps that report at 60 days, so anything "
                      "older has to be uploaded once and is then kept."),
         })
+
+    def _refunds(wsid, mkt):
+        """domain/return_refunds.build for ?start=&end= (default: 90 days)."""
+        from domain import return_refunds as _rr
+        today = _dt.date.today()
+        try:
+            end = _dt.date.fromisoformat((request.args.get("end") or "").strip()[:10])
+        except ValueError:
+            end = today
+        try:
+            start = _dt.date.fromisoformat((request.args.get("start") or "").strip()[:10])
+        except ValueError:
+            start = end - _dt.timedelta(days=89)
+        if start > end:
+            start, end = end, start
+        out = _rr.build(CONFIG_PATH, wsid, mkt, start.isoformat(), end.isoformat())
+        out["currency"] = _ccy(mkt)
+        out["coverage"] = _rstore.coverage(CONFIG_PATH, wsid, mkt)
+        return out
+
+    @app.route("/returns/refunds")
+    def returns_refunds():
+        """Each return with the money that actually went back. Reads only.
+
+        The returns report's "Refunded Amount" set against Amazon's refund
+        postings for the same order (domain/return_refunds.py owns the join and
+        the classes; pnl_ledger.refund_events is the money)."""
+        _acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
+        try:
+            return jsonify(_refunds(wsid, mkt))
+        except Exception as e:
+            return jsonify({"ok": False, "error": (
+                "Could not work out the refunds: %s" % str(e)[:200])}), 500
+
+    @app.route("/returns/refunds.csv")
+    def returns_refunds_csv():
+        """The same table as CSV, every row."""
+        _acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
+        from domain import return_refunds as _rr
+        out = _refunds(wsid, mkt)
+        name = "refunds-%s-%s-%s-%s.csv" % (wsid or "account", mkt, out["start"],
+                                           out["end"])
+        return Response("\ufeff" + _rr.to_csv(out), mimetype="text/csv",
+                        headers={"Content-Disposition":
+                                 'attachment; filename="%s"' % name,
+                                 "Cache-Control": "no-store"})
 
     @app.route("/returns/detail")
     def returns_detail():

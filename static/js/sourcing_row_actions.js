@@ -212,12 +212,23 @@ async function sourcingAddPrompt(){
   await sourcingPickerLoad("");
 }
 
+// THE LATEST PICKER LOAD, and the account it was for. A reply from a switched-
+// away account, or an older search that lands after a newer one, is dropped
+// rather than painted -- its Enroll buttons would otherwise post A's SKUs under
+// B (repricer bug hunt, 30 Sep 2026). screenstate.js bumps the number on a switch.
+let SRC_PICK_SEQ = 0;
+let SRC_PICK_SCOPE = null;
 async function sourcingPickerLoad(q){
   const host = document.getElementById("srcpick");
   if(!host) return;
+  const seq = ++SRC_PICK_SEQ;
+  const sc = _srcScopeNow();
+  const stale = function(){ return seq !== SRC_PICK_SEQ || !_srcStillIn(sc); };
   let j;
   try{ j = await (await fetch(_srcUrl("/sourcing/candidates","q="+encodeURIComponent(q||"")))).json(); }
-  catch(e){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc(String(e))+'</div>'; return; }
+  catch(e){ if(stale()) return; host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc(String(e))+'</div>'; return; }
+  if(stale()) return;
+  SRC_PICK_SCOPE = sc;
   if(!j || !j.ok){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc((j&&j.error)||"Could not load")+'</div>'; return; }
 
   // ONLY THE ONES YOU CAN ACTUALLY ENROLL.
@@ -304,10 +315,16 @@ function sourcingPickerClose(){
 }
 
 async function sourcingEnrolPicked(sku){
+  // The list was drawn for one account; enrol there or nowhere.
+  const sc = SRC_PICK_SCOPE || _srcScopeNow();
+  if(!_srcStillIn(sc)){
+    toast("The account or marketplace changed, so nothing was enrolled.");
+    sourcingPickerClose(); return;
+  }
   try{
     const j = await (await fetch("/sourcing/enrol",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:_srcBody({sku:sku})})).json();
+      body:_srcBody({sku:sku}, sc)})).json();
     if(!j.ok){ toast(j.error||"Could not enroll"); return; }
     toast("Enrolled in dry run — add a supplier link next");
     await sourcingPickerLoad((document.getElementById("srcpickq")||{}).value||"");

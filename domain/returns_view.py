@@ -299,6 +299,23 @@ MFN_COLS = {
     "order_amount": ("order amount",),
     "refunded": ("refunded amount",),
     "category": ("category",),
+    # WHAT THE REFUNDS SCREEN NEEDS (owner, 30 Sep 2026: "if we have already
+    # paid the refunds and what is the status of the returns"). All are real
+    # columns of GET_FLAT_FILE_RETURNS_DATA_BY_RETURN_DATE, header names as
+    # Amazon sends them (read from a live nestwell_goods report the same day).
+    # The delivery date is when the parcel reached the seller -- the day
+    # Amazon's refund clock starts for a seller-fulfilled return.
+    "order_date": ("order date",),
+    "rma_id": ("amazon rma id",),
+    "tracking_id": ("tracking id",),
+    "carrier": ("return carrier",),
+    "label_type": ("label type",),
+    "label_cost": ("label cost",),
+    "delivered": ("return delivery date",),
+    "a_to_z": ("a-to-z claim",),
+    "in_policy": ("in policy",),
+    "return_type": ("return type",),
+    "safet_state": ("safet claim state",),
 }
 # The FBA report's own names, including the two columns MFN does not have.
 FBA_COLS = {
@@ -394,6 +411,19 @@ def parse_rows(headers, rows):
             # difference between "nothing was damaged" and "nobody graded it".
             "disposition": get("disposition") or None,
             "comment": get("comment") or None,
+            # Seller-fulfilled only; None when the file has no such column, so
+            # "not in this report" is never shown as "blank on Amazon's side".
+            "order_date": _date(get("order_date")) or None,
+            "rma_id": get("rma_id") or None,
+            "tracking_id": get("tracking_id") or None,
+            "carrier": get("carrier") or None,
+            "label_type": get("label_type") or None,
+            "label_cost": _num(get("label_cost")),
+            "delivered": _date(get("delivered")) or None,
+            "a_to_z": get("a_to_z") or None,
+            "in_policy": get("in_policy") or None,
+            "return_type": get("return_type") or None,
+            "safet_state": get("safet_state") or None,
         })
     return out, kind, skipped
 

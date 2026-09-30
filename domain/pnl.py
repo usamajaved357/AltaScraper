@@ -170,6 +170,21 @@ def fee_coverage(config_path, workspace_id, marketplace, start, end):
             "estimated": placed - settled}
 
 
+def settled_fee_rows(conn, workspace_id, marketplace, start, end):
+    """One row per order PLACED in the window that Amazon has posted fees for:
+    order_id, ref, fba, oth, promo, promo_n, first posted day (posted). The
+    rows _settled_fees adds up, and the P&L ledger lists (Rule 12)."""
+    return conn.execute(
+        "SELECT f.order_id, SUM(f.referral_fees) ref, SUM(f.fba_fees) fba, "
+        "       SUM(f.other_fees) oth, SUM(f.promo_fees) promo, "
+        "       COUNT(f.promo_fees) promo_n, MIN(f.posted_date) posted "
+        "FROM order_fees f "
+        "WHERE f.workspace_id=? AND f.marketplace=? AND f.order_id IN (%s) "
+        "GROUP BY f.order_id" % _PLACED,
+        (workspace_id, marketplace, workspace_id, marketplace, start, end)
+    ).fetchall()
+
+
 def _settled_fees(conn, workspace_id, marketplace, start, end):
     """Amazon's own fees for orders PLACED in this window. -> (dict, set).
 
@@ -178,15 +193,7 @@ def _settled_fees(conn, workspace_id, marketplace, start, end):
     it is part of the sale it came from. The refunds below are the ones that
     deliberately sit on their own date instead.
     """
-    rows = conn.execute(
-        "SELECT f.order_id, SUM(f.referral_fees) ref, SUM(f.fba_fees) fba, "
-        "       SUM(f.other_fees) oth, SUM(f.promo_fees) promo, "
-        "       COUNT(f.promo_fees) promo_n "
-        "FROM order_fees f "
-        "WHERE f.workspace_id=? AND f.marketplace=? AND f.order_id IN (%s) "
-        "GROUP BY f.order_id" % _PLACED,
-        (workspace_id, marketplace, workspace_id, marketplace, start, end)
-    ).fetchall()
+    rows = settled_fee_rows(conn, workspace_id, marketplace, start, end)
     tot = {"referral_fees": 0.0, "fba_fees": 0.0, "other_fees": 0.0,
            "promo_fees": 0.0}
     ids = set()
