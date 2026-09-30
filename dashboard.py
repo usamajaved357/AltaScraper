@@ -3022,6 +3022,10 @@ def build_app(backend=None):
     _order_purchase_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
     import routes.order_ship_routes as _order_ship_routes
     _order_ship_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
+    # Customer messages, read from the mailbox Seller Central emails them to
+    # (Amazon's API cannot read them). Its own file (Rule 7).
+    import routes.buyer_inbox_routes as _buyer_inbox_routes
+    _buyer_inbox_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg, _state=_state)
     import routes.asin_charges_routes as _asin_charges_routes
     _asin_charges_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                   _state=_state, _active_account=_active_account)

@@ -136,6 +136,9 @@
 <!-- The compact expanded-order panel: the Sourcing page's bar, cards and pills
      applied to an order -- see static/js/orders_panel.js. -->
 <link rel="stylesheet" href="/static/css/orders_panel.css?v={{ ASSET_V }}">
+<!-- Customer messages: Orders' master-detail shape for buyer conversations.
+     After orders_panel.css, which it mirrors; its own .ibx-* names only. -->
+<link rel="stylesheet" href="/static/css/inbox.css?v={{ ASSET_V }}">
 <!-- The three advertising screens, drawn to their own mockups
      (orbit-ppc-v3.jsx and the two beside it). Its palette is deliberately NOT
      the app's: those pages were designed against Orbit's darker ground, and
@@ -443,6 +446,7 @@
       </div>
       <div class="navkids">
         <a class="navitem" data-sec="orders" href="#" onclick="return navGo(event,'orders')" title="Every account's orders on one screen"><i class="ti ti-receipt"></i> All orders</a>
+        <a class="navitem" data-sec="inbox" href="#" onclick="return navGo(event,'inbox')" title="What buyers wrote to you, read from the mailbox Seller Central emails them to"><i class="ti ti-message-circle"></i> Customer messages <span id="ibx_badge" class="ibx-badge" style="display:none"></span></a>
         <!-- Named "Returns Intelligence" because that is what it was asked for
              and what the report it was built from is called. It was labelled
              plain "Returns", and was looked for repeatedly without being found. -->
@@ -657,6 +661,9 @@
          street and phone — is stated on the screen rather than left as an
          empty column. -->
 {% include "screens/sec_orders.html" %}
+
+    <!-- CUSTOMER MESSAGES: buyer conversations, list left, conversation right. -->
+{% include "screens/sec_inbox.html" %}
 
     <!-- HOURLY SALES. Which hour of which day each product sells in.
          Amazon publishes no hourly report: the Sales & Traffic report is
@@ -1057,6 +1064,9 @@
      falls back to its own long version, so a load failure costs the layout
      rather than the order details. -->
 <script src="/static/js/orders_panel.js?v={{ ASSET_V }}"></script>
+<!-- Customer messages: what buyers wrote, read from the seller's mailbox
+     (Amazon's API cannot read them). Reads only; replying is Seller Central. -->
+<script src="/static/js/inbox.js?v={{ ASSET_V }}"></script>
 <!-- Why things come back, and what it costs. -->
 <script src="/static/js/returns.js?v={{ ASSET_V }}"></script>
 <!-- The operational half of the same screen: every return, one row each, and a

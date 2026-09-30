@@ -282,6 +282,36 @@ change needs it, via register injection.
   Import streams; an account switch stops Miles lines painting but does not
   close the stream (the run continues on the server by design). READ.
 
+## Customer messages (30 Sep 2026) -- NOT verified with real mail
+- **Never run against a real forwarded buyer message or a real mailbox.** Built
+  and tested on synthetic emails and a fake IMAP server only. Not verified:
+  the exact alias domains Amazon uses per marketplace (assumed
+  `@marketplace.amazon.<tld>`, table `TLD_MARKET` in domain/buyer_inbox.py),
+  that the order id is in the subject in the NNN-NNNNNNN-NNNNNNN form, that
+  Gmail honours the IMAP `FROM "marketplace.amazon."` search, and the Seller
+  Central "Reply" link path `/messaging/inbox` for each country. Check the
+  first real messages and the link, then remove this entry.
+- **Phase 1 reads only.** Replying from the app is not built (outward-facing;
+  waits for the owner). Mail from an alias whose domain is not in TLD_MARKET is
+  dropped -- a new Amazon country would need adding there.
+- **Without ALTA_TOKEN_KEY the mailbox app password is stored unencrypted** in
+  config.json (the same rule as refresh tokens); the settings panel says so.
+- **The first check looks back 30 days and fetches at most 200 messages per
+  check, oldest first** (each cut at 1 MB); an older backlog is not imported.
+  More than 200 Amazon emails on ONE day would stall on that day (IMAP SINCE is
+  a date) -- not expected at this volume.
+- **Anyone with "accounts" view access can read the mailbox settings** (the
+  address, and the password's last 4 -- never the password), exactly as
+  /settings/ads and /settings/tracking; saving needs manage_accounts.
+- **One mailbox per account is enforced by address**; two Seller Centrals
+  emailing the same inbox would file both companies' buyers under each, so a
+  second account using an address already in use is refused.
+- FIXED 30 Sep 2026 (found on the way): poller.js `altaEvery(ms, fn)` was called
+  `(fn, ms)` by all three callers, so the bell, the monitor badge and the health
+  check never polled again after page load. It now takes either order; those
+  three polls start working again (a behaviour change, intended;
+  test_pollers_pause_hidden.js).
+
 ## Orders "To buy" -- left open (29 Sep 2026 reviews)
 - **"Mark as bought" is still offered when the records could not be read.**
   Deliberate: an unreadable table should not stop someone recording a purchase.

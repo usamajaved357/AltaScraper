@@ -676,6 +676,39 @@ CREATE INDEX IF NOT EXISTS idx_buyermsg_order
 CREATE INDEX IF NOT EXISTS idx_buyermsg_when
     ON buyer_messages(workspace_id, sent_at);
 
+-- WHAT BUYERS SENT, read from the seller's own mailbox (domain/buyer_inbox.py).
+-- Amazon's API cannot read buyer messages; Seller Central emails each one from
+-- an alias @marketplace.amazon.<country>. Only mail from such an alias is kept.
+-- read_at is THIS APP's flag -- the mailbox itself is never changed.
+CREATE TABLE IF NOT EXISTS buyer_inbox (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT,                 -- from the alias's domain
+    order_id     TEXT,                 -- "" when the email names none
+    message_id   TEXT NOT NULL,        -- the email's Message-ID
+    from_alias   TEXT,
+    subject      TEXT,
+    body_text    TEXT,                 -- plain text, HTML stripped, capped
+    received_at  TEXT,                 -- UTC ISO
+    read_at      TEXT,                 -- set when opened in the app
+    fetched_at   TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_buyerinbox_msg
+    ON buyer_inbox(workspace_id, message_id);
+CREATE INDEX IF NOT EXISTS idx_buyerinbox_order
+    ON buyer_inbox(workspace_id, order_id);
+
+-- The last mailbox check per account: when it last worked, what went wrong,
+-- and the newest message seen (where the next check starts from).
+CREATE TABLE IF NOT EXISTS buyer_inbox_status (
+    workspace_id  TEXT PRIMARY KEY,
+    last_ok_at    TEXT,
+    last_error    TEXT,
+    last_error_at TEXT,
+    last_seen     TEXT,
+    checked_at    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS ppc_search_terms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,
@@ -826,6 +859,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_key
     ON finance_daily(workspace_id, marketplace, date, asin);
 CREATE INDEX IF NOT EXISTS idx_finance_range
     ON finance_daily(workspace_id, marketplace, date);
+
+-- CHARGES AMAZON SENDS WITH NO DATE (the monthly subscription), each recorded
+-- once on the day it was first seen, so every later finance pull puts it back
+-- on that day instead of adding another copy. See
+-- domain/finance_data.place_undated. amount is signed as finance_daily's
+-- column `field` stores it (a fee positive).
+CREATE TABLE IF NOT EXISTS finance_undated (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    field TEXT NOT NULL,                -- the finance_daily column it adds to
+    sku TEXT NOT NULL DEFAULT '',
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL DEFAULT '',
+    placed_on TEXT NOT NULL,            -- YYYY-MM-DD
+    first_seen_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_finance_undated
+    ON finance_undated(workspace_id, marketplace, placed_on);
 
 -- WHAT DATES ACTUALLY HAVE DATA.
 --

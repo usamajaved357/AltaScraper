@@ -262,18 +262,31 @@ On an app row, `r.asin` is the **competitor reference** parsed from the SKU
   Carrier status needs a 17TRACK key. (memory: amazon-hides-seller-tracking)
 - **Stock velocity** is out-of-stock-adjusted once `stock_daily` has 7 days per
   SKU (`velocity_basis`). (memory: stock-daily-started-20-aug)
+- **Buyer messages cannot be read through SP-API** (the Messaging API only
+  sends templates). Seller Central emails each one from an alias
+  `@marketplace.amazon.<tld>`; `domain/buyer_inbox.py` reads the account's
+  mailbox through `api/imap_mailbox.py` (EXAMINE + BODY.PEEK[], never changes
+  the mailbox), keeps only those aliases, and stores them in `buyer_inbox`
+  (unique per workspace + Message-ID; `read_at` is the app's flag only).
+  `buyer_inbox_status` holds each account's last check (ok / error / newest
+  seen). The mailbox settings are `mailbox_host/port/user/password` on the
+  account record (`domain/buyer_mailbox.py`; password sealed with
+  auth/token_crypto when ALTA_TOKEN_KEY is set, never returned). What the app
+  SENT is `buyer_messages`, read only through `buyer_inbox.sent_for()`.
 
 ## 9. Background work (started from build_app)
 
 | System | Mechanism | Schedule |
 |---|---|---|
-| `data/scheduler.register_jobs` -> `start()` | APScheduler, staggered | tracking_check 6h, sourcing_listings 24h, sourcing_check 4h, sourcing_fees 24h, sourcing_apply 4h, sales_sync 6h, catalog_sync 6h, asin_monitor 4h, inventory_sync 24h, ads_sync 6h |
+| `data/scheduler.register_jobs` -> `start()` | APScheduler, staggered | buyer_inbox 10 min (accounts with a mailbox), tracking_check 6h, sourcing_listings 24h, sourcing_check 4h, sourcing_fees 24h, sourcing_apply 4h, sales_sync 6h, catalog_sync 6h, asin_monitor 4h, inventory_sync 24h, ads_sync 6h |
 | `monitor/checker.start_scheduler` | thread, 60 s tick | user-chosen interval in `monitor/schedule.py`, off by default |
 | `domain/live_refresher.start` | a thread per account | catalogue refresh after 10 min, stalest first |
 | `domain/backup.NIGHTLY` | thread, hourly wake | export if last success > 24 h |
 
 The browser adds its own clocks: live auto-sync every 10 min, auto-verify 30 s,
-health 60 s, notifications/monitor badge 120 s, job pollers 2-3 s.
+health 60 s, notifications/monitor/customer-messages badges 120 s (poller.js
+`altaEvery`, which takes (fn, ms) since 30 Sep 2026 -- before that its
+(ms, fn) order meant none of these re-polled after page load), job pollers 2-3 s.
 In-memory job registries and caches (`_IMG_JOBS`, `_AF_JOBS`, preview jobs,
 `_LIVE_CACHE`, ...) are lost on restart.
 
@@ -303,6 +316,7 @@ only, never PUTs a listing.
 | OpenRouter | domain/ai_providers.py | text and image models |
 | Anthropic SDK | generator, several routes | usage recorded by patching the SDK (domain/ai_usage.py) |
 | 17TRACK | api/track17.py | inert without `track17_key` |
+| IMAP mailbox (buyer messages) | api/imap_mailbox.py, domain/buyer_inbox.py | per account, inert until a mailbox is set; read-only (EXAMINE, BODY.PEEK[]), searches FROM "marketplace.amazon." |
 | Slack webhook | domain/notify.py | only hooks.slack.com URLs |
 
 ## 11. Front end

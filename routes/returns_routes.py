@@ -535,11 +535,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if not order_id:
             return []
         try:
-            from data import db as _db
-            return [dict(r) for r in _db.get_db(CONFIG_PATH).execute(
-                "SELECT action, body, ok, error, sent_by, sent_at "
-                "FROM buyer_messages WHERE workspace_id=? AND order_id=? "
-                "ORDER BY id DESC LIMIT 20", (wsid, str(order_id)))]
+            # The one reader of buyer_messages (Rule 12): the Customer
+            # messages thread shows the same log.
+            from domain import buyer_inbox as _bi
+            return _bi.sent_for(CONFIG_PATH, wsid, order_id, limit=20)
         except Exception:
             return []
 

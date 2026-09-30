@@ -50,6 +50,7 @@ const SCREEN_BODIES = {
   imagestudio:  ["studiobody", "studio_picker_list"],
   finance:      ["finbody", "fin_pnl"],   // fin_pnl: the account statement (30 Sep 2026)
   orders:       ["ordbody"],
+  inbox:        ["ibx_body"],   // buyer messages: one account's customers
   returns:      ["retbody", "returns_list", "returns_detail"],
   aiusage:      ["aiu_body"],
   variations:   ["varbody", "varfamilies"],
@@ -208,10 +209,17 @@ function _screenResetHeld(){
   if(typeof KRT  !== "undefined") T(KRT,  o => { o.watch = []; o.history = []; o.counts = null; o.note = ""; o.what = ""; o.loading = false; o.checking = false; });
   try{ const ib = document.getElementById("inv_badge"); if(ib){ ib.style.display = "none"; ib.textContent = ""; } }catch(e){}
   try{ const ab = document.getElementById("alr_badge"); if(ab){ ab.style.display = "none"; ab.textContent = ""; } }catch(e){}
+  // Customer messages: A's buyers, open conversation and unread count never
+  // show under B; the sequence numbers make a late reply from A land nowhere.
+  if(typeof INBOX !== "undefined") T(INBOX, o => { o.data = null; o.threads = []; o.openKey = "";
+    o.thread = null; o.loading = false; o.error = ""; o.reloadError = ""; o.loadedFor = ""; o.unread = 0;
+    o.checking = false; o.seq = (o.seq||0) + 1; o.tseq = (o.tseq||0) + 1; });
+  try{ const xb = document.getElementById("ibx_badge"); if(xb){ xb.style.display = "none"; xb.textContent = ""; } }catch(e){}
   if(typeof setTimeout === "function") setTimeout(function(){
     try{ if(typeof notifPoll === "function") notifPoll(); }catch(e){}
     try{ if(typeof trkBadge  === "function") trkBadge(); }catch(e){}
     try{ if(typeof invBadgeRefresh === "function") invBadgeRefresh(); }catch(e){}
+    try{ if(typeof inboxBadgePoll === "function") inboxBadgePoll(); }catch(e){}
   }, 800);
   if(typeof PNL   !== "undefined") T(PNL,   o => { o.data = null; o.expenses = null;
     o.loading = false; o.seq = (o.seq || 0) + 1; o.qs = null; o.host = "pnl_body"; });

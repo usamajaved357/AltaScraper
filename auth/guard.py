@@ -292,6 +292,17 @@ RULES = [
     ("/orders/ship/confirm",            "publish"),
     ("/orders/ship/preview",            "edit"),
 
+    # -- customer messages, read from the seller's mailbox. Reading changes
+    #    nothing (the mailbox is opened read-only); marking read changes only
+    #    this app's flag; refreshing reads the mailbox now. Nothing here sends
+    #    anything to a buyer. The mailbox SETTINGS are under /settings
+    #    (manage_accounts) above.
+    ("/inbox/threads",                  None),
+    ("/inbox/thread",                   None),
+    ("/inbox/unread",                   None),
+    ("/inbox/read",                     "edit"),
+    ("/inbox/refresh",                  "edit"),
+
     # -- returns. Reading is read-only; uploading a file only parses it and
     #    stores nothing, so it needs no more than seeing the figures does.
     ("/returns/report",                 None),
@@ -334,6 +345,9 @@ RULES = [
     #    pulling from Amazon is work, so it needs "edit" like other mutations.
     ("/sales/sync",                     "edit"),
     ("/sales",                          None),
+    # The Finance screen's "Re-read the last 95 days": the same pull as
+    # /sales/sync's finance half, so the same bar.
+    ("/finance/resync",                 "edit"),
 
     # -- work that happens over GET, so the default read rule would let it
     #    through. Listed explicitly so it needs "edit" like any other mutation.
@@ -715,6 +729,9 @@ FEATURE_PATHS = [
     ("/notify",               "accounts"),
 
     ("/orders",               "orders"),
+    # Customer messages carry the same customers as the orders they are about,
+    # so they sit behind the same page permission.
+    ("/inbox",                "orders"),
     ("/returns",              "returns"),
     ("/traffic",              "traffic"),
     ("/hourly",               "hourly"),

@@ -716,6 +716,28 @@ def tracking_check(workspace_id=None):
     return {"checked": checked, "failed": failed, "accounts": accounts}
 
 
+def buyer_inbox_check(workspace_id=None):
+    """Read each connected mailbox for new buyer messages.
+
+    Amazon's API cannot read buyer messages, so they are read from the mailbox
+    Seller Central emails them to (domain/buyer_inbox.py owns every rule: only
+    Amazon's aliases are kept, the mailbox is never changed, each new message
+    lands in the bell). An account with no mailbox connected is skipped, not an
+    error; a mailbox that fails is recorded on that account's status and shown
+    on the Customer messages screen.
+    """
+    from domain import buyer_inbox as _bi
+    _app, config_path, cfg = _need("app", "config_path", "cfg")
+    conf = cfg() if callable(cfg) else cfg
+    return _bi.poll_all(config_path, conf, workspace_id=workspace_id)
+
+
+# EVERY 10 MINUTES. A buyer waiting on an answer is the one thing in this file
+# measured in minutes; each check is one sign-in and a search that returns only
+# Amazon's mail, so it costs almost nothing when nothing arrived.
+register_job("buyer_inbox", buyer_inbox_check, hours=1 / 6.0,
+             description="Read each connected mailbox for new buyer messages "
+                         "(read-only; does nothing until a mailbox is connected)")
 register_job("tracking_check", tracking_check, hours=6,
              description="Ask the carriers where each uploaded parcel is "
                          "(does nothing until a tracking key is set)")

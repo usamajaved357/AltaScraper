@@ -437,6 +437,8 @@ async function openAISettings(){
       </div>
       <div id="track_result" style="margin-top:8px"></div>
     </div>
+    <!-- Customer messages mailbox, per account: drawn by inbox.js (mbxSettingsLoad). -->
+    <div class="adminbox" id="mbx_box" style="margin-top:12px"></div>
     <div class="adminbox">
       <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-shield-lock"></i> Admin — transparency &amp; access</div>
       <label class="seccheck" style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
@@ -450,6 +452,7 @@ async function openAISettings(){
       <div style="margin-top:8px"><button class="primary" onclick="saveAdminSettings()"><i class="ti ti-check"></i> Save admin settings</button> <span id="adm_status" class="cc"></span></div>
     </div>
     <p class="cc" style="margin-top:12px">One OpenRouter key powers every model. Your key lives only in your local config.json \u2014 this app never displays or stores the key value.</p>`;
+  if(typeof mbxSettingsLoad === "function") mbxSettingsLoad();
 }
 async function refreshAIModels(){
   const body=document.getElementById("aimodalbody"); body.innerHTML="Refreshing from OpenRouter…";

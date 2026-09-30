@@ -165,6 +165,9 @@ const SECTION_FEATURE = {
   // visible and then refused is worse than one that was never shown.
   reimbursements:"reimbursements",
   orders:"orders", returns:"returns",
+  // Customer messages: its routes are under /inbox, which auth/guard.py governs
+  // as "orders" -- the same customers, so the same permission.
+  inbox:"orders",
   sales:"sales", leading:"leading", hourly:"hourly",
   traffic:"traffic", sqp:"sqp", finance:"finance", aiusage:"aiusage",
   weekly:"weekly", daily:"daily",
