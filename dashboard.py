@@ -2968,6 +2968,12 @@ def build_app(backend=None):
     import routes.recipes_routes as _recipes_routes
     _recipes_routes.register(app, _active_brand=_active_brand, _load_recipes=_load_recipes,
                              _save_recipes=_save_recipes, _media_root=_media_root)
+    # Wiring only: the AI image helpers resolve a "/media/..." link to a file
+    # under THIS media root (on Railway /data/media, beside config.json). Unset,
+    # they looked under the working directory (/app/media), so Refine on a
+    # saved or library image could not find the file (30 Sep 2026).
+    from domain import ai_providers as _aip_media
+    _aip_media.DEFAULT_MEDIA_ROOT = _media_root()
     import routes.media_routes as _media_routes
     _media_routes.register(app, _media_root=_media_root, _safe_sku=_safe_sku,
                            _sku_dir=_sku_dir, _state=_state, _active_account=_active_account,
