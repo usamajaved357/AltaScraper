@@ -179,12 +179,13 @@ function _ordLeft(ms){
 
 function _ordCountdownHtml(rows){
   const n = _ordNextDue(rows);
-  if(!n) return '<span class="ord-due-head cc">Nothing waiting to dispatch</span>';
+  if(!n) return '<span class="ord-due-head cc"><i class="ti ti-circle-check"></i> nothing to dispatch</span>';
   const left = n.ms;
   const tone = left < 30 * 60000 ? " bad" : (left < 2 * 3600000 ? " warn" : "");
-  return '<span class="ord-due-head' + tone + '" title="The earliest ship-by date Amazon set on an '
-    + 'order still to dispatch. Post it before then, or Amazon counts it late.">'
-    + 'Next ship-by ' + _oEsc(_oWhen(n.r.ship_by)) + ' · <b>' + _ordLeft(left) + ' left</b></span>';
+  // A countdown, not a sentence; the date is the hover text.
+  return '<span class="ord-due-head' + tone + '" title="Next ship-by: ' + _oEsc(_oWhen(n.r.ship_by))
+    + '. Post it before then, or Amazon counts it late.">'
+    + '<i class="ti ti-clock"></i> next dispatch <b>' + _ordLeft(left) + '</b></span>';
 }
 
 /* DUE / NEXT: what the clock says for this order, by its state. */
@@ -192,18 +193,19 @@ function _ordDueCell(r){
   const s = _ordState(r);
   if(s === "dispatch" || (s === "problem" && r.ship_by && Number(r.unshipped || 0) > 0)){
     const left = _ordShipMs(r.ship_by);
-    if(left === null) return '<span class="cc">no ship-by date</span>';
-    if(left < 0) return '<span class="ord-due bad">late by ' + _ordLeft(-left) + '</span>';
+    if(left === null) return '<span class="cc" title="Amazon gave no ship-by date">\u2014</span>';
+    if(left < 0) return '<span class="ord-due bad" title="Ship-by was ' + _oEsc(_oWhen(r.ship_by)) + '">late ' + _ordLeft(-left) + '</span>';
     const tone = left < 24 * 3600000 ? " warn" : "";
-    return '<span class="ord-due' + tone + '">ship by ' + _oEsc(_oWhen(r.ship_by))
-      + '<br><span class="cc">' + _ordLeft(left) + ' left</span></span>';
+    // THE COUNTDOWN, coloured; the date on hover (owner, 30 Sep 2026: "less words").
+    return '<span class="ord-due' + tone + '" title="Ship by ' + _oEsc(_oWhen(r.ship_by)) + '">'
+      + '<i class="ti ti-clock"></i> ' + _ordLeft(left) + '</span>';
   }
-  if(s === "tracking") return '<span class="ord-due warn">no tracking yet</span>';
+  if(s === "tracking") return '<span class="ord-due warn" title="Shipped with no tracking recorded here">no tracking</span>';
   if(s === "transit" || s === "done") return _ordParcelCell(r);
   if(s === "problem" && (r.tracking || []).length) return _ordParcelCell(r);
   if(s === "shipped") return '<span class="cc" title="No tracking recorded in this app. Amazon does not send back tracking entered in Seller Central.">shipped</span>';
-  if(s === "waiting") return '<span class="cc">payment not cleared</span>';
-  if(s === "fba") return '<span class="cc">Amazon ships it</span>';
+  if(s === "waiting") return '<span class="cc" title="Amazon is still taking payment">payment pending</span>';
+  if(s === "fba") return '<span class="cc" title="Amazon ships it">FBA</span>';
   return '<span class="cc">—</span>';
 }
 

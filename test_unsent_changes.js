@@ -43,8 +43,10 @@ const CSS = fs.readFileSync(path.join(HERE, "static", "css", "drawer_attributes.
 console.log("=== there is a way to send app values TO Amazon ===");
 truthy("the push exists", DA.indexOf("async function lvPushChanges(") >= 0);
 truthy("  and the bar offers it", DA.indexOf('onclick="lvPushChanges(') >= 0);
+// Re-pinned 30 Sep 2026 (All Listings review): it SUBMITS the listing, and
+// says so -- "Send N change(s) to Amazon" promised a patch that never went.
 truthy("  named for what it does, not where it is",
-  DA.indexOf("change(s) to Amazon") >= 0);
+  DA.indexOf("'Submit to send ' + _unsent + ' change(s)") >= 0);
 // It must not be mistaken for the button beside it, which pulls the other way.
 truthy("  the opposite direction is still there",
   DA.indexOf("Fill ") >= 0 && DA.indexOf("lvFillEmpty") >= 0);
@@ -69,35 +71,27 @@ truthy("it asks before sending", _pc.indexOf("uiConfirm(") >= 0);
 // A patch is not undone by sending it again -- it is undone only by knowing the
 // old value. So both sides are named, per field, before anything goes.
 truthy("  showing Amazon's value and ours, per field",
-  _pc.indexOf("Amazon's value → yours") >= 0);
+  _pc.indexOf("Amazon's value") >= 0 && _pc.indexOf("lines.join(") >= 0);
 truthy("  and saying it changes the live listing",
   _pc.indexOf("LIVE listing") >= 0);
-truthy("  and how long Amazon takes", _pc.indexOf("5–30 minutes") >= 0);
+truthy("  and that the publish confirmation follows",
+  _pc.indexOf("publish confirmation comes next") >= 0);
 check("  it stops when there is nothing to send",
   _pc.indexOf("Nothing to send") >= 0, true);
 
-console.log("\n=== it reuses the gated push, and believes Amazon ===");
-truthy("it posts to the existing patch route", _pc.indexOf('"/optimize/push"') >= 0);
-truthy("  with the explicit confirm flag that route requires",
-  _pc.indexOf("confirmed: true") >= 0);
-// /optimize/push reads the account from `id`; acctBody stamps `account`.
-// Getting this wrong sends the patch under whichever account the server has
-// open -- the same class of fault as the handling-time write.
-truthy("  and names the account in the key that route reads",
-  _pc.indexOf("body.id = body.account") >= 0);
-// ACCEPTED means Amazon RECEIVED the patch, not that it published it.
-truthy("  an unreadable reply is not called success",
-  _pc.indexOf("j.unknown") >= 0 && _pc.indexOf("Nothing here claims it worked") >= 0);
-truthy("  and the comparison is re-read afterwards rather than assumed",
-  _pc.indexOf("lvRefresh(sku)") >= 0);
-// The success toast must sit INSIDE the j.ok branch. Written outside it, every
-// push would report success including the refusals -- which is the fault
-// /optimize/push's own comment describes ("a push that silently claims success
-// is worse than one that fails").
-const _okBranch = _pc.split("if(j && j.ok){")[1] || "";
-truthy("  success is claimed only inside Amazon's own yes",
-  _okBranch.split("}else")[0].indexOf("Amazon accepted") >= 0);
-check("  and said exactly once", (_pc.match(/Amazon accepted/g) || []).length, 1);
+console.log("\n=== it really sends, through the schema-built submit ===");
+// It posted bare attribute names to /optimize/push, whose patch builder takes
+// only title/description/bullets/price/main_image/"attr:<name>": no patch was
+// built, and the screen blamed Amazon for a call it never received. Prefixing
+// the names would send an unchecked value shape (Rule 4). Submit builds every
+// attribute from the product type's own schema.
+truthy("it goes through Submit", _pc.indexOf("await submitOne(sku)") >= 0);
+falsy("  never the patch route it could not use", _pc.indexOf('"/optimize/push"') >= 0);
+truthy("  and says the WHOLE listing is sent", _pc.indexOf("whole listing") >= 0);
+truthy("  refuses plainly where Submit is not on the page",
+  _pc.indexOf('typeof submitOne !== "function"') >= 0);
+falsy("  and never claims Amazon accepted anything itself",
+  _pc.indexOf("Amazon accepted") >= 0);
 
 console.log("\n=== the count says what it means ===");
 truthy("the 'differ' count explains that editing does not send",

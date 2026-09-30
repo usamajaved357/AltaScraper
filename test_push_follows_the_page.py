@@ -128,8 +128,11 @@ truthy("  reading the account the page is showing", "CUR_ACCOUNT.id" in JS)
 truthy("  and never sending __all__ as a marketplace",
        'WS_MARKET !== "__all__"' in JS)
 truthy("handling time sends it", "_handlingScope(), body" in JS)
-truthy("stock sends it", JS.count("Object.assign(_handlingScope(), body)") == 2)
-truthy("price sends it", "const body = _handlingScope;" in JS)
+# Re-pinned 30 Sep 2026 (All Listings review): handling and % price now take
+# the scope ONCE, before their confirmation dialogs, and send that pinned copy.
+truthy("stock sends it", "Object.assign(_handlingScope(), body)" in JS
+       and "Object.assign(scope || _handlingScope(), body)" in JS)
+truthy("price sends it", "const _pinScope = _handlingScope();" in JS)
 # It was written out by hand in bulkPricePercent while the other two sent
 # nothing at all. ONE place reads CUR_ACCOUNT.id now, and it is the helper --
 # asserting the copy is "gone" by pattern would also match the helper itself,

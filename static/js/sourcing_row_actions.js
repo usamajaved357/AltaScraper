@@ -344,13 +344,57 @@ async function sourcingAddSourcePrompt(sku){
       if(typeof toast === "function") toast("The account or marketplace changed while this was open, so nothing was done.");
       return;
     }
-    const j = await (await fetch("/sourcing/source/add",{method:"POST",
+    let j = await (await fetch("/sourcing/source/add",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:_srcBody({sku:sku, url:url.trim()}, _sc0)})).json();
+    // A VARIATION LISTING WHOSE LINK DOES NOT SAY WHICH ONE: the server lists
+    // them; the owner picks, and the pick is sent as its own ?var= link.
+    // (Only one in stock is linked by the server itself and said in the note.)
+    if(j && j.choose && (j.variations || []).length){
+      const chosen = await _srcPickVariation(sku, j.error, j.variations);
+      if(!chosen) return;
+      if(!_srcStillIn(_sc0)){ toast("The account or marketplace changed, so nothing was added."); return; }
+      j = await (await fetch("/sourcing/source/add",{method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:_srcBody({sku:sku, url:chosen}, _sc0)})).json();
+    }
     if(!j.ok){ toast(j.error||"Could not add"); return; }
+    if(j.note) toast(j.note);
     toast("Supplier added — press “Re-read suppliers now” to check it");
     sourcingLoad(true);
   }catch(e){ toast(String(e)); }
+}
+
+/* Pick one variation of an eBay listing -> its ?var= link, or null.
+ * In the repricer's own dialog (_srcModal), one row per variation: what tells
+ * it apart, its price, and whether eBay says it is in stock. */
+function _srcPickVariation(sku, why, vars){
+  return new Promise(function(resolve){
+    let done = false;
+    const fin = function(v){ if(!done){ done = true; resolve(v); } };
+    const rows = vars.map(function(v, i){
+      const st = v.in_stock === true ? '<span style="color:var(--ok)">in stock</span>'
+               : v.in_stock === false ? '<span style="color:var(--red)">out of stock</span>'
+               : '<span class="cc">stock unknown</span>';
+      return '<label style="display:flex;gap:8px;align-items:center;padding:6px 0;'
+        + 'border-top:1px solid var(--line2);cursor:pointer">'
+        + '<input type="radio" name="srcvar" value="' + i + '"'
+        + (v.in_stock === true ? '' : '') + '>'
+        + '<span style="flex:1">' + _sesc(v.label || ("variation " + v.var_id)) + '</span>'
+        + '<span style="font-variant-numeric:tabular-nums">'
+        + (v.price !== null && v.price !== undefined ? _sesc((v.currency ? v.currency + " " : "") + Number(v.price).toFixed(2)) : "")
+        + '</span><span style="font-size:11px;min-width:80px;text-align:right">' + st + '</span></label>';
+    }).join("");
+    _srcModal("Which variation do you buy for " + sku + "?",
+      '<div class="cc" style="font-size:12px;margin-bottom:8px">' + _sesc(why || "") + '</div>' + rows,
+      function(){
+        const on = document.querySelector('#srcmodal input[name="srcvar"]:checked');
+        if(!on){ toast("Pick one variation first."); return false; }
+        fin(vars[Number(on.value)].url);
+        return true;
+      },
+      function(){ fin(null); });
+  });
 }
 
 async function sourcingRemoveSource(sid){

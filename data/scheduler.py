@@ -451,6 +451,18 @@ def ads_sync(workspace_id=None):
             skipped.append(aid)
             continue
         res = _as.request_reports(aid, mkt, days=30, config_path=config_path)
+        # AND EACH CAMPAIGN'S CURRENT STATE AND BUDGET, from Amazon's campaign
+        # list (a read): the reports cannot say a campaign is paused on a day it
+        # did nothing (owner, 30 Sep 2026: "turned off in seller central but
+        # shown as enabled here").
+        try:
+            from domain import ppc_control as _pcl
+            _cl = _pcl.refresh_campaigns(config_path, aid, mkt)
+            res["campaign_list"] = _cl.get("ok")
+            if not _cl.get("ok"):
+                res.setdefault("errors", []).append("campaign list: %s" % (_cl.get("error") or "not read"))
+        except Exception as _e:
+            res.setdefault("errors", []).append("campaign list: %s" % str(_e)[:160])
         asked.append({"workspace": aid, "marketplace": mkt,
                       "requested": len(res.get("requested") or []),
                       # SAID, NOT SWALLOWED. Falling back to the account's

@@ -22,21 +22,40 @@
  * Where no rate is set the box says the VAT could not be worked out.
  */
 
-const PNL = {data: null, loading: false, expenses: null, adding: false};
+const PNL = {data: null, loading: false, expenses: null, adding: false,
+             host: "pnl_body", qs: null};
 
-async function pnlLoad(){
-  const host = document.getElementById("pnl_body");
-  if(!host || PNL.loading) return;
+/* ONE STATEMENT, TWO PLACES (owner, 30 Sep 2026: "where can i see the account
+ * level profits by the date range i can select myself, lets add this into the
+ * finance tab"). The Sales page calls pnlLoad() and it reads the Sales date
+ * range; the Finance tab calls pnlLoad("fin_pnl", its own query). Same route,
+ * same domain/pnl.build -- so the two cannot disagree (Rule 12). */
+async function pnlLoad(hostId, qsIn){
+  // ONE STATEMENT ON SCREEN AT A TIME: the other place's copy is cleared, so
+  // its buttons cannot act on this one's dates (review, 30 Sep 2026).
+  const _prev = PNL.host;
+  if(_prev && _prev !== (hostId || "pnl_body")){
+    const old = document.getElementById(_prev);
+    if(old) old.innerHTML = "";
+  }
+  PNL.host = hostId || "pnl_body";
+  PNL.qs = (qsIn === undefined) ? null : qsIn;
+  const host = document.getElementById(PNL.host);
+  if(!host) return;
+  // Newest ask wins (it returned while one was running, so a changed range
+  // was dropped).
+  const _seq = PNL.seq = (PNL.seq || 0) + 1;
   PNL.loading = true;
   host.innerHTML = '<div class="cc" style="padding:18px">'
     + '<span class="genspin"></span> Working out the profit…</div>';
   try{
-    // The Sales page owns the date range; this reads whatever it is showing so
-    // the two screens cannot answer for different months.
-    const qs = (typeof _sQuery === "function") ? _sQuery() : "";
+    // The screen that asked owns the date range: the Sales page's by default,
+    // so the two Sales views cannot answer for different months.
+    const qs = (PNL.qs !== null) ? PNL.qs : ((typeof _sQuery === "function") ? _sQuery() : "");
     const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/sales/pnl?" + qs)).json();
     if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    if(_seq !== PNL.seq) return;             // a newer ask is on its way
     PNL.loading = false;
     if(!j || j.ok === false){
       host.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
@@ -56,20 +75,29 @@ async function pnlLoad(){
       PNL.expenses = _ex;
     }catch(e){ PNL.expenses = null; }
     if(_sc && !screenStillIn(_sc)) return;
+    if(_seq !== PNL.seq) return;
     pnlRender();
   }catch(e){
+    if(_seq !== PNL.seq) return;
     PNL.loading = false;
     host.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
       + 'Could not work out the profit.</div>';
   }
 }
 
+/* Reload the statement where it is showing, with the same range (the costs
+ * buttons below). */
+function pnlReload(){ pnlLoad(PNL.host, PNL.qs === null ? undefined : PNL.qs); }
+
 function _pnlMoney(v, cur){
   if(v === null || v === undefined){
     return '<span class="cc" style="opacity:.5" title="Not known — see the '
       + 'notes below.">not known</span>';
   }
-  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+  // The app's one symbol map (money.js): this fell back to £ for every
+  // currency but USD and EUR (Finance review, 30 Sep 2026).
+  const sym = (typeof curSymbol === "function") ? curSymbol(cur)
+            : ((cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£");
   const n = Number(v);
   return (n < 0 ? "−" : "") + sym
     + Math.abs(n).toLocaleString(undefined, {minimumFractionDigits: 2,
@@ -248,7 +276,7 @@ function pnlPlainHtml(j, cur){
 }
 
 function pnlRender(){
-  const host = document.getElementById("pnl_body");
+  const host = document.getElementById(PNL.host || "pnl_body");
   const j = PNL.data;
   if(!host || !j) return;
   const cur = j.currency || "";
@@ -282,6 +310,16 @@ function pnlRender(){
       +   esc(l.label)
       +   (b ? '<div class="cc" style="font-size:10.5px;font-weight:400;'
               + 'color:' + b[1] + '">' + esc(b[0]) + '</div>' : '')
+      // WHERE THE AD FIGURE CAME FROM, and the VAT inside it -- so the line can
+      // be checked against Amazon's own numbers (owner: "i want the breakdown
+      // of profits how are they calculated so i can trust").
+      +   (l.key === "ad_spend" && (j.ads_source || j.ads_vat_added)
+            ? '<div class="cc" style="font-size:10.5px;font-weight:400">'
+              + esc({ads_api: "Amazon Ads API spend", invoices: "Amazon's ad invoices",
+                     both: "Ads API spend, and invoices before it connected"}[j.ads_source] || "")
+              + (j.ads_vat_added ? " · includes " + _pnlMoney(j.ads_vat_added, cur).replace(/<[^>]*>/g, "")
+                                   + " VAT on ads" : "")
+              + '</div>' : '')
       + '</td>'
       + '<td style="padding:8px 14px;text-align:right;white-space:nowrap'
       +   (isTotal ? ';border-top:1px solid var(--line2)' : '') + '">'
@@ -465,7 +503,7 @@ async function pnlAddSave(){
     }
     PNL.adding = false;
     if(typeof toast === "function") toast("Cost recorded. Profit will be lower.");
-    pnlLoad();
+    pnlReload();
   }catch(e){
     if(typeof toast === "function") toast("Could not save that cost.");
   }
@@ -492,7 +530,7 @@ async function pnlDeleteExpense(id, name){
       return;
     }
     if(typeof toast === "function") toast("Removed.");
-    pnlLoad();
+    pnlReload();
   }catch(e){
     if(typeof toast === "function") toast("Could not remove that cost.");
   }
@@ -515,7 +553,7 @@ async function pnlAcceptSuggestion(){
       return;
     }
     if(typeof toast === "function") toast(r.note || "Added.");
-    pnlLoad();
+    pnlReload();
   }catch(e){
     if(typeof toast === "function") toast("Could not add it.");
   }

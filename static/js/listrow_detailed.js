@@ -1294,7 +1294,22 @@ function lrPricing(r){
   const pnum  = String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, "");
   const pneg  = pnum !== "" && parseFloat(pnum) < 0;
 
-  return lrPriceBox(r, "Our Price (GBP)", r.price, "The price on the listing")
+  // SAYS WHERE IT GOES. The box's tooltip read "The price on the listing" but
+  // it saves this app's own price and sends nothing to Amazon (review of All
+  // Listings, 30 Sep 2026). A live listing gets the real path beside it: the
+  // price panel reads Amazon's price, checks the floor and sends only on Send.
+  const _pn = Number(String(r.price == null ? "" : r.price).replace(/[^0-9.]/g, "")) || 0;
+  const _live = (typeof isAmazonLive === "function") && isAmazonLive(r);
+  return lrPriceBox(r, "Our Price (GBP)", r.price,
+                    "This app's own price. Saved with the bar below; NOT sent to "
+                    + "Amazon" + (_live ? " — use “Change on Amazon” for that." : "."))
+    + (_live && typeof priceEdit === "function"
+       ? '<button class="ghost" style="font-size:11px;margin:2px 0 6px" '
+         + 'title="Opens the price panel: it reads the price on Amazon now, checks '
+         + 'your floor, and sends only when you press Send to Amazon." '
+         + 'onclick="event.stopPropagation();priceEdit(' + jsArg(r.sku) + ',' + _pn
+         + ',' + jsArg(r.title || "") + ')">Change on Amazon</button>'
+       : "")
     + lrFloorCeiling(r)
     + lrCostRow(r)
     + lrDataRow("Profit", pnum ? lrMoney(pnum) : lrVal(null), pneg ? "red" : "green")

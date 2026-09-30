@@ -33,8 +33,10 @@ async function kwSpySearch() {
   try {
     const start = (document.getElementById("kws_start") || {}).value || "";
     const end = (document.getElementById("kws_end") || {}).value || "";
+    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/keywords/spy" + _kwsQs({
       q: seed, start: start, end: end }))).json();
+    if (_sc && !screenStillIn(_sc)) return;   // switched account meanwhile
     if (j && j.ok) {
       KWSPY.rows = j.rows || [];
       KWSPY.meta = j;
@@ -105,8 +107,8 @@ function kwSpyRender() {
                   + '" target="_blank" rel="noopener">' + _kwsEsc(a) + "</a>";
               }).join(" ")
             : '<span class="cc">—</span>')
-         + '</td><td><button class="ghost" onclick="kwSpyWatch(' + "'"
-         + _kwsEsc(String(r.term).replace(/'/g, "\\'")) + "'" + ')" '
+         + '</td><td><button class="ghost" onclick="kwSpyWatch('
+         + jsArg(String(r.term)) + ')" '
          + 'title="Add this keyword to the rank tracker">Track</button></td></tr>';
     });
     h += "</tbody></table>";

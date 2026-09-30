@@ -136,6 +136,24 @@ CREATE TABLE IF NOT EXISTS ads_daily (
    a POST that api/amazon_ads.py refuses by design (Rule 8, no campaign writes).
    The spCampaigns report carries campaignStatus and campaignBudgetAmount, so
    nothing is lost by reading them there. */
+/* EACH CAMPAIGN AS AMAZON HOLDS IT NOW -- state, daily budget -- from the Ads
+   API's campaign list (api/amazon_ads_manage.list_campaigns). The daily report
+   has no row on a day a paused campaign did nothing, so its newest report row
+   was from when it last ran, ENABLED; this is the answer to "turned off in
+   seller central but shown as enabled here" (owner, 30 Sep 2026). */
+CREATE TABLE IF NOT EXISTS ads_campaigns (
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    campaign_id  TEXT NOT NULL,
+    name         TEXT,
+    state        TEXT,
+    budget       REAL,
+    budget_type  TEXT,
+    targeting_type TEXT,
+    fetched_at   TEXT,
+    PRIMARY KEY (workspace_id, marketplace, campaign_id)
+);
+
 CREATE TABLE IF NOT EXISTS ads_campaign_daily (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,

@@ -59,11 +59,17 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         except Exception as e:
             conn_state = {"ok": None, "why": str(e)[:120], "missing": []}
 
+        # The money here is in the marketplace's currency, said (review, 30 Sep
+        # 2026: the page fell back to pounds everywhere but the US).
+        from domain import sales_data as _sd
+        kpis = _lt.kpis(CONFIG_PATH, aid, mkt, days)
+        if isinstance(kpis, dict) and not kpis.get("currency"):
+            kpis["currency"] = _sd.currency_for(CONFIG_PATH, aid, mkt)
         return jsonify({
             "ok": True, "account": aid, "marketplace": mkt,
             "account_label": acc.get("label") or aid,
             "connection": conn_state,
-            "kpis": _lt.kpis(CONFIG_PATH, aid, mkt, days),
+            "kpis": kpis,
             "series": _lt.series(CONFIG_PATH, aid, mkt, days, cum),
             "placements": _lt.placements(CONFIG_PATH, aid, mkt, days),
             "products": _lt.products(CONFIG_PATH, aid, mkt, days),

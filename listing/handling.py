@@ -177,8 +177,12 @@ def _patch_fulfillment(cfg, acc, sku, marketplace, changes, read_back,
         out["ok"] = False
     else:
         # ACCEPTED means Amazon queued the change (it applies within minutes).
-        out["ok"] = status in ("ACCEPTED", "VALID", "")
+        # A reply with NO status is not a yes: it was counted "changed on
+        # Amazon" (review of All Listings, 30 Sep 2026). Said, not assumed.
+        out["ok"] = status in ("ACCEPTED", "VALID")
         if not out["ok"] and not out["error"]:
-            out["error"] = f"unexpected status: {status or '(none)'}"
+            out["error"] = (f"unexpected status: {status}" if status else
+                            "Amazon replied without saying whether it took the "
+                            "change -- press Sync in a few minutes to check")
     out["status"] = status
     return out

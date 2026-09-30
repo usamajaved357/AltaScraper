@@ -256,11 +256,27 @@ async function lrEditSaveAll(){
   // part-way (or while the dialog is up) sent the rest -- stock to Amazon
   // included -- to the NEW account's same-SKU listing (batch 3-4 review).
   const pin = (typeof screenScope === "function") ? screenScope() : null;
+  // EVERY STAGED CHANGE, drawn or not. This collected only the boxes on
+  // screen, so a price staged in the detailed view and then the view switched
+  // to table or card -- or a child row folded away -- kept "1 SKU edited" on
+  // the bar while Save all found nothing and said nothing (review of All
+  // Listings, 30 Sep 2026). LR_EDITS holds the value; the box, when there is
+  // one, is only where the result is shown.
   const jobs = [];
-  document.querySelectorAll("input.lr-edit.dirty").forEach(function(el){
-    const sku = el.getAttribute("data-lr-sku") || "";
-    const field = el.getAttribute("data-lr-field") || "";
-    if(LR_EDITS[sku] && LR_EDITS[sku][field] !== undefined) jobs.push({el, sku, field});
+  const _boxFor = function(sku, field){
+    let hit = null;
+    document.querySelectorAll("input.lr-edit").forEach(function(el){
+      if(!hit && el.getAttribute("data-lr-sku") === sku
+         && el.getAttribute("data-lr-field") === field) hit = el;
+    });
+    return hit;
+  };
+  Object.keys(LR_EDITS || {}).forEach(function(sku){
+    Object.keys(LR_EDITS[sku] || {}).forEach(function(field){
+      if(LR_EDITS[sku][field] === undefined) return;
+      jobs.push({el: _boxFor(sku, field), sku: sku, field: field,
+                 value: String(LR_EDITS[sku][field] == null ? "" : LR_EDITS[sku][field])});
+    });
   });
   if(!jobs.length) return;
 
@@ -282,27 +298,29 @@ async function lrEditSaveAll(){
   let stopped = 0;
   for(const j of jobs){
     if((pin && typeof screenStillIn === "function" && !screenStillIn(pin))){ stopped = jobs.length - ok - failed.length; break; }
-    j.el.classList.remove("err");
-    j.el.classList.add("saving");
+    if(j.el){ j.el.classList.remove("err"); j.el.classList.add("saving"); }
     let res;
-    try{ res = await _lrSaveField(j.sku, j.field, String(j.el.value || "")); }
+    try{ res = await _lrSaveField(j.sku, j.field, j.value); }
     catch(e){ res = {ok: false, error: String((e && e.message) || e)}; }
-    j.el.classList.remove("saving");
+    if(j.el) j.el.classList.remove("saving");
     if(res && res.ok){
       ok++;
       // The saved value BECOMES the original, so this box is clean and a later
       // Cancel puts it back to what was actually saved rather than to what it
       // said when the page was drawn.
-      j.el.setAttribute("data-lr-orig", String(j.el.value || ""));
-      j.el.classList.remove("dirty");
-      j.el.classList.add("saved");
-      setTimeout(() => j.el.classList.remove("saved"), 1200);
+      if(j.el){
+        j.el.setAttribute("data-lr-orig", j.value);
+        j.el.classList.remove("dirty");
+        j.el.classList.add("saved");
+        const _el = j.el;
+        setTimeout(() => _el.classList.remove("saved"), 1200);
+      }
       if(LR_EDITS[j.sku]){
         delete LR_EDITS[j.sku][j.field];
         if(!Object.keys(LR_EDITS[j.sku]).length) delete LR_EDITS[j.sku];
       }
     }else{
-      j.el.classList.add("err");
+      if(j.el) j.el.classList.add("err");
       failed.push({sku: j.sku, field: j.field,
                    why: (res && res.error) || "no reason given"});
     }
@@ -374,6 +392,16 @@ async function _lrSaveQty(sku, value){
   try{
     const body = (typeof acctBody === "function")
       ? acctBody({skus: [sku], qty: qty}) : {skus: [sku], qty: qty};
+    // THE MARKETPLACE THIS ROW IS IN (Rule 14). Without it the route took the
+    // server's selection or the account default, so on a multi-marketplace
+    // account the stock could go to UK while the screen showed DE (review of
+    // All Listings, 30 Sep 2026). The row's own, else the screen's.
+    const _row = (typeof ROWS !== "undefined" && ROWS && ROWS.find)
+      ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+    let _mkt = (_row && typeof rowMkt === "function") ? (rowMkt(_row) || "") : "";
+    if(!_mkt && typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+      _mkt = WS_MARKET;
+    if(_mkt) body.marketplace = _mkt;
     const j = await (await fetch("/stock/bulk_update", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)})).json();

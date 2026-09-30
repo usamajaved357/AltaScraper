@@ -51,7 +51,12 @@ const PPCA = {data: null, loading: false, sort: "spend", desc: true,
 
 async function ppcaLoad(){
   const host = document.getElementById("ppca_body");
-  if(!host || PPCA.loading) return;
+  if(!host) return;
+  // THE NEWEST ASK WINS. This returned while a load was running, so a second
+  // date clicked meanwhile was thrown away and the first window's figures were
+  // drawn under the second one's button (review, 30 Sep 2026). Every ask now
+  // loads; only the latest reply is drawn.
+  const _seq = PPCA.seq = (PPCA.seq || 0) + 1;
   PPCA.loading = true;
   // THE SCREEN DOES NOT GO BLANK WHILE A FILTER RELOADS.
   //
@@ -69,12 +74,13 @@ async function ppcaLoad(){
       + 'color:var(--ppc-muted)"><span class="genspin"></span> '
       + 'Reading the advertising figures…</div></div>';
   }
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
   try{
     const qs = ppcQS(PPCWIN.start
       ? {start: PPCWIN.start, end: PPCWIN.end} : {days: PPCWIN.days});
-    const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/ppc/analytics/overview?" + qs)).json();
     if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    if(_seq !== PPCA.seq) return;           // a newer ask is on its way
     PPCA.loading = false;
     if(!j || !j.ok){
       host.innerHTML = '<div class="ppc-page"><div style="padding:18px;'
@@ -86,6 +92,8 @@ async function ppcaLoad(){
     PPCA.data = j;
     ppcaRender();
   }catch(e){
+    if(_seq !== PPCA.seq) return;
+    if(_sc && typeof screenStillIn === "function" && !screenStillIn(_sc)) return;
     PPCA.loading = false;
     ppcaBusy(false);
     if(!PPCA.data){
@@ -133,7 +141,11 @@ function ppcaSort(key){
   ppcaRender();
 }
 function ppcaTab(t){ PPCA.tab = t; ppcaRender(); }
-function ppcaFilter(v){ PPCA.q = (v || "").toLowerCase(); ppcaRender(); }
+function ppcaFilter(v){
+  PPCA.qShown = (v || "");
+  PPCA.q = PPCA.qShown.toLowerCase();
+  ppcRedrawKeepingFocus(ppcaRender);     // the box keeps its cursor
+}
 
 function ppcaRender(){
   const host = document.getElementById("ppca_body");
@@ -272,7 +284,9 @@ function ppcaToday(j, cur){
       +   (v === null
             ? '<span class="ppc-dash" title="Nothing stored for yesterday to '
               + 'compare against.">—</span>'
-            : ((v > 0 ? "+" : "") + v.toFixed(1) + "%"))
+            // ACOS and TACOS move in POINTS, not % (review, 30 Sep 2026).
+            : ((v > 0 ? "+" : "") + v.toFixed(1)
+               + ((label === "ACOS" || label === "TACOS") ? "pts" : "%")))
       + '</div></div>';
   };
   // IT IS ONLY "TODAY" WHEN IT IS.
@@ -574,8 +588,12 @@ function ppcaProfitability(j, cur){
   // figure really covers instead, which is the thing somebody actually needs to
   // know about it.
   const wchange = (w.comparable === false) ? null : null;
-  const wpct = (w.spend !== null && w.spend !== undefined && t.spend)
-    ? _ppcaRound1(100 * w.spend / t.spend) : null;
+  // OVER THE SAME DAYS: the wasted figure covers the report's own window, so
+  // it is a share of the spend over THAT window (the server sends it as
+  // report_spend, as the efficiency score already uses). Over the picker's
+  // total, a 7-day view against a 30-day report read "140%" (review, 30 Sep 2026).
+  const wpct = (w.spend !== null && w.spend !== undefined && w.report_spend)
+    ? _ppcaRound1(100 * w.spend / w.report_spend) : null;
 
   const net = _ppcaAdProfit(t.sales, t.spend, r);
   // PROFIT AFTER ADVERTISING, from the server. See the NET PROFIT card below.
@@ -685,16 +703,28 @@ function ppcaProfitability(j, cur){
                                + _pEsc(np.note) + ' Without it: '
                                + ppcMoney0(np.net_profit_excl_undated, cur)
                                + '.</span>')
-                            : ""),
+                            : "")
+                           // A part that could not be read: the figure is then
+                           // too high, and says so (30 Sep 2026).
+                           + ((np.profit_gaps || []).length
+                              ? ('<span style="color:var(--ppc-red)"> Profit may be '
+                                 + 'too high: ' + _pEsc(np.profit_gaps.join("; "))
+                                 + '.</span>') : ""),
                     note: period,
+                    // THE CARD IS THE SALES PAGE'S PROFIT, ADS ALREADY OFF. The
+                    // help said "profit X - ad spend Y" beside a card showing X
+                    // (review, 30 Sep 2026); it now says what is inside it.
                     help: "Everything the account sold in this window, "
                         + "advertised AND organic, less Amazon's fees, less "
-                        + "what the stock cost, less the advertising spend. "
-                        + "This is the Sales page's profit with the ad spend "
-                        + "taken off, so the two screens agree."
-                        + (np.sales_profit !== null && np.sales_profit !== undefined
-                           ? " Sales page profit " + ppcMoney0(np.sales_profit, cur)
-                             + " − ad spend " + ppcMoney0(np.ad_spend, cur) + "."
+                        + "what the stock cost, less what advertising cost "
+                        + "(with the VAT on it where the account cannot reclaim "
+                        + "it), less the account's own Amazon charges and the "
+                        + "costs you entered. It is the Sales page's profit, so "
+                        + "the two screens agree."
+                        + (np.ad_cost !== null && np.ad_cost !== undefined
+                           ? " Advertising already taken off: "
+                             + ppcMoney0(np.ad_cost, cur) + " (the Ads API's spend "
+                             + ppcMoney0(np.ad_spend, cur) + ")."
                            : "")})
     + '</div></div>';
 }
@@ -764,7 +794,10 @@ function _ppcaAdProfit(sales, spend, r){
      || sales === null || sales === undefined
      || spend === null || spend === undefined) return null;
   const share = Number(r.vat_share || 0) + Number(r.fee_rate) + Number(r.cogs_rate);
-  return Math.round((Number(sales) - Number(spend) - Number(sales) * share) * 100) / 100;
+  // The VAT paid ON ad spend where the account cannot reclaim it
+  // (domain/ppc_analytics.ad_profit, the server's copy of this sum).
+  const cost = Number(spend) * (1 + Number(r.ad_vat_ratio || 0));
+  return Math.round((Number(sales) - cost - Number(sales) * share) * 100) / 100;
 }
 
 /* ---- 6. revenue, ad spend and profit ------------------------------------ */
@@ -981,8 +1014,14 @@ function ppcaBudget(j, cur){
   const days = t.days || d.length || 1;
   const avgSpend = (t.spend === null || t.spend === undefined)
     ? null : t.spend / days;
-  const avgSales = (t.total_sales === null || t.total_sales === undefined)
-    ? null : t.total_sales / days;
+  // THE SALES OF THE SAME DAYS: `days` counts the days with advertising
+  // figures, so the divisor's own sales are comparable_sales. The whole
+  // window's sales over fewer days overstated the line by ~7% (review, 30 Sep).
+  const _cs = (t.comparable_sales !== null && t.comparable_sales !== undefined)
+    ? t.comparable_sales : null;
+  const avgSales = (_cs !== null) ? _cs / days
+    : ((t.total_sales === null || t.total_sales === undefined)
+       ? null : t.total_sales / Math.max(days, d.length));
 
   const refs = [];
   if(avgSales !== null) refs.push({value: avgSales, colour: "var(--ppc-green)",
@@ -1048,7 +1087,7 @@ function ppcaAsinTable(j, cur){
     + '<div class="ppc-panel-title" style="margin:0">ASIN Performance'
     +   '<span class="ppc-i" title="Every advertised product, with what the '
     +   'listing did beside what the advertising did.">ⓘ</span></div>'
-    + '<input class="ppc-input" placeholder="Search by ASIN or title…" '
+    + '<input class="ppc-input" id="ppca_q" value="' + _pEsc(PPCA.qShown || "") + '" placeholder="Search by ASIN or title…" '
     +   'style="width:220px" oninput="ppcaFilter(this.value)">'
     + '</div>';
 

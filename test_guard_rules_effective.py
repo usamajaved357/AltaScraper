@@ -63,6 +63,11 @@ INTENDED_OPEN = {
     ("GET", "/ppc/brand_terms"): _PPC_READ,
     ("GET", "/ppc/live"): _PPC_READ,
     ("GET", "/ppc/live/asin"): _PPC_READ,
+    # Added 30 Sep 2026 with the campaign controls: these two READ Amazon's
+    # campaign list / one campaign's structure and change nothing; the writes
+    # (/ppc/control/change, /ppc/control/negative) need publish.
+    ("GET", "/ppc/control/campaigns"): "reads Amazon's campaign list (state, budget); changes nothing -- the /ppc/control writes need publish",
+    ("GET", "/ppc/control/structure"): "reads one campaign's ad groups/keywords/targets from Amazon; changes nothing -- writes need publish",
     ("GET", "/notify/inbox"): "the bell: this account's own notifications, read-only",
     ("GET", "/notify/channels"): "channel list WITHOUT the webhook URL (include_secret is never passed); changing needs manage_accounts",
     ("GET", "/notify/log"): "what was sent, read-only",

@@ -466,7 +466,15 @@ check("out of stock rather than at a loss", d["action"], "out_of_stock")
 truthy("  explaining the arithmetic", "ceiling" in d["reason"])
 d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0))],
              dict(ALLOW, min_price=25.00, max_price=20.00), NOW)
-check("a ceiling above the floor caps a raised price", d["price"], 20.0)
+# Re-pinned 30 Sep 2026 (repricer review): a MINIMUM above the maximum has no
+# price that keeps both. Capping at 20 sold below the 25 minimum that arming
+# promised "never below"; it is now held off sale, with the reason, like a
+# floor above the ceiling.
+check("a minimum above the maximum holds it off sale", d["action"], "out_of_stock")
+truthy("  and says the two limits conflict", "minimum price" in d.get("reason", ""))
+d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0))],
+             dict(ALLOW, max_price=20.00), NOW)
+check("a ceiling above the floor caps a raised price", d["price"], 18.24)
 
 print("  -- a rate the rule cannot price against stops everything --")
 d = S.decide(CUR, [(src(1), chk(price=10.0))], {"referral_rate": 1.0}, NOW)

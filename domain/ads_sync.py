@@ -733,19 +733,27 @@ def campaign_rows(config_path, workspace_id, marketplace, start, end):
     """Stored campaign performance, summed over the window, in _row() shape."""
     conn = _db.get_db(config_path)
     out = []
+    # NAME, STATE AND BUDGET FROM THE NEWEST DAY. MAX() over the window
+    # compared them as text and numbers: ENABLED -> PAUSED -> ENABLED read
+    # PAUSED, a budget cut from 20 to 5 still read 20 (review, 30 Sep 2026).
+    # `days` is how many days the sums cover, so a DAILY budget is compared
+    # with a daily spend, not with the window's total.
     for r in conn.execute(
             "SELECT campaign_id, MAX(campaign_name) campaign_name, "
-            "MAX(status) state, MAX(budget) budget, SUM(impressions) impressions, "
+            "COUNT(DISTINCT date) days, SUM(impressions) impressions, "
             "SUM(clicks) clicks, SUM(spend) spend, SUM(ad_orders) orders, "
             "SUM(ad_sales) sales FROM ads_campaign_daily "
             "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
             "GROUP BY campaign_id",
             (workspace_id, marketplace, start, end)):
         out.append(dict(r))
-    return out
+    from domain import sales_queries as _sq
+    return _sq.with_latest(out, _sq.campaign_latest(config_path, workspace_id,
+                                                    marketplace, end),
+                           status_key="state")
 
 
-def term_rows(config_path, workspace_id, marketplace):
+def term_rows(config_path, workspace_id, marketplace, start=None, end=None):
     """Stored search terms, in _row() shape.
 
     ppc_search_terms calls the campaign `campaign`; dr_ppc reads
@@ -755,7 +763,10 @@ def term_rows(config_path, workspace_id, marketplace):
     """
     from domain import ppc_view as _pv
     out = []
-    for r in _pv.load_rows(config_path, workspace_id, marketplace):
+    # One row per term over the look-back, not one per term per day: every
+    # Dr PPC check tests a threshold (ten clicks, two orders) that a single
+    # day almost never reaches (review, 30 Sep 2026).
+    for r in _pv.load_terms(config_path, workspace_id, marketplace, start=start, end=end):
         d = dict(r)
         d["campaign_name"] = d.get("campaign") or ""
         out.append(d)

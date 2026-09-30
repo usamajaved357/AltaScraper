@@ -980,6 +980,10 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
     price = floor
     if rule["min_price"] is not None:
         price = max(price, float(rule["min_price"]))
+    # THE LEAST THIS MAY SELL FOR: the computed floor and the owner's minimum,
+    # whichever is higher. The ceiling and the small-change skip below both
+    # answer to it (repricer review, 30 Sep 2026).
+    need = price
 
     # THE MARKET PRICE, HELD. See hold_price in DEFAULT_RULE for the reasoning.
     #
@@ -1024,6 +1028,16 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
             out["reason"] = ("this costs %.2f landed and needs %.2f to cover fees, "
                              "postage and profit -- above the %.2f ceiling"
                              % (cost, floor, float(rule["max_price"])))
+            return out
+        # A MINIMUM ABOVE THE MAXIMUM: no price keeps both. Capping at the
+        # maximum sold BELOW the minimum while arming promised "never below"
+        # it; holding it off sale is the honest outcome, as for the floor.
+        if need > float(rule["max_price"]):
+            out["action"] = "out_of_stock"
+            out["quantity"] = 0
+            out["reason"] = ("your minimum price %.2f is above your maximum %.2f, "
+                             "so no price keeps both -- fix the two limits"
+                             % (need, float(rule["max_price"])))
             return out
         price = min(price, float(rule["max_price"]))
         # A CEILING BELOW THE HELD PRICE. Contradictory settings -- hold at 40 with
@@ -1261,7 +1275,12 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
 
         same_lead = (lead is None or cur_lead is None or int(lead) == int(cur_lead))
         same_qty = (cur_qty is None or int(cur_qty) == qty)
-        if abs(price - cur_price) < float(rule["min_change"]) and same_lead and same_qty:
+        # A SMALL MOVE IS SKIPPED -- but never one that lifts the price off
+        # below its floor/minimum: 20.00 against a 20.15 floor lost 15p a sale
+        # for as long as it sat there (repricer review, 30 Sep 2026).
+        _below = cur_price < need - 0.005
+        if (abs(price - cur_price) < float(rule["min_change"]) and same_lead and same_qty
+                and not _below):
             out["action"] = "none"
             # WHY IT DID NOT MOVE, and the two reasons are not the same. "The
             # price is already right" and "the rules wanted less and this SKU

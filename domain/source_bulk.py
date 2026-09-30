@@ -1,4 +1,4 @@
-﻿"""domain/source_bulk.py -- attach suppliers to many SKUs from one uploaded sheet.
+"""domain/source_bulk.py -- attach suppliers to many SKUs from one uploaded sheet.
 
 "the repricer tool give me an option to upload a sheet containing the sku's or
  original asins of the item, to add their suppliers through a sheet upload, i
@@ -245,7 +245,7 @@ def skus_for_key(config_path, workspace_id, marketplace, sku="", asin=""):
             if s and s.upper() not in seen:
                 seen.add(s.upper())
                 found.append(s)
-    except Exception:
+    except Exception:   # arch-ok: swallowed-write-failure -- the 'write' is set.add on a local; a failed read finds nothing
         pass
 
     # 2. The live catalogue, where the ASIN is OURS on Amazon.
@@ -259,7 +259,7 @@ def skus_for_key(config_path, workspace_id, marketplace, sku="", asin=""):
             if s and s.upper() not in seen:
                 seen.add(s.upper())
                 found.append(s)
-    except Exception:
+    except Exception:   # arch-ok: swallowed-write-failure -- the 'write' is set.add on a local; a failed read finds nothing
         pass
     return found
 
@@ -412,6 +412,43 @@ def to_csv(headers, rows):
     return _sheets.to_csv(headers, rows)
 
 
+def _resolve_variations(config_path, marketplace, good):
+    """[(url, kind)] -> ([(url, kind)] with eBay family links made to point at
+    one child, {"linked": [notes], "bad": [notes]}). A link eBay could not be
+    asked about is kept as pasted (as before); a family with more than one
+    possible child is left out with a note, never guessed."""
+    notes = {"linked": [], "bad": []}
+    todo = [(u, k) for u, k in good if k == "ebay"]
+    if not todo:
+        return good, notes
+    try:
+        from api import ebay as _ebay
+        from config import settings as _settings
+        from domain import ebay_variation as _ev
+        cfg = _settings.read_raw(config_path) or {}
+        app_id = str(cfg.get("ebay_app_id", "") or "")
+        cert_id = str(cfg.get("ebay_cert_id", "") or "")
+    except Exception:
+        return good, notes
+    if not (app_id and cert_id):
+        return good, notes
+    out = []
+    for u, k in good:
+        if k != "ebay" or _ebay.variation_id_from_url(u):
+            out.append((u, k))
+            continue
+        res = _ev.resolve(u, app_id, cert_id, marketplace=_ebay.site_for(marketplace))
+        if res.get("choose"):
+            notes["bad"].append("%s -- a listing with %d variations; pick the one you "
+                                "buy on the Repricer (Add supplier)"
+                                % (u[:48], len(res.get("variations") or [])))
+            continue
+        if res.get("note"):
+            notes["linked"].append(res["note"])
+        out.append((res.get("url") or u, k))
+    return out, notes
+
+
 def apply_rows(config_path, workspace_id, marketplace, headers, rows):
     """Attach every row's supplier. Returns a report, per row.
 
@@ -484,6 +521,13 @@ def apply_rows(config_path, workspace_id, marketplace, headers, rows):
                 good.append((u, kind))
             else:
                 bad.append("%s — %s" % (u[:48], why))
+        # AN eBAY VARIATION LISTING WITHOUT ?var= (owner, 30 Sep 2026). It was
+        # stored as pasted and then failed on every sweep ("use the link to the
+        # exact variation"). Now: the one in-stock child is linked instead and
+        # said; several, or any unknown, are left out with a note to pick one
+        # on the Repricer -- never guessed (domain/ebay_variation).
+        good, _var_notes = _resolve_variations(config_path, marketplace, good)
+        bad.extend(_var_notes.get("bad") or [])
         if not good:
             rep["status"] = "skipped"
             rep["note"] = "; ".join(bad)
@@ -505,7 +549,7 @@ def apply_rows(config_path, workspace_id, marketplace, headers, rows):
         for s in targets:
             n_new = n_had = 0
             try:
-                _repo.enrol(config_path, workspace_id, marketplace, s, mode="dry_run")
+                _repo.enrol(config_path, workspace_id, marketplace, s)   # keeps an armed SKU armed
                 out["tracked"] += 1
                 for u, kind in good:
                     _sid, created = _repo.ensure_source(
@@ -524,6 +568,7 @@ def apply_rows(config_path, workspace_id, marketplace, headers, rows):
             except Exception as e:
                 out["skipped"] += 1
                 done.append("%s failed: %s" % (s, str(e)[:60]))
+        done.extend(_var_notes.get("linked") or [])
         if bad:
             done.append("skipped: " + "; ".join(bad))
         rep["status"] = "attached"

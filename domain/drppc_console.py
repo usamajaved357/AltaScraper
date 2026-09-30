@@ -151,6 +151,12 @@ def plan_activate(config_path, workspace_id, marketplace, revision, who=""):
     proposals made under it have to remain explainable afterwards, which is the
     entire reason revisions are immutable.
     """
+    # A missing or non-number revision is a refusal with a reason, not a
+    # server error the screen shows as "JSON parse error" (review, 30 Sep 2026).
+    try:
+        revision = int(revision)
+    except (TypeError, ValueError):
+        return False, "no revision was named to activate"
     conn = _db.get_db(config_path)
     row = conn.execute(
         "SELECT id, status FROM drppc_plans WHERE workspace_id=? "
@@ -232,6 +238,10 @@ def rule_add(config_path, workspace_id, marketplace, lane, evidence,
 
 
 def rule_remove(config_path, workspace_id, marketplace, rule_id):
+    try:
+        rule_id = int(rule_id)
+    except (TypeError, ValueError):
+        return 0                    # no such rule -- the route says so (404)
     conn = _db.get_db(config_path)
     cur = conn.execute(
         "DELETE FROM drppc_rules WHERE workspace_id=? "
@@ -276,8 +286,10 @@ def classify(config_path, workspace_id, marketplace, terms=None):
     rows = terms
     if rows is None:
         try:
+            # One row per term, its days added up -- a rule's click and
+            # order thresholds are about the term, not one day of it.
             rows = [dict(r) for r in
-                    _pv.load_rows(config_path, workspace_id, marketplace)]
+                    _pv.load_terms(config_path, workspace_id, marketplace)]
         except Exception:
             rows = []
 
@@ -545,6 +557,11 @@ def current_state(config_path, workspace_id, marketplace, start=None, end=None):
         d["negatives"] = None
         d["product_ads"] = None
         camps.append(d)
+    # What each campaign IS NOW -- the newest day's name, status and budget,
+    # not MAX() over the rows (sales_queries.campaign_latest; 30 Sep 2026).
+    from domain import sales_queries as _sq
+    _sq.with_latest(camps, _sq.campaign_latest(config_path, workspace_id, marketplace),
+                    name_key="name")
     camps.sort(key=lambda x: -(_f(x.get("spend"))))
 
     last = q("SELECT MAX(fetched_at) t FROM ads_campaign_daily "

@@ -129,6 +129,10 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             days = 30
         return _pa.window(days)
 
+    def _sd_cur(aid, mkt):
+        from domain import sales_data as _sd
+        return _sd.currency_for(CONFIG_PATH, aid, mkt)
+
     def _need(aid, mkt):
         if aid and mkt:
             return None
@@ -188,13 +192,17 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "trail": _pa.trail(CONFIG_PATH, aid, mkt, 7, start=start, end=end),
             "per_click": _pa.per_click_trend(days, rates.get("fee_rate"),
                                              rates.get("cogs_rate"),
-                                             rates.get("vat_share") or 0.0),
+                                             rates.get("vat_share") or 0.0,
+                                             rates.get("ad_vat_ratio") or 0.0),
             "efficiency": _pa.efficiency_trend(
                 days, rates.get("breakeven_acos_pct")),
             # With the brand words, so the panel can name what it matched on.
             "branded": _pa.branded_split(
                 terms, _pv_mod.brand_terms(CONFIG_PATH, aid)),
             "ok": True, "account": aid, "marketplace": mkt,
+            # The money on this page is in this currency (review, 30 Sep 2026:
+            # it was never sent, so every marketplace read in pounds).
+            "currency": _sd_cur(aid, mkt),
             "window": {"start": start, "end": end,
                        "compare_start": pstart, "compare_end": pend},
             "availability": avail,
@@ -275,12 +283,18 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
 
         return jsonify({
             "ok": True, "account": aid, "marketplace": mkt,
+            # The money on this page is in this currency (review, 30 Sep 2026:
+            # it was never sent, so every marketplace read in pounds).
+            "currency": _sd_cur(aid, mkt),
             "window": {"start": start, "end": end,
                        "compare_start": pstart, "compare_end": pend},
             "availability": _avail(aid, mkt),
             "rates": rates,
             "totals": now, "previous": before,
             "change": _pa.change(now, before),
+            # Which change is in points (ACOS, CTR, CVR) and which in %: the
+            # summary strip printed "%" on all of them (review, 30 Sep 2026).
+            "change_units": _pa.change_units(now),
             "change_floor": _pa.change_floor(now, before),
             "terms": rows,
             "term_count": len(rows),
@@ -326,7 +340,14 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         mat = _pa.maturity(CONFIG_PATH, aid, mkt, start, end)
         camps = _pa.campaigns(CONFIG_PATH, aid, mkt, start, end, rates,
                               judge_end=mat.get("mature_end"))
-        terms = _pa.terms(CONFIG_PATH, aid, mkt, rates)
+        # THE PICKED DAYS, where the stored terms carry days (the daily pull):
+        # the expanded row showed the whole newest report whatever the dates
+        # (Campaign Analytics review, 30 Sep 2026).
+        from domain import ppc_view as _pvc
+        _dwc = _pvc.dated_window(CONFIG_PATH, aid, mkt)
+        _fc = bool((_dwc or {}).get("can_follow_picker"))
+        terms = _pa.terms(CONFIG_PATH, aid, mkt, rates,
+                          start=(start if _fc else None), end=(end if _fc else None))
 
         # The search terms of each campaign, for the expanded row. Grouped here
         # rather than fetched per row: the whole report is already in hand, and
@@ -340,6 +361,9 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
 
         return jsonify({
             "ok": True, "account": aid, "marketplace": mkt,
+            # The money on this page is in this currency (review, 30 Sep 2026:
+            # it was never sent, so every marketplace read in pounds).
+            "currency": _sd_cur(aid, mkt),
             "window": {"start": start, "end": end,
                        "compare_start": pstart, "compare_end": pend},
             "availability": _avail(aid, mkt),
@@ -362,7 +386,8 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
             "by_match_type": _pt.by_match_type(
                 CONFIG_PATH, aid, mkt, start, end,
                 rates.get("fee_rate"), rates.get("cogs_rate"),
-                rates.get("vat_share") or 0.0),
+                rates.get("vat_share") or 0.0,
+                                             rates.get("ad_vat_ratio") or 0.0),
             "by_match_type_terms": _pa.by_group(terms, "match_type"),
             # The stacked area: one column per day, one lane per match type,
             # in the shape the app's own chart engine already takes.

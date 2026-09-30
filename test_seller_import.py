@@ -416,8 +416,11 @@ truthy("  the expansion ceiling is reported, never applied quietly",
 # nothing, silently, for ever.
 _ssrc = _insp.getsource(__import__("routes.sourcing_routes",
                                    fromlist=["x"]).register)
-truthy("a family URL is refused where you can still fix it",
-       "_ebay.GROUP" in _ssrc)
+# Re-pinned 30 Sep 2026 (owner: a 3-variation link with 2 out of stock was
+# refused): a family URL is resolved where you can still fix it -- the one
+# in-stock child is linked, several come back as a choice (ebay_variation).
+truthy("a family URL is resolved where you can still fix it",
+       "_ev.resolve(url, app_id, cert_id" in _ssrc and '"choose": True' in _ssrc)
 truthy("  and a link that names a variation goes straight through",
        "variation_id_from_url(url)" in _ssrc)
 truthy("  the same link twice does not become two sources",

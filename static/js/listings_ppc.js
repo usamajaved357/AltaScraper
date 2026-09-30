@@ -125,6 +125,10 @@ function _ppcEnsure(){
 
 function ppcFor(r){
   if(!PPC_BY_ASIN) return null;
+  // Only the figures of the account and marketplace on screen: after a switch
+  // the old map stayed until the refetch landed, so B's cards showed A's ad
+  // spend on shared ASINs (review, 30 Sep 2026).
+  if(PPC_KEY !== _ppcKey()) return null;
   const a = (typeof rowAsin === "function") ? (rowAsin(r) || {}).own : "";
   if(!a) return null;
   return PPC_BY_ASIN[String(a).trim().toUpperCase()] || null;

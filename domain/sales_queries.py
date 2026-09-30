@@ -9,10 +9,72 @@ error handling.
 from data import db as _db
 
 
-def campaign_rows(config_path, wsid, mkt, start, end):
-    """Per-campaign sums over a date range, biggest spend first, as dicts."""
+def campaign_latest(config_path, wsid, mkt, end=None):
+    """{campaign_id: {campaign_name, status, budget}} from each campaign's
+    NEWEST stored day (on or before `end`).
+
+    THE ONE ANSWER TO "WHAT IS THIS CAMPAIGN NOW". MAX() over a window compared
+    them as text and numbers -- ENABLED -> PAUSED -> ENABLED read PAUSED, a
+    budget cut from 20 to 5 still read 20 -- and it was written four times, in
+    Campaign Analytics, the Sales campaigns table, Dr PPC and its console
+    (review of the advertising pages, 30 Sep 2026; Rule 12)."""
     conn = _db.get_db(config_path)
-    return [dict(r) for r in conn.execute(
+    cond, args = "", [wsid, mkt]
+    if end:
+        cond = " AND date<=?"
+        args.append(str(end)[:10])
+    out = {}
+    for r in conn.execute(
+            "SELECT l.campaign_id, l.campaign_name, l.status, l.budget FROM "
+            "ads_campaign_daily l JOIN (SELECT campaign_id, MAX(date) d FROM "
+            "ads_campaign_daily WHERE workspace_id=? AND marketplace=?" + cond
+            + " GROUP BY campaign_id) m ON l.campaign_id=m.campaign_id AND l.date=m.d "
+            "WHERE l.workspace_id=? AND l.marketplace=?", args + [wsid, mkt]):
+        out[str(r["campaign_id"])] = {"campaign_name": r["campaign_name"],
+                                      "status": r["status"], "budget": r["budget"],
+                                      "status_source": "report"}
+    # AMAZON'S CURRENT SETTING WINS when it has been read (ads_campaigns, from
+    # the campaign list): the report has no row for a paused campaign's quiet
+    # days, so its newest row said ENABLED (owner, 30 Sep 2026). Only for "now"
+    # -- a window that ended in the past keeps what the report said then.
+    import datetime as _dtm
+    if not end or str(end)[:10] >= (_dtm.date.today() - _dtm.timedelta(days=3)).isoformat():
+        try:
+            for r in conn.execute(
+                    "SELECT campaign_id, name, state, budget FROM ads_campaigns "
+                    "WHERE workspace_id=? AND marketplace=?", (wsid, mkt)):
+                cur = out.setdefault(str(r["campaign_id"]), {})
+                if r["name"]:
+                    cur["campaign_name"] = r["name"]
+                cur["status"] = r["state"]
+                cur["budget"] = r["budget"]
+                cur["status_source"] = "amazon"
+        except Exception:
+            pass
+    return out
+
+
+def with_latest(rows, latest, name_key="campaign_name", status_key="status",
+                budget_key="budget"):
+    """Put campaign_latest's name / status / budget onto summed rows, in the
+    caller's own key names. Rows it has nothing for are left as they were."""
+    for d in rows:
+        got = latest.get(str(d.get("campaign_id")))
+        if not got:
+            continue
+        if got.get("campaign_name"):
+            d[name_key] = got["campaign_name"]
+        d[status_key] = got.get("status")
+        d[budget_key] = got.get("budget")
+        d["status_source"] = got.get("status_source") or "report"
+    return rows
+
+
+def campaign_rows(config_path, wsid, mkt, start, end):
+    """Per-campaign sums over a date range, biggest spend first, as dicts.
+    Name, status and budget are the newest day's (campaign_latest)."""
+    conn = _db.get_db(config_path)
+    return with_latest([dict(r) for r in conn.execute(
         "SELECT campaign_id, "
         "       MAX(campaign_name) AS campaign_name, "
         "       MAX(status)        AS status, "
@@ -28,7 +90,7 @@ def campaign_rows(config_path, wsid, mkt, start, end):
         "FROM ads_campaign_daily "
         "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
         "GROUP BY campaign_id ORDER BY spend DESC",
-        (wsid, mkt, start, end))]
+        (wsid, mkt, start, end))], campaign_latest(config_path, wsid, mkt, end))
 
 
 def currency_rows(config_path, wsid, mkt):

@@ -121,28 +121,29 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         got = _ebay.get_item(url, app_id, cert_id,
                              marketplace=_ebay.site_for(mkt))
         if got["status"] == _ebay.GROUP:
-            # A whole family pasted where one variant belongs.
-            return None, got["error"], 400
+            # A whole family pasted where one variant belongs. When only one
+            # child can be meant (one in stock, the rest out) it is that child
+            # (domain/ebay_variation, the same rule as Add supplier).
+            from domain import ebay_variation as _ev
+            kids = _ev.variations(got.get("data") or {}, url)
+            one = _ev.pick(kids)
+            if not one:
+                return None, got["error"], 400
+            url = one["url"]
+            got = _ebay.get_item(url, app_id, cert_id, marketplace=_ebay.site_for(mkt))
         if got["status"] != _ebay.OK:
             return None, ("That eBay link could not be read (%s), so the new "
                           "variant has no price or details to start from."
                           % (got.get("error") or got["status"])), 502
         item = got["data"] or {}
 
-        price = None
-        try:
-            price = float((item.get("price") or {}).get("value"))
-        except (TypeError, ValueError):
-            price = None
-        ship = None
-        for opt in (item.get("shippingOptions") or []):
-            c = (opt or {}).get("shippingCost")
-            if isinstance(c, dict):
-                try:
-                    ship = float(c.get("value"))
-                except (TypeError, ValueError):
-                    ship = None
-                break
+        # PRICE AND POSTAGE THROUGH THE ONE READER the repricer uses
+        # (source_fetch.from_ebay_item -> _ebay_option, Rule 12). This took the
+        # FIRST postage option; the repricer takes the chosen one, so the same
+        # eBay item could cost two amounts (repricer review, 30 Sep 2026).
+        from domain import source_fetch as _sf
+        _rd = _sf.from_ebay_item(item)
+        price, ship = _rd.get("price"), _rd.get("shipping")
         cost = None if (price is None or ship is None) else round(price + ship, 2)
 
         # WHAT A FAMILY MUST SHARE, taken from the listing being joined rather

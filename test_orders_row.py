@@ -84,7 +84,8 @@ truthy("the account column only appears when there is more than one",
 truthy("the table is narrower than it was", "min-width:760px" in JS)
 truthy("  and no longer 900", "min-width:900px" not in JS)
 truthy("the Item column gets the width, not the four-character money ones",
-       "(t === 'Item' ? ' style=\"width:26%\"'" in JS)
+       # Re-pinned 30 Sep 2026: 28% now the captions no longer take a line.
+       "(t === 'Item' ? ' style=\"width:28%\"'" in JS)
 truthy("  and a long product name wraps rather than being cut to nothing",
        "-webkit-line-clamp:2" in JS)
 

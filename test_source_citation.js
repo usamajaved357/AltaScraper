@@ -66,8 +66,10 @@ const FIN = read("static/js/finance.js");
 truthy("Finance cites its source", /uiSource\(\[/.test(FIN));
 truthy("  names the Finances feed", /listFinancialEvents/.test(FIN));
 // THE most-asked question about either screen.
-truthy("  and says why it will not match Sales",
-       /counts units ORDERED/.test(FIN));
+// Re-pinned 30 Sep 2026: Finance's default basis is now the Sales page's order
+// calendar, so the note says which calendar it is on and when it will differ.
+truthy("  and says how it relates to Sales",
+       /Settlement counts money as it moved/.test(FIN) && /same calendar as the Sales page/.test(FIN));
 
 const RB = read("static/js/reimbursements.js");
 truthy("Reimbursements cites its source", /uiSource\(\[/.test(RB));

@@ -396,12 +396,24 @@ def rates(config_path, workspace_id, marketplace, start, end):
     else:
         out["cogs_basis"] = "no costed orders in this window"
 
+    # THE VAT ON AD SPEND, for an account that cannot reclaim it (domain/
+    # ad_cost, the rule every profit screen uses since 30 Sep 2026). 0 when
+    # registered or not set.
+    out["ad_vat_ratio"] = 0.0
+    try:
+        from domain import ad_cost as _adc
+        out["ad_vat_ratio"] = float(_adc.product_ratio(
+            config_path, workspace_id, marketplace, end, _v) or 0.0)
+    except Exception:
+        pass
     fee, cogs = out["fee_rate"], out["cogs_rate"]
     if fee is not None and cogs is not None:
         # What is left of a pound of revenue after the VAT, Amazon's fee and
         # the stock, which is the most a campaign can spend before it stops
-        # making money.
+        # making money -- as ACOS, which is measured on spend before its VAT,
+        # so a pound of margin buys 1/(1 + ad VAT) of a pound of spend.
         margin = 1.0 - float(out["vat_share"]) - float(fee) - float(cogs)
+        margin = margin / (1.0 + out["ad_vat_ratio"])
         out["breakeven_acos_pct"] = (round(100.0 * margin, 1)
                                      if margin > 0 else 0.0)
     return out
@@ -420,10 +432,15 @@ def daily(config_path, workspace_id, marketplace, start, end):
     """
     conn = _db.get_db(config_path)
     ads = {}
+    # SUMMED ACROSS AD PRODUCTS. The account row is one per day PER ad product
+    # (Sponsored Products, Brands, Display); keyed by the date alone, the last
+    # product read overwrote the others (review, 30 Sep 2026 -- latent while
+    # only Sponsored Products is pulled). SUM of NULLs stays NULL: no figure.
     for r in conn.execute(
-            "SELECT date, spend, ad_sales, clicks, impressions, ad_orders "
+            "SELECT date, SUM(spend) spend, SUM(ad_sales) ad_sales, SUM(clicks) clicks, "
+            "SUM(impressions) impressions, SUM(ad_orders) ad_orders "
             "FROM ads_daily WHERE workspace_id=? AND marketplace=? "
-            "AND date>=? AND date<=? AND asin=? ORDER BY date",
+            "AND date>=? AND date<=? AND asin=? GROUP BY date ORDER BY date",
             (workspace_id, marketplace, start, end, ACCOUNT_TOTAL)):
         ads[r["date"]] = dict(r)
 
@@ -683,23 +700,26 @@ def trail(config_path, workspace_id, marketplace, days=7, start=None, end=None):
     return out
 
 
-def ad_profit(sales, spend, fee_rate, cogs_rate, vat_share=0.0):
+def ad_profit(sales, spend, fee_rate, cogs_rate, vat_share=0.0, ad_vat=0.0):
     """What attributed sales left after the VAT, Amazon's fee, the stock and the
     ad spend. None when either rate is unknown -- never a guessed margin.
 
-        profit = sales - spend - sales x (vat share + fee rate + cost rate)
+        profit = sales - spend x (1 + ad VAT) - sales x (vat share + fee rate + cost rate)
 
     THE ONE COPY. It was written out six times across this module and
     domain/ppc_targeting.py, none of which took VAT out (CLAUDE.md Rule 12).
+    `ad_vat` is the VAT an account that cannot reclaim it pays ON its ad spend
+    (rates()["ad_vat_ratio"], from domain/ad_cost) -- every other profit screen
+    counts it since 30 Sep 2026, so a campaign's profit must too.
     """
     if fee_rate is None or cogs_rate is None or sales is None or spend is None:
         return None
     s = float(sales)
-    return (s - float(spend)
+    return (s - float(spend) * (1.0 + float(ad_vat or 0.0))
             - s * (float(vat_share or 0.0) + float(fee_rate) + float(cogs_rate)))
 
 
-def per_click_trend(rows, fee_rate, cogs_rate, vat_share=0.0):
+def per_click_trend(rows, fee_rate, cogs_rate, vat_share=0.0, ad_vat=0.0):
     """Daily profit per click. The mockup's "Profit per Click Trend".
 
     None on a day with no clicks -- dividing by nothing is undefined, and a 0.00
@@ -714,7 +734,7 @@ def per_click_trend(rows, fee_rate, cogs_rate, vat_share=0.0):
         if sales is None or spend is None or not clicks:
             out.append(None)
             continue
-        profit = ad_profit(sales, spend, fee_rate, cogs_rate, vat_share)
+        profit = ad_profit(sales, spend, fee_rate, cogs_rate, vat_share, ad_vat)
         out.append(round(profit / float(clicks), 3))
     return out
 
@@ -928,7 +948,12 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
     #   the cohort rest on the same days.
     judged = {}
     jend = str(judge_end or "")[:10]
-    if jend and jend < str(end)[:10]:
+    # JUDGING ON THE FINISHED DAYS is decided by the dates, not by whether any
+    # campaign had a row in them: an empty `judged` read as "not judging", and
+    # every cohort fell back to the full window, unfinished days and all
+    # (review, 30 Sep 2026).
+    judging = bool(jend and jend < str(end)[:10])
+    if judging:
         if jend >= str(start)[:10]:
             for row in conn.execute(SQL, (workspace_id, marketplace, start, jend)):
                 judged[row["campaign_id"]] = dict(row)
@@ -940,11 +965,32 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
 
     raw = [dict(r) for r in conn.execute(SQL, (workspace_id, marketplace,
                                                start, end))]
+    # Name, status and budget from the newest day, not MAX() over the window
+    # (sales_queries.campaign_latest -- the one answer; 30 Sep 2026 review).
+    from domain import sales_queries as _sq
+    _latest = _sq.campaign_latest(config_path, workspace_id, marketplace, end)
+    _sq.with_latest(raw, _latest, name_key="name")
+    # THE CAMPAIGNS THAT DID NOTHING IN THESE DAYS -- paused ones, mostly --
+    # listed from Amazon's own campaign list, so they can be seen and switched
+    # back on (owner, 30 Sep 2026). Nothing ran, so their figures are nought.
+    _seen = {str(d.get("campaign_id")) for d in raw}
+    for _cid, _g in _latest.items():
+        if _cid in _seen or _g.get("status_source") != "amazon":
+            continue
+        if str(_g.get("status") or "").upper() == "ARCHIVED":
+            continue            # finished on Amazon; nothing to switch back on
+        raw.append({"campaign_id": _cid, "name": _g.get("campaign_name") or _cid,
+                    "status": _g.get("status"), "budget": _g.get("budget"),
+                    "ad_product": "SPONSORED_PRODUCTS", "impressions": 0, "clicks": 0,
+                    "spend": 0.0, "orders": 0, "sales": 0.0, "status_source": "amazon",
+                    # Did nothing in these days: listed for its switch, kept out
+                    # of the headline, the map and the counts.
+                    "quiet": True})
 
     # The scoring set, and the biggest spend in it. Taken from whichever window
     # the scores will be made on, so the denominator and the numerators are the
     # same days.
-    if judged:
+    if judging and judged is not None:
         _scoring = list(judged.values())
     elif judged is None:
         _scoring = []
@@ -954,7 +1000,7 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
     top_spend = max(_spends) if _spends else None
     cap_cpo = max_cost_per_order(
         r, totals_for(config_path, workspace_id, marketplace, start,
-                      jend if judged else end))
+                      jend if (judging and judged is not None) else end))
 
     out = []
     for d in raw:
@@ -962,13 +1008,13 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
         profit = None
         if can_profit and spend is not None and sales is not None:
             profit = round(ad_profit(sales, spend, fee, cogs,
-                                     r.get("vat_share")), 2)
+                                     r.get("vat_share"), r.get("ad_vat_ratio")), 2)
 
         # The figures the judgement is made on: the mature ones when there are
         # any, otherwise the same ones being displayed.
         if judged is None:
             j = None
-        elif judged:
+        elif judging:
             j = judged.get(d["campaign_id"]) or {"spend": 0, "sales": 0,
                                                  "clicks": 0, "orders": 0}
         else:
@@ -980,7 +1026,7 @@ def campaigns(config_path, workspace_id, marketplace, start, end, rate_info=None
             j_profit = None
             if can_profit and j_spend is not None and j_sales is not None:
                 j_profit = round(ad_profit(j_sales, j_spend, fee, cogs,
-                                           r.get("vat_share")), 2)
+                                           r.get("vat_share"), r.get("ad_vat_ratio")), 2)
             j_cohort = _cohort(j_spend, j_sales, j_profit, be, can_profit)
             j_opp = _opportunity(j_spend, j_sales, _f(j["clicks"]),
                                  _f(j["orders"]), be,
@@ -1210,14 +1256,28 @@ def net_profit(config_path, workspace_id, marketplace, start, end, totals=None):
            "why": "", "definition": (
                "Everything the account sold in this window, advertised and "
                "organic, less Amazon's fees, less what the stock cost, less "
-               "what was spent on advertising.")}
+               "what advertising cost (with the VAT on it where the account "
+               "cannot reclaim it), less the account's own Amazon charges and "
+               "the costs you entered.")}
     t = totals if totals is not None else totals_for(
         config_path, workspace_id, marketplace, start, end)
     spend = _f((t or {}).get("spend"))
     out["ad_spend"] = spend
 
     try:
-        st = _sd.totals(config_path, workspace_id, marketplace, start, end)
+        # THE SALES PAGE'S OWN SETTINGS: the order calendar and the account's
+        # VAT rate. Without them this read the money calendar with VAT left in
+        # the sales, so it was not the Sales page's number (review, 30 Sep 2026).
+        from config import settings as _settings
+        _meta = {}
+        st = _sd.totals(config_path, workspace_id, marketplace, start, end,
+                        vat_rate=_sd.vat_rate_for(_settings.read_raw(config_path) or {},
+                                                  workspace_id),
+                        basis="order", meta=_meta)
+        # A PART THAT COULD NOT BE READ is said here too, as on the Sales card
+        # (review, 30 Sep 2026): the figure is then too high.
+        if _meta.get("profit_gaps"):
+            out["profit_gaps"] = list(_meta["profit_gaps"])
     except Exception:
         out["why"] = ("The account's own sales and fees could not be read, so "
                       "profit after advertising cannot be worked out.")
@@ -1225,6 +1285,9 @@ def net_profit(config_path, workspace_id, marketplace, start, end, totals=None):
 
     sp = st.get("profit")
     out["sales_profit"] = sp
+    # What ads COST the profit (VAT and invoices included, domain/ad_cost) --
+    # `ad_spend` above stays the Ads API's own figure.
+    out["ad_cost"] = st.get("ad_cost")
     if sp is None:
         # NAME THE REASON, because "—" on a profit card reads as a broken screen
         # rather than as a deliberate refusal.
@@ -1503,10 +1566,21 @@ def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None,
                 "why": "No search term report is stored, so spend that bought "
                        "clicks and no orders cannot be identified."}
     try:
+        # PER TERM, ITS DAYS ADDED UP (ppc_view.TERM_KEY). The table holds a
+        # row per term per day, so a term with 40 clicks over 30 days never
+        # reached the ten-click gate below, and the count was of term-days
+        # (review, 30 Sep 2026).
+        _terms = ("(SELECT SUM(spend) spend, SUM(COALESCE(clicks,0)) clicks, "
+                  "SUM(COALESCE(orders,0)) orders FROM ppc_search_terms "
+                  "WHERE workspace_id=? AND marketplace=? AND report_id=? GROUP BY "
+                  # The same key as ppc_view.load_terms, where a missing
+                  # value and an empty one are the same term.
+                  "COALESCE(search_term,''), COALESCE(keyword,''), "
+                  "COALESCE(match_type,''), COALESCE(campaign,''), "
+                  "COALESCE(ad_group,''))")
         r = conn.execute(
-            "SELECT ROUND(SUM(spend),2) s, COUNT(*) n FROM ppc_search_terms "
-            "WHERE workspace_id=? AND marketplace=? AND report_id=? "
-            "AND COALESCE(clicks,0) > 0 AND COALESCE(orders,0) = 0",
+            "SELECT ROUND(SUM(spend),2) s, COUNT(*) n FROM %s "
+            "WHERE clicks > 0 AND orders = 0" % _terms,
             (workspace_id, marketplace, meta["report_id"])).fetchone()
         # AND THE SAME THING WORTH ACTING ON.
         #
@@ -1524,9 +1598,8 @@ def wasted_spend(config_path, workspace_id, marketplace, start=None, end=None,
         # clicks is not yet evidence that a term will never convert. Ten is a
         # sample; three is a coincidence.
         big = conn.execute(
-            "SELECT ROUND(SUM(spend),2) s, COUNT(*) n FROM ppc_search_terms "
-            "WHERE workspace_id=? AND marketplace=? AND report_id=? "
-            "AND COALESCE(orders,0) = 0 AND COALESCE(clicks,0) >= ?",
+            "SELECT ROUND(SUM(spend),2) s, COUNT(*) n FROM %s "
+            "WHERE orders = 0 AND clicks >= ?" % _terms,
             (workspace_id, marketplace, meta["report_id"],
              int(min_clicks or QUALIFIED_CLICKS))).fetchone()
     except Exception:
@@ -1642,7 +1715,7 @@ def asins(config_path, workspace_id, marketplace, start, end, rate_info=None):
         profit = None
         if can_profit and spend is not None and sales is not None:
             profit = round(ad_profit(sales, spend, fee, cogs,
-                                     r.get("vat_share")), 2)
+                                     r.get("vat_share"), r.get("ad_vat_ratio")), 2)
         look = {}
         try:
             look = _cat.look(idx, None, asin) or {}
@@ -1704,8 +1777,14 @@ def terms(config_path, workspace_id, marketplace, rate_info=None, limit=1000,
     be = r.get("breakeven_acos_pct")
 
     brands = _pv.brand_terms(config_path, workspace_id)
-    rows = _pv.load_rows(config_path, workspace_id, marketplace,
-                         start=start, end=end)
+    # One row per term, its days added up, biggest spend first -- THEN the cap,
+    # so the rows it drops are the smallest, not whichever came last.
+    rows = _pv.load_terms(config_path, workspace_id, marketplace,
+                          start=start, end=end)
+    # Table-wide, from EVERY term, before the cap (the campaigns' rule).
+    _top = max([_f(x.get("spend")) or 0.0 for x in rows] or [0.0]) or None
+    _cpo = max_cost_per_order(r, {"sales": sum(_f(x.get("sales")) or 0.0 for x in rows),
+                                  "orders": sum(_f(x.get("orders")) or 0.0 for x in rows)})
     out = []
     for row in rows[:limit]:
         d = dict(row)
@@ -1714,7 +1793,7 @@ def terms(config_path, workspace_id, marketplace, rate_info=None, limit=1000,
         profit = None
         if can_profit and spend is not None and sales is not None:
             profit = round(ad_profit(sales, spend, fee, cogs,
-                                     r.get("vat_share")), 2)
+                                     r.get("vat_share"), r.get("ad_vat_ratio")), 2)
         term = str(d.get("search_term") or "")
         out.append({
             "search_term": term,
@@ -1738,7 +1817,12 @@ def terms(config_path, workspace_id, marketplace, rate_info=None, limit=1000,
             "product_target": term.lower().startswith("b0"),
             "profit": profit,
             "profit_estimated": can_profit,
-            "opportunity": _opportunity(spend, sales, clicks, orders, be),
+            # THE SAME SCALE AS THE CAMPAIGNS: the money-at-stake and the
+            # zero-sales ceiling need the table-wide figures, and without them
+            # a term could never pass 60 while a campaign reached 100 -- under
+            # one shared "40+ worth opening" badge (review, 30 Sep 2026).
+            "opportunity": _opportunity(spend, sales, clicks, orders, be,
+                                        max_spend=_top, max_cost_per_order=_cpo),
         })
     out.sort(key=lambda x: (x["spend"] is None, -(x["spend"] or 0)))
     return out
@@ -1779,11 +1863,16 @@ def by_group(rows, key):
         a["cvr_pct"] = _rate(a["orders"], a["clicks"], nd=2)
         out.append(a)
     total = sum(a["spend"] or 0 for a in out)
-    tprofit = sum((a["profit"] or 0) for a in out if a["profit"] is not None)
+    # A SHARE OF THE PROFIT MADE, the rule ppc_targeting.by_match_type uses for
+    # the same column: over the net total, groups at +100 and -90 read 1000%
+    # and -900% (review, 30 Sep 2026). A losing group has no share of it.
+    pool = sum(a["profit"] for a in out
+               if a["profit"] is not None and a["profit"] > 0)
     for a in out:
         a["spend_share_pct"] = _rate(a["spend"], total)
-        a["profit_share_pct"] = (_rate(a["profit"], tprofit)
-                                 if a["profit"] is not None else None)
+        a["profit_share_pct"] = (_rate(a["profit"], pool)
+                                 if (pool and a["profit"] is not None
+                                     and a["profit"] > 0) else None)
     out.sort(key=lambda x: -(x["spend"] or 0))
     return out
 

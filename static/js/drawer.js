@@ -78,8 +78,12 @@ function dwEnterBlur(ev){
 function dwBlurSave(el, sku, target, key){
   const v = (el.textContent == null ? "" : el.textContent);
   if(v === (el.getAttribute("data-orig") || "")) return;
-  el.setAttribute("data-orig", v);
-  saveEdit(el, sku, target, key);
+  // THE NEW ORIGINAL ONLY ONCE IT SAVED. Set before the save, a failure left
+  // the box showing unsaved text that the next blur treated as saved, so it
+  // could never be retried (review of All Listings, 30 Sep 2026).
+  Promise.resolve(saveEdit(el, sku, target, key)).then(function(j){
+    if(j && j.ok) el.setAttribute("data-orig", v);
+  }).catch(function(){});
 }
 
 /* THE TITLE EDITOR, WRITTEN ONCE.

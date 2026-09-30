@@ -233,10 +233,15 @@ async function sourcingAlerts(){
   if(!host) return;
   let j;
   const _sc = _srcScopeNow();
+  // A FAILED CHECK IS SAID, never an empty strip: empty reads as "no supplier
+  // is out of stock", which is the one thing a failure cannot tell you
+  // (repricer review, 30 Sep 2026).
+  const _failNote = '<div class="cc" style="font-size:11.5px;color:var(--warn)">'
+    + '<i class="ti ti-alert-triangle"></i> Could not check supplier alerts \u2014 refresh to try again.</div>';
   try{ j = await (await fetch(_srcUrl("/sourcing/alerts"))).json(); }
-  catch(e){ if(_srcStillIn(_sc)) host.innerHTML = ''; return; }
+  catch(e){ if(_srcStillIn(_sc)) host.innerHTML = _failNote; return; }
   if(!_srcStillIn(_sc)) return;        // another account's alerts (audit S5)
-  if(!j || !j.ok){ host.innerHTML = ''; return; }
+  if(!j || !j.ok){ host.innerHTML = _failNote; return; }
   const bad = j.alerts || [], dunno = j.unreadable || [];
   // NOTHING ABOVE THE TOOLBAR ANY MORE.
   //

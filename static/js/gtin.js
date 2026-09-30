@@ -42,11 +42,18 @@ function _gtinAccount(){
  * cannot drift apart -- they write the same column, the same value, through the
  * same endpoint.
  */
-async function setGtinExemption(sku, on){
+async function setGtinExemption(sku, on, el){
+  // A FAILED SAVE PUTS THE TICK BACK: left ticked, the box showed a
+  // declaration that was never recorded (review of All Listings, 30 Sep 2026).
+  const _undo = function(){ try{ if(el) el.checked = !on; }catch(e){} };
   try{
     const j = await _gtinWrite(sku, on);
-    if(!j || !j.ok){ toast((j && j.error) || "Could not save that"); return; }
-    toast(on ? "GTIN exemption will be claimed for this listing"
+    if(!j || !j.ok){ _undo(); toast((j && j.error) || "Could not save that"); return; }
+    // WHAT THE TICK DOES, exactly (amazon_listing_generator's identifier pass):
+    // nothing is sent now, and at submit a valid barcode in the box is sent
+    // INSTEAD of the exemption. "Will be claimed" was not true then.
+    toast(on ? "GTIN exemption ticked — claimed when this listing is submitted "
+               + "without a valid barcode (a valid one is sent instead). Nothing sent now."
              : "GTIN exemption is off for this listing");
     // refreshRow() was called here and exists nowhere, so this always fell
     // through to loadRows() -- which replaces ROWS with list rows that carry no
@@ -55,7 +62,7 @@ async function setGtinExemption(sku, on){
     // is showing this listing, then re-reads the row with its checks attached.
     if(typeof loadRows === "function"){ try{ await loadRows(); }catch(e){} }
     if(typeof pdpAfterAction === "function") pdpAfterAction(sku);
-  }catch(e){ toast(String(e)); }
+  }catch(e){ _undo(); toast(String(e)); }
 }
 
 /* The write itself, shared by both routes. Returns the parsed reply.
@@ -141,15 +148,21 @@ async function bulkGtinExemption(on){
         else failed.push(sku + ": " + ((j && j.error) || "failed"));
       }catch(e){ failed.push(sku + ": " + e); }
     }
+    // WHAT HAPPENED, not "applied": the box is ticked here and nothing went to
+    // Amazon. A listing already live keeps its identifier on Amazon until it is
+    // submitted again (review of All Listings, 30 Sep 2026).
     let out = claim
-      ? ("GTIN exemption applied to " + ok + " listing(s).")
-      : ("GTIN exemption removed from " + ok + " listing(s).");
+      ? ("GTIN exemption ticked on " + ok + " listing(s). Nothing was sent to "
+         + "Amazon now: it is claimed when each one is next submitted, and only "
+         + "where there is no valid barcode (a valid one is sent instead). A "
+         + "listing already live keeps its current identifier until you submit it again.")
+      : ("GTIN exemption un-ticked on " + ok + " listing(s).");
     if(failed.length){
       out += "\n\nNot saved (" + failed.length + "):\n"
            + failed.slice(0, 8).map(x => "  – " + x).join("\n");
     }
     await uiAlert(out);
-    toast(claim ? ("Exemption applied to " + ok) : ("Exemption cleared on " + ok));
+    toast(claim ? ("Exemption ticked on " + ok + " (claimed at submit)") : ("Exemption cleared on " + ok));
     if(typeof loadRows === "function"){ try{ await loadRows(); }catch(_){} }
   } finally {
     if(btn){ btn.disabled = false; btn.textContent = btn.dataset._t || "Apply for GTIN exemption"; }

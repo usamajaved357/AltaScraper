@@ -124,7 +124,8 @@ def available(config_path, workspace_id, marketplace):
 
 
 def by_match_type(config_path, workspace_id, marketplace, start, end,
-                  fee_rate=None, cogs_rate=None, vat_share=0.0):
+                  fee_rate=None, cogs_rate=None, vat_share=0.0,
+                  ad_vat=0.0):
     """The match-type table and the donut: one row per match type in the window.
 
     Columns are the spec's: clicks, CTR, CPC, CPA, spend, % spend, sales, ACOS,
@@ -162,7 +163,7 @@ def by_match_type(config_path, workspace_id, marketplace, start, end,
         if can_profit and spend is not None and sales is not None:
             from domain import ppc_analytics as _pa
             profit = round(_pa.ad_profit(sales, spend, fee_rate, cogs_rate,
-                                         vat_share), 2)
+                                         vat_share, ad_vat), 2)
         out.append({
             "match_type": r["match_type"] or "",
             # `key` is the name by_group() uses and the Campaign Analytics donut

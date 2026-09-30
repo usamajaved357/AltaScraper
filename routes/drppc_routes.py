@@ -167,7 +167,10 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         from domain import ads_sync as _as
         camp_rows = _as.campaign_rows(CONFIG_PATH, wsid, mkt,
                                       start.isoformat(), end.isoformat())
-        term_rows = _as.term_rows(CONFIG_PATH, wsid, mkt)
+        # THE SAME LOOK-BACK as the campaigns: without the dates this read the
+        # whole newest report, so a 7-day view judged 30 days of terms.
+        term_rows = _as.term_rows(CONFIG_PATH, wsid, mkt,
+                                  start.isoformat(), end.isoformat())
         if not camp_rows:
             errors.append(
                 "No campaign figures are stored for this window yet. Press "
@@ -234,10 +237,11 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                 % _oos_failed)
         elif oos:
             res.setdefault("notes", []).append(
-                "%d product(s) were out of stock during this window. Any "
-                "keyword advertising one of them is reported but NOT "
-                "recommended for negating — the clicks had nowhere to go."
-                % len(oos))
+                "%d product(s) were out of stock during this window. Amazon's "
+                "search-term report does not say which product a term "
+                "advertised, so no keyword with clicks and no sales is "
+                "recommended for negating until you have checked its "
+                "campaign's stock." % len(oos))
         out.update(res)
         out["campaigns"] = camp_rows
         out["rows_read"] = {"campaigns": len(camp_rows), "terms": len(term_rows)}

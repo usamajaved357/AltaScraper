@@ -26,6 +26,27 @@ function _pEsc(s){
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/* REDRAW WITHOUT LOSING THE BOX BEING TYPED IN. Every PPC screen rebuilds its
+ * whole body on each keystroke of a filter box, so the element being typed
+ * into stopped existing and the next letter went to the page -- the bug
+ * ppccKeepFocus fixed for one box, and four others still had (review of the PPC
+ * pages, 30 Sep 2026). A box keeps focus and caret when it has an id and its
+ * value= is drawn back. Only a box that WAS focused gets it back. */
+function ppcRedrawKeepingFocus(render){
+  const el = document.activeElement;
+  const id = (el && el.id && el.tagName === "INPUT") ? el.id : "";
+  let caret = null;
+  if(id){ try{ caret = el.selectionStart; }catch(e){ caret = null; } }
+  render();
+  if(!id) return;
+  const n = document.getElementById(id);
+  if(!n || n === el) return;
+  try{
+    n.focus();
+    if(caret !== null && caret !== undefined && n.setSelectionRange) n.setSelectionRange(caret, caret);
+  }catch(e){}            // a range input has no caret; focus is enough
+}
+
 /* The account and marketplace every call is scoped to. `account` is the one
  * spelling the app settled on -- see domain/request_account.py. */
 function ppcQS(extra){
@@ -55,9 +76,16 @@ function ppcDash(why){
 }
 
 /* Money, in the mockup's shape: no decimals once past a thousand, two below. */
+/* THE APP'S ONE SYMBOL MAP (money.js curSymbol): this kept its own, so SEK,
+ * PLN, CAD... all read £ (Campaign Analytics review, 30 Sep 2026). */
+function _ppcSym(cur){
+  if(typeof curSymbol === "function") return curSymbol(cur || "GBP");
+  return (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+}
+
 function ppcMoney(v, cur, why){
   if(v === null || v === undefined) return ppcDash(why);
-  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+  const sym = _ppcSym(cur);
   const n = Number(v);
   const a = Math.abs(n);
   const s = a >= 1000
@@ -69,7 +97,7 @@ function ppcMoney(v, cur, why){
 /* $11,853 style -- whole pounds, for the big headline numbers. */
 function ppcMoney0(v, cur, why){
   if(v === null || v === undefined) return ppcDash(why);
-  const sym = (cur === "USD") ? "$" : (cur === "EUR") ? "€" : "£";
+  const sym = _ppcSym(cur);
   const n = Number(v);
   return (n < 0 ? "-" : "") + sym
     + Math.abs(Math.round(n)).toLocaleString();
@@ -321,6 +349,13 @@ function ppcRatesNote(r){
   if(r.cogs_rate !== null && r.cogs_rate !== undefined){
     bits.push("stock at " + (Number(r.cogs_rate) * 100).toFixed(1)
       + "% (" + _pEsc(r.cogs_basis || "") + ")");
+  }
+  // THE TWO VAT TERMS the profit takes off since 30 Sep 2026, named here too.
+  if(Number(r.vat_share || 0) > 0){
+    bits.push("VAT on sales " + (Number(r.vat_share) * 100).toFixed(1) + "% of each sale");
+  }
+  if(Number(r.ad_vat_ratio || 0) > 0){
+    bits.push("VAT on ad spend +" + (Number(r.ad_vat_ratio) * 100).toFixed(1) + "%");
   }
   if(!bits.length){
     return '<div class="ppc-note warn"><b>Profit cannot be worked out for this '
@@ -707,12 +742,13 @@ function ppcOpp(v){
   return '<span class="ppc-opp ' + (Number(v) >= 40 ? "hi" : "lo")
     + '" title="OUR score, 0-100, not Amazon\'s — how much there is to gain by '
     + 'looking at this one. Three parts, added:\n'
-    + '  up to 40  money at stake, on a square-root scale so one big campaign '
-    + 'cannot own the list\n'
-    + '  up to 35  how far past break-even the ACOS is (35 outright if it spent '
-    + 'and sold nothing)\n'
-    + '  up to 25  clicks that bought no order — 25 at ten or more clicks and '
-    + 'no sale, tapering to 0 at a 10% conversion rate\n'
+    // The formula as domain/ppc_analytics._opportunity computes it (section
+    // 20). The old wording described an earlier version (review, 30 Sep 2026).
+    + '  up to 40  money at stake: the square root of this spend over the '
+    + 'biggest spender in the same table, so one big campaign cannot own the list\n'
+    + '  up to 35  how far past break-even the ACOS is; with no sales, the spend '
+    + 'against what one order may cost, so a 50p test click is not a finding\n'
+    + '  up to 25  clicks that bought no order, by volume: 25 at thirty or more\n'
     + 'Inputs are Amazon\'s own spend, sales, clicks and orders for this window; '
     + 'the weighting is ours. Blank when nothing was spent — no spend is no '
     + 'opportunity and no problem. 40 and over is worth opening.">'

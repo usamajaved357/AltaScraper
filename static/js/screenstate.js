@@ -48,7 +48,7 @@ const SCREEN_BODIES = {
   // Image library / Image studio: drawn product lists and the chosen product.
   imagelib:     ["imgp_picker", "imgp_which", "imgp_lib"],
   imagestudio:  ["studiobody", "studio_picker_list"],
-  finance:      ["finbody"],
+  finance:      ["finbody", "fin_pnl"],   // fin_pnl: the account statement (30 Sep 2026)
   orders:       ["ordbody"],
   returns:      ["retbody", "returns_list", "returns_detail"],
   aiusage:      ["aiu_body"],
@@ -173,6 +173,22 @@ function _screenResetHeld(){
     o.detail = {}; o.openCamp = null; o.loading = false;
     const m = document.getElementById("drpc_main"); if(m && m.remove) m.remove(); });
   if(typeof DAILY !== "undefined") T(DAILY, o => { o.data = null; o.loading = false; o.note = ""; });
+  // The keyword screens (review of the advertising pages, 30 Sep 2026): after
+  // A -> B, ASIN Insights still showed A's queries and its Track button added
+  // A's ASIN to B's watch list; History sent A's weeks to B.
+  if(typeof KWASIN !== "undefined") T(KWASIN, o => { o.rows = []; o.note = "";
+    o.loading = false; o.asin = ""; o.meta = null; });
+  if(typeof KWSPY  !== "undefined") T(KWSPY,  o => { o.rows = []; o.note = "";
+    o.loading = false; o.seed = ""; o.meta = null; });
+  // Campaign controls' live structure (keyed by campaign id only) and the
+  // shared P&L statement (it remembers the screen and query that asked), so a
+  // switch can never show one account's ad groups or profit under another.
+  if(typeof PPCX  !== "undefined") T(PPCX,  o => { o.structure = {}; o.loading = {}; });
+  if(typeof PNL   !== "undefined") T(PNL,   o => { o.data = null; o.expenses = null;
+    o.loading = false; o.seq = (o.seq || 0) + 1; o.qs = null; o.host = "pnl_body"; });
+  if(typeof KWH    !== "undefined") T(KWH,    o => { o.weeks = []; o.rows = [];
+    o.movers = []; o.counts = null; o.note = ""; o.week = ""; o.prev = "";
+    o.loading = false; });
   if(typeof HOME !== "undefined")  T(HOME, o => { o.sales = null; o.salesErr = ""; o.dailyAsked = ""; o.gen = (o.gen || 0) + 1; });
   // The shared PRODUCT PICKER (Image library, Image studio) fetched once and
   // kept the list forever -- so B's Image library listed A's products. Found by

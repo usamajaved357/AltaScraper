@@ -31,15 +31,30 @@ def _tri(v):
 
 # ---- enrollment -------------------------------------------------------------
 
-def enrol(config_path, workspace_id, marketplace, sku, mode="dry_run"):
-    """Opt one SKU in. Re-enrolling just updates the mode."""
+def enrol(config_path, workspace_id, marketplace, sku, mode=None):
+    """Opt one SKU in. With no `mode`, a new enrolment starts in dry run and an
+    existing one KEEPS ITS MODE; a `mode` given is set either way.
+
+    It used to overwrite the mode every time, and three callers passed
+    "dry_run" for SKUs that were already tracked -- the supplier sheet upload,
+    bulk enrol and single enrol -- so uploading a sheet quietly DISARMED every
+    live SKU in it: its price and its out-of-stock stopped reaching Amazon,
+    with nothing on screen to say so (repricer review, 30 Sep 2026). Those now
+    pass no mode; arming and disarming pass one (set_mode)."""
     conn = _db.get_db(config_path)
     conn.execute(
         "INSERT INTO sourcing_enrolment (workspace_id, marketplace, sku, enrolled, mode, added_at) "
         "VALUES (?,?,?,1,?,?) "
-        "ON CONFLICT(workspace_id, marketplace, sku) DO UPDATE SET enrolled=1, mode=excluded.mode",
-        (workspace_id, marketplace, sku, mode, _now()))
+        "ON CONFLICT(workspace_id, marketplace, sku) DO UPDATE SET enrolled=1"
+        + (", mode=excluded.mode" if mode else ""),
+        (workspace_id, marketplace, sku, mode or "dry_run", _now()))
     conn.commit()
+
+
+def set_mode(config_path, workspace_id, marketplace, sku, mode):
+    """Arm ("live") or disarm ("dry_run") one SKU, enrolling it if needed --
+    the deliberate act /sourcing/arm and the rules sheet's arm column make."""
+    enrol(config_path, workspace_id, marketplace, sku, mode=mode)
 
 
 def unenrol(config_path, workspace_id, marketplace, sku):
@@ -394,6 +409,22 @@ def set_source_enabled(config_path, source_id, enabled):
     conn.execute("UPDATE sourcing_sources SET enabled=? WHERE id=?",
                  (1 if enabled else 0, source_id))
     conn.commit()
+
+
+def source_belongs(config_path, source_id, workspace_id, marketplace):
+    """Is this supplier row one of THIS account's, in this marketplace? The
+    edit and remove routes acted on the id alone, so another account's id was
+    accepted (Rule 14; repricer review, 30 Sep 2026)."""
+    try:
+        r = _db.get_db(config_path).execute(
+            # The ACCOUNT is the boundary. The marketplace is not tested: the
+            # Repricer's marketplace can be a fallback guess (_where), and a
+            # guess must not refuse the owner's own supplier.
+            "SELECT 1 FROM sourcing_sources WHERE id=? AND workspace_id=?",
+            (source_id, str(workspace_id or ""))).fetchone()
+    except Exception:
+        return False
+    return bool(r)
 
 
 def remove_source(config_path, source_id):
