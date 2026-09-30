@@ -97,7 +97,6 @@
   "domain/image_jobs.py: _run_img_jobs_bg_inner": "legacy (29 Sep 2026) lines=270",
   "domain/inventory_module.py: build_inventory_xlsx": "legacy (29 Sep 2026) lines=208",
   "domain/live_reconcile.py: from_lines": "legacy (29 Sep 2026) lines=213",
-  "domain/order_finance.py: complete_by_order_date": "legacy (29 Sep 2026) lines=275",
   "domain/pnl.py: build": "legacy (29 Sep 2026) lines=256",
   "domain/sales_data.py: series": "legacy (29 Sep 2026) lines=347",
   "domain/sourcing.py: decide": "legacy (29 Sep 2026) lines=451",

@@ -222,7 +222,9 @@ function _screenResetHeld(){
     try{ if(typeof inboxBadgePoll === "function") inboxBadgePoll(); }catch(e){}
   }, 800);
   if(typeof PNL   !== "undefined") T(PNL,   o => { o.data = null; o.expenses = null;
-    o.loading = false; o.seq = (o.seq || 0) + 1; o.qs = null; o.host = "pnl_body"; });
+    o.loading = false; o.seq = (o.seq || 0) + 1; o.qs = null; o.host = "pnl_body";
+    // The line breakdowns and the missing-cost list are one account's orders.
+    o.open = {}; o.ledgers = {}; o.missingOpen = false; o.scopeKey = ""; });
   if(typeof KWH    !== "undefined") T(KWH,    o => { o.weeks = []; o.rows = [];
     o.movers = []; o.counts = null; o.note = ""; o.week = ""; o.prev = "";
     o.loading = false; });

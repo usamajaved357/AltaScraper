@@ -23,7 +23,11 @@
  */
 
 const PNL = {data: null, loading: false, expenses: null, adding: false,
-             host: "pnl_body", qs: null};
+             host: "pnl_body", qs: null,
+             // The line breakdowns (pnlLedger*): which lines are open, what
+             // each one loaded, whether the missing-cost list is open, and the
+             // account/marketplace/dates they belong to.
+             open: {}, ledgers: {}, missingOpen: false, scopeKey: ""};
 
 /* ONE STATEMENT, TWO PLACES (owner, 30 Sep 2026: "where can i see the account
  * level profits by the date range i can select myself, lets add this into the
@@ -63,6 +67,13 @@ async function pnlLoad(hostId, qsIn){
       return;
     }
     PNL.data = j;
+    // THE BREAKDOWNS BELONG TO THIS STATEMENT. Loaded items are always
+    // re-read (a cost may just have been saved); which lines are open is kept
+    // only while the account, marketplace and dates are the same.
+    PNL.ledgers = {};
+    const _key = [j.workspace, j.marketplace, j.start, j.end].join("|");
+    if(_key !== PNL.scopeKey){ PNL.open = {}; PNL.missingOpen = false; }
+    PNL.scopeKey = _key;
     // The costs you enter are a separate table and a separate call.
     try{
       const q2 = [];
@@ -266,8 +277,12 @@ function pnlPlainHtml(j, cur){
   // that is not connected, or own costs nobody has entered, are not Amazon's.
   if(s.missing.length || s.rough || unc){
     h += '<div class="pnl-alert" role="note"><i class="ti ti-alert-triangle"></i> '
-      + (unc ? ('<b>' + unc + ' unit' + (unc === 1 ? ' has' : 's have') + ' no cost '
-                + 'recorded</b>, so this profit is higher than the truth. ') : '')
+      // THE COUNT OPENS THE LIST (owner, 30 Sep 2026: "which sku's dont have
+      // the cogs i want the orders numbers of them") -- pnlMissingOpen.
+      + (unc ? ('<a href="#" class="pnl-mlink" role="button" aria-controls="pnl_missing" '
+                + 'aria-expanded="' + (!!PNL.missingOpen) + '" onclick="pnlMissingOpen();return false">'
+                + '<b>' + unc + ' unit' + (unc === 1 ? ' has' : 's have') + ' no cost '
+                + 'recorded</b></a>, so this profit is higher than the truth. ') : '')
       + (s.rough ? 'Amazon\'s fees are partly estimated until it settles. ' : '')
       + (s.missing.length ? ('Not known yet: ' + esc(s.missing.join(", ")) + '. ') : '')
       + 'The statement and notes below say more.</div>';
@@ -282,6 +297,9 @@ function pnlRender(){
   const cur = j.currency || "";
 
   let h = pnlPlainHtml(j, cur);
+
+  // ---- the products with no cost, when asked for ----------------------
+  h += '<div id="pnl_missing">' + (PNL.missingOpen ? pnlMissingHtml() : '') + '</div>';
 
   // ---- how much of this is measured -----------------------------------
   const cov = j.fee_coverage || {};
@@ -304,10 +322,20 @@ function pnlRender(){
     // The three subtotal rows carry sign 0 and are the ones worth weight.
     const isTotal = (l.sign === 0);
     const b = _PNL_BASIS[l.basis];
+    // EVERY LINE OPENS ITS ITEMS (pnlLedgerToggle): the orders, postings,
+    // days or costs it is made of, with a check that they add up to it.
+    const canOpen = pnlLedgerCan(l.key);
+    const isOpen = !!PNL.open[l.key];
     h += '<tr' + (isTotal ? ' style="font-weight:600"' : '') + '>'
       + '<td style="padding:8px 14px' + (isTotal
           ? ';border-top:1px solid var(--line2)' : '') + '">'
-      +   esc(l.label)
+      +   (canOpen
+            ? '<button type="button" class="pnl-lx" aria-expanded="' + isOpen + '" '
+              + 'aria-controls="pnl_led_' + esc(l.key) + '" '
+              + 'onclick="pnlLedgerToggle(' + jsArg(l.key) + ')">'
+              + '<i class="ti ti-chevron-' + (isOpen ? 'down' : 'right') + '"></i>'
+              + esc(l.label) + '</button>'
+            : esc(l.label))
       +   (b ? '<div class="cc" style="font-size:10.5px;font-weight:400;'
               + 'color:' + b[1] + '">' + esc(b[0]) + '</div>' : '')
       // WHERE THE AD FIGURE CAME FROM, and the VAT inside it -- so the line can
@@ -327,6 +355,11 @@ function pnlRender(){
       +   _pnlMoney(l.value === null || l.value === undefined
                     ? null : Math.abs(l.value), cur)
       + '</td></tr>';
+    if(canOpen){
+      h += '<tr class="pnl-led-tr" id="pnl_led_' + esc(l.key) + '"'
+        + (isOpen ? '' : ' hidden') + '><td colspan="2">'
+        + (isOpen ? pnlLedgerHtml(l.key) : '') + '</td></tr>';
+    }
   });
   h += '</tbody></table></div>';
 
@@ -349,6 +382,12 @@ function pnlRender(){
   }
 
   host.innerHTML = h;
+  // Open lines (and the missing-cost list) whose items are not loaded yet --
+  // after a reload, or a cost just saved -- ask for them again.
+  Object.keys(PNL.open).forEach(function(k){
+    if(PNL.open[k] && !_PNL_SUBTOTALS[k] && !PNL.ledgers[k]) pnlLedgerFetch(k);
+  });
+  if(PNL.missingOpen && !PNL.ledgers.cogs) pnlLedgerFetch("cogs");
 }
 
 /* VAT: gross, the tax, and the net -- with the basis that produced them.
@@ -558,3 +597,397 @@ async function pnlAcceptSuggestion(){
     if(typeof toast === "function") toast("Could not add it.");
   }
 }
+
+/* ==== THE ITEMS BEHIND EACH LINE (owner, 30 Sep 2026) =====================
+ *
+ *   "i want every detailed breakdown of how these profit numbers are
+ *    calculated and also references so i can verify them"
+ *
+ * Opening a line loads its items from /sales/pnl/ledger (domain/pnl_ledger:
+ * the same reads and per-order arithmetic the statement is built from) for
+ * the SAME account, marketplace and dates as the statement on screen. The
+ * items' total is checked against the line itself, and a difference is said
+ * in red -- never smoothed over. The three subtotals are explained from the
+ * statement's own lines, here, because they are nothing more than those.
+ */
+
+// Lines the server can itemise (domain/pnl_ledger.LEDGER_LINES).
+const _PNL_LEDGER_KEYS = {ordered_sales: 1, vat_line: 1, refunds: 1, cogs: 1,
+  referral_fees: 1, fba_fees: 1, promo_fees: 1, other_fees: 1, fees_estimated: 1,
+  promos: 1, refund_fees_returned: 1, reimbursements: 1, charges: 1, ad_spend: 1,
+  account_charges: 1, other_amazon: 1, manual_expenses: 1};
+// The subtotals, and the statement lines each is made of (domain/pnl.build).
+const _PNL_SUBTOTALS = {
+  net_sales: ["ordered_sales", "vat_line", "refunds"],
+  profit_before_own_costs: "above",       // every +/- line above it
+  profit: ["profit_before_own_costs", "account_charges", "other_amazon",
+           "manual_expenses"],
+};
+
+function pnlLedgerCan(key){ return !!(_PNL_LEDGER_KEYS[key] || _PNL_SUBTOTALS[key]); }
+
+function _pnlLine(key){
+  return ((PNL.data && PNL.data.lines) || []).filter(function(l){ return l.key === key; })[0] || null;
+}
+
+function _pnlR2(v){ return Math.round(Number(v || 0) * 100) / 100; }
+
+/* A subtotal, explained: its lines, signed, from the statement itself. */
+function pnlSubtotalItems(key, lines){
+  const want = _PNL_SUBTOTALS[key];
+  const all = lines || [];
+  let parts = [];
+  if(want === "above"){
+    for(let i = 0; i < all.length && all[i].key !== key; i++){
+      if(all[i].sign === 1 || all[i].sign === -1) parts.push(all[i]);
+    }
+  }else{
+    parts = all.filter(function(l){ return want.indexOf(l.key) >= 0; });
+  }
+  const items = parts.map(function(l){
+    const known = !(l.value === null || l.value === undefined);
+    // A subtotal line (sign 0) adds in as it stands; "other" lines are signed.
+    const sign = (l.sign === 0 || l.key === "other_amazon") ? 1 : l.sign;
+    return {label: l.label, amount: known ? sign * Number(l.value) : 0,
+            known: known};
+  });
+  let t = 0;
+  items.forEach(function(i){ t += i.amount; });
+  return {items: items, total: _pnlR2(t)};
+}
+
+/* The check: items total against the line on screen. -> {state, text}. */
+function pnlLedgerRecon(total, lineValue, count, cur){
+  const m = function(v){ return _pnlMoney(v, cur).replace(/<[^>]*>/g, ""); };
+  if(lineValue === null || lineValue === undefined){
+    return {state: "unknown", text: count + " item" + (count === 1 ? "" : "s")
+            + " · items total " + m(total) + " · the line itself is not known"};
+  }
+  const diff = _pnlR2(Number(total) - Number(lineValue));
+  if(Math.abs(diff) < 0.005){
+    return {state: "ok", text: count + " item" + (count === 1 ? "" : "s")
+            + " · items total " + m(total) + " = line " + m(lineValue)};
+  }
+  return {state: "bad", text: "Items total " + m(total) + " does not match the line "
+          + m(lineValue) + " (difference " + m(diff) + "). Please report this."};
+}
+
+function pnlLedgerToggle(key){
+  PNL.open[key] = !PNL.open[key];
+  if(PNL.open[key] && !_PNL_SUBTOTALS[key] && !PNL.ledgers[key]) pnlLedgerFetch(key);
+  pnlLedgerDraw(key);
+}
+
+/* Redraw ONE line's items in place (the rest of the statement keeps its state). */
+function pnlLedgerDraw(key){
+  const tr = document.getElementById("pnl_led_" + key);
+  if(!tr) return;
+  const open = !!PNL.open[key];
+  if(open) tr.removeAttribute("hidden"); else tr.setAttribute("hidden", "");
+  const td = tr.querySelector("td");
+  if(td) td.innerHTML = open ? pnlLedgerHtml(key) : "";
+  const btn = tr.previousElementSibling && tr.previousElementSibling.querySelector(".pnl-lx");
+  if(btn){
+    btn.setAttribute("aria-expanded", String(open));
+    const ic = btn.querySelector(".ti");
+    if(ic) ic.className = "ti ti-chevron-" + (open ? "down" : "right");
+  }
+}
+
+async function pnlLedgerFetch(key){
+  const j = PNL.data;
+  if(!j) return;
+  const seq = PNL.seq;
+  const _sc = (typeof screenScope === "function") ? screenScope() : null;
+  PNL.ledgers[key] = {loading: true};
+  pnlLedgerDraw(key);
+  if(key === "cogs") _pnlMissingDraw();
+  // THE STATEMENT'S OWN SCOPE, as the server resolved it -- not the picker's.
+  const q = ["line=" + encodeURIComponent(key)];
+  if(j.workspace) q.push("account=" + encodeURIComponent(j.workspace));
+  if(j.marketplace) q.push("marketplace=" + encodeURIComponent(j.marketplace));
+  if(j.start) q.push("start=" + encodeURIComponent(j.start));
+  if(j.end) q.push("end=" + encodeURIComponent(j.end));
+  let r;
+  try{
+    r = await (await fetch("/sales/pnl/ledger?" + q.join("&"))).json();
+  }catch(e){
+    r = {ok: false, error: "Could not reach the server."};
+  }
+  if((_sc && typeof screenStillIn === "function" && !screenStillIn(_sc))
+     || seq !== PNL.seq || PNL.data !== j){
+    // A newer statement (or another account) is on screen: this reply lands
+    // nowhere -- and a placeholder it left is cleared so a later draw asks again.
+    const cur = PNL.ledgers[key];
+    if(cur && cur.loading && PNL.data !== j) delete PNL.ledgers[key];
+    return;
+  }
+  PNL.ledgers[key] = (r && r.ok) ? r : {error: (r && r.error) || "Could not load the items."};
+  pnlLedgerDraw(key);
+  if(key === "cogs") _pnlMissingDraw();
+}
+
+function _pnlScUrl(oid, mkt){
+  if(typeof _opSellerCentral === "function") return _opSellerCentral(oid, mkt);
+  return "https://sellercentral.amazon.co.uk/orders-v3/order/" + encodeURIComponent(oid);
+}
+
+/* An order id: opens it on Orders, and on Seller Central to check Amazon's own. */
+function _pnlOrderCell(oid, mkt){
+  if(!oid) return '<span class="cc">—</span>';
+  return '<a href="#" onclick="return pnlOpenOrder(' + jsArg(oid) + ')" '
+    + 'title="Open on Orders">' + esc(oid) + '</a> '
+    + '<a href="' + esc(_pnlScUrl(oid, mkt)) + '" target="_blank" rel="noopener" '
+    + 'title="Open on Seller Central" aria-label="Open ' + esc(oid) + ' on Seller Central">'
+    + '<i class="ti ti-external-link"></i></a>';
+}
+
+/* The same jump the buyer-messages screen makes (inbox.js), not a second one. */
+function pnlOpenOrder(oid){
+  if(typeof inboxOpenOrder === "function") return inboxOpenOrder(oid);
+  if(typeof navTo === "function") navTo("orders");
+  return false;
+}
+
+const _PNL_LED_MAX = 400;    // drawn on screen; the CSV always carries all
+
+function pnlLedgerHtml(key){
+  const j = PNL.data || {};
+  const cur = j.currency || "";
+  const line = _pnlLine(key) || {};
+  if(_PNL_SUBTOTALS[key]){
+    const st = pnlSubtotalItems(key, j.lines);
+    const rc = pnlLedgerRecon(st.total, line.value, st.items.length, cur);
+    let h = '<div class="pnl-led">' + _pnlRecHtml(rc) + '<table class="pnl-led-t pnl-led-sub"><tbody>';
+    st.items.forEach(function(i){
+      h += '<tr><td>' + esc(i.label) + (i.known ? '' : ' <span class="cc">(not known, counted as 0)</span>')
+        + '</td><td class="pnl-led-a">' + _pnlMoney(i.amount, cur) + '</td></tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+  const d = PNL.ledgers[key];
+  if(!d || d.loading){
+    return '<div class="pnl-led cc"><span class="genspin"></span> Loading the items…</div>';
+  }
+  if(d.error){
+    return '<div class="pnl-led">' + (typeof uiNote === "function"
+        ? uiNote("bad", "Could not load the items.", d.error)
+        : '<div style="color:var(--as-danger)">' + esc(d.error) + '</div>')
+      + '<button type="button" class="db-chip" onclick="pnlLedgerRetry(' + jsArg(key)
+      + ')"><i class="ti ti-refresh"></i> Try again</button></div>';
+  }
+  const items = d.items || [];
+  const rc = pnlLedgerRecon(d.total, line.value, items.length, cur);
+  let h = '<div class="pnl-led">'
+    + '<div class="pnl-led-bar">' + _pnlRecHtml(rc)
+    + (items.length ? '<button type="button" class="db-chip" onclick="pnlLedgerCsvDownload('
+       + jsArg(key) + ')"><i class="ti ti-download"></i> Download CSV</button>' : '')
+    + '</div>';
+  if(!items.length){
+    return h + (typeof uiEmpty === "function"
+      ? uiEmpty("Nothing in this window", "No orders, postings or costs make up this line.")
+      : '<div class="cc">Nothing in this window.</div>') + '</div>';
+  }
+  const mkt = j.marketplace || d.marketplace || "";
+  h += '<table class="pnl-led-t"><thead><tr><th>Date</th><th>Order</th><th>SKU</th>'
+    + '<th class="pnl-led-n">Qty</th><th class="pnl-led-n">Amount</th><th>Source</th>'
+    + '</tr></thead><tbody>';
+  items.slice(0, _PNL_LED_MAX).forEach(function(i){
+    h += '<tr' + (i.amount === null ? ' class="pnl-led-miss"' : '') + '>'
+      // Each value in ONE span, so on a phone (label beside value) it stays together.
+      + '<td data-l="Date"><span>' + esc(i.date || "—") + '</span></td>'
+      + '<td data-l="Order"><span>' + _pnlOrderCell(i.order_id, mkt) + '</span></td>'
+      + '<td data-l="SKU"><span>' + esc(i.sku || "—") + '</span></td>'
+      + '<td data-l="Qty" class="pnl-led-n"><span>' + (i.qty === null || i.qty === undefined ? "—" : esc(i.qty)) + '</span></td>'
+      + '<td data-l="Amount" class="pnl-led-n pnl-led-a"><span>'
+      +   (i.amount === null ? '<span class="pnl-led-no">no cost</span>' : _pnlMoney(i.amount, cur)) + '</span></td>'
+      + '<td data-l="Source"><span>' + esc(i.source || "")
+      +   (i.ref ? '<div class="cc pnl-led-ref">' + esc(i.ref) + '</div>' : '') + '</span></td></tr>';
+  });
+  h += '</tbody></table>';
+  if(items.length > _PNL_LED_MAX){
+    h += '<div class="cc pnl-led-ref">Showing ' + _PNL_LED_MAX + ' of ' + items.length
+      + ' — the CSV has every item.</div>';
+  }
+  return h + '</div>';
+}
+
+function _pnlRecHtml(rc){
+  if(rc.state === "bad"){
+    return '<div class="pnl-rec bad" role="alert"><i class="ti ti-alert-octagon"></i> '
+      + esc(rc.text) + '</div>';
+  }
+  return '<div class="pnl-rec' + (rc.state === "ok" ? " ok" : "") + '">'
+    + (rc.state === "ok" ? '<i class="ti ti-circle-check"></i> ' : '') + esc(rc.text) + '</div>';
+}
+
+function pnlLedgerRetry(key){ delete PNL.ledgers[key]; pnlLedgerFetch(key); }
+
+/* The loaded items as CSV text -- every item, amounts unrounded, so a
+ * spreadsheet's SUM gives the line. */
+function pnlLedgerCsv(items){
+  const q = function(v){
+    let s = (v === null || v === undefined) ? "" : String(v);
+    // Text that a spreadsheet would run as a formula is kept as text; numbers
+    // (a negative amount included) stay numbers so SUM still works.
+    if(typeof v === "string" && /^[=+\-@]/.test(s) && !isFinite(Number(s))) s = "'" + s;
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const rows = [["date", "order_id", "sku", "qty", "amount", "source", "reference"].join(",")];
+  (items || []).forEach(function(i){
+    rows.push([i.date, i.order_id, i.sku, i.qty, i.amount, i.source, i.ref].map(q).join(","));
+  });
+  return rows.join("\n");
+}
+
+function pnlLedgerCsvDownload(key){
+  const d = PNL.ledgers[key], j = PNL.data || {};
+  if(!d || !d.items) return;
+  // A BOM, so a pound sign survives a double-click into Excel.
+  const blob = new Blob(["\ufeff" + pnlLedgerCsv(d.items)], {type: "text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = ["pnl", key, j.workspace || "account", j.start || "", j.end || ""]
+    .join("-").replace(/[^A-Za-z0-9_.-]+/g, "_") + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+}
+
+/* ==== THE PRODUCTS WITH NO COST ===========================================
+ * Per SKU: its orders (each linked), units and sale value, and a box to set
+ * the product's cost (cogs.js cogsSet, the one caller of /cogs/set) -- or one
+ * order's own cost (orders.js ordPostOrderCost, /cogs/order). The owner's
+ * rule holds: an order's own cost wins for that order; the product cost fills
+ * only the lines that have none (/cogs/refreeze without force). */
+
+function pnlMissingOpen(){
+  PNL.missingOpen = true;
+  if(!PNL.ledgers.cogs) pnlLedgerFetch("cogs");
+  _pnlMissingDraw();
+  const el = document.getElementById("pnl_missing");
+  if(el && el.scrollIntoView) try{ el.scrollIntoView({block: "nearest"}); }catch(e){}
+}
+function pnlMissingClose(){ PNL.missingOpen = false; _pnlMissingDraw(); }
+
+function _pnlMissingDraw(){
+  const el = document.getElementById("pnl_missing");
+  if(el) el.innerHTML = PNL.missingOpen ? pnlMissingHtml() : "";
+}
+
+function pnlMissingHtml(){
+  const j = PNL.data || {};
+  const cur = j.currency || "";
+  const d = PNL.ledgers.cogs;
+  const close = '<button type="button" class="db-chip" onclick="pnlMissingClose()">Close</button>';
+  const wrap = function(body){
+    return (typeof uiPanel === "function")
+      ? uiPanel("Products with no cost", "Profit is too high until these have one.", body, {right: close})
+      : '<div class="panelcard">' + body + '</div>';
+  };
+  if(!d || d.loading) return wrap('<div class="cc"><span class="genspin"></span> Loading…</div>');
+  if(d.error){
+    return wrap((typeof uiNote === "function" ? uiNote("bad", "Could not load the list.", d.error)
+                 : esc(d.error))
+      + '<button type="button" class="db-chip" onclick="pnlLedgerRetry(' + jsArg("cogs") + ')">Try again</button>');
+  }
+  const miss = d.missing || [];
+  if(!miss.length){
+    return wrap(typeof uiEmpty === "function"
+      ? uiEmpty("Every unit has a cost", "Nothing in this window is missing one.")
+      : "Every unit has a cost.");
+  }
+  const mkt = j.marketplace || "";
+  let b = '<div class="pnl-miss">';
+  miss.forEach(function(m, i){
+    b += '<div class="pnl-miss-sku">'
+      + '<div class="pnl-miss-h"><div class="pnl-miss-t">' + esc(m.title || m.sku) + '</div>'
+      +   '<div class="cc">' + esc(m.sku) + ' · ' + esc(m.units) + ' unit' + (m.units === 1 ? '' : 's')
+      +   ' · sold for ' + _pnlMoney(m.value, cur) + '</div></div>'
+      + (m.has_sku === false
+          ? '<div class="cc pnl-miss-set">No SKU on these orders, so set the cost per order below.</div>'
+          : '<div class="pnl-miss-set"><label class="cc" for="pnl_mc_' + i + '">Product cost</label>'
+            + '<input id="pnl_mc_' + i + '" class="ed" inputmode="decimal" placeholder="per unit">'
+            + '<button type="button" class="db-chip" onclick="pnlMissingSave(' + i + ')">Save</button></div>')
+      + '<div class="pnl-miss-orders">';
+    (m.orders || []).forEach(function(o, k){
+      b += '<div class="pnl-miss-o">' + _pnlOrderCell(o.order_id, mkt)
+        + ' <span class="cc">' + esc(o.date) + ' · ' + esc(o.qty) + ' unit' + (o.qty === 1 ? '' : 's')
+        +   ' · ' + _pnlMoney(o.value, cur) + '</span>'
+        + ' <input id="pnl_moc_' + i + '_' + k + '" class="ed pnl-miss-oc" inputmode="decimal" '
+        +   'placeholder="this order" aria-label="Cost per unit for order ' + esc(o.order_id) + ' only">'
+        + '<button type="button" class="db-chip" onclick="pnlMissingOrderSave(' + i + ',' + k
+        +   ')">Save</button></div>';
+    });
+    b += '</div></div>';
+  });
+  return wrap(b + '</div>');
+}
+
+function _pnlCostInput(id){
+  const el = document.getElementById(id);
+  const raw = ((el && el.value) || "").trim();
+  const n = Number(raw);
+  if(raw === "" || !isFinite(n) || n < 0){
+    if(typeof toast === "function") toast("Type a cost per unit, 0 or more.");
+    return null;
+  }
+  return n;
+}
+
+/* The statement's account must still be the open one: a cost is saved against
+ * one account, and SKUs repeat across accounts. */
+function _pnlSameAccount(){
+  const j = PNL.data || {};
+  const open = (typeof acctId === "function") ? acctId() : "";
+  if(!j.workspace || (open && open !== j.workspace)){
+    if(typeof toast === "function") toast("The account changed — reopen the statement first.");
+    return false;
+  }
+  return true;
+}
+
+async function pnlMissingSave(i){
+  const m = ((PNL.ledgers.cogs || {}).missing || [])[i];
+  const j = PNL.data || {};
+  if(!m || m.has_sku === false || !_pnlSameAccount()) return;
+  const cost = _pnlCostInput("pnl_mc_" + i);
+  if(cost === null) return;
+  const r = await cogsSet(m.sku, cost);
+  if(!r.ok){ if(typeof toast === "function") toast("Could not save that cost: " + r.error); return; }
+  // Put it on this window's orders that have NO cost yet -- never over an
+  // order's own cost (order_cogs.freeze_range without force).
+  let rf = null;
+  try{
+    rf = await (await fetch("/cogs/refreeze", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({account: j.workspace, marketplace: j.marketplace,
+                            start: j.start, end: j.end})})).json();
+  }catch(e){ rf = {ok: false, error: "could not reach the server"}; }
+  if(typeof toast === "function"){
+    // SAID, NOT HIDDEN: the product cost is saved either way, but only the
+    // re-cost puts it on these orders.
+    toast((rf && rf.ok)
+      ? "Saved " + m.sku + " at " + cost + " a unit."
+      : "Saved " + m.sku + "'s cost, but it could not be put on these orders ("
+        + ((rf && rf.error) || "unknown") + "). Try again.");
+  }
+  pnlReload();
+}
+
+async function pnlMissingOrderSave(i, k){
+  const m = ((PNL.ledgers.cogs || {}).missing || [])[i];
+  const o = m && (m.orders || [])[k];
+  const j = PNL.data || {};
+  if(!o || !_pnlSameAccount()) return;
+  const cost = _pnlCostInput("pnl_moc_" + i + "_" + k);
+  if(cost === null) return;
+  let r;
+  try{ r = await ordPostOrderCost(o.order_id, m.sku, cost, j.workspace, j.marketplace); }
+  catch(e){ r = {ok: false, error: String(e)}; }
+  if(!r || !r.ok){
+    if(typeof toast === "function") toast("Could not save that cost: " + ((r && r.error) || "unknown"));
+    return;
+  }
+  if(typeof toast === "function") toast("Saved for order " + o.order_id + " only.");
+  pnlReload();
+}
+

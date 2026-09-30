@@ -64,3 +64,61 @@
   .pnl-sw{ grid-area: sw; } .pnl-rl{ grid-area: rl; } .pnl-ra{ grid-area: ra; }
   .pnl-bar{ grid-area: bar; } .pnl-rp{ grid-area: rp; }
 }
+
+/* ---- the items behind each statement line (pnl.js pnlLedger*) ---------- */
+/* The line's label is the button that opens them: no box, the row's own text. */
+.pnl-lx{ background: none; border: 0; padding: 0; margin: 0; font: inherit;
+  color: inherit; cursor: pointer; text-align: left; display: inline-flex;
+  align-items: center; gap: var(--as-space-1); }
+.pnl-lx .ti{ color: var(--as-text-muted); font-size: 13px; }
+.pnl-lx:focus-visible{ outline: 2px solid var(--as-border-strong); outline-offset: 2px; }
+.pnl-led-tr > td{ padding: 0 var(--as-space-3) var(--as-space-3); }
+.pnl-led{ background: var(--as-surface-2); border: 1px solid var(--as-border-subtle);
+  border-radius: var(--as-radius-md); padding: var(--as-space-2) var(--as-space-3);
+  font: var(--as-text-small); font-weight: 400; }
+.pnl-led-bar{ display: flex; align-items: center; justify-content: space-between;
+  gap: var(--as-space-2); flex-wrap: wrap; margin: 0 0 var(--as-space-2); }
+.pnl-rec{ font: var(--as-text-small); color: var(--as-text-muted); }
+.pnl-rec.ok .ti{ color: var(--as-success); }
+.pnl-rec.bad{ color: var(--as-danger); background: var(--as-danger-bg);
+  border: 1px solid var(--as-danger-border); border-radius: var(--as-radius-md);
+  padding: var(--as-space-1) var(--as-space-2); font-weight: 600; }
+.pnl-led-t{ width: 100%; border-collapse: collapse; }
+.pnl-led-t th{ text-align: left; font: var(--as-text-caption); color: var(--as-text-muted);
+  padding: var(--as-space-1) var(--as-space-2); border-bottom: 1px solid var(--as-border-subtle); }
+.pnl-led-t td{ padding: var(--as-space-1) var(--as-space-2); vertical-align: top;
+  border-top: 1px solid var(--as-border-subtle); overflow-wrap: anywhere; }
+.pnl-led-t tbody tr:first-child td{ border-top: 0; }
+.pnl-led-n, .pnl-led-t th.pnl-led-n{ text-align: right; white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.pnl-led-sub td.pnl-led-a{ text-align: right; white-space: nowrap; }
+.pnl-led-ref{ font: var(--as-text-caption); }
+.pnl-led-no{ color: var(--as-warning); font-weight: 600; }
+.pnl-mlink{ color: inherit; text-decoration: underline; }
+
+/* ---- the products with no cost (pnlMissingHtml) ------------------------ */
+.pnl-miss-sku{ padding: var(--as-space-2) 0; border-top: 1px solid var(--as-border-subtle); }
+.pnl-miss-sku:first-child{ border-top: 0; }
+.pnl-miss-t{ font: var(--as-text-body-strong); color: var(--as-text-primary); }
+.pnl-miss-set{ display: flex; align-items: center; gap: var(--as-space-2);
+  flex-wrap: wrap; margin: var(--as-space-2) 0; }
+/* input.ed is full width and tall by default (01-shell.css): compact here. */
+.pnl-miss input.ed{ width: 110px; flex: none; padding: var(--as-space-1) var(--as-space-2); }
+.pnl-miss-o{ display: flex; align-items: center; gap: var(--as-space-2);
+  flex-wrap: wrap; padding: 2px 0; font: var(--as-text-small); }
+
+@media (max-width: 720px){
+  /* On a phone each item is a small card: label beside value, no columns. */
+  .pnl-led-t thead{ display: none; }
+  .pnl-led-t:not(.pnl-led-sub) tr{ display: block; padding: var(--as-space-1) 0;
+    border-top: 1px solid var(--as-border-subtle); }
+  .pnl-led-t:not(.pnl-led-sub) tbody tr:first-child{ border-top: 0; }
+  .pnl-led-t:not(.pnl-led-sub) td{ display: flex; justify-content: space-between;
+    gap: var(--as-space-2); border: 0; padding: 1px 0; text-align: right; }
+  .pnl-led-t:not(.pnl-led-sub) td::before{ content: attr(data-l);
+    color: var(--as-text-muted); text-align: left; flex: none; }
+  .pnl-led-t:not(.pnl-led-sub) td > span{ min-width: 0; }
+  .pnl-led-tr > td{ padding: 0 0 var(--as-space-2); }
+  /* Touch targets, as mobile.css sizes every other control. */
+  .pnl-lx, .pnl-miss input.ed, .pnl-miss .db-chip{ min-height: 34px; }
+}

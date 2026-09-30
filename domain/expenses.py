@@ -303,6 +303,19 @@ def account_level_charge(config_path, workspace_id, marketplace, start, end,
     is no account-level charge to find, and a negative here would be subtracted
     from profit as though it were income.
     """
+    d = account_charge_parts(config_path, workspace_id, marketplace, start, end,
+                             attributed_by)
+    return d["total"]
+
+
+def account_charge_parts(config_path, workspace_id, marketplace, start, end,
+                         attributed_by="orders"):
+    """account_level_charge's working -> {total, rule, charged, attributed,
+    days: [{date, charged, other, fba, promo, attributed}]}.
+
+    `rule` is "gap" (Amazon's account-level fees less the fees on orders,
+    both by posting day) or "other-only" (the pre-order_fees fallback below).
+    The P&L ledger itemises the line from `days` (Rule 12: the same reads)."""
     conn = _db.get_db(config_path)
     # ALL THREE FEE KINDS, not only "other" (owner, 30 Sep 2026: every
     # transaction in the account). Storage and inbound fees are FBA fees posted
@@ -314,6 +327,42 @@ def account_level_charge(config_path, workspace_id, marketplace, start, end,
         "WHERE workspace_id=? AND marketplace=? AND asin='*' "
         "AND date>=? AND date<=?" % _FEES_SQL,
         (workspace_id, marketplace, start, end)).fetchone()
+    days = {}
+    for r in conn.execute(
+            "SELECT date, SUM(COALESCE(other_fees,0)) oth, "
+            "SUM(COALESCE(fba_fees,0)) fba, SUM(COALESCE(promo_fees,0)) pro "
+            "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
+            "AND asin='*' AND date>=? AND date<=? GROUP BY date",
+            (workspace_id, marketplace, start, end)):
+        days[r["date"]] = {"date": r["date"], "other": float(r["oth"] or 0),
+                           "fba": float(r["fba"] or 0),
+                           "promo": float(r["pro"] or 0), "attributed": 0.0}
+    if attributed_by == "products":
+        q = ("SELECT date d, %s o FROM finance_daily WHERE workspace_id=? AND "
+             "marketplace=? AND asin<>'*' AND date>=? AND date<=? GROUP BY date"
+             % _FEES_SQL)
+    else:
+        q = ("SELECT substr(posted_date,1,10) d, %s o FROM order_fees WHERE "
+             "workspace_id=? AND marketplace=? AND substr(posted_date,1,10)>=? "
+             "AND substr(posted_date,1,10)<=? GROUP BY d" % _FEES_SQL)
+    for r in conn.execute(q, (workspace_id, marketplace, start, end)):
+        days.setdefault(r["d"], {"date": r["d"], "other": 0.0, "fba": 0.0,
+                                 "promo": 0.0, "attributed": 0.0})
+        days[r["d"]]["attributed"] = float(r["o"] or 0)
+    for v in days.values():
+        v["charged"] = round(v["other"] + v["fba"] + v["promo"], 4)
+    out = {"days": [days[k] for k in sorted(days)],
+           "charged": float((charged["o"] if charged else 0) or 0),
+           "attributed": None, "rule": "gap", "total": 0.0}
+    out["total"] = _account_charge_total(conn, charged, workspace_id,
+                                         marketplace, start, end,
+                                         attributed_by, out)
+    return out
+
+
+def _account_charge_total(conn, charged, workspace_id, marketplace, start, end,
+                          attributed_by, out):
+    """The figure itself (moved unchanged out of account_level_charge)."""
     # BOTH SIDES ON THE SAME CALENDAR: the day Amazon POSTED the money.
     #
     # This compared what Amazon posted in the window (finance_daily) with the
@@ -331,6 +380,7 @@ def account_level_charge(config_path, workspace_id, marketplace, start, end,
     # times.
     attributed = _attributed_fees(conn, workspace_id, marketplace, start, end,
                                   attributed_by)
+    out["attributed"] = attributed
     if not charged:
         return 0.0
     if attributed is None and float(charged["p"] or 0) > 0:
@@ -339,6 +389,7 @@ def account_level_charge(config_path, workspace_id, marketplace, start, end,
         # then inside the '*' total with nothing to set them against, so only
         # the "other" fees -- which no shipment carries -- are sure to belong to
         # no order. The rule before 30 Sep 2026, kept for that case.
+        out["rule"] = "other-only"
         return max(0.0, round(float(charged["oth"] or 0), 2))
     gap = round(float(charged["o"] or 0) - float(attributed or 0), 2)
     return max(0.0, gap)
@@ -349,11 +400,20 @@ def account_adjustments(config_path, workspace_id, marketplace, start, end):
     cost. -> float. Postage labels bought through Amazon, Vine enrolment, tax
     retrocharges, removal revenue, anything Amazon adds tomorrow (finance_data
     reads them into `adjustments`; owner, 30 Sep 2026)."""
-    r = _db.get_db(config_path).execute(
-        "SELECT ROUND(SUM(COALESCE(adjustments,0)),2) a FROM finance_daily "
-        "WHERE workspace_id=? AND marketplace=? AND asin='*' AND date>=? AND date<=?",
-        (workspace_id, marketplace, start, end)).fetchone()
-    return round(float((r["a"] if r else 0) or 0), 2)
+    return round(sum(v for _d, v in
+                     adjustment_days(config_path, workspace_id, marketplace,
+                                     start, end)), 2)
+
+
+def adjustment_days(config_path, workspace_id, marketplace, start, end):
+    """[(date, signed amount)] -- account_adjustments by posting day, days with
+    none left out. What the P&L ledger lists for "Other Amazon transactions"."""
+    rows = _db.get_db(config_path).execute(
+        "SELECT date, SUM(COALESCE(adjustments,0)) a FROM finance_daily "
+        "WHERE workspace_id=? AND marketplace=? AND asin='*' AND date>=? "
+        "AND date<=? GROUP BY date ORDER BY date",
+        (workspace_id, marketplace, start, end)).fetchall()
+    return [(r["date"], float(r["a"] or 0)) for r in rows if r["a"]]
 
 
 def apply_account_money(est, totals):

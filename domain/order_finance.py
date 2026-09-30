@@ -339,48 +339,14 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
     guesswork can say so rather than looking as settled as the rest.
     """
     conn = _db.get_db(config_path)
-    dead = ("canceled", "cancelled")
     by_asin = (group == "asin")
 
-    # Every LINE of every order placed in the window: what it sold for, what it
-    # cost, which product. Gathered per order below, because the order is what
-    # Amazon settles.
-    orders = {}
-    for r in conn.execute(
-            "SELECT substr(l.purchase_date,1,10) AS d, l.order_id, "
-            "       COALESCE(l.asin,'') AS asin, COALESCE(l.sku,'') AS sku, "
-            "       COALESCE(l.revenue,0) + COALESCE(l.shipping,0) AS gross, "
-            "       COALESCE(l.units,0) AS units, l.cogs AS cogs, "
-            "       l.currency AS currency "
-            "FROM order_lines l "
-            "WHERE l.workspace_id=? AND l.marketplace=? "
-            "  AND lower(COALESCE(l.status,'')) NOT IN (?,?) "
-            "  AND substr(l.purchase_date,1,10) >= ? "
-            "  AND substr(l.purchase_date,1,10) <= ?",
-            (workspace_id, marketplace, dead[0], dead[1], str(start), str(end))):
-        o = orders.setdefault(r["order_id"], {"d": r["d"], "lines": []})
-        o["lines"].append(r)
-
-    # What Amazon SETTLED, per order. Refunds are deliberately not read here --
-    # they come from their own date, below.
-    settled = {}
-    for r in conn.execute(
-            "SELECT order_id, SUM(referral_fees) rf, SUM(fba_fees) ff, "
-            "       SUM(other_fees) of_, SUM(promo_fees) pf, "
-            "       SUM(principal) pr, SUM(tax) tx, SUM(promos) pm "
-            "FROM order_fees WHERE workspace_id=? AND marketplace=? "
-            "GROUP BY order_id", (workspace_id, marketplace)):
-        # A refund posting is also an order_fees row. An order whose ONLY rows
-        # are a refund has not had its sale settled, and treating it as settled
-        # would give it no fee and no revenue.
-        if (r["rf"] or r["ff"] or r["of_"] or r["pf"] or r["pr"] or r["tx"]
-                or r["pm"]):
-            settled[r["order_id"]] = r
-
-    try:
-        vr = float(vat_rate) if vat_rate else 0.0
-    except (TypeError, ValueError):
-        vr = 0.0
+    # Every order placed in the window, and what Amazon has settled of each --
+    # the same two reads the P&L ledger itemises (domain/pnl_ledger), so the
+    # statement and its breakdown cannot be built from different rows.
+    orders = placed_orders(conn, workspace_id, marketplace, start, end)
+    settled = settled_orders(conn, workspace_id, marketplace)
+    vr = _vat_ratio(vat_rate)
     # AN UNKNOWN FEE RATE IS NOT A FEE OF NOTHING.
     #
     # This read `float(fee_rate or 0)`, and order_profit.fee_rate returns None
@@ -410,113 +376,12 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
     # subtracts them -- they used to come off the Profit card and the P&L only,
     # so the Sales grid and the Finance product rows read higher by exactly
     # that. Found by the review of the profit-accuracy work, 28 Sep 2026.
-    _charge_memo = {}
-
-    def _charge(asin, sku, day):
-        k = (asin, sku, day)
-        if k not in _charge_memo:
-            try:
-                from domain import asin_charges as _ac
-                per, _parts = _ac.per_unit(config_path, workspace_id,
-                                           marketplace, asin, sku=sku,
-                                           on_date=day)
-                _charge_memo[k] = float(per or 0.0)
-            except Exception:
-                _charge_memo[k] = 0.0
-        return _charge_memo[k]
+    _charge = charge_fn(config_path, workspace_id, marketplace)
 
     for oid, order in orders.items():
         lines = order["lines"]
-        gross_total = sum(float(L["gross"] or 0) for L in lines)
-        # Each line's share of the order. Equal shares for an order that sold
-        # for nothing, so its fee is still carried somewhere rather than lost.
-        if gross_total > 0:
-            shares = [float(L["gross"] or 0) / gross_total for L in lines]
-        else:
-            shares = [1.0 / len(lines)] * len(lines)
-
-        # THE ORDER'S MONEY, worked out once for the whole order exactly as it
-        # always was, then shared between its lines. Grouped by date every line
-        # of an order is on the same day, so the day's figures are unchanged.
-        o = {k: 0.0 for k in ("referral_fees", "fba_fees", "other_fees",
-                              "promo_fees", "principal", "tax", "promos",
-                              "fees_estimated", "vat_derived",
-                              "revenue_fee_unknown")}
-        flags = {"orders_settled": 0, "orders_estimated": 0,
-                 "orders_fee_unknown": 0, "orders_vat_derived": 0}
-        s = settled.get(oid)
-        if s is not None:
-            o["referral_fees"] += float(s["rf"] or 0)
-            o["fba_fees"] += float(s["ff"] or 0)
-            o["other_fees"] += float(s["of_"] or 0)
-            # COUPON AND DEAL FEES. The newer sync files them in their own
-            # column rather than inside other_fees (finance_data._bucket_fee),
-            # and this left them out -- so a coupon's fee vanished from every
-            # order-calendar profit. Older rows have NULL here and their coupon
-            # fees still inside other_fees, so adding both never counts twice.
-            o["promo_fees"] += float(s["pf"] or 0)
-            # WHETHER AMAZON HAS ALREADY TAKEN THE VAT OUT, ASKED PER ORDER.
-            #
-            # Amazon does not always itemise it. Where it acts as the collector
-            # it sends a Tax line and the Principal beside it is NET; where the
-            # seller accounts for the VAT themselves it sends NO tax line and
-            # the Principal is the whole price the buyer paid.
-            #
-            # Both shapes arrive on the same day. Measured on selvora_limited,
-            # 28 July: 15 of 17 orders came back with tax 0.00 and Principal
-            # equal to the full price, and 2 with the VAT itemised. Taking the
-            # day's total as reported therefore called 601.08 "Charged to
-            # buyers (ex VAT)" when about 88.72 of it was VAT -- so Revenue
-            # after VAT was overstated, and profit with it, by the same amount.
-            #
-            # Asked per ORDER because that is the level Amazon answers it at. A
-            # day is a mixture and has no single answer. The unsettled branch
-            # below has always derived it this way; this is the same rule
-            # applied to the settled ones.
-            _pr, _tx = float(s["pr"] or 0), float(s["tx"] or 0)
-            if _tx or not vr:
-                # Amazon itemised it, or this account is not VAT-registered and
-                # there is nothing to take out. Its figures, unaltered.
-                o["principal"] += _pr
-                o["tax"] += _tx
-            else:
-                # No tax line and the owner IS registered: the principal is what
-                # the buyer paid, VAT included. The rate is the owner's own
-                # declaration -- Amazon has not said, and this does not guess it.
-                _v = round(_pr * vr / (1.0 + vr), 2)
-                o["principal"] += round(_pr - _v, 2)
-                o["tax"] += _v
-                o["vat_derived"] += _v
-                flags["orders_vat_derived"] = 1
-            o["promos"] += float(s["pm"] or 0)
-            flags["orders_settled"] = 1
-        else:
-            # NOT YET SETTLED. What the buyer paid is known exactly; how Amazon
-            # will split it is not, so the VAT is taken out at the account's own
-            # rate and the fee estimated at the rate this account actually pays.
-            gross = gross_total
-            vat = round(gross * vr / (1.0 + vr), 2) if vr else 0.0
-            net = round(gross - vat, 2)
-            o["principal"] += net
-            o["tax"] += vat
-            if rate is None:
-                # NO RATE, SO NO ESTIMATE. Adding 0.00 here would make the day
-                # report a fee it never worked out, and "estimated 0.00" reads
-                # as "we checked and it is nothing". Counted separately so the
-                # screen can say how much of the window is uncosted.
-                flags["orders_fee_unknown"] = 1
-                # What the buyer PAID, the same base the estimate below is
-                # charged on, so "revenue not yet itemised" adds up across both.
-                o["revenue_fee_unknown"] += gross
-            else:
-                # ON WHAT THE BUYER PAID. The rate is measured over the
-                # VAT-inclusive figure (order_profit.fee_rate), because that is
-                # what Amazon charges its fee on; applying it to the figure
-                # after VAT would take a sixth too little.
-                est = round(gross * rate, 2)
-                o["referral_fees"] += est
-                o["fees_estimated"] += est
-                flags["orders_estimated"] = 1
+        shares = line_shares(lines)
+        o, flags = order_money(order, settled.get(oid), rate, vr)
 
         # Shared out between the lines, each landing in its own bucket. An
         # order is counted once in every bucket it reaches.
@@ -541,21 +406,8 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
                     b[k] += v
 
     # ---- refunds and reimbursements, on the day the money moved ----------
-    if by_asin:
-        q = ("SELECT asin AS k, SUM(refunds) rd, SUM(refund_tax) rdt, "
-             "SUM(refund_units) ru, SUM(refund_fees_returned) rfr, "
-             "SUM(reimbursements) rb, MAX(currency) cur "
-             "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
-             "AND asin<>'*' AND date>=? AND date<=? GROUP BY asin")
-    else:
-        q = ("SELECT date AS k, SUM(refunds) rd, SUM(refund_tax) rdt, "
-             "SUM(refund_units) ru, SUM(refund_fees_returned) rfr, "
-             "SUM(reimbursements) rb, MAX(currency) cur "
-             "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
-             "AND asin='*' AND date>=? AND date<=? GROUP BY date")
-    for r in conn.execute(q, (workspace_id, marketplace, str(start), str(end))):
-        if not (r["rd"] or r["rdt"] or r["ru"] or r["rfr"] or r["rb"]):
-            continue          # a fees-only day: nothing of this kind happened
+    for r in refund_rows(conn, workspace_id, marketplace, start, end,
+                         by_asin=by_asin):
         b = _bucket(r["k"])
         if not b["currency"] and r["cur"]:
             b["currency"] = r["cur"]
@@ -571,6 +423,207 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
                 o[k] = round(v, 2)
     return out
 
+
+# ---- the pieces complete_by_order_date is built from ----------------------
+#
+# Split out of it (30 Sep 2026) so the P&L's per-line breakdown
+# (domain/pnl_ledger) itemises the statement from the SAME reads and the SAME
+# per-order arithmetic, rather than a second copy that could drift (Rule 12).
+# The arithmetic is unchanged: moved, not rewritten.
+
+_DEAD = ("canceled", "cancelled")
+
+
+def _vat_ratio(vat_rate):
+    """The account's VAT rate as a number (0.0 when unset or not a number)."""
+    try:
+        return float(vat_rate) if vat_rate else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def placed_orders(conn, workspace_id, marketplace, start, end):
+    """{order_id: {"d": order date, "lines": [row, ...]}} -- every LINE of every
+    order placed in the window: what it sold for, what it cost, which product.
+    Cancelled orders are not sales."""
+    orders = {}
+    for r in conn.execute(
+            "SELECT substr(l.purchase_date,1,10) AS d, l.order_id, "
+            "       COALESCE(l.asin,'') AS asin, COALESCE(l.sku,'') AS sku, "
+            "       COALESCE(l.revenue,0) + COALESCE(l.shipping,0) AS gross, "
+            "       COALESCE(l.units,0) AS units, l.cogs AS cogs, "
+            "       l.currency AS currency "
+            "FROM order_lines l "
+            "WHERE l.workspace_id=? AND l.marketplace=? "
+            "  AND lower(COALESCE(l.status,'')) NOT IN (?,?) "
+            "  AND substr(l.purchase_date,1,10) >= ? "
+            "  AND substr(l.purchase_date,1,10) <= ?",
+            (workspace_id, marketplace, _DEAD[0], _DEAD[1], str(start), str(end))):
+        o = orders.setdefault(r["order_id"], {"d": r["d"], "lines": []})
+        o["lines"].append(r)
+    return orders
+
+
+def settled_orders(conn, workspace_id, marketplace):
+    """{order_id: row} -- what Amazon SETTLED, per order. Refunds are
+    deliberately not read here; they come from their own date (refund_rows)."""
+    settled = {}
+    for r in conn.execute(
+            "SELECT order_id, SUM(referral_fees) rf, SUM(fba_fees) ff, "
+            "       SUM(other_fees) of_, SUM(promo_fees) pf, "
+            "       SUM(principal) pr, SUM(tax) tx, SUM(promos) pm "
+            "FROM order_fees WHERE workspace_id=? AND marketplace=? "
+            "GROUP BY order_id", (workspace_id, marketplace)):
+        # A refund posting is also an order_fees row. An order whose ONLY rows
+        # are a refund has not had its sale settled, and treating it as settled
+        # would give it no fee and no revenue.
+        if (r["rf"] or r["ff"] or r["of_"] or r["pf"] or r["pr"] or r["tx"]
+                or r["pm"]):
+            settled[r["order_id"]] = r
+    return settled
+
+
+def charge_fn(config_path, workspace_id, marketplace):
+    """(asin, sku, day) -> the owner's per-unit charge on that day, memoised
+    (domain/asin_charges). 0.0 when it cannot be read."""
+    memo = {}
+
+    def _charge(asin, sku, day):
+        k = (asin, sku, day)
+        if k not in memo:
+            try:
+                from domain import asin_charges as _ac
+                per, _parts = _ac.per_unit(config_path, workspace_id,
+                                           marketplace, asin, sku=sku,
+                                           on_date=day)
+                memo[k] = float(per or 0.0)
+            except Exception:
+                memo[k] = 0.0
+        return memo[k]
+    return _charge
+
+
+def line_shares(lines):
+    """Each line's share of its order, by what it sold for. Equal shares for an
+    order that sold for nothing, so its fee is still carried somewhere."""
+    gross_total = sum(float(L["gross"] or 0) for L in lines)
+    if gross_total > 0:
+        return [float(L["gross"] or 0) / gross_total for L in lines]
+    return [1.0 / len(lines)] * len(lines)
+
+
+def order_money(order, s, rate, vr):
+    """ONE order's money -> (o, flags). `s` is its settled_orders() row or None;
+    `rate` the fee rate (None = unknown); `vr` the VAT ratio (_vat_ratio).
+
+    THE ORDER'S MONEY, worked out once for the whole order, then shared between
+    its lines by the caller."""
+    lines = order["lines"]
+    gross_total = sum(float(L["gross"] or 0) for L in lines)
+    o = {k: 0.0 for k in ("referral_fees", "fba_fees", "other_fees",
+                          "promo_fees", "principal", "tax", "promos",
+                          "fees_estimated", "vat_derived",
+                          "revenue_fee_unknown")}
+    flags = {"orders_settled": 0, "orders_estimated": 0,
+             "orders_fee_unknown": 0, "orders_vat_derived": 0}
+    if s is not None:
+        o["referral_fees"] += float(s["rf"] or 0)
+        o["fba_fees"] += float(s["ff"] or 0)
+        o["other_fees"] += float(s["of_"] or 0)
+        # COUPON AND DEAL FEES. The newer sync files them in their own
+        # column rather than inside other_fees (finance_data._bucket_fee),
+        # and this left them out -- so a coupon's fee vanished from every
+        # order-calendar profit. Older rows have NULL here and their coupon
+        # fees still inside other_fees, so adding both never counts twice.
+        o["promo_fees"] += float(s["pf"] or 0)
+        # WHETHER AMAZON HAS ALREADY TAKEN THE VAT OUT, ASKED PER ORDER.
+        #
+        # Amazon does not always itemise it. Where it acts as the collector
+        # it sends a Tax line and the Principal beside it is NET; where the
+        # seller accounts for the VAT themselves it sends NO tax line and
+        # the Principal is the whole price the buyer paid.
+        #
+        # Both shapes arrive on the same day. Measured on selvora_limited,
+        # 28 July: 15 of 17 orders came back with tax 0.00 and Principal
+        # equal to the full price, and 2 with the VAT itemised. Taking the
+        # day's total as reported therefore called 601.08 "Charged to
+        # buyers (ex VAT)" when about 88.72 of it was VAT -- so Revenue
+        # after VAT was overstated, and profit with it, by the same amount.
+        #
+        # Asked per ORDER because that is the level Amazon answers it at. A
+        # day is a mixture and has no single answer. The unsettled branch
+        # below has always derived it this way; this is the same rule
+        # applied to the settled ones.
+        _pr, _tx = float(s["pr"] or 0), float(s["tx"] or 0)
+        if _tx or not vr:
+            # Amazon itemised it, or this account is not VAT-registered and
+            # there is nothing to take out. Its figures, unaltered.
+            o["principal"] += _pr
+            o["tax"] += _tx
+        else:
+            # No tax line and the owner IS registered: the principal is what
+            # the buyer paid, VAT included. The rate is the owner's own
+            # declaration -- Amazon has not said, and this does not guess it.
+            _v = round(_pr * vr / (1.0 + vr), 2)
+            o["principal"] += round(_pr - _v, 2)
+            o["tax"] += _v
+            o["vat_derived"] += _v
+            flags["orders_vat_derived"] = 1
+        o["promos"] += float(s["pm"] or 0)
+        flags["orders_settled"] = 1
+    else:
+        # NOT YET SETTLED. What the buyer paid is known exactly; how Amazon
+        # will split it is not, so the VAT is taken out at the account's own
+        # rate and the fee estimated at the rate this account actually pays.
+        gross = gross_total
+        vat = round(gross * vr / (1.0 + vr), 2) if vr else 0.0
+        net = round(gross - vat, 2)
+        o["principal"] += net
+        o["tax"] += vat
+        if rate is None:
+            # NO RATE, SO NO ESTIMATE. Adding 0.00 here would make the day
+            # report a fee it never worked out, and "estimated 0.00" reads
+            # as "we checked and it is nothing". Counted separately so the
+            # screen can say how much of the window is uncosted.
+            flags["orders_fee_unknown"] = 1
+            # What the buyer PAID, the same base the estimate below is
+            # charged on, so "revenue not yet itemised" adds up across both.
+            o["revenue_fee_unknown"] += gross
+        else:
+            # ON WHAT THE BUYER PAID. The rate is measured over the
+            # VAT-inclusive figure (order_profit.fee_rate), because that is
+            # what Amazon charges its fee on; applying it to the figure
+            # after VAT would take a sixth too little.
+            est = round(gross * rate, 2)
+            o["referral_fees"] += est
+            o["fees_estimated"] += est
+            flags["orders_estimated"] = 1
+
+    return o, flags
+
+
+def refund_rows(conn, workspace_id, marketplace, start, end, by_asin=False):
+    """Refunds and reimbursements on the day the money moved (finance_daily),
+    one row per date (the account row, asin='*') or per product. Days with none
+    of that kind are left out. Row keys: k, rd, rdt, ru, rfr, rb, cur."""
+    if by_asin:
+        q = ("SELECT asin AS k, SUM(refunds) rd, SUM(refund_tax) rdt, "
+             "SUM(refund_units) ru, SUM(refund_fees_returned) rfr, "
+             "SUM(reimbursements) rb, MAX(currency) cur "
+             "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
+             "AND asin<>'*' AND date>=? AND date<=? GROUP BY asin")
+    else:
+        q = ("SELECT date AS k, SUM(refunds) rd, SUM(refund_tax) rdt, "
+             "SUM(refund_units) ru, SUM(refund_fees_returned) rfr, "
+             "SUM(reimbursements) rb, MAX(currency) cur "
+             "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
+             "AND asin='*' AND date>=? AND date<=? GROUP BY date")
+    out = []
+    for r in conn.execute(q, (workspace_id, marketplace, str(start), str(end))):
+        if not (r["rd"] or r["rdt"] or r["ru"] or r["rfr"] or r["rb"]):
+            continue          # a fees-only day: nothing of this kind happened
+        out.append(r)
+    return out
 
 def unattributed(config_path, workspace_id, marketplace):
     """Fees whose order this app has never seen, so cannot date.

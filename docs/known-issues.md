@@ -216,6 +216,12 @@ change needs it, via register injection.
   delivery to the UK: $136.44 vs $68.15) -- FIXED. test_ebay_capture_fixes.py.
 - **Repricer: VAT is per account, not per marketplace** -- a VAT-registered UK
   account selling in the US gets US floors ~20% high. READ.
+- **P&L line breakdowns (30 Sep 2026): account-level references are by posting
+  day only.** finance_daily keeps day totals, not Amazon's event types, so an
+  account charge is referenced as "posted <day> (other/FBA/coupon split)" plus
+  the undated charge placed that day (finance_undated, usually the
+  subscription) -- not the transaction name. Reimbursements have no order id.
+  Needs the event type stored by the finance pull. READ.
 
 ## Price writes — left open (29 Sep 2026 map: active/map-4F-price-writes.md)
 - `/optimize/push` (listing/patches._build_patches) writes a price with an

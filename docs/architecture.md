@@ -219,6 +219,16 @@ On an app row, `r.asin` is the **competitor reference** parsed from the SKU
   `routes/sales_routes._basis()`. `series()` reports the basis it actually used
   in `meta`. `listFinancialEvents` is account-wide: finance data is stored only
   under the account's default marketplace. (memory: pnl-one-calendar)
+- **The statement's items.** Each line of `domain/pnl.build` expands on screen
+  into its items via `GET /sales/pnl/ledger?line=` -> `domain/pnl_ledger.ledger`,
+  built from the SAME pieces the statement uses (`order_finance.placed_orders /
+  settled_orders / order_money / refund_rows`, `pnl.settled_fee_rows`,
+  `order_profit.lines_between / line_cogs`, `ad_cost.by_day(detail=True)`,
+  `expenses.account_charge_parts / adjustment_days / for_window`). The screen
+  checks items total = line and shows a mismatch in red. Per-order refund
+  events have ONE reader: `pnl_ledger.refund_events()` (order_fees, dated by
+  posted_date); `finance_daily` holds only day totals. test_pnl_ledger.py pins
+  every line to the penny.
 - **Coupons, two feeds.** Orders API `OrderTotal` is already net of coupons
   (`domain/orders_view.profit_for()` must not subtract them); the Finances feed
   is gross, so `domain/order_profit.py` subtracts promotions. test_orders_promo.py
