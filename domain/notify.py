@@ -697,6 +697,25 @@ def went_out_of_stock(config_path, workspace_id, sku, name, marketplace="",
                     key="oos:%s:%s" % (workspace_id, sku))
 
 
+def supplier_ended(config_path, workspace_id, sku, supplier, marketplace=""):
+    """A tracked SKU's supplier listing has ENDED -- confirmed, not one 404.
+
+    Sent once per ending: the caller (source_fetch.sweep) calls this only on
+    the reading that CONFIRMS it, not on every sweep after. Nothing about the
+    price or stock is decided here; the repricer's own out-of-stock notice is
+    separate and follows only if no other supplier can supply.
+    """
+    return announce(config_path, workspace_id, SUPPLIER_ENDED,
+                    "Supplier ended: %s" % (sku or ""),
+                    ["The supplier listing %s has ended (eBay no longer "
+                     "serves it, on two checks running)." % (supplier or ""),
+                     "Replace the link on the Repricer. If it was this SKU's "
+                     "only supplier, the listing is taken out of stock when "
+                     "auto-pricing is armed."],
+                    sku=sku, marketplace=marketplace,
+                    key="ended:%s:%s:%s" % (workspace_id, sku, supplier or ""))
+
+
 def came_back_in_stock(config_path, workspace_id, sku, name, qty,
                        marketplace=""):
     return announce(config_path, workspace_id, BACK_IN_STOCK,

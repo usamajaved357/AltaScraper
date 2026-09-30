@@ -73,6 +73,22 @@ def current_for(config_path, workspace_id, marketplace, sku):
     return {}
 
 
+def shipping_policy_days(config_path):
+    """The saved postage-transit days (config.json), as whole days. -> int.
+
+    THE ONE READER of the setting (Rule 12): the decision, the Repricer list and
+    the inventory screen's lead time all ask here, so none can use a different
+    number from the handling time actually being set. Unreadable settings give
+    the module default, which is the real policy today.
+    """
+    try:
+        from config import settings as _settings
+        return _sourcing.policy_days(
+            (_settings.read_raw(config_path) or {}).get("shipping_policy_days"))
+    except Exception:
+        return _sourcing.SHIPPING_POLICY_DAYS
+
+
 def _is_fba(current):
     """AFN / AMAZON_NA / FBA all mean Amazon holds the stock."""
     f = str((current or {}).get("fulfillment") or "").upper()
@@ -141,13 +157,7 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     # sourcing.handling_days(). Stamped here for the same reason the fee rate
     # is: this is the only spot a rule is assembled before decide() runs, so it
     # is the only spot that has to know where a setting is kept.
-    try:
-        from config import settings as _settings
-        _pol = (_settings.read_raw(config_path) or {}).get("shipping_policy_days")
-        if _pol not in (None, ""):
-            rule["shipping_policy_days"] = max(0, int(_pol))
-    except Exception:
-        pass          # the module default stands, and it is the real policy today
+    rule["shipping_policy_days"] = shipping_policy_days(config_path)
 
     # HOW MANY UNITS TO KEEP THE LISTING AT.
     #

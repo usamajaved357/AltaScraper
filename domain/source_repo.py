@@ -675,6 +675,9 @@ _RULE_NOT_STORED = frozenset({
     "vat_rate",
     # Set when those settings could not be read at all; never stored.
     "vat_unknown",
+    # The postage-transit days: one setting for the whole app (config.json,
+    # /sourcing/shipping_policy), stamped on by source_run.decide_one.
+    "shipping_policy_days",
 })
 
 

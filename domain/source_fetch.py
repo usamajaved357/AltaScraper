@@ -507,6 +507,32 @@ def destination_postcode(cfg, marketplace=None):
     return _FALLBACK_POSTCODE.get(_ebay.country_of(marketplace), "B1 1AA")
 
 
+def _tell_if_newly_ended(config_path, row, source):
+    """Send the "supplier ended" notice on the reading that CONFIRMS the end.
+
+    Exactly when the run of 'gone' readings reaches the confirmation count
+    (sourcing.gone_confirmed's number) -- once per ending, not on every sweep
+    after it, and never on a single 404, which the repricer does not believe
+    either. A tracked SKU only: a draft's supplier is not being sold from.
+    Never raises; telling must not stop the sweep. Changes no price or stock.
+    """
+    try:
+        from domain import notify as _notify
+        from domain import source_link as _slink
+        from domain import sourcing as _sourcing
+        need = int(_sourcing.rule_with_defaults(None).get("confirm_gone_checks") or 1)
+        streak = (_repo.latest_checks(config_path, [source["id"]])
+                  .get(source["id"]) or {}).get("gone_streak")
+        if streak != need:
+            return
+        _notify.supplier_ended(
+            config_path, row["workspace_id"], row["sku"],
+            _slink.display_name(source.get("url"), "", source.get("label")),
+            marketplace=row["marketplace"])
+    except Exception:
+        pass
+
+
 def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
           pause=0.2, log=None, now=None):
     """Check every source of every ENROLLED SKU, and store the readings.
@@ -518,9 +544,14 @@ def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
     cfg = cfg() if callable(cfg) else (cfg or {})
     app_id = str(cfg.get("ebay_app_id", "") or "")
     cert_id = str(cfg.get("ebay_cert_id", "") or "")
-    postcode = destination_postcode(cfg, marketplace)
+    # THE POSTCODE IS PER ROW, from that row's own marketplace (below). It was
+    # worked out once from the `marketplace` argument -- which the four-hourly
+    # job never passes -- so every US supplier was asked of eBay US with the
+    # UK fallback "B1 1AA" as its destination (repricer review, 30 Sep 2026).
 
     rows = _repo.enrolled(config_path, workspace_id, marketplace)
+    _tracked = {(str(r["workspace_id"]), str(r["marketplace"]), str(r["sku"]))
+                for r in rows}
     # ...AND THE DRAFTS, whose suppliers are recorded but not yet tracked.
     #
     #     "on draft the sources should stay on the drafts page but should
@@ -552,6 +583,7 @@ def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
         counts["skus"] += 1
         srcs = _repo.sources_for(config_path, row["workspace_id"],
                                  row["marketplace"], row["sku"])
+        postcode = destination_postcode(cfg, row["marketplace"] or marketplace)
         for s in srcs:
             if not s.get("enabled", 1):
                 continue
@@ -563,6 +595,10 @@ def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
                                marketplace=_ebay.site_for(row["marketplace"]),
                                postcode=postcode)
             _repo.record_check(config_path, s["id"], chk)
+            if chk.get("status") == GONE and (
+                    str(row["workspace_id"]), str(row["marketplace"]),
+                    str(row["sku"])) in _tracked:
+                _tell_if_newly_ended(config_path, row, s)
             counts["sources"] += 1
             counts[chk["status"]] = counts.get(chk["status"], 0) + 1
             if log:

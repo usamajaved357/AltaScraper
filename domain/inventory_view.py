@@ -330,9 +330,14 @@ def lead_times(config_path, workspace_id, marketplace):
     to travel.
     """
     from domain import source_repo as _repo
+    from domain import source_run as _srun
     from domain import sourcing as _sourcing
 
     out = {}
+    # THE SAVED POSTAGE DAYS, from the one reader the repricer uses. This used
+    # the 2-day module constant whatever the setting said, so the lead time
+    # here disagreed with the handling time being set (repricer bug hunt).
+    policy = _srun.shipping_policy_days(config_path)
     try:
         pairs_by_sku = {}
         for row in _repo.enrolled(config_path, workspace_id, marketplace):
@@ -351,6 +356,7 @@ def lead_times(config_path, workspace_id, marketplace):
             buffer_days = int(rule.get("handling_buffer_days") or 0)
         except Exception:
             rule, buffer_days = {}, 0
+        rule = dict(rule, shipping_policy_days=policy)
         # THE FASTEST SUPPLIER THAT CAN ACTUALLY BE BOUGHT FROM. Not the
         # cheapest: this is a question about time, and a dead link's dispatch
         # estimate is not a promise anyone can keep.
@@ -369,11 +375,11 @@ def lead_times(config_path, workspace_id, marketplace):
                 best = d
         if best is not None:
             hand = _sourcing.handling_days(best, rule)
-            out[sku] = {"days": hand + _sourcing.SHIPPING_POLICY_DAYS,
+            out[sku] = {"days": hand + policy,
                         "known": True,
                         "dispatch_days": best, "buffer_days": buffer_days,
                         "handling_days": hand,
-                        "shipping_policy_days": _sourcing.SHIPPING_POLICY_DAYS,
+                        "shipping_policy_days": policy,
                         "source": "supplier"}
     return out
 

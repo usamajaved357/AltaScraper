@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the Repricer Works</title>
+<style>
+  :root{
+    --bg:#f7f7f5; --panel:#ffffff; --ink:#1d2330; --ink2:#4a5263; --muted:#6b7385;
+    --line:#e3e5ea; --accent:#0f8a7a; --accent-bg:#e3f4f1; --gold:#b7791f; --gold-bg:#fbf1dd;
+    --red:#c0392b; --red-bg:#fbe7e5; --blue:#2f6fd0; --blue-bg:#e6effc; --green:#1f8f4e; --green-bg:#e3f5ea;
+    --code:#f0f1f4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14171d; --panel:#1b1f27; --ink:#e7e9ee; --ink2:#bcc2ce; --muted:#8c93a3;
+      --line:#2b313c; --accent:#3ec7b3; --accent-bg:#17312e; --gold:#e0a84a; --gold-bg:#34291a;
+      --red:#ef6b5f; --red-bg:#3a2020; --blue:#6aa2f0; --blue-bg:#1c2940; --green:#4cc37f; --green-bg:#1a3226;
+      --code:#232834;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14171d; --panel:#1b1f27; --ink:#e7e9ee; --ink2:#bcc2ce; --muted:#8c93a3;
+    --line:#2b313c; --accent:#3ec7b3; --accent-bg:#17312e; --gold:#e0a84a; --gold-bg:#34291a;
+    --red:#ef6b5f; --red-bg:#3a2020; --blue:#6aa2f0; --blue-bg:#1c2940; --green:#4cc37f; --green-bg:#1a3226;
+    --code:#232834;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:28px 16px 64px}
+  header h1{font-size:28px;margin:0 0 6px}
+  header p{color:var(--ink2);margin:0 0 18px;font-size:16px}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 26px}
+  nav.toc a{font-size:13px;text-decoration:none;color:var(--ink2);border:1px solid var(--line);background:var(--panel);padding:4px 10px;border-radius:999px}
+  nav.toc a:hover{border-color:var(--accent);color:var(--accent)}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:0 0 16px}
+  h2{font-size:20px;margin:0 0 10px;display:flex;gap:10px;align-items:center}
+  h2 .n{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-size:14px;flex:0 0 auto}
+  h3{font-size:16px;margin:18px 0 6px}
+  p{margin:6px 0 10px}
+  ul{margin:6px 0 10px;padding-left:20px}
+  li{margin:3px 0}
+  .muted{color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:10px 0}
+  .card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg)}
+  .card b{display:block;margin-bottom:4px}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:12px 0}
+  .step{flex:1 1 150px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);position:relative}
+  .step .t{font-weight:700;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--accent)}
+  .arrow{align-self:center;color:var(--muted);font-size:20px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tbl{overflow-x:auto}
+  .formula{background:var(--code);border-radius:8px;padding:10px 12px;font-family:ui-monospace,Consolas,monospace;font-size:13.5px;margin:8px 0;overflow-x:auto}
+  .note{border-left:4px solid var(--accent);background:var(--accent-bg);padding:10px 12px;border-radius:0 8px 8px 0;margin:10px 0}
+  .warn{border-left-color:var(--gold);background:var(--gold-bg)}
+  .bad{border-left-color:var(--red);background:var(--red-bg)}
+  .chip{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;border:1px solid var(--line)}
+  .c-green{color:var(--green);background:var(--green-bg);border-color:transparent}
+  .c-gold{color:var(--gold);background:var(--gold-bg);border-color:transparent}
+  .c-red{color:var(--red);background:var(--red-bg);border-color:transparent}
+  .c-blue{color:var(--blue);background:var(--blue-bg);border-color:transparent}
+  .c-acc{color:var(--accent);background:var(--accent-bg);border-color:transparent}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:6px}
+  details{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:8px 0;background:var(--bg)}
+  details summary{cursor:pointer;font-weight:600}
+  .toggle{position:fixed;top:12px;right:12px;font-size:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:999px;padding:4px 10px;cursor:pointer}
+  footer{color:var(--muted);font-size:13px;margin-top:22px}
+  @media (max-width:600px){ .arrow{display:none} section{padding:16px 14px} header h1{font-size:23px} }
+</style>
+</head>
+<body>
+<button class="toggle" onclick="(function(){var r=document.documentElement;var d=r.getAttribute('data-theme')==='dark'||(!r.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme: dark)').matches);r.setAttribute('data-theme',d?'light':'dark');})()">Light / dark</button>
+<div class="wrap">
+
+<header>
+  <h1>How the Repricer works</h1>
+  <p>A plain-English guide to what the Repricer does with your FBM listings: how it reads your suppliers, how it works out a price, and exactly what it will and will not send to Amazon. Written from the app's code as of 30 Sep 2026.</p>
+</header>
+
+<nav class="toc">
+  <a href="#what">What it's for</a><a href="#enrol">Adding a product</a><a href="#read">Reading suppliers</a>
+  <a href="#numbers">The numbers</a><a href="#decide">The decision</a><a href="#direction">Direction</a>
+  <a href="#armed">Dry run vs armed</a><a href="#sent">What goes to Amazon</a><a href="#safety">Safety rails</a>
+  <a href="#alerts">Alerts</a><a href="#screen">Reading the screen</a><a href="#situations">Situations</a>
+  <a href="#faq">FAQ</a><a href="#decisions">Your decisions</a>
+</nav>
+
+<section id="what">
+  <h2><span class="n">1</span>What it is for</h2>
+  <p>For listings you ship yourself (FBM) and buy from a supplier <b>after</b> a customer orders, the Repricer keeps three things right on Amazon, per SKU:</p>
+  <div class="grid">
+    <div class="card"><b>Price</b>Never below what the item really costs you plus your target, following your supplier's price.</div>
+    <div class="card"><b>Stock</b>Topped up while a supplier can supply; set to 0 only when every supplier definitely can't.</div>
+    <div class="card"><b>Handling time</b>Matched to how long your supplier takes to dispatch.</div>
+  </div>
+  <p>It follows <b>your supplier's cost only</b>. It never looks at competitors or the Buy Box. FBA listings are never touched.</p>
+  <div class="flow">
+    <div class="step"><div class="t">1 · Read</div>Every 4 hours it reads each supplier page: price, postage, stock, delivery time.</div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">2 · Work out</div>Pure maths: your real cost, Amazon's fee, VAT, your targets → the lowest safe price.</div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">3 · Decide</div>Change the price? Go out of stock? Or hold because something is unclear?</div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">4 · Send</div>Only if you armed that SKU and the master switch is on. Otherwise it just shows you.</div>
+  </div>
+</section>
+
+<section id="enrol">
+  <h2><span class="n">2</span>Adding a product (enrolling)</h2>
+  <ul>
+    <li><b>Every new product starts in dry run.</b> It is tracked and priced on screen, but nothing is sent to Amazon until you arm it.</li>
+    <li>A listing that goes live on Amazon joins the Repricer by itself (in dry run). One you removed by hand stays out.</li>
+    <li>When a product joins, it gets your "new products start at" ROI/margin target and direction <b>once</b>. Changing those defaults later never re-prices products already tracked.</li>
+    <li><b>Supplier links:</b> paste an eBay item link. Adding the same link twice does nothing.</li>
+    <li><b>eBay listings with sizes/colours:</b> a link that names one variation (<code>?var=</code>) is read directly. A link without it is resolved for you when exactly one variation is in stock; if several are, you pick from a list. Old links saved before this rule need removing and adding again.</li>
+    <li><b>Sheets:</b> download a supplier template already filled with every tracked SKU and its links, edit it, upload it back. A separate "min price" sheet lets you set minimum prices (and arm) in bulk.</li>
+  </ul>
+</section>
+
+<section id="read">
+  <h2><span class="n">3</span>Reading your suppliers</h2>
+  <ul>
+    <li><b>How often:</b> every 4 hours, or straight away with <b>Check now</b>.</li>
+    <li><b>What it reads from eBay:</b> item price and currency, postage, whether it's in stock (yes / no / unknown), units left, the delivery window, carrier and seller.</li>
+    <li><b>Postage:</b> the cheapest option; on a tie, the one that names a real carrier. eBay only quotes postage when told where it's going, so the app sends a postcode for your marketplace (for example B1 1AA for the UK, 10001 for the US).</li>
+    <li><b>"Calculated" postage</b> is used only when eBay says which postcode it calculated to; otherwise postage is <b>unknown</b> — never treated as free.</li>
+    <li><b>Old readings</b> (more than 24 hours) are not used.</li>
+  </ul>
+  <h3>Three kinds of reading</h3>
+  <div class="tbl"><table>
+    <tr><th>Reading</th><th>Meaning</th><th>What happens</th></tr>
+    <tr><td><span class="chip c-green">Fetched</span></td><td>Real numbers came back.</td><td>Used for pricing.</td></tr>
+    <tr><td><span class="chip c-red">Gone</span></td><td>eBay says the listing no longer exists.</td><td>Only counted after it is seen <b>twice in a row</b>; one "gone" is treated as a failed read.</td></tr>
+    <tr><td><span class="chip c-gold">Failed / unknown</span></td><td>Timeout, error, or eBay left out stock, postage, price or currency.</td><td><b>Holds</b> your listing. Never takes it out of stock. <span class="muted">(Fixed 30 Sep: an "unknown" reading used to set the stock to 0.)</span></td></tr>
+  </table></div>
+</section>
+
+<section id="numbers">
+  <h2><span class="n">4</span>The numbers</h2>
+  <div class="grid">
+    <div class="card"><b>Landed cost</b>Supplier price + supplier postage. If either is unknown, the landed cost is unknown.</div>
+    <div class="card"><b>Amazon's fee</b>What Amazon actually took on this product's sold orders; else Amazon's fee quote; else your account's average. 15% only as a last resort.</div>
+    <div class="card"><b>VAT</b>From the account's setting. If it can't be read, nothing is priced that run.</div>
+    <div class="card"><b>Your own costs</b>Postage label, an ads allowance and a flat minimum profit per unit — all £0.00 unless you set them.</div>
+  </div>
+  <h3>The floor — the lowest price it will ever set</h3>
+  <p>The floor is the <b>highest</b> of these, rounded up to the penny:</p>
+  <div class="formula">Break-even = (landed + label + ads + min profit) ÷ (k − fee rate)<br>
+ROI target  = (landed + label + ads + landed × ROI%) ÷ (k − fee rate)<br>
+Margin target = (landed + label + ads) ÷ (k × (1 − margin%) − fee rate)<br>
+<span class="muted">k = 1 with no VAT, or 1 ÷ 1.2 with 20% VAT</span></div>
+  <h3>Worked example — supplier landed cost £12.00, Amazon fee 15%</h3>
+  <div class="tbl"><table>
+    <tr><th></th><th class="num">No VAT</th><th class="num">20% VAT</th></tr>
+    <tr><td>Break-even (no profit)</td><td class="num">£14.12</td><td class="num">£17.57</td></tr>
+    <tr><td>20% return on your cash (ROI)</td><td class="num">£16.95</td><td class="num">£21.08</td></tr>
+    <tr><td>20% margin</td><td class="num">£18.47</td><td class="num">£23.23</td></tr>
+  </table></div>
+  <h3>Your own limits</h3>
+  <ul>
+    <li><b>Minimum price</b> — your own number, independent of supplier readings. The price never goes below it, and a SKU <b>cannot be armed</b> without one.</li>
+    <li><b>Maximum price</b> — if the floor (or your minimum) is above it, the listing goes <b>out of stock</b> rather than sell at a loss.</li>
+    <li><b>Hold price</b> — an extra floor (for example the market price). If costs rise past it, the price rises above it.</li>
+    <li><b>Change alert</b> (default 25%) — a bigger move <b>still goes through</b>; you are notified.</li>
+    <li><b>Small change</b> (default £0.20) — smaller moves are skipped, except when the listing is below its floor, which is always lifted.</li>
+    <li><b>Stock</b> — kept at 3 (or your default) while a supplier can supply.</li>
+    <li><b>Handling time</b> = supplier's dispatch days − postage days (your setting, default 2) + any extra days you add. <span class="muted">(Fixed 30 Sep: your postage-days setting was being ignored.)</span></li>
+  </ul>
+</section>
+
+<section id="decide">
+  <h2><span class="n">5</span>The decision for each product</h2>
+  <div class="tbl"><table>
+    <tr><th>Outcome</th><th>When</th></tr>
+    <tr><td><span class="chip c-acc">Update</span></td><td>A usable supplier was chosen and the price, stock or handling time needs to change.</td></tr>
+    <tr><td><span class="chip">No change</span></td><td>Already right (within the small-change amount).</td></tr>
+    <tr><td><span class="chip c-red">Out of stock</span></td><td>Every supplier <b>definitely</b> can't supply: out of stock, ended (seen twice), too slow for your dispatch limit, switched off, or in the wrong currency. Also when your floor is above your maximum price.</td></tr>
+    <tr><td><span class="chip c-gold">Held</span></td><td>Something is unclear, so it does nothing: a supplier unreadable or unknown, the Amazon price unknown, VAT unreadable, the listing gone from Amazon, FBA, or your targets can't be met. The screen says why.</td></tr>
+  </table></div>
+  <p class="muted">Which supplier: the cheapest landed cost (default), the fastest, or your priority order.</p>
+</section>
+
+<section id="direction">
+  <h2><span class="n">6</span>Direction: up only, up and down, or match the floor</h2>
+  <p>Each SKU has a direction (default <b>up only</b>). In the example, a £12 supplier gives a floor of £16.95 (20% ROI, no VAT), and a £20 supplier gives £28.24.</p>
+  <div class="tbl"><table>
+    <tr><th>Direction</th><th>Selling at £25, supplier £12</th><th>Selling at £15, supplier £12</th><th>Selling at £25, supplier rises to £20</th></tr>
+    <tr><td><b>↑ Up only</b> (default)</td><td>No change — stays £25 (the row says the rules would allow £16.95)</td><td>Raised to £16.95</td><td>Raised to £28.24</td></tr>
+    <tr><td><b>↕ Up and down</b></td><td>Cut to £16.95 (a 32% move — you get an alert)</td><td>Raised to £16.95</td><td>Raised to £28.24</td></tr>
+    <tr><td><b>= Match the floor</b></td><td>Cut to £16.95 (ignores any hold price)</td><td>£16.95</td><td>£28.24</td></tr>
+  </table></div>
+  <div class="note">Up only protects the <b>price</b> only — stock and handling time are still corrected. With a hold price of £24 on "up and down": a £12 supplier gives £24.00 (held); a £22 supplier gives £31.06 (the hold is exceeded).</div>
+</section>
+
+<section id="armed">
+  <h2><span class="n">7</span>Dry run vs armed</h2>
+  <p>A change is sent to Amazon only when <b>all four</b> are true:</p>
+  <div class="grid">
+    <div class="card"><b>1. Master switch on</b>Off until you turn it on.</div>
+    <div class="card"><b>2. The SKU is armed</b>Green bolt on the row.</div>
+    <div class="card"><b>3. It has a minimum price</b>Required to arm.</div>
+    <div class="card"><b>4. The decision is Update or Out of stock</b>Not held.</div>
+  </div>
+  <ul>
+    <li><b>Cooldown:</b> at most one change per SKU every 4 hours (this includes going out of stock).</li>
+    <li>Changes are sent every 4 hours, or with <b>Push now</b>. Only one sending run can go at a time. <span class="muted">(Fixed 30 Sep: two runs could overlap and send the same change twice.)</span></li>
+    <li><b>Disarm</b> puts a SKU back in dry run. A SKU gone from Amazon is disarmed automatically.</li>
+  </ul>
+</section>
+
+<section id="sent">
+  <h2><span class="n">8</span>Exactly what is sent to Amazon</h2>
+  <ul>
+    <li>The app <b>reads your listing from Amazon first</b>, then changes only the fields below inside Amazon's own structure. It never rebuilds the listing.</li>
+    <li><b>Price</b> — only if it differs by at least 1p.</li>
+    <li><b>Quantity</b> and <b>handling time</b> — only if different, and handling time only where Amazon already has that field.</li>
+    <li><b>Out of stock</b> sends quantity 0 and no price.</li>
+    <li>If Amazon refuses, it is recorded as <b>rejected</b> with Amazon's own words — never as a success.</li>
+    <li><b>The manual price box</b> sends a price straight away (even in dry run), but never below your minimum price, and only the price.</li>
+  </ul>
+</section>
+
+<section id="safety">
+  <h2><span class="n">9</span>Safety rails</h2>
+  <div class="grid">
+    <div class="card"><b>Floor + minimum price</b>It never prices below either.</div>
+    <div class="card"><b>Unknown ≠ out of stock</b>Anything unclear holds the listing.</div>
+    <div class="card"><b>"Gone" seen twice</b>One missing page is not enough.</div>
+    <div class="card"><b>Wrong currency refused</b>Never converted.</div>
+    <div class="card"><b>VAT unreadable → nothing priced</b></div>
+    <div class="card"><b>FBA never touched</b></div>
+    <div class="card"><b>Big move → alert</b>Above 25%, you are told.</div>
+    <div class="card"><b>4-hour cooldown</b>One sending run at a time.</div>
+    <div class="card"><b>Per account</b>Each account uses its own Amazon login; one account can never change another's listings.</div>
+  </div>
+</section>
+
+<section id="alerts">
+  <h2><span class="n">10</span>Alerts you receive</h2>
+  <div class="tbl"><table>
+    <tr><th>Event</th><th>Where you see it</th></tr>
+    <tr><td>Price changed (up to your alert %)</td><td>In the app (bell)</td></tr>
+    <tr><td>Price changed by more than your alert %</td><td>In the app and Slack</td></tr>
+    <tr><td>Set out of stock (with which suppliers failed)</td><td>In the app and Slack</td></tr>
+    <tr><td>Back in stock</td><td>In the app and Slack</td></tr>
+    <tr><td>A supplier listing has ended (confirmed by two checks in a row)</td><td>In the app and Slack — no price or stock is changed by the alert itself</td></tr>
+    <tr><td>Listings that left the Repricer (daily check)</td><td>In the app</td></tr>
+    <tr><td>Products with every supplier dead / can't tell</td><td>Banner on the Repricer screen</td></tr>
+  </table></div>
+  <p class="muted">Alerts are sent only after Amazon accepted the change. A dry run never claims a change.</p>
+</section>
+
+<section id="screen">
+  <h2><span class="n">11</span>Reading the Repricer screen</h2>
+  <div class="tbl"><table>
+    <tr><th>You see</th><th>It means</th></tr>
+    <tr><td><span class="dot" style="background:var(--red)"></span>Red dot</td><td>Gone from Amazon, or every supplier confirmed unable to supply.</td></tr>
+    <tr><td><span class="dot" style="background:var(--gold)"></span>Gold dot</td><td>Held — hover for the reason.</td></tr>
+    <tr><td><span class="dot" style="background:var(--green)"></span>Green dot</td><td>Armed: it can change this listing by itself.</td></tr>
+    <tr><td><span class="dot" style="background:var(--accent)"></span>Teal dot</td><td>Tracked, dry run.</td></tr>
+    <tr><td><b style="color:var(--green)">⚡</b> Green bolt / dim crossed bolt</td><td>Armed / dry run.</td></tr>
+    <tr><td><b style="color:var(--green)">↑</b> <b style="color:var(--blue)">↕</b> <b style="color:var(--gold)">=</b></td><td>Direction: up only / up and down / match the floor.</td></tr>
+    <tr><td>Sparkline</td><td>The last 12 costs of the supplier in use (green = getting cheaper, gold = getting dearer; a red end dot = supplier ended).</td></tr>
+    <tr><td><span class="chip c-red">GONE</span></td><td>Amazon no longer has this SKU.</td></tr>
+    <tr><td><span class="chip c-gold">cost ↑ 12%</span></td><td>Your supplier now charges more (or less) than when the SKU was created, so profit figures are out by that much.</td></tr>
+    <tr><td><span class="chip c-gold">2/3</span></td><td>2 of 3 supplier links can be bought from now; hover to see which are dead and which just weren't read.</td></tr>
+    <tr><td>Price cell</td><td>Current price → proposed price (green if up, amber if down).</td></tr>
+    <tr><td>Profit / ROI</td><td>At today's Amazon price against today's supplier price; red if a loss, amber if below your target.</td></tr>
+  </table></div>
+  <p>Click a row for the full breakdown: supplier price, postage, Amazon fee (and where it came from), VAT, your costs, profit left, why it's held, and every supplier link with its status.</p>
+</section>
+
+<section id="situations">
+  <h2><span class="n">12</span>Common situations</h2>
+  <div class="tbl"><table>
+    <tr><th>Situation</th><th>What the Repricer does</th></tr>
+    <tr><td>One supplier out of stock, another fine</td><td>Switches to the other and prices from it.</td></tr>
+    <tr><td>Every supplier definitely out of stock</td><td>Sets stock to 0 (if armed) and tells you. When one comes back, stock returns to 3 and you are told.</td></tr>
+    <tr><td>One supplier out, another unreadable</td><td><b>Holds</b> — nothing changes.</td></tr>
+    <tr><td>Supplier price jumps</td><td>Floor rises, so the price rises (in every direction mode). Above 25% you get an alert; it still goes through.</td></tr>
+    <tr><td>Supplier gets cheaper</td><td>Up only: no change (the row says so). Up and down / match floor: price cut to the new floor.</td></tr>
+    <tr><td>Supplier listing ended</td><td>First time: hold. Second time in a row: counted as ended; if it was the only supplier, out of stock.</td></tr>
+    <tr><td>eBay gives no postage</td><td>Holds. Fix: set a postage override on that supplier.</td></tr>
+    <tr><td>Supplier priced in USD on a UK listing</td><td>Refused. If it's the only supplier, out of stock (see your decisions below).</td></tr>
+    <tr><td>Amazon price unknown</td><td>Held until the catalogue is synced.</td></tr>
+    <tr><td>Listing deleted on Amazon</td><td>A daily check removes it from the Repricer and disarms it. Its data is kept.</td></tr>
+  </table></div>
+</section>
+
+<section id="faq">
+  <h2><span class="n">13</span>Questions</h2>
+  <details><summary>Why didn't my price drop when the supplier got cheaper?</summary><p>The SKU is "up only" (the default). The row shows what the rules would have allowed. Switch the direction to "up and down" if you want it to follow cuts.</p></details>
+  <details><summary>Why isn't it sending anything?</summary><p>Check in this order: master switch on → SKU armed → minimum price set → the row's pause reason → the 4-hour cooldown.</p></details>
+  <details><summary>Does a big price jump wait for me to approve it?</summary><p>No. It goes through and you are notified (in the app and Slack).</p></details>
+  <details><summary>Can it ever sell below my minimum price?</summary><p>No — neither the automatic run nor the manual price box.</p></details>
+  <details><summary>Does it look at competitors?</summary><p>No. Only your supplier's cost and your own rules.</p></details>
+  <details><summary>Can one account's Repricer change another account's listings?</summary><p>No. Every read, rule and change is tied to one account and marketplace, using that account's own Amazon login.</p></details>
+  <details><summary>How often does it run?</summary><p>Suppliers are read every 4 hours; changes are sent every 4 hours; the deleted-listing check and fee refresh run daily.</p></details>
+</section>
+
+<section id="decisions">
+  <h2><span class="n">14</span>Decisions for you</h2>
+  <p>These are how the Repricer behaves today. None is a bug, but you may want them different:</p>
+  <div class="note warn"><b>1. Wrong-currency supplier → out of stock.</b> A USD supplier on a UK listing is refused; if it's the only supplier, the listing goes out of stock. Holding instead may be what you expect.</div>
+  <div class="note warn"><b>2. Stock stays 3 even if the supplier has only 1 left.</b> The supplier's units-left figure is read but not used to cap your stock.</div>
+  <div class="note warn"><b>3. The 4-hour cooldown also delays going out of stock.</b> A price sent at 10:00 and a supplier selling out at 11:00 means stock goes to 0 no earlier than 14:00.</div>
+  <div class="note warn"><b>4. Up only can keep a price above your maximum.</b> If the listing already sells above your maximum price, up only leaves it there.</div>
+  <div class="note warn"><b>5. VAT is per account, not per marketplace.</b> A VAT-registered UK account selling in the US gets US floors about 20% high.</div>
+  <div class="note warn"><b>6. Ads.</b> The Repricer uses a flat ads allowance per unit (default £0), not the measured ad spend your Finance page uses.</div>
+  <div class="note warn"><b>7. One delivery postcode for the whole app,</b> with no screen to set it. If set, it would also be used for US products.</div>
+</section>
+
+<footer>AltaScraper · Repricer explainer · written from the code on 30 Sep 2026 (after that day's fixes). If anything here disagrees with what you see, the app's behaviour wins — tell Claude and this page gets corrected.</footer>
+</div>
+</body>
+</html>

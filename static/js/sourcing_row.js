@@ -342,11 +342,22 @@ function sourcingRow(r, i){
           +  (dft.delta > 0 ? '&uarr;' : '&darr;')
           +  (dft.cogs ? Math.abs(dft.delta / dft.cogs * 100).toFixed(0) + '%' : '')
           +  '</span> ';
+  // UNKNOWN IS NOT UNAVAILABLE. A link eBay did not describe this time is
+  // counted apart from one that is out of stock or ended, because the
+  // repricer holds on the first and acts on the second (repricer review,
+  // 30 Sep 2026).
+  const nUnk = (r.options || []).filter(function(o){
+    return o.state === 'unknown';
+  }).length;
+  const nDead = nOpt - nUse - nUnk;
   if(nOpt && nUse < nOpt)
     flags += '<span class="rp-tag" style="background:var(--warn-bg);'
-          +  'color:var(--warn)" title="' + (nOpt - nUse) + ' of this SKU\'s '
-          +  'supplier links cannot be bought from right now. Open the row to '
-          +  'see which, and why.">' + nUse + '/' + nOpt + '</span> ';
+          +  'color:var(--warn)" title="'
+          +  (nDead ? nDead + ' of this SKU\'s supplier links cannot be bought '
+                    + 'from right now (out of stock or ended). ' : '')
+          +  (nUnk ? nUnk + ' could not be read this time -- unknown, not out '
+                   + 'of stock. ' : '')
+          +  'Open the row to see which, and why.">' + nUse + '/' + nOpt + '</span> ';
 
   // THE SKU IS IN THE TOOLTIP, NOT THE COLUMN. It is the identifier everything
   // else uses -- the upload template, the arm call, the log -- so it cannot go
