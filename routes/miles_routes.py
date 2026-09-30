@@ -3,8 +3,9 @@
 register(app, ...) injection pattern; route bodies moved VERBATIM (CLAUDE.md §10).
 Injected shared helpers/state (all stay in dashboard.py for now): _miles_set_pref,
 _miles_get_pref, CONFIG_PATH, SCRIPT, _MILES_STATE (shared run state), _active_account,
-_miles_load_history, _miles_save_history, _run_lock, _running. Dependencies were
-verified with an AST free-variable check (no undefined names).
+_run_lock, _running. Dependencies were verified with an AST free-variable check (no
+undefined names). The harvested-items history is PER ACCOUNT and lives in
+domain/miles_history.py (30 Sep 2026); it is no longer injected from dashboard.py.
 
 Routes: POST /miles/sheet_pref, GET /miles/sheet_pref, POST /miles/upload,
         POST /miles/clear_history, POST /miles/stop, GET /miles/generate,
@@ -19,12 +20,13 @@ import sys
 
 from flask import request, jsonify, Response
 
+from domain import miles_history as _mhist
 from domain import miles_runlog as _runlog
 from routes.stream_pump import pump_lines, spawn
 
 
 def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MILES_STATE,
-             _active_account, _miles_load_history, _miles_save_history, _run_lock, _running):
+             _active_account, _run_lock, _running):
     """Attach the /miles/* routes to the existing Flask app."""
 
     def _claim_run(max_seconds=600):
@@ -264,7 +266,8 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         # ...and which account's list it is, so another account's Harvest
         # cannot run it (admin bug round, 30 Sep 2026).
         _MILES_STATE["items_account"] = _req_account()
-        done = _miles_load_history()
+        # "Already harvested" means by THIS account (domain/miles_history.py).
+        done = _mhist.load(CONFIG_PATH, _MILES_STATE["items_account"])
         already = [it for it in clean if it in done]
         # KEPT IN THE UPLOAD HISTORY, with the file the browser read the list from.
         try:
@@ -290,32 +293,33 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
 
     @app.route("/miles/clear_history", methods=["POST"])
     def miles_clear_history():
-        """Forget which item numbers were harvested, so they can run again.
+        """Forget which item numbers THIS ACCOUNT harvested, so they can run again.
 
-        The history is ONE file for the whole server (it is keyed by item
-        number, not account), so this is refused while a Supplier Import run
-        is going -- clearing under a live harvest made it re-do what it had
-        just done -- and the page asks for confirmation first (miles.js)."""
+        PER ACCOUNT (30 Sep 2026): the history was one file for the whole
+        server, so clearing it on one account cleared it for all. It now lives
+        per account (domain/miles_history.py) and only the requesting
+        account's is cleared. Still refused while a Supplier Import run is
+        going -- clearing under a live harvest made it re-do what it had just
+        done -- and the page still asks for confirmation first (miles.js).
+
+        The harvested-text store (miles_bundles_store.json) is NOT wiped any
+        more. It is supplier product text keyed by item number, shared by the
+        generator and listing/regen.py; it was wiped here only because the
+        harvest counted its entries as 'done', and it no longer does (see
+        /miles/run). Wiping it deleted every other account's text too."""
         _aid = _runlog.active_id()
         if _aid and _runlog.is_running(_aid):
             return jsonify({"ok": False, "error": "A Supplier Import run is in "
                             "progress. Clear the history when it has finished."}), 409
-        done = _miles_load_history()
-        n = len(done)
-        _miles_save_history(set())
-        # ALSO clear the permanent text store -- otherwise items saved there are still
-        # treated as 'done' and skipped even after clearing history (the reason
-        # 'Clear harvested history' seemed not to work). Now it fully resets.
-        store_n = 0
-        try:
-            _sp = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "miles_bundles_store.json")
-            if os.path.exists(_sp):
-                _sd = json.load(open(_sp, encoding="utf-8"))
-                store_n = len(_sd) if isinstance(_sd, dict) else 0
-                _jsonstore.write_json_atomic(_sp, {})   # atomic (Milestone 4)
-        except Exception:
-            pass
-        return jsonify({"ok": True, "cleared": n, "store_cleared": store_n})
+        _acct = _req_account()
+        if not _acct:
+            return jsonify({"ok": False, "error": "Open an account first -- the "
+                            "harvested history is kept per account."}), 400
+        n = _mhist.clear(CONFIG_PATH, _acct)
+        if n is None:
+            return jsonify({"ok": False, "error": "Could not save the cleared "
+                            "history. Nothing was changed."}), 500
+        return jsonify({"ok": True, "cleared": n, "account": _acct})
 
 
     @app.route("/miles/stop", methods=["POST"])
@@ -730,15 +734,19 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                     _running["proc"] = None
                     yield f"data: [done] generation finished (exit {_gp.returncode})\n\n"
 
-                done = _miles_load_history()
-                # Also treat anything already in the PERMANENT store as done -- its
-                # text is saved, so there's no need to re-scrape it.
+                # THIS ACCOUNT's history (domain/miles_history.py). The shared
+                # text store used to be folded in here as 'done' too, which made
+                # one account's harvest count as done for every account; it is
+                # now only consulted to drop stale text for items whose Drive
+                # files are gone (the re-harvest branch below).
+                done = _mhist.load(_cfg_path, _run_acct)
+                _stored = set()
                 try:
                     _app_dir = os.path.dirname(os.path.abspath(_cfg_path))
                     _store_path = os.path.join(_app_dir, "miles_bundles_store.json")
                     _store = json.load(open(_store_path, encoding="utf-8"))
                     if isinstance(_store, dict):
-                        done = set(done) | set(_store.keys())
+                        _stored = set(_store.keys())
                 except Exception:
                     pass
                 items = _items
@@ -793,10 +801,15 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                             if _has:
                                 skipped.append(it)
                                 if it not in done:
+                                    # NOT written into this account's history (owner, 30
+                                    # Sep 2026: "the harvested-item history for Account A
+                                    # must never be shared with Account B"). The Drive
+                                    # folder is one for every account, so files there may
+                                    # be another account's harvest. Skipped (its files
+                                    # already exist) but never recorded as ours.
                                     _newly_skipped.append(it)
-                                    done.add(it)                   # sync local history to Drive
                             else:
-                                if it in done:
+                                if it in done or it in _stored:
                                     _revived.append(it)            # was 'done' but files gone
                                     done.discard(it)               # forget stale 'done'
                                 _items_after.append(it)            # (re-)harvest it
@@ -806,14 +819,14 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         # Persist history when Drive told us something new (files exist for
                         # items local history didn't know about).
                         if _newly_skipped:
-                            _miles_save_history(done)
-                            yield (f"data: Skipping {len(_newly_skipped)} item(s) whose files were "
-                                   f"already in Drive (not in local history): "
+                            yield (f"data: Skipping {len(_newly_skipped)} item(s) whose files are "
+                                   f"already in the shared Drive folder (not in this account's "
+                                   f"history, and not added to it): "
                                    f"{', '.join(_newly_skipped[:20])}\n\n")
                         if _revived:
                             yield (f"data: Re-harvesting {len(_revived)} item(s) whose files were "
                                    f"deleted from Drive: {', '.join(_revived[:20])}\n\n")
-                            _miles_save_history(done)
+                            _mhist.save(_cfg_path, _run_acct, done)
                             # also drop revived items from the permanent text store so
                             # they actually re-scrape (the store otherwise marks them done)
                             try:
@@ -919,7 +932,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         results["errors"].append({"item": item, "message": res.get("message", "")})
                         yield f"data: [error]   {item}: {res.get('message','')}\n\n"
 
-                _miles_save_history(done)
+                _mhist.save(_cfg_path, _run_acct, done)
                 _MILES_STATE["results_account"] = _run_acct
                 _MILES_STATE["results"] = {
                     "ok": len(results["products"]),

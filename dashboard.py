@@ -2260,6 +2260,23 @@ def _bust_records_cache():
     _RECORDS_CACHE.clear()
 
 
+_RECORDS_CACHE_MAX = 8   # tabs held at once (30 Sep 2026 RAM investigation)
+
+
+def _records_cache_put(key, records):
+    """Store one tab's rows. Expired entries were never removed -- every tab ever
+    read stayed in memory until the next write busted the lot -- so each write
+    now drops the expired ones and keeps at most _RECORDS_CACHE_MAX (oldest out)."""
+    import time as _t
+    now = _t.time()
+    for k in [k for k, v in list(_RECORDS_CACHE.items()) if now - v[0] >= _RECORDS_TTL]:
+        _RECORDS_CACHE.pop(k, None)
+    _RECORDS_CACHE[key] = (now, records)
+    while len(_RECORDS_CACHE) > _RECORDS_CACHE_MAX:
+        oldest = min(_RECORDS_CACHE.items(), key=lambda kv: kv[1][0])[0]
+        _RECORDS_CACHE.pop(oldest, None)
+
+
 
 
 def _records(ws, _use_cache: bool = True):
@@ -2283,7 +2300,7 @@ def _records(ws, _use_cache: bool = True):
     vals = _sheet_read_retry(ws.get_all_values)
     if not vals:
         if _key:
-            _RECORDS_CACHE[_key] = (_t.time(), [])
+            _records_cache_put(_key, [])
         return []
     headers = vals[0]
     cols, seen = [], set()
@@ -2299,7 +2316,7 @@ def _records(ws, _use_cache: bool = True):
         rec["_row"] = ridx
         out.append(rec)
     if _key:
-        _RECORDS_CACHE[_key] = (_t.time(), out)
+        _records_cache_put(_key, out)
     return out
 
 
@@ -2867,27 +2884,9 @@ def _kill_proc(p):
 # MILES LUBRICANTS  --  supplier-site harvest workspace
 # =============================================================================
 _MILES_STATE = {"items": [], "results": None, "cancel": False}
-_MILES_HISTORY_PATH = None   # resolved lazily next to config
-
-def _miles_history_file():
-    global _MILES_HISTORY_PATH
-    if _MILES_HISTORY_PATH is None:
-        _MILES_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "miles_harvested.json")
-    return _MILES_HISTORY_PATH
-
-def _miles_load_history() -> set:
-    try:
-        import json as _j
-        return set(_j.load(open(_miles_history_file(), encoding="utf-8")))
-    except Exception:
-        return set()
-
-def _miles_save_history(done: set):
-    try:
-        import json as _j
-        _j.dump(sorted(done), open(_miles_history_file(), "w", encoding="utf-8"))
-    except Exception:
-        pass
+# The harvested-items history (_miles_load_history / _miles_save_history, one
+# file for the whole server) moved to domain/miles_history.py on 30 Sep 2026
+# and is now kept per account; routes/miles_routes.py calls it directly.
 
 
 
@@ -3430,8 +3429,7 @@ def build_app(backend=None):
     import routes.miles_routes as _miles_routes
     _miles_routes.register(app, _miles_set_pref=_miles_set_pref, _miles_get_pref=_miles_get_pref,
                            CONFIG_PATH=CONFIG_PATH, SCRIPT=SCRIPT, _MILES_STATE=_MILES_STATE,
-                           _active_account=_active_account, _miles_load_history=_miles_load_history,
-                           _miles_save_history=_miles_save_history, _run_lock=_run_lock,
+                           _active_account=_active_account, _run_lock=_run_lock,
                            _running=_running)
     import routes.genimage_routes as _genimage_routes
     _genimage_routes.register(app, CONFIG_PATH=CONFIG_PATH, _CREATIVE_STRATEGIES=_CREATIVE_STRATEGIES,

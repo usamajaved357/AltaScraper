@@ -311,10 +311,11 @@ async function milesStop(){
   if(j && j.ok) toast("Stopped — lock cleared, you can run again");
 }
 async function milesClearHistory(){
-  // ASKED FIRST: the harvested-items history is shared by the whole app, and
-  // clearing it makes the next Harvest redo every item (admin bug round).
+  // ASKED FIRST: clearing makes the next Harvest redo every item (admin bug
+  // round). The history is kept PER ACCOUNT (domain/miles_history.py), so
+  // only the open account's is cleared; other accounts keep theirs.
   if(typeof uiConfirm === "function"
-     && !await uiConfirm("Forget every harvested item number? The next Harvest will fetch them all again. This history is shared by every account that uses Supplier Import.")) return;
+     && !await uiConfirm("Forget every item number this account has harvested? The next Harvest will fetch them all again. Other accounts keep their own history.")) return;
   try{
     const r = await fetch("/miles/clear_history",{method:"POST",headers:{"Content-Type":"application/json"},body:_milesBody({})});
     let j = null; try{ j = await r.json(); }catch(e){ j = null; }

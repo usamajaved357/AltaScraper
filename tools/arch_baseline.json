@@ -121,7 +121,7 @@
  "swallowed-write-failure": {
   "routes/accounts_routes.py: register.accounts_detect_brands swallows save_account": "legacy (29 Sep 2026)",
   "routes/accounts_routes.py: register.accounts_detect_marketplaces swallows save_account": "legacy (29 Sep 2026)",
-  "routes/activity_routes.py: register._record_activity swallows record": "legacy (29 Sep 2026)",
+  "routes/activity_routes.py: register._record_activity swallows record_many": "legacy (29 Sep 2026; renamed 30 Sep: record -> record_many for per-product batches) -- recording work must never break the request it records",
   "routes/brandview_routes.py: register._marketplaces_for swallows add": "legacy (29 Sep 2026)",
   "routes/drppc_console_routes.py: register.drppc_console_settings swallows record": "legacy (29 Sep 2026)",
   "routes/genimage_routes.py: register.genimage_strategize swallows update": "legacy (29 Sep 2026)",
@@ -136,7 +136,6 @@
   "routes/live_routes.py: register.live_full_pull swallows save #2": "legacy (29 Sep 2026)",
   "routes/live_routes.py: register.live_mirror swallows update": "legacy (29 Sep 2026)",
   "routes/miles_routes.py: register.miles_upload swallows record": "legacy (29 Sep 2026)",
-  "routes/miles_routes.py: register.miles_clear_history swallows write_json_atomic": "legacy (29 Sep 2026)",
   "routes/miles_routes.py: register.miles_stop swallows send_signal": "legacy (29 Sep 2026)",
   "routes/miles_routes.py: register.miles_run.stream swallows set": "legacy (29 Sep 2026)",
   "routes/miles_routes.py: register.miles_run.stream swallows write_json_atomic": "legacy (29 Sep 2026)",
