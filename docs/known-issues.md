@@ -205,9 +205,12 @@ change needs it, via register injection.
   Dr PPC console's plans/rules only propose. READ.
 - **Repricer: supplier links already stored without ?var=** stay FAILED; they
   need removing and adding again (the add now resolves or offers a pick). READ.
-- **Repricer: eBay "calculated" postage is never used**, so such suppliers stay
-  "postage unknown" (source_fetch._ebay_option). Needs the raw eBay reply with a
-  postcode first (Rule 4). READ.
+- **Repricer: eBay "calculated" postage** -- FIXED 30 Sep 2026 from the
+  owner-approved capture: with the destination header eBay returns the
+  calculated cost plus shipToLocationUsedForEstimate {postalCode}; that option
+  is now used, one naming no postcode is still skipped. The same capture found
+  `api/ebay.country_of("EBAY_US")` returning GB (US suppliers costed as
+  delivery to the UK: $136.44 vs $68.15) -- FIXED. test_ebay_capture_fixes.py.
 - **Repricer: VAT is per account, not per marketplace** -- a VAT-registered UK
   account selling in the US gets US floors ~20% high. READ.
 
@@ -219,7 +222,16 @@ change needs it, via register injection.
   the listing-payload-guardian. READ.
 - A new listing submitted to the US sends purchasable_offer currency "GBP"
   (listing/builder.py _offer) while list_price follows the marketplace. Payload
-  change: needs the raw US schema/reply first (Rule 4). READ.
+  change: needs the raw US schema/reply first (Rule 4). BLOCKED 30 Sep 2026:
+  the owner-approved capture got 403 on the US product type definitions for
+  every account (an Amazon permission, not code); the UK HOME schema allows
+  currency ["GBP"] only, i.e. per marketplace. READ.
+- **Search Query Performance cannot be captured** (30 Sep 2026): createReport
+  is 403 for selvora / jack_uk / sheelady_us; nestwell's requests end FATAL
+  ("A client error occurred..."), including the app's own /sqp route, which
+  sends no `asin` option. The route guesses the reason ("not brand-registered")
+  instead of showing Amazon's error file. Probable cause: Brand Analytics role
+  not granted to the app (not verified). READ.
 - Workspace publish gate differs by path (price editor: seller_scope_allowed,
   which ignores can_publish False; repricer box and job: none; optimize/submit:
   can_publish). READ; owner to confirm the intended gate.
@@ -250,9 +262,11 @@ change needs it, via register injection.
 
 ## Left open after the 30 Sep 2026 bug round (reviews)
 - Variation "already in another family" reads `child_parent_sku_relationship`
-  as `[{child_relationship_type, parent_sku}]` -- taken from a code comment,
-  not a captured reply. Needs one getListingsItem capture of a child already in
-  a family (Rule 4). UNVERIFIED.
+  as `[{child_relationship_type, parent_sku}]` -- VERIFIED 30 Sep 2026 by an
+  owner-approved getListingsItem capture (nestwell UK): a child carries
+  `[{marketplace_id, child_relationship_type:"variation", parent_sku}]`; a
+  PARENT carries the same field WITHOUT parent_sku, which `_parent_of` already
+  reads as "" (not a child). No change needed.
 - `ilPushLive` (listingimages.js) cannot tell what a MAIN image stored as a
   Drive link was made as, so the secondary/A+ slot check does not apply to it.
   The server's refuse_slot checks the page's made_as AND the /media path; a

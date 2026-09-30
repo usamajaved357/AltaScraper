@@ -119,8 +119,17 @@ def _ebay_option(data):
     for idx, opt in enumerate(data.get("shippingOptions") or []):
         if not isinstance(opt, dict):
             continue
+        # CALCULATED IS USABLE WHEN eBAY SAYS WHERE IT CALCULATED TO. Captured
+        # 30 Sep 2026 (owner-approved read-only check, item 398441256608): with
+        # the destination header eBay returns the calculated cost AND
+        # shipToLocationUsedForEstimate {postalCode, country}; without it, no
+        # shippingOptions at all. So a calculated figure that names the
+        # postcode it used is the figure for OUR address; one that does not is
+        # still skipped, as the docstring says.
         if str(opt.get("shippingCostType") or "").upper() == "CALCULATED":
-            continue
+            used = opt.get("shipToLocationUsedForEstimate")
+            if not (isinstance(used, dict) and str(used.get("postalCode") or "").strip()):
+                continue
         cost = opt.get("shippingCost")
         v = _num(cost.get("value")) if isinstance(cost, dict) else None
         if v is None:
