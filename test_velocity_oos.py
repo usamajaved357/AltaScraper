@@ -108,10 +108,15 @@ try:
         conn.execute(OL, ("w", "UK", "p%d" % i, "B", 1, "Shipped", d))
     conn.commit()
 
-    v = IV.velocity_map(cfg, "w", "UK", 30, today)
+    # RE-PINNED (bug round 30 Sep 2026): the window is now 30 whole days
+    # ENDING THE DAY BEFORE the as-at date, so the map is asked on the day
+    # after the fixture's last day. The window then holds 30 recorded days,
+    # not 31, so A was out on 20 of them rather than 21.
+    asat = today + _dt.timedelta(days=1)
+    v = IV.velocity_map(cfg, "w", "UK", 30, asat)
     check("the stocked-out SKU sold 20 units", v["A"]["units"], 20)
     check("  over 10 days it was actually on sale", v["A"]["in_stock_days"], 10)
-    check("  and was out on the other 21", v["A"]["oos_days"], 21)
+    check("  and was out on the other 20 in the window", v["A"]["oos_days"], 20)
     check("  so its rate is 2 a day", v["A"]["velocity"], 2.0)
     check("  on the in-stock basis", v["A"]["velocity_basis"], "in-stock days")
     print("     (the old answer was %.2f -- a third of the truth)" % (20 / 30.0))
@@ -124,7 +129,7 @@ try:
     conn.execute("DELETE FROM stock_daily WHERE date < ?",
                  ((today - _dt.timedelta(days=9)).isoformat(),))
     conn.commit()
-    v4 = IV.velocity_map(cfg, "w", "UK", 30, today)
+    v4 = IV.velocity_map(cfg, "w", "UK", 30, asat)
     # 10 days of records, all in stock for A; A sold 2/day on each of them.
     check("only the recorded, in-stock days count", v4["A"]["in_stock_days"], 10)
     check("  and the rate stays 2 a day, not 20 units over 10 days of a "
@@ -135,7 +140,7 @@ try:
     conn.execute("DELETE FROM stock_daily WHERE date < ?",
                  ((today - _dt.timedelta(days=2)).isoformat(),))
     conn.commit()
-    v2 = IV.velocity_map(cfg, "w", "UK", 30, today)
+    v2 = IV.velocity_map(cfg, "w", "UK", 30, asat)
     check("3 days is not enough", v2["A"]["velocity_basis"], "window")
     check("  so the window rate stands", round(v2["A"]["velocity"], 4),
           round(20 / 30.0, 4))
@@ -150,7 +155,7 @@ try:
         d = (start + _dt.timedelta(days=i)).isoformat()
         conn.execute(SD, ("w", "UK", d, "A", "ASINA", 0, "Inactive", "DEFAULT", d))
     conn.commit()
-    v3 = IV.velocity_map(cfg, "w", "UK", 30, today)
+    v3 = IV.velocity_map(cfg, "w", "UK", 30, asat)
     check("it falls back rather than reporting nothing",
           v3["A"]["velocity_basis"], "window")
     check("  with a real rate", round(v3["A"]["velocity"], 4), round(20 / 30.0, 4))
@@ -159,7 +164,7 @@ try:
     print("\n== no stock table at all is not an error ==")
     conn.execute("DROP TABLE stock_daily")
     conn.commit()
-    v5 = IV.velocity_map(cfg, "w", "UK", 30, today)
+    v5 = IV.velocity_map(cfg, "w", "UK", 30, asat)
     check("every SKU still gets a rate", sorted(v5), ["A", "B"])
     check("  on the window basis", v5["A"]["velocity_basis"], "window")
 except Exception as e:

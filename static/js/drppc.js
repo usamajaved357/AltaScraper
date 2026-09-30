@@ -63,8 +63,8 @@ function drpRender() {
         note: "enforced, not promised — Rule 8" }
     ]);
 
-    let body = '<div class="cc" style="font-size:12.5px;line-height:1.6;max-width:700px">' +
-      esc(st.error || "") + "</div>";
+    let body = st.error
+      ? uiNote("warn", "Not connected", st.error) : "";
     if ((st.how || []).length) {
       body += '<ol class="drp-how">';
       st.how.forEach(function (h) { body += "<li>" + esc(h) + "</li>"; });
@@ -72,9 +72,9 @@ function drpRender() {
     }
     body += '<div style="margin-top:12px"><button class="db-chip" onclick="drpStatus()">' +
       '<i class="ti ti-refresh"></i> Check again</button></div>';
-    html += uiPanel("How to connect it",
+    html += uiPanel("How to connect it", "", body, {right: uiHint(
       "Everything on this page is built and tested — it is waiting only for the " +
-      "connection. The moment those values are in, press Run and it works.", body);
+      "connection. The moment those values are in, press Run and it works.")});
     box.innerHTML = html;
     return;
   }
@@ -91,9 +91,10 @@ function drpRender() {
     '<input id="drp_target" class="ed" style="width:110px" placeholder="optional" ' +
     'value="' + esc(DRP.target) + '"></div>' +
     '<button class="primary" onclick="drpRun()"><i class="ti ti-stethoscope"></i> Run</button>',
-    '<div class="cc" style="font-size:11.5px;max-width:420px;text-align:right">Without a ' +
+    '<div class="cc" style="font-size:11.5px;text-align:right">No target = ACOS not judged' +
+    uiHint("Without a " +
     "target, nothing here judges whether an ACOS is good or bad — a guessed target is " +
-    "confident advice about a number nobody chose.</div>");
+    "confident advice about a number nobody chose.") + "</div>");
 
   if (DRP.note) {
     html += '<div class="sresfail" style="margin-bottom:12px">' + esc(DRP.note) + "</div>";
@@ -102,9 +103,10 @@ function drpRender() {
   const d = DRP.data;
   if (!d) {
     html += uiEmpty("Press Run",
+      "Takes up to a couple of minutes" + uiHint(
       "Amazon builds the campaign and search-term reports when they are asked for, which " +
       "takes up to a couple of minutes — so opening this page deliberately does not fetch " +
-      "them.");
+      "them."));
     box.innerHTML = html;
     return;
   }
@@ -138,30 +140,34 @@ function drpRender() {
 
   if (!(d.findings || []).length) {
     html += uiEmpty("Nothing to flag",
+      "Check what was not judged, above" + uiHint(
       "None of the rules that ran found anything over the window above. Check what was " +
       "not judged, above — a console that skipped half its checks and found nothing is " +
-      "not an account in good order.");
+      "not an account in good order."));
     box.innerHTML = html;
     return;
   }
 
   let tb = '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
-    "<th>Verdict</th><th>What</th><th>The finding</th><th>Why</th>" +
+    "<th>Verdict</th><th>What</th><th>The finding</th>" +
     "<th>What to do</th></tr></thead><tbody>";
+  // THE WHY IS BEHIND THE FINDING'S (i), not a column of paragraphs (owner,
+  // 30 Sep 2026: "less text explanatory but more visual explanatory").
   d.findings.forEach(function (f) {
     tb += "<tr>" +
       "<td>" + drpSev(f.severity) + "</td>" +
       '<td style="font-weight:600;max-width:200px;overflow:hidden;' +
       'text-overflow:ellipsis">' + esc(f.subject || "") + "</td>" +
-      '<td style="max-width:230px">' + esc(f.what || "") + "</td>" +
-      '<td class="cc" style="font-size:11.5px;max-width:290px">' + esc(f.why || "") + "</td>" +
+      '<td style="max-width:260px">' + esc(f.what || "") +
+      (f.why ? uiHint(f.why) : "") + "</td>" +
       '<td class="cc" style="font-size:11.5px;max-width:300px">' + esc(f.do || "") + "</td>" +
       "</tr>";
   });
   tb += "</tbody></table></div>";
-  html += uiPanel("What to change, worst first",
+  html += uiPanel("What to change, worst first", "Recommendations only · nothing is applied",
+    tb, {right: uiHint(
     "Every row names the exact change and stops there. Nothing in this app can write a " +
-    "bid — the advertising module whitelists its only POST to the reporting paths.", tb);
+    "bid — the advertising module whitelists its only POST to the reporting paths.")});
   box.innerHTML = html;
 }
 

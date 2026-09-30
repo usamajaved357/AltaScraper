@@ -233,3 +233,18 @@
   background:var(--warn-bg)}
 .ui-stat.bad, .dt-mc.bad{border-color:var(--red-line);background:var(--red-bg)}
 .ui-stat.good, .dt-mc.good{border-color:var(--ok-line);background:var(--ok-bg)}
+
+/* uiHint / uiNote (pageui.js, 30 Sep 2026: "less text, more visual"). The
+ * (i) carries the explanation; the note is one coloured line. */
+.ui-hint{color:var(--ink3);font-size:13px;cursor:help;vertical-align:-1px;margin-left:3px}
+.ui-hint:hover, .ui-hint:focus-visible{color:var(--accent)}
+.ui-hint:focus-visible{outline:var(--as-focus-w) solid var(--as-focus-ring);outline-offset:2px;border-radius:50%}
+.ui-callout{display:flex;align-items:center;gap:7px;font-size:12px;line-height:1.4;
+  padding:6px 10px;margin:0 0 10px;border-radius:var(--as-radius-md);
+  border:1px solid var(--as-neutral-border);background:var(--as-neutral-bg);color:var(--ink2)}
+.ui-callout > i:first-child{font-size:14px;flex:0 0 auto}
+.ui-callout.warn{border-color:var(--as-warning-border);background:var(--as-warning-bg)}
+.ui-callout.warn > i:first-child{color:var(--warn)}
+.ui-callout.bad{border-color:var(--as-danger-border);background:var(--as-danger-bg);color:var(--as-danger)}
+.ui-callout.ok{border-color:var(--as-success-border, var(--as-neutral-border));background:var(--as-success-bg, var(--as-neutral-bg))}
+.ui-callout.ok > i:first-child{color:var(--ok)}

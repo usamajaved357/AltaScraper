@@ -20,6 +20,33 @@ from flask import jsonify, request
 from domain import daily_check as _dc
 
 
+def _yesterday(mkt):
+    """Yesterday's date on the marketplace's own reporting clock (ISO)."""
+    try:
+        from domain import orders_live as _ol
+        return _ol.day_start(mkt, days_ago=1).date().isoformat()
+    except Exception:
+        return (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+
+
+def _orders_problem(j):
+    """Why an /orders/list reply cannot be trusted as the order list, or "".
+
+    Not ok, errors reported, or no account actually asked (no credentials) all
+    mean the list was not read -- never that there were no orders.
+    """
+    if not j or not j.get("ok"):
+        return str((j or {}).get("error") or "the order list could not be read")[:160]
+    errs = j.get("errors") or []
+    if errs:
+        first = errs[0] if isinstance(errs[0], dict) else {"error": errs[0]}
+        return ("Amazon did not return the order list: %s"
+                % str(first.get("error") or first)[:140])
+    if "accounts_asked" in j and not j.get("accounts_asked"):
+        return "this account has no Amazon connection to read orders from"
+    return ""
+
+
 def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     """Attach /daily/* to the app."""
 
@@ -41,6 +68,11 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
 
         ctx = {"now": _dt.datetime.now(_dt.timezone.utc)}
         notes = []
+        # YESTERDAY ON THE MARKETPLACE'S OWN CLOCK. date.today() is the
+        # server's day (UTC on Render), so a US account checked at 01:00 UTC
+        # read "yesterday" a day early. orders_live.day_start is the shared
+        # marketplace-clock helper (Rule 12).
+        yday = _yesterday(mkt)
 
         # ---- orders: LIVE, because ship-by dates are not stored ------------
         # order_lines keeps a status but no LatestShipDate, and "late" is the
@@ -49,12 +81,25 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         try:
             fn = app.view_functions.get("orders_list")
             if fn:
+                from urllib.parse import quote as _q
                 with app.test_request_context(
-                        "/orders/list?days=2&account=" + wsid):
+                        "/orders/list?days=2&account=" + _q(wsid)
+                        + "&marketplace=" + _q(mkt)):
                     resp = fn()
                 data = resp[0] if isinstance(resp, tuple) else resp
                 j = data.get_json() if hasattr(data, "get_json") else data
-                if j and j.get("ok"):
+                bad = _orders_problem(j)
+                if bad:
+                    # AN ORDER LIST THAT COULD NOT BE READ IS NOT AN EMPTY ONE.
+                    # /orders/list answers ok:true with an `errors` list when
+                    # Amazon refused (expired token, missing role), and the rows
+                    # were [] -- which the round then reported as "nothing
+                    # waiting, none late": three green ticks for three checks
+                    # that never looked. ctx["orders"] stays ABSENT, so each
+                    # orders check says "could not check".
+                    notes.append("orders: %s" % bad)
+                    ctx["orders_error"] = bad
+                else:
                     ctx["orders"] = j.get("orders") or j.get("rows") or []
         except Exception as e:
             notes.append("orders: %s" % str(e)[:120])
@@ -122,7 +167,10 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
             since = (_dt.datetime.now()
                      - _dt.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
             ctx["repricer_actions"] = [dict(r) for r in conn.execute(
-                "SELECT applied FROM sourcing_actions "
+                # `action` too: check_repricer leaves out price_editor rows
+                # (a price typed by hand is not the repricer's doing), and with
+                # only `applied` selected that filter could never match.
+                "SELECT applied, action FROM sourcing_actions "
                 "WHERE workspace_id=? AND marketplace=? AND at>=?",
                 (wsid, mkt, since)).fetchall()]
             ctx["delisted"] = [dict(r) for r in conn.execute(
@@ -135,7 +183,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         # ---- yesterday's sales --------------------------------------------
         try:
             from data import db as _db
-            y = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+            y = yday
             conn = _db.get_db(CONFIG_PATH)
             # The '*' row is the ACCOUNT TOTAL Amazon reports directly. Preferred
             # over summing the per-ASIN rows: a day can carry the total without
@@ -168,7 +216,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
             # both and reported yesterday's spend as exactly double. See
             # ads_sync.totals for the measurement (CLAUDE.md Rule 12).
             from domain import ads_sync as _as
-            y = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+            y = yday
             got = _as.totals(CONFIG_PATH, wsid, mkt, y, y)
             if got and got["has_data"]:
                 ctx["ads"] = {"spend": got["spend"], "sales": got["sales"],
@@ -181,6 +229,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         out["account"] = wsid
         out["marketplace"] = mkt
         out["ran_at"] = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        out["yesterday"] = yday
         if notes:
             out["notes"] = notes
         return jsonify(out)

@@ -310,6 +310,12 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         aid = b.get("id", "")
+        # AN ACCOUNT THAT DOES NOT EXIST IS REFUSED BEFORE ANYTHING MOVES. This
+        # used to set active_account_id (and the marketplace) first and only
+        # then answer 404, so a stale or mistyped id left the whole server
+        # pointing at an account nobody has (admin bug round, 30 Sep 2026).
+        if aid and not _acc.get_account(_cfg(), aid, CONFIG_PATH):
+            return jsonify({"ok": False, "error": "account not found"}), 404
         _state["active_account_id"] = aid
         # THE SELECTED MARKETPLACE MUST BE ONE THIS ACCOUNT SELLS IN.
         #
@@ -455,6 +461,14 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         if not b.get("label"):
             return jsonify({"ok": False, "error": "label required"}), 400
         existing = _acc.get_account(_cfg(), b.get("id", ""), CONFIG_PATH) if b.get("id") else {}
+        # A NEW ACCOUNT MAY NOT LAND ON AN EXISTING ONE. With no id, the record
+        # is named after its label (accounts._slug), and save_account merges by
+        # id -- so "Add account" with the same name as an existing one silently
+        # overwrote that account, blanking its secrets (admin bug round).
+        if not b.get("id"):
+            _clash = _acc.new_account_clash(_cfg(), b.get("label", ""), CONFIG_PATH)
+            if _clash:
+                return jsonify({"ok": False, "error": _clash}), 409
         acct = dict(existing) if existing else {}
         acct["id"] = b.get("id") or existing.get("id") or ""
         acct["label"] = b["label"]
@@ -656,6 +670,24 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
-        ok = _acc.delete_account(_cfg(), CONFIG_PATH, b.get("id", ""))
+        aid = str(b.get("id", "") or "")
+        if not aid:
+            return jsonify({"ok": False, "error": "no account named"}), 400
+        try:
+            ok = _acc.delete_account(_cfg(), CONFIG_PATH, aid)
+        except Exception as e:
+            return jsonify({"ok": False, "error": "could not delete: %s" % e}), 500
         _state["cfg"] = None
-        return jsonify({"ok": ok})
+        if not ok:
+            return jsonify({"ok": False, "error": "account not found"}), 404
+        # THE DELETED ACCOUNT CANNOT STAY OPEN. The server kept it as the active
+        # account, so every "the open account" fallback went on naming a record
+        # that no longer exists (admin bug round, 30 Sep 2026).
+        if str(_state.get("active_account_id") or "") == aid:
+            _state["active_account_id"] = ""
+            _state["active_sheet_id"] = None
+            _state["active_tab"] = None
+            _state["active_tab_gid"] = ""
+            _state["active_view"] = ""
+            _save_active_state()   # as /accounts/select does: persisted, not guessed at
+        return jsonify({"ok": True, "id": aid})

@@ -21,13 +21,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     """Attach /seller/* to the app."""
 
     def _scope():
-        acc = _active_account() or {}
-        body = request.get_json(silent=True) or {}
-        wsid = str(body.get("id") or acc.get("id")
-                   or _state.get("active_account_id") or "")
-        mkt = str(body.get("marketplace") or _state.get("active_marketplace")
-                  or acc.get("default_marketplace") or "").upper()
-        return acc, wsid, mkt
+        # THE ACCOUNT THE PAGE NAMED, AND ITS RECORD WITH IT -- routes/scope
+        # .for_request, as variations_routes does (Rule 12, Rule 14). This took
+        # the id from the body but the ACCOUNT RECORD (seller id, credentials)
+        # from the server's open account, so with another tab on a different
+        # account the screening asked Amazon with that account's credentials
+        # and filed the answer under this one. The marketplace likewise followed
+        # the server's last-picked one before this account's own default.
+        from routes import scope as _scope_mod
+        acc, wsid, mkt = _scope_mod.for_request(request, state=_state,
+                                                active_account=_active_account,
+                                                cfg=_cfg, config_path=CONFIG_PATH)
+        return (acc or {}), str(wsid or ""), str(mkt or "").upper()
 
     def _body():
         return request.get_json(force=True, silent=True) or {}

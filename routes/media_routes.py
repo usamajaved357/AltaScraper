@@ -29,6 +29,43 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
     # than one per screen width. Mirrors _thumbBucket in static/js/thumbs.js.
     _THUMB_SIZES = (160, 320, 640)
 
+    def _foreign_account_refusal(relpath):
+        """A 403 reply when relpath is _acct/<X>/... and X is neither the
+        account this request is for nor one the signed-in user may open."""
+        # Normalised FIRST, so "./_acct/B/..." cannot slip past the prefix test
+        # and still be served; and no "it is the open account" shortcut -- an
+        # <img> names no account, so the open one was whoever else had last
+        # switched, and a user limited to A was served B's files (account-scope
+        # review, 30 Sep 2026). Only who the user IS decides.
+        import posixpath as _pp
+        norm = _pp.normpath("/" + str(relpath or "").replace("\\", "/")).lstrip("/")
+        parts = [p for p in norm.split("/") if p]
+        if len(parts) < 2 or parts[0].lower() != "_acct":
+            return None
+        asked = parts[1]
+        try:
+            from flask import session
+            from auth import users as _users
+            uid = session.get("uid")
+            user = _users.get_user(CONFIG_PATH, uid) if uid else None
+            if user is None and _users.is_bootstrap(CONFIG_PATH):
+                user = _users.bootstrap_user()
+            if user is not None:
+                # The folder name is _safe_sku(account id); account ids are
+                # already safe, so compare against the ids the user may open.
+                if _users.can_access_workspace(user, asked):
+                    return None
+                # ...and in case an id is not already safe, the folder of each
+                # account the user holds, spelled the way _account_media_root does.
+                for w in (user.get("workspaces") or []):
+                    if str(_safe_sku(str(w)) or "").lower() == asked.lower():
+                        return None
+        except Exception:
+            pass
+        return jsonify({"ok": False, "forbidden": True,
+                        "error": "That image belongs to a different account "
+                                 "than the ones you may open."}), 403
+
     @app.route("/media/<path:relpath>")
     def media_serve(relpath):
         """Serve a stored media file by its media/<sku>/<file> path.
@@ -55,6 +92,17 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
         format that cannot be resized -- the ORIGINAL is served. A slow picture
         is better than a missing one.
         """
+        # ANOTHER ACCOUNT'S FOLDER. /media/_acct/<account>/... names its account
+        # in the PATH, which the doorman does not read (it checks ?account= and
+        # the body), so a login limited to one account could open another
+        # company's images by typing the address. Served when it is the account
+        # this request is for, or one the signed-in user may open -- the same
+        # users.can_access_workspace rule the doorman applies to a named account.
+        # Not narrower than that: an <img> carries no ?account=, so a second tab
+        # showing a different account the user may open must still draw.
+        _refused = _foreign_account_refusal(relpath)
+        if _refused:
+            return _refused
         try:
             want = int(request.args.get("w") or 0)
         except (TypeError, ValueError):
@@ -64,10 +112,15 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
 
         # Round up to a cached bucket; anything larger is served as-is.
         size = next((s for s in _THUMB_SIZES if want <= s), 0)
-        root = os.path.normpath(_media_root())
+        root = os.path.normpath(os.path.abspath(_media_root()))
         src = os.path.normpath(os.path.join(root, relpath))
         # A path is user data. Refuse anything that resolves outside the root.
-        if not src.startswith(root) or not os.path.isfile(src):
+        # commonpath, not startswith: "media_old/x" starts with "media" too.
+        try:
+            _inside = os.path.commonpath([src, root]) == root
+        except ValueError:                 # different drives on Windows
+            _inside = False
+        if not _inside or not os.path.isfile(src):
             return send_from_directory(_media_root(), relpath)
         if not size or os.path.getsize(src) < 60 * 1024:
             return send_from_directory(_media_root(), relpath)   # already small

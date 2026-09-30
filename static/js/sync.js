@@ -5,7 +5,16 @@
    capability matrix. Status pills show "Unknown -- never pulled" before a first pull. */
 
 let SYNC_PUSH_UNLOCKED = false;
-let SYNC_LAST = null;   // {sku, amazon, stored, status} stashed on a pull, for apply
+let SYNC_LAST = null;   // {sku, amazon, stored, status, account} stashed on a pull, for apply
+
+// EVERY SYNC REQUEST NAMES ITS ACCOUNT, and the server refuses when it is not
+// the open one (routes/sync_routes.py _account_moved, admin bug round 30 Sep
+// 2026). SKUs are not unique across accounts.
+function _syncBody(o, acct){
+  if(acct !== undefined && typeof acctBodyFor === "function") return JSON.stringify(acctBodyFor(o || {}, acct));
+  return JSON.stringify((typeof acctBody === "function") ? acctBody(o || {}) : (o || {}));
+}
+function _syncAcct(){ return (typeof acctId === "function") ? acctId() : ""; }
 
 function _syncToast(msg){
   var t=document.getElementById('toast'); if(!t){ return; }
@@ -82,7 +91,7 @@ async function syncCheckStatus(){
   if(!sku){ pill.innerHTML=''; return; }
   pill.innerHTML='<span class="genspin"></span>';
   try{
-    var j=await (await fetch('/sync/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku:sku})})).json();
+    var j=await (await fetch('/sync/status',{method:'POST',headers:{'Content-Type':'application/json'},body:_syncBody({sku:sku})})).json();
     pill.innerHTML = j.ok ? (_syncPill(j.status)+' <span class="cc" style="font-size:11px;opacity:.7">'+esc(j.detail||'')+'</span>')
                           : ('<span style="color:var(--red)">'+esc(j.error||'error')+'</span>');
   }catch(e){ pill.innerHTML='<span style="color:var(--red)">error</span>'; }
@@ -92,7 +101,7 @@ async function syncPull(){
   var sku=_syncSku(); if(!sku){ _syncToast('Enter a SKU'); return; }
   _syncToast('Pulling from Amazon…');
   try{
-    var j=await (await fetch('/sync/pull',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku:sku})})).json();
+    var j=await (await fetch('/sync/pull',{method:'POST',headers:{'Content-Type':'application/json'},body:_syncBody({sku:sku})})).json();
     if(!j.ok){ _syncToast(j.error||'pull failed'); return; }
     syncOpenModal('pull', sku, j.stored_copy||{}, j.amazon_copy||{}, j);
   }catch(e){ _syncToast('pull error'); }
@@ -102,7 +111,7 @@ async function syncPush(){
   if(!SYNC_PUSH_UNLOCKED){ _syncToast('Push is locked — tick "Unlock push" first.'); return; }
   var sku=_syncSku(); if(!sku){ _syncToast('Enter a SKU'); return; }
   try{
-    var j=await (await fetch('/sync/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku:sku})})).json();
+    var j=await (await fetch('/sync/push',{method:'POST',headers:{'Content-Type':'application/json'},body:_syncBody({sku:sku})})).json();
     if(!j.ok){ _syncToast(j.error||'push blocked'); return; }
     syncOpenModal('push', sku, j.stored_copy||{}, j.amazon_copy||{}, j);
   }catch(e){ _syncToast('push error'); }
@@ -113,7 +122,8 @@ var _SYNC_FIELDS=[['title','Title'],['item_highlights','Item Highlights'],['bull
   ['description','Description'],['search_terms','Search terms']];
 
 function syncOpenModal(mode, sku, stored, amazon, meta){
-  SYNC_LAST={sku:sku, amazon:amazon, stored:stored, status:(meta&&meta.status)};
+  // PINNED to the account the copy was pulled in: Apply writes there or nowhere.
+  SYNC_LAST={sku:sku, amazon:amazon, stored:stored, status:(meta&&meta.status), account:_syncAcct()};
   var h='<div class="cc" style="margin-bottom:8px">'+esc(sku)+' — '
     +(mode==='pull'?'PULL: tick the Amazon fields to bring into the app.':'PUSH: review what would go to Amazon (write is halted).')+'</div>';
   if(meta&&meta.warn){ h+='<div style="background:var(--warn-bg);color:var(--warn);padding:8px 10px;border-radius:8px;margin-bottom:8px">'+esc(meta.warn)+'</div>'; }
@@ -153,14 +163,20 @@ async function syncApplyPull(){
     fields[cb.dataset.f]=(SYNC_LAST.amazon[cb.dataset.f]||'');
   });
   if(!Object.keys(fields).length){ _syncToast('Tick at least one field'); return; }
+  // THE SCREEN MOVED SINCE THE PULL: this review is another account's copy.
+  if(String(SYNC_LAST.account || "") !== String(_syncAcct() || "")){
+    _syncToast('The open account changed since this pull. Nothing was applied — pull again.');
+    SYNC_LAST = null; syncCloseModal(); return;
+  }
+  var _pin = SYNC_LAST.account || "";
   var body={sku:SYNC_LAST.sku, fields:fields};
   try{
-    var r=await fetch('/sync/pull/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var r=await fetch('/sync/pull/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:_syncBody(body, _pin)});
     var j=await r.json();
     if(r.status===409 && j.blocked){
       if(!await uiConfirm((j.error||'This row was regenerated but not pushed.')+'\n\nApply anyway and DISCARD the regenerated copy?')){ return; }
       body.force=true;
-      j=await (await fetch('/sync/pull/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+      j=await (await fetch('/sync/pull/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:_syncBody(body, _pin)})).json();
     }
     _syncToast(j.ok?('Applied to app: '+((j.applied||[]).join(', ')||'nothing')):(j.error||'apply failed'));
     if(j.ok){ syncCloseModal(); syncCheckStatus(); }
@@ -170,7 +186,7 @@ async function syncApplyPull(){
 async function syncRecheck(){
   _syncToast('Re-testing active account…');
   try{
-    var j=await (await fetch('/sync/read_test',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    var j=await (await fetch('/sync/read_test',{method:'POST',headers:{'Content-Type':'application/json'},body:_syncBody({})})).json();
     _syncToast(j.ok?('Pull: '+j.status+(j.pull_enabled?' (active)':' (disabled)')):(j.error||'read-test failed'));
     syncRenderMatrix();
   }catch(e){ _syncToast('read-test error'); }
@@ -186,7 +202,7 @@ async function syncMarkCause(){
   if(['deactivated','role_gap','blocked_unconfirmed','untested'].indexOf(st)<0){ _syncToast('invalid status'); return; }
   var note=await uiPrompt('Optional note (e.g. "Section 3 suspension"):')||'';
   try{
-    var j=await (await fetch('/sync/mark_status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:st,note:note})})).json();
+    var j=await (await fetch('/sync/mark_status',{method:'POST',headers:{'Content-Type':'application/json'},body:_syncBody({status:st,note:note})})).json();
     _syncToast(j.ok?'marked':(j.error||'failed')); syncRenderMatrix();
   }catch(e){ _syncToast('mark error'); }
 }

@@ -311,3 +311,39 @@ table.ordtable tbody tr.ordrow.rowon{ background:var(--as-action-subtle); }
 }
 
 @media (max-width: 640px){ table.ord-board-table .ord-chev{ display:none; } }
+
+/* THE ORDERS TABLE SIZES ITS COLUMNS TO WHAT THEY HOLD (30 Sep 2026). It
+   borrowed table.kv's table-layout:fixed (01-shell.css), which shares the width
+   out regardless of content: with the order open beside it the id, the state
+   chip and the profit overprinted their neighbours. Auto layout grows the table
+   instead, and its own box scrolls if it must. */
+table.ordtable.ord-board-table{ table-layout:auto; }
+
+/* A tablet gets the phone's cards too: at 768px the table could not fit its
+   nine columns without overprinting or scrolling sideways. */
+@media (min-width: 641px) and (max-width: 900px){
+  table.ord-board-table{ min-width:0 !important; }
+  table.ord-board-table thead{ display:none; }
+  table.ord-board-table, table.ord-board-table > tbody{ display:block; width:100%; }
+  table.ord-board-table tbody tr.orddetail,
+  table.ord-board-table tbody tr.orddetail > td{ display:block; width:auto; }
+  table.ord-board-table tbody tr.ordrow{
+    display:block; padding:10px 12px; border-bottom:1px solid var(--as-border-subtle);
+  }
+  table.ord-board-table tbody tr.ordrow > td{
+    display:grid; grid-template-columns:92px minmax(0,1fr); column-gap:10px;
+    padding:3px 0; border:0; white-space:normal !important; min-width:0 !important;
+  }
+  table.ord-board-table tbody tr.ordrow > td::before{
+    content:attr(data-label); grid-column:1; grid-row:1 / span 9;
+    font:var(--as-text-caption); color:var(--as-text-muted);
+  }
+  table.ord-board-table tbody tr.ordrow > td > *{ grid-column:2; justify-self:start; }
+  table.ord-board-table tbody tr.ordrow > td > .ord-next{ justify-self:stretch; }
+  table.ord-board-table tbody tr.ordrow > td.ord-selcell{ display:block; width:auto; text-align:left; }
+  table.ord-board-table tbody tr.ordrow > td.ord-selcell::before{ content:none; }
+  table.ord-board-table .ord-chev{ display:none; }
+}
+
+/* The countdown stays one line (1024px wrapped '1d 7h' onto two). */
+.ord-due{ white-space:nowrap; }

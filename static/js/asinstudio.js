@@ -101,6 +101,12 @@ async function asStudioCreateDraft() {
   if (!ASTUDIO.copy) { ASTUDIO.note = "Generate the copy first."; asStudioRender(); return; }
   const price = ((document.getElementById("as_price") || {}).value || "").trim();
   const days = ((document.getElementById("as_days") || {}).value || "3").trim();
+  // A price that is not a number is refused here as well as on the server,
+  // so nothing is sent for "12,99" or "abc".
+  if (price && !/^\d+(\.\d{1,2})?$/.test(price)) {
+    ASTUDIO.note = "The price must be a number, like 12.99. Nothing was saved.";
+    asStudioRender(); return;
+  }
   ASTUDIO.busy = "draft"; ASTUDIO.note = ""; asStudioRender();
   try {
     const j = await (await fetch("/asin-studio/create-draft", {
@@ -109,6 +115,7 @@ async function asStudioCreateDraft() {
         copy: ASTUDIO.copy, attributes: ASTUDIO.attributes,
         brand: ASTUDIO.brand,
         source_asin: (ASTUDIO.source || {}).asin || "",
+        product_type: (ASTUDIO.source || {}).product_type || "",
         price: price, handling_days: days,
         marketplace: (typeof WS_MARKET !== "undefined" ? WS_MARKET : "") }))
     })).json();
@@ -126,6 +133,10 @@ async function asStudioCreateDraft() {
 // app uses, so main, secondary and A+ all behave exactly as they do elsewhere.
 function asStudioImages() {
   const s = ASTUDIO.source || {};
+  if (!ASTUDIO.sku) {
+    ASTUDIO.note = "Create the draft first — Image Studio files its images under the draft's SKU.";
+    asStudioRender(); return;
+  }
   const img = s.main_image || s.image || (s.images || [])[0] || "";
   if (!img) { ASTUDIO.note = "That ASIN returned no image to work from."; asStudioRender(); return; }
   try {
@@ -256,8 +267,10 @@ function asStudioRender() {
          + "the draft and will hold it until dealt with:<ul style=\"margin:6px 0 0;"
          + "padding-left:18px\">"
          + ASTUDIO.findings.slice(0, 8).map(f =>
+             // domain/compliance_scan._finding: severity, kind, what, where, why, fix
              "<li>" + _asEsc((f.severity || "") + " · " + (f.kind || "")
-                             + (f.term ? " — " + f.term : "")
+                             + ((f.what || f.term) ? " — " + (f.what || f.term) : "")
+                             + (f.where ? " (" + f.where + ")" : "")
                              + (f.why ? ": " + f.why : "")) + "</li>").join("")
          + "</ul></div>";
     }
@@ -276,8 +289,11 @@ function asStudioRender() {
        + (ASTUDIO.busy === "draft" ? '<span class="genspin"></span> Saving…'
                                    : '<i class="ti ti-file-plus"></i> Create draft')
        + "</button>"
-       + '<button class="mktbtn" onclick="asStudioImages()">'
-       + '<i class="ti ti-photo"></i> Open Image Studio</button>'
+       // Image Studio files its images under a SKU, so it waits for the draft:
+       // before one exists it would have filed them under the bare ASIN.
+       + '<button class="mktbtn" onclick="asStudioImages()"'
+       + (ASTUDIO.sku ? "" : ' disabled title="Create the draft first — the images are filed under its SKU."')
+       + '><i class="ti ti-photo"></i> Open Image Studio</button>'
        + "</div>"
        + '<div class="cc" style="margin-top:6px">The draft lands in Listings as '
        + '<b>Needs review</b>, with the compliance and IP checks still to run. '

@@ -346,8 +346,8 @@ function ppcaTrail(j, cur){
     + 'space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">'
     + '<div><div style="font-size:18px;font-weight:700">Day trail</div>'
     + '<div style="font-size:12px;color:var(--ppc-muted)">Ad spend building up '
-    + 'across the window · Amazon publishes no hourly figures for this report, '
-    + 'so each curve is days rather than hours</div></div>'
+    + 'across the window' + uiHint('Amazon publishes no hourly figures for this '
+    + 'report, so each curve is days rather than hours') + '</div></div>'
     + ppcSeg(30, "ppcaLoad") + '</div>'
     + '<div class="ppc-trail">';
 
@@ -455,8 +455,8 @@ function ppcaBranded(j, cur){
     // -- "not set up: not 'no', which is a claim". A donut here would show a
     // confident 0% branded for an account that never typed its brand in.
     return head + '<div style="font-size:12px;color:var(--ppc-muted);'
-      + 'line-height:1.6">' + _pEsc(b.why || "Nothing to split yet.")
-      + '</div></div>';
+      + 'line-height:1.6"><i class="ti ti-tag-off"></i> Nothing to split yet'
+      + (b.why ? uiHint(b.why) : "") + '</div></div>';
   }
 
   const br = b.branded || {}, nb = b.non_branded || {};
@@ -493,12 +493,14 @@ function ppcaBranded(j, cur){
     }).join(" · ");
     rule = '<div class="ppc-note' + (b.warning ? " warn" : "") + '" '
       + 'style="margin:0 0 14px">'
-      + '<b>Brand words:</b> ' + (chips || '<i>none</i>')
-      + '<div style="margin-top:5px">' + _pEsc(b.rule) + '</div>'
+      // The matching rule is behind the (i); the words, the examples and a
+      // warning stay visible (owner, 30 Sep 2026: less text, more visual).
+      + '<b>Brand words:</b> ' + (chips || '<i>none</i>') + uiHint(b.rule)
       + (eg ? '<div style="margin-top:5px;color:var(--ppc-muted)">Caught, '
               + 'biggest spend first: ' + eg + '</div>' : "")
       + (b.warning ? '<div style="margin-top:5px;color:var(--ppc-orange)">'
-                     + _pEsc(b.warning) + '</div>' : "")
+                     + '<i class="ti ti-alert-triangle"></i> Check the brand '
+                     + 'list' + uiHint(b.warning) + '</div>' : "")
       + '</div>';
   }
 
@@ -626,7 +628,8 @@ function ppcaProfitability(j, cur){
                     // cannot cover reports a TACOS that is too low.
                     note2: (t.tacos_note
                             ? '<span style="color:var(--ppc-orange)">'
-                              + _pEsc(t.tacos_note) + '</span>' : ""),
+                              + '<i class="ti ti-alert-triangle"></i> caveat'
+                              + uiHint(t.tacos_note) + '</span>' : ""),
                     help: "Spend divided by ALL sales, advertised and organic "
                         + "together, over the days that have advertising "
                         + "figures. Rising is bad — advertising is taking a "
@@ -638,9 +641,9 @@ function ppcaProfitability(j, cur){
                     note: (wpct === null ? period
                            : (wpct.toFixed(1) + "% of total spend")),
                     note2: (w.terms ? (w.terms + " terms clicked, none ordered"
-                             + (w.report_start ? (" · from the search-term "
-                                + "report covering " + _pEsc(w.report_start)
-                                + " to " + _pEsc(w.report_end)) : ""))
+                             + (w.report_start ? uiHint("From the search-term "
+                                + "report covering " + w.report_start
+                                + " to " + w.report_end) : ""))
                                     : ""),
                     help: "Spend on search terms that took at least one click "
                         + "and produced no order. Not 'ACOS above target' — "
@@ -700,16 +703,17 @@ function ppcaProfitability(j, cur){
                     // calendar artefact rather than trading.
                     note2: (np.note
                             ? ('<span style="color:var(--ppc-orange)">'
-                               + _pEsc(np.note) + ' Without it: '
+                               + 'Without it: '
                                + ppcMoney0(np.net_profit_excl_undated, cur)
-                               + '.</span>')
+                               + uiHint(np.note) + '</span>')
                             : "")
                            // A part that could not be read: the figure is then
                            // too high, and says so (30 Sep 2026).
                            + ((np.profit_gaps || []).length
-                              ? ('<span style="color:var(--ppc-red)"> Profit may be '
-                                 + 'too high: ' + _pEsc(np.profit_gaps.join("; "))
-                                 + '.</span>') : ""),
+                              ? ('<span style="color:var(--ppc-red)"> '
+                                 + '<i class="ti ti-alert-triangle"></i> Profit may be '
+                                 + 'too high' + uiHint(np.profit_gaps.join("; "))
+                                 + '</span>') : ""),
                     note: period,
                     // THE CARD IS THE SALES PAGE'S PROFIT, ADS ALREADY OFF. The
                     // help said "profit X - ad spend Y" beside a card showing X
@@ -750,7 +754,7 @@ function _ppcaEfficiencyCard(j, eff, effBadge){
     return ppcSubCard({
       label: "EFFICIENCY SCORE", value: null,
       why: s.why || "One of its three parts could not be measured.",
-      note: _pEsc(s.why || ""),
+      note: (s.why ? "not measurable" + uiHint(s.why) : ""),
       help: "Three parts, weighted: 50% how far ACOS sits under break-even, "
           + "30% how normal the conversion rate is against its own history, "
           + "20% how little of the spend bought clicks and no orders. Not shown "
@@ -769,8 +773,8 @@ function _ppcaEfficiencyCard(j, eff, effBadge){
     value: Number(s.score).toFixed(2),
     badge: '<span class="ppc-opp ' + (s.band === "Good" ? "hi" : "lo")
          + '">' + _pEsc(s.band) + '</span>',
-    note: _pEsc("under 50 poor · 50-75 average · over 75 good"),
-    note2: _pEsc((p.wasted || {}).why || ""),
+    note: _pEsc("under 50 poor · 50-75 average · over 75 good")
+        + ((p.wasted || {}).why ? uiHint(p.wasted.why) : ""),
     help: "Our own measure, and here is all of it:\n"
         + line("acos", "· ACOS part") + "\n"
         + line("cvr", "· conversion part") + "\n"
@@ -846,7 +850,7 @@ function ppcaTrends(j, cur){
   };
   const missing = function(text){
     return '<div style="font-size:12px;color:var(--ppc-muted);line-height:1.6">'
-      + _pEsc(text) + '</div>';
+      + '<i class="ti ti-chart-bar-off"></i> Not available' + uiHint(text) + '</div>';
   };
 
   const left = (pc && pc.some(function(v){ return v !== null; }))
@@ -975,16 +979,14 @@ function ppcaHeatAndTacos(j, cur){
 
   const heat = '<div class="ppc-panel ppc-panel-sm" style="margin-bottom:0">'
     + '<div class="ppc-panel-title-sm">ACoS heatmap — day of week'
-    + '<span class="ppc-i" title="Which days the advertising converts. Hover a '
-    + 'cell for that day\'s ACOS and spend.">ⓘ</span></div>'
-    + '<div style="font-size:11.5px;color:var(--ppc-muted);line-height:1.6;'
-    + 'margin-bottom:10px">'
+    // The caption moved into the (i): the grid and its legend say the rest.
+    + '<span class="ppc-i" title="' + _pEsc('Which days the advertising converts. '
+    + 'Hover a cell for that day\'s ACOS and spend.\n\n'
     + (grid
         ? 'One cell per day, shaded by its ACOS band. The mockup asks for day × '
           + 'hour; Amazon publishes no hourly figures for this report, so this '
           + 'is the same question one step coarser — and every cell is measured.'
-        : _pEsc((av.hourly && av.hourly.why) || ""))
-    + '</div>'
+        : ((av.hourly && av.hourly.why) || ""))) + '">ⓘ</span></div>'
     + (grid || '<div style="font-size:12px;color:var(--ppc-muted)">Not enough '
                + 'days with an ACOS in this window to draw one.</div>')
     + '</div>';
@@ -998,9 +1000,10 @@ function ppcaHeatAndTacos(j, cur){
         ? ppcaChart({id: "ppca_tacos", height: 250, frac: 0.4,
                      columns: d.map(function(x){ return x.date; }),
                      lines: [{key: "tacos", values: tacos}]})
-        : '<div style="font-size:12px;color:var(--ppc-muted)">No total sales '
-          + 'are stored for these days, so advertising cannot be compared '
-          + 'against them.</div>')
+        : '<div style="font-size:12px;color:var(--ppc-muted)">'
+          + '<i class="ti ti-chart-bar-off"></i> No total sales stored'
+          + uiHint('No total sales are stored for these days, so advertising '
+          + 'cannot be compared against them.') + '</div>')
     + '</div>';
 
   return '<div class="ppc-grid-3-2 ppc-mb16">' + heat + tp + '</div>';

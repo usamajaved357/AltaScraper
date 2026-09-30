@@ -64,8 +64,14 @@ print("\n== it runs after the range is settled ==")
 _r = CODE.split("async function salesReload")[1]
 _r = _r[:_r.find("}catch(e){")]
 truthy("the call is inside salesReload's try", "salesLoadBreakdown();" in _r)
+# Re-pinned 30 Sep 2026 (reports bug round): salesReload draws the grid through
+# salesRedrawGrid() now, which re-fetches it when the heatmap has its own
+# period instead of drawing the screen's range under the grid's own toolbar.
+_grid_at = _r.find("salesRedrawGrid(")
+if _grid_at < 0:
+    _grid_at = _r.find("salesDrawGrid(")
 truthy("  after the grid is drawn",
-       _r.index("salesDrawGrid(") < _r.index("salesLoadBreakdown();"))
+       0 <= _grid_at < _r.find("salesLoadBreakdown();"))
 falsy("  and it is not awaited -- the figures must not wait for it",
       "await salesLoadBreakdown" in _r)
 truthy("why it is not at the top is recorded", "needs the range" in J)

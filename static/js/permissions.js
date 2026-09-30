@@ -71,7 +71,12 @@ function permEdit(userId) {
   // A DRAFT, so nothing is saved until Save is pressed. A permissions screen
   // that writes as you click is one where a mis-click is a live change.
   PERM.draft = {
-    features: Object.assign({}, u.features || {}),
+    // What was SET (plus each area's resolved level), never the resolved map:
+    // a page nobody set must draw as "follow" and stay absent on Save, or Save
+    // pins every page to today's value (userEditorFeatures, users.js).
+    features: (typeof userEditorFeatures === "function")
+      ? userEditorFeatures(u, (PERM.meta && PERM.meta.feature_parent) || {})
+      : Object.assign({}, u.feature_overrides || u.features || {}),
     workspaces: (u.workspaces || []).slice(),
     role: u.role || "lister",
   };

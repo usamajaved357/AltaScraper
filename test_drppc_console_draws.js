@@ -26,6 +26,15 @@ function truthy(label, got){ check(label, !!got, true); }
 
 const SHARED = fs.readFileSync("static/js/ppcshared.js", "utf8");
 const SRC = fs.readFileSync("static/js/drppc_console.js", "utf8");
+// pageui.js loads before these on the real page (templates/dashboard.html), and
+// since 30 Sep 2026 the console puts its section explanations behind pageui's
+// uiHint (i) -- "less text explanatory but more visual explanatory". The real
+// function is lifted out of pageui.js so this sandbox has what the page has.
+const PAGEUI = fs.readFileSync("static/js/pageui.js", "utf8");
+const _hintAt = PAGEUI.indexOf("function uiHint(");
+const UIHINT = new Function("esc", PAGEUI.slice(_hintAt, PAGEUI.indexOf("\n}", _hintAt) + 2)
+  + "\nreturn uiHint;")(s => String(s).replace(/[&<>"']/g,
+    c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]));
 
 // A DOM where setting innerHTML really does create findable children, because
 // the whole question is whether #drpc_main exists after the shell is drawn.
@@ -69,6 +78,7 @@ function load(dom, fetchImpl){
   globalThis.WS_MARKET = "UK";
   globalThis.jsArg = s => JSON.stringify(String(s));
   globalThis.toast = () => {};
+  globalThis.uiHint = UIHINT;
   globalThis.fetch = fetchImpl;
   return new Function(SHARED + "\n;\n" + SRC
     + "\nreturn {drpcOnOpen, drpcShell, drpcMain, drpcErr, DRPC};")();

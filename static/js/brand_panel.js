@@ -60,7 +60,8 @@ async function brandRefresh(){
     if(cards){
       const c=document.createElement('div');
       c.style.cssText='border:1px solid var(--line);border-radius:9px;padding:8px 11px;background:var(--panel2);cursor:pointer;min-width:150px;position:relative';
-      c.innerHTML='<div style="font-weight:600;padding-right:18px">'+b.brand_name+'</div><div class="cc">'+(b.vendor_mode||'')+' \u00b7 '+(b.marketplace||'')+' \u00b7 '+(b.source_language||'en')+'</div>'
+      // Escaped: a brand name is typed text and was pasted in raw (bug round, 30 Sep 2026).
+      c.innerHTML='<div style="font-weight:600;padding-right:18px">'+_bEsc(b.brand_name)+'</div><div class="cc">'+_bEsc(b.vendor_mode||'')+' \u00b7 '+_bEsc(b.marketplace||'')+' \u00b7 '+_bEsc(b.source_language||'en')+'</div>'
         +'<span title="Remove this trademark from this account" style="position:absolute;top:5px;right:7px;color:var(--red);font-weight:700;cursor:pointer" onclick="event.stopPropagation();brandRemoveFromAccount('+jsArg(b.brand_name)+')">\u00d7</span>';
       c.onclick=()=>{document.getElementById('b_select').value=b.brand_name; brandLoad(b.brand_name);};
       cards.appendChild(c);
@@ -138,9 +139,10 @@ async function brandPreview(){
     body:JSON.stringify({csv_path:b_csv.value})})).json();
   if(!r.ok){out.textContent='Error: '+r.error;return;}
   setTone(r.tone_options, b_tone.value);
-  out.innerHTML = `<b>${r.count}</b> products | source language: <b>${r.language.name}</b>`
-    + ` | statuses: ${JSON.stringify(r.statuses)}`
-    + `<br>top vendors: ` + r.vendors.map(v=>`${v.name} (${v.count})`).join(', ');
+  // Everything here comes out of the uploaded file, so all of it is escaped.
+  out.innerHTML = `<b>${_bEsc(r.count)}</b> products | source language: <b>${_bEsc((r.language||{}).name)}</b>`
+    + ` | statuses: ${_bEsc(JSON.stringify(r.statuses))}`
+    + `<br>top vendors: ` + (r.vendors||[]).map(v=>`${_bEsc(v.name)} (${_bEsc(v.count)})`).join(', ');
 }
 async function brandRun(testMode){
   if(!b_name.value){await uiAlert('Save the brand first.');return;}
@@ -200,7 +202,7 @@ async function uploadBrandRef(input){
     var res=await fetch('/media/upload',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({sku:'_brand_'+brand,data:dataUrl,name:file.name,kind:'brandref'})});
     var j=await res.json();
-    if(!j.ok){ if(prev) prev.innerHTML='<span class="cc" style="color:var(--red)">Upload failed: '+(j.error||'')+'</span>'; return; }
+    if(!j.ok){ if(prev) prev.innerHTML='<span class="cc" style="color:var(--red)">Upload failed: '+_bEsc(j.error||'')+'</span>'; return; }
     document.getElementById('b_mainimgref').value=j.url;
     if(prev) prev.innerHTML='<img src="'+j.url+'" style="max-width:120px;border-radius:8px;border:1px solid var(--line);margin-top:6px"><div class="cc">\u2713 uploaded \u2014 remember to Save brand</div>';
   }catch(e){ if(prev) prev.innerHTML='<span class="cc" style="color:var(--red)">Error: '+e+'</span>'; }

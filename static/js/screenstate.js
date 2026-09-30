@@ -44,7 +44,7 @@ const SCREEN_BODIES = {
                  "sales_note", "sales_orgppc", "sales_ppccards", "sales_week",
                  "sales_hourly", "sales_today_clock", "sales_today_delta",
                  "sales_today_key", "sales_today_note", "sales_week_delta",
-                 "sales_week_key", "sales_week_note"],
+                 "sales_week_key", "sales_week_note", "sales_cogsbar"],
   // Image library / Image studio: drawn product lists and the chosen product.
   imagelib:     ["imgp_picker", "imgp_which", "imgp_lib"],
   imagestudio:  ["studiobody", "studio_picker_list"],
@@ -52,7 +52,10 @@ const SCREEN_BODIES = {
   orders:       ["ordbody"],
   returns:      ["retbody", "returns_list", "returns_detail"],
   aiusage:      ["aiu_body"],
-  variations:   ["varbody"],
+  variations:   ["varbody", "varfamilies"],
+  asinstudio:   ["asinstudiobody"],
+  uploads:      ["uph_body"],
+  imagerefs:    ["imagerefsbody"],
   sourcing:     ["srcbody", "srcpick", "srcalerts"],
   sellerimport: ["simpbody"],
   monitor:      ["mon_list", "mon_alerts"],
@@ -65,7 +68,7 @@ const SCREEN_BODIES = {
   traffic:      ["trafbody"],
   daily:        ["dy_body"],
   home:         ["home_body"],
-  weekly:       ["wk_body"],
+  weekly:       ["wk_body", "wk_sheetmsg"],
   leading:      ["ld_body"],
   catalog:      ["catp_body"],
   trackers:     ["trk_body"],
@@ -149,12 +152,24 @@ function screenStillIn(sc){
 // here, guarded, because every one lives in its own file.
 function _screenResetHeld(){
   const T = (o, f) => { try{ if(o) f(o); }catch(e){} };
-  if(typeof RET   !== "undefined") T(RET,   o => { o.data = null; o.busy = false; });
-  if(typeof RETL  !== "undefined") T(RETL,  o => { o.rows = []; o.statuses = {};
+  if(typeof RET   !== "undefined") T(RET,   o => { o.data = null; o.busy = false; o.range = null; });
+  if(typeof RETL  !== "undefined") T(RETL,  o => { o.rows = []; o.statuses = {}; o.action = ""; o.currency = "";
     o.coverage = {}; o.note = ""; o.open = null; o.detail = null; o.loading = false; });
-  if(typeof HRLY  !== "undefined") T(HRLY,  o => { o.data = null; o.busy = false; });
-  if(typeof TRAF  !== "undefined") T(TRAF,  o => { o.data = null; o.busy = false; });
-  if(typeof STOCK !== "undefined") T(STOCK, o => { o.rows = []; o.cockpit = null;
+  if(typeof HRLY  !== "undefined") T(HRLY,  o => { o.data = null; o.busy = false;
+    o.seq = (o.seq||0) + 1; o.status = ""; o.open = ""; });
+  if(typeof TRAF  !== "undefined") T(TRAF,  o => { o.data = null; o.busy = false;
+    o.seq = (o.seq||0) + 1; o._zoomBack = null; o.start = ""; o.end = "";
+    if(o.preset === "custom") o.preset = "30d"; });
+  // Sales (reports bug round, 30 Sep 2026): the zoom, the week card and every
+  // in-flight load belong to the account that asked; bumping the sequence
+  // numbers makes a late reply from A land nowhere under B.
+  if(typeof SALES !== "undefined") T(SALES, o => { o._weekDraw = null; o._weekFoot = "";
+    o._lastSeries = null; o._zoomBack = null; o.loadSeq = (o.loadSeq||0) + 1;
+    o.gridSeq = (o.gridSeq||0) + 1; o.gridBusy = false; o.busy = false; });
+  if(typeof SALES_BD !== "undefined") T(SALES_BD, o => { o.rows = []; o.meta = null; o.seq = (o.seq||0) + 1; });
+  if(typeof SALES_CAMP !== "undefined") T(SALES_CAMP, o => { o.rows = []; o.totals = {}; o.error = "";
+    o.loaded = false; o.seq = (o.seq||0) + 1; });
+  if(typeof STOCK !== "undefined") T(STOCK, o => { o.rows = []; o.cockpit = null; o.toOrder = []; o.forecast = []; o.note = ""; o.marketplace = ""; o.account = "";
     o.counts = {}; o.legend = []; o.coverage = null; o.coverageAsked = false;
     o.moneyBack = null; o.moneyBackAsked = false; o.loading = false; });
   if(typeof PPCV  !== "undefined") T(PPCV,  o => { o.data = null; o.loading = false; });
@@ -172,7 +187,7 @@ function _screenResetHeld(){
     o.plan = null; o.perf = null; o.act = null; o.draft = null; o.history = [];
     o.detail = {}; o.openCamp = null; o.loading = false;
     const m = document.getElementById("drpc_main"); if(m && m.remove) m.remove(); });
-  if(typeof DAILY !== "undefined") T(DAILY, o => { o.data = null; o.loading = false; o.note = ""; });
+  if(typeof DAILY !== "undefined") T(DAILY, o => { o.data = null; o.loading = false; o.note = ""; o.seq = (o.seq||0) + 1; });
   // The keyword screens (review of the advertising pages, 30 Sep 2026): after
   // A -> B, ASIN Insights still showed A's queries and its Track button added
   // A's ASIN to B's watch list; History sent A's weeks to B.
@@ -184,6 +199,20 @@ function _screenResetHeld(){
   // shared P&L statement (it remembers the screen and query that asked), so a
   // switch can never show one account's ad groups or profit under another.
   if(typeof PPCX  !== "undefined") T(PPCX,  o => { o.structure = {}; o.loading = {}; });
+  // Notifications, the bell, the rank tracker and the alerts badge (monitoring
+  // bug round, 30 Sep 2026): one account's channels, unread count or keywords
+  // must never show under another. Both badges re-poll once the new account is set.
+  if(typeof NTF  !== "undefined") T(NTF,  o => { o.channels = []; o.log = []; o.loading = false; o.error = ""; o.note = ""; });
+  if(typeof BELL !== "undefined") T(BELL, o => { o.rows = []; o.unread = 0; });
+  try{ const bd = document.getElementById("belldot"); if(bd){ bd.style.display = "none"; bd.textContent = ""; } }catch(e){}
+  if(typeof KRT  !== "undefined") T(KRT,  o => { o.watch = []; o.history = []; o.counts = null; o.note = ""; o.what = ""; o.loading = false; o.checking = false; });
+  try{ const ib = document.getElementById("inv_badge"); if(ib){ ib.style.display = "none"; ib.textContent = ""; } }catch(e){}
+  try{ const ab = document.getElementById("alr_badge"); if(ab){ ab.style.display = "none"; ab.textContent = ""; } }catch(e){}
+  if(typeof setTimeout === "function") setTimeout(function(){
+    try{ if(typeof notifPoll === "function") notifPoll(); }catch(e){}
+    try{ if(typeof trkBadge  === "function") trkBadge(); }catch(e){}
+    try{ if(typeof invBadgeRefresh === "function") invBadgeRefresh(); }catch(e){}
+  }, 800);
   if(typeof PNL   !== "undefined") T(PNL,   o => { o.data = null; o.expenses = null;
     o.loading = false; o.seq = (o.seq || 0) + 1; o.qs = null; o.host = "pnl_body"; });
   if(typeof KWH    !== "undefined") T(KWH,    o => { o.weeks = []; o.rows = [];
@@ -200,6 +229,17 @@ function _screenResetHeld(){
   // THE IMAGE STUDIO'S product, brand and results belong to the account they
   // were picked in; kept, B's Studio redrew A's product and its Save filed A's
   // images into B's library. Its progress poll is stopped with them (review).
+  // Images / variations / seller import (bug round, 30 Sep 2026): one account's
+  // drafts, families, uploads and picked images never carried into another.
+  if(typeof ASTUDIO!=="undefined") T(ASTUDIO,o=>{o.source=null;o.competitors=[];o.copy=null;o.attributes=null;o.brand="";o.ipNotes=[];o.findings=[];o.brandNote="";o.busy="";o.note="";o.sku="";});
+  if(typeof UPH!=="undefined") T(UPH,o=>{o.uploads=[];o.kinds={};o.open=null;o.detail={};o.loading=false;o.error="";});
+  if(typeof VARS!=="undefined") T(VARS,o=>{o.picked=[];o.items=[];o.note="";o.theme="";o.parentSku="";o.themes=[];o.unusable=[];o.preview=null;});
+  if(typeof VARFAM!=="undefined") T(VARFAM,o=>{o.data=null;o.open={};o.loading=false;});
+  if(typeof SIMP!=="undefined") T(SIMP,o=>{o.seller="";o.rows=[];o.meta=null;o.screened=false;o.busy=false;o.screenSummary=null;});
+  if(typeof IMGLIB!=="undefined") T(IMGLIB,o=>{o.sku="";o.files=[];o.main="";o.folders=null;o.slots=null;o.pending="";o.lastSend=null;});
+  try{ if(typeof _IREF_PROFILE!=="undefined"){ _IREF_PROFILE=null; _IREF_LOAD_ERR=""; } }catch(e){}
+  try{ if(typeof _MEDIA_FOLDERS!=="undefined"){ _MEDIA_FOLDERS={}; } }catch(e){}
+  if(typeof STUDIO !== "undefined") T(STUDIO, o => { o.concepts = []; o.conceptKind = ""; o._reroll = {}; o.currentJob = ""; });
   if(typeof STUDIO !== "undefined") T(STUDIO, o => { o.skus = []; o.items = [];
     o.brand = ""; o.results = {}; o.manualRef = ""; });
   try{ if(typeof STUDIO_POLL !== "undefined" && STUDIO_POLL){ clearInterval(STUDIO_POLL); STUDIO_POLL = null; } }catch(e){}
@@ -210,7 +250,22 @@ function _screenResetHeld(){
   // ...and the "N SKUs edited" bar that counted them (it lives on <body>).
   try{ if(typeof lrEditBar === "function") lrEditBar(); }catch(e){}
   if(typeof WK    !== "undefined") T(WK,    o => { o.week = null; o.weeks = [];
-    o.change = {}; o.loading = false; o.fellBack = ""; });
+    o.change = {}; o.changes = {}; o.loading = false; o.fellBack = ""; });
+  // Settings/admin bug round (30 Sep 2026): a pulled listing waiting to be
+  // applied, the Miles run being tailed, AI spend and a half-edited permission
+  // set all belong to the account they were opened in. ES (the shared stream)
+  // is NOT closed here: it also carries a generation run, which must survive.
+  try{ if(typeof SYNC_LAST !== "undefined") SYNC_LAST = null; }catch(e){}
+  try{ const sm = document.getElementById("sync_modal"); if(sm) sm.style.display = "none";
+       const sp = document.getElementById("sync_pill"); if(sp) sp.innerHTML = ""; }catch(e){}
+  try{ if(typeof MILES_TAILID !== "undefined"){ MILES_TAILID = null; MILES_TAILFROM = 0; } }catch(e){}
+  try{ if(typeof MILES_ITEMS !== "undefined"){ MILES_ITEMS = []; MILES_FILE = null; } }catch(e){}
+  ["miles_log", "miles_results", "miles_livestatus", "miles_runs_list"].forEach(function(id){
+    try{ const el = document.getElementById(id); if(el) el.innerHTML = ""; }catch(e){} });
+  if(typeof AIU  !== "undefined") T(AIU,  o => { o.data = null; o.dataFor = ""; o.calls = null; });
+  if(typeof PERM !== "undefined") T(PERM, o => { o.editing = null; o.draft = null; });
+  // A sheet write queued in A must never land in B's sheet (reports bug round).
+  try{ if(typeof _WK_PENDING !== "undefined") _WK_PENDING = null; }catch(e){}
   if(typeof PNL   !== "undefined") T(PNL,   o => { o.data = null; o.expenses = null;
     o.loading = false; });
   if(typeof RB    !== "undefined") T(RB,    o => { o.data = null; o.loading = false;
@@ -218,7 +273,9 @@ function _screenResetHeld(){
   if(typeof FIN   !== "undefined") T(FIN,   o => { o.rows = []; o.totals = {};
     o.overhead = null; o.previous = null; o.meta = null; });
   if(typeof LEAD  !== "undefined") T(LEAD,  o => { o.data = null; o.loading = false; });
-  if(typeof CATP  !== "undefined") T(CATP,  o => { o.data = null; o.loading = false; });
+  if(typeof CATP  !== "undefined") T(CATP,  o => { o.data = null; o.loading = false; o.note = ""; });
+  if(typeof CATS  !== "undefined") T(CATS,  o => { o.data = null; o.loading = false; o.note = ""; });
+  if(typeof CMP   !== "undefined") T(CMP,   o => { o.scans = []; o.current = null; o.loading = false; o.note = ""; o.histError = ""; });
   if(typeof TRK   !== "undefined") T(TRK,   o => { o.rows = []; o.loading = false; });
   // REPRICER RULES AND FAMILIES, keyed by SKU (Milestone 3 review). A's floor,
   // hold price and direction were shown on B's same-SKU row -- and PRE-FILLED
@@ -233,7 +290,7 @@ function _screenResetHeld(){
   if(typeof LR_FAM_ASKED !== "undefined") { try{ LR_FAM_ASKED = false; }catch(e){} }
   if(typeof LR_OPEN_FAMS !== "undefined") T(LR_OPEN_FAMS, o => { for(const k in o) delete o[k]; });
   // Keywords (Search Query Performance): one account's report (Milestone 3 review).
-  if(typeof SQP   !== "undefined") T(SQP,   o => { o.data = null; o.note = ""; o.loading = false; });
+  if(typeof SQP   !== "undefined") T(SQP,   o => { o.data = null; o.note = ""; o.loading = false; o.filter = ""; });
   // The generator's input queue is the open account's (the server reads it
   // from the selected workspace) -- counting A's queue for B is the wrong answer.
   if(typeof IQ    !== "undefined") T(IQ,    o => { o.rows = []; o.busy = false; o.editing = null; });

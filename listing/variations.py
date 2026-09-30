@@ -377,9 +377,14 @@ _NEVER_ON_PARENT = frozenset({
     "merchant_shipping_group", "condition_type", "condition_note",
     # CLAUDE.md Rule 1: never sent, from anywhere, for any reason.
     "merchant_suggested_asin",
-    # A container has no barcode of its own. It goes up under the exemption,
-    # never with a child's identifier, which belongs to one physical product.
+    # A container has no barcode of its own, and never carries a child's
+    # identifier, which belongs to one physical product.
     "externally_assigned_product_identifier",
+    # CLAUDE.md Rule 1: the GTIN exemption is claimed only by the owner's click,
+    # listing by listing. Copied from children that agreed on it, it was a
+    # declaration to Amazon made by a CONDITION, which Rule 1 forbids -- and the
+    # parent schema has no such field anyway (parent_attributes below).
+    "supplier_declared_has_product_identifier_exemption",
     # Set from the theme, not copied.
     "parentage_level", "variation_theme", "child_parent_sku_relationship",
 })

@@ -62,12 +62,19 @@ function _rEsc(s){
 
    NO CURRENCY SYMBOL. The returns report states the amount and not the
    currency, and these accounts span GBP, EUR and USD marketplaces; printing a
-   "$" over a euro figure would be a confident lie. The marketplace is on the
-   screen already. */
+   "$" over a euro figure would be a confident lie.
+
+   EXCEPT WHERE THE SERVER NAMES IT (bug round 30 Sep 2026): every answer is for
+   ONE marketplace, and the server now sends that marketplace's currency code.
+   Then this uses money.js's curMoney -- the same formatter the returns list
+   uses -- so the two views print the same figure the same way. No code, no
+   symbol, as before. */
 function _rMoney(v){
   if(v === null || v === undefined) return "—";
   const n = Number(v);
   if(!isFinite(n)) return "—";
+  const cc = (RET.data && RET.data.currency) || "";
+  if(cc && typeof curMoney === "function") return curMoney(n, cc);
   return n.toLocaleString(undefined, {minimumFractionDigits: 2,
                                       maximumFractionDigits: 2});
 }
@@ -89,12 +96,18 @@ const RET_NATURE_COLOUR = {
 };
 
 function returnsOnOpen(){ if(!RET.data) returnsLoad(); else returnsRender(); }
-function returnsSetDays(d){ RET.days = d; returnsLoad(); }
+// A DAY CHIP PRESSED WHILE A PULL IS RUNNING IS STILL A REQUEST (bug round
+// 30 Sep 2026). RET.busy dropped it, so the chip showed 90 days while the page
+// went on to draw the 30-day answer still in flight. Now the chip always asks,
+// and the ticket makes the NEWEST answer the one drawn.
+function returnsSetDays(d){ RET.days = d; returnsLoad(true); }
 
-async function returnsLoad(){
+let _RET_LOADS = 0;
+async function returnsLoad(force){
   const body = document.getElementById("retbody");
-  if(!body || RET.busy) return;
+  if(!body || (RET.busy && !force)) return;
   RET.busy = true;
+  const mine = ++_RET_LOADS;
   const t = _retTicket();
   body.innerHTML = '<div class="cc" style="padding:18px"><span class="genspin"></span> '
     + 'Asking Amazon for the returns report — they build these slowly, so this '
@@ -116,7 +129,26 @@ async function returnsLoad(){
     if(!_retCurrent(t)) return;
     body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
       + _rEsc(String(e)) + '</div>';
-  }finally{ RET.busy = false; }
+  }finally{
+    // Only the latest pull clears the flag; an older one finishing must not
+    // mark the screen idle while the newer one is still waiting on Amazon.
+    if(mine === _RET_LOADS) RET.busy = false;
+  }
+}
+
+/* THE STORED LIST MUST FOLLOW WHAT WAS JUST LOADED (bug round 30 Sep 2026).
+   returnsListOnOpen only fetches when RETL.rows is empty, so after an upload or
+   "Start again" the list kept showing the returns held before it. Emptying it
+   here makes the next look re-read the store, and a list already on screen is
+   reloaded now. */
+function _retListForget(){
+  if(typeof RETL === "undefined" || !RETL) return;
+  RETL.rows = []; RETL.statuses = {}; RETL.coverage = {};
+  RETL.open = null; RETL.detail = null; RETL.action = "";
+  const host = document.getElementById("returns_list");
+  if(host && host.innerHTML && typeof returnsListLoad === "function"){
+    returnsListLoad();
+  }
 }
 
 /* WHICH REPORT, AND WHERE TO GET IT. Two reports fill different halves of this
@@ -128,6 +160,7 @@ const RET_REPORTS = {
     name: "FBA Customer Returns",
     where: "Seller Central → Reports → Fulfilment → Customer Concessions → "
          + "FBA Customer Returns",
+    short: "everything, incl. condition and customer comments.",
     gives: "Everything on this page, including the condition each return came "
          + "back in and the customers' own comments — two things Amazon's API "
          + "will not give a seller-fulfilled account at all.",
@@ -135,11 +168,20 @@ const RET_REPORTS = {
   mfn: {
     name: "Seller-fulfilled returns",
     where: "Seller Central → Reports → Return Reports → Seller-fulfilled returns",
+    short: "reasons, dates, quantities, refunds — no grading.",
     gives: "Reasons, dates, quantities and the amount actually refunded. No "
          + "condition grading and no customer comments — Amazon never handles "
          + "these returns, so it has nothing to grade or record.",
   },
 };
+
+/* The page's (i), from static/js/pageui.js (microcopy pass, 30 Sep 2026: long
+   captions became one line with the full text behind it). Guarded because a
+   page without pageui.js must still show the text, not lose it. */
+function _rHint(text){
+  return (typeof uiHint === "function") ? uiHint(text)
+    : '<span class="cc">(' + _rEsc(text) + ')</span>';
+}
 
 let RET_WANT = "";
 
@@ -193,6 +235,7 @@ async function returnsUploadFile(input){
     (j.rejected || []).forEach(function(msg){ toast(msg); });
     RET.range = null;             // a new upload drops any zoom
     RET.data = j; returnsRender();
+    _retListForget();
   }catch(e){
     if(body) body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
       + _rEsc(String(e)) + '</div>';
@@ -210,7 +253,8 @@ async function returnsClear(){
     const body = document.getElementById("retbody");
     if(body) body.innerHTML = "";
     toast((j && j.note) || "Cleared.");
-    returnsLoad();
+    _retListForget();
+    returnsLoad(true);
   }catch(e){ toast(String(e)); }
 }
 
@@ -571,11 +615,11 @@ function returnsRender(){
         +  'For a returns page that is good news rather than a fault.</div>';
     }
     h += '<div class="ri-samplebar" style="border-color:var(--line);'
-      +  'background:var(--panel2)"><b>The figures below are placeholders, not '
-      +  'your data.</b> Every one of them is dimmed and in italics so the '
-      +  'layout can be judged now. They are not stored, they are never mixed '
-      +  'in with real ones, and they disappear entirely the moment a report '
-      +  'lands.</div>';
+      +  'background:var(--panel2)"><b>Sample figures below — not your data.</b> '
+      +  _rHint('The figures below are placeholders, not your data. Every one '
+      +  'of them is dimmed and in italics so the layout can be judged now. They '
+      +  'are not stored, they are never mixed in with real ones, and they '
+      +  'disappear entirely the moment a report lands.') + '</div>';
 
     // WHICH REPORTS, named, with where to find each and what each one can
     // actually fill in. Amazon's own naming is not guessable: the FBA one
@@ -590,7 +634,8 @@ function returnsRender(){
             + '<div class="cc" style="font-size:11.5px;line-height:1.6">'
             + '<b>Where:</b> ' + _rEsc(r.where) + '</div>'
             + '<div class="cc" style="font-size:11.5px;line-height:1.6;margin-top:6px">'
-            + '<b>Fills in:</b> ' + _rEsc(r.gives) + '</div></div>';
+            + '<b>Fills in:</b> ' + _rEsc(r.short) + ' ' + _rHint(r.gives)
+            + '</div></div>';
         }).join("")
       + '</div>';
   }
@@ -713,8 +758,9 @@ function returnsRender(){
       }).join("")
     + '</div>'
     + '<div class="cc" style="font-size:11px;margin-top:10px;line-height:1.5">'
-    + 'Fifty reason codes grouped into the four things you can actually do '
-    + 'something about.</div>';
+    + '50 reason codes, four actionable groups. '
+    + _rHint('Fifty reason codes grouped into the four things you can actually '
+    + 'do something about.') + '</div>';
 
   h += '<div class="ri-2-1">'
     + _riCard("Daily Returns Volume",
@@ -894,9 +940,10 @@ function returnsRender(){
     + '</tbody></table></div>'
     + '<div class="cc" style="font-size:11px;margin-top:8px">'
     + (lines.length
-        ? 'Lines are worked out from ' + _rEsc(d.lines_from || "the product names")
+        ? 'Lines from ' + _rEsc(d.lines_from || "the product names") + '. '
+          + _rHint('Lines are worked out from ' + (d.lines_from || "the product names")
           + ' — Amazon sends no product line of its own. The SKUs in each are in '
-          + 'the table below.'
+          + 'the table below.')
         : (noData
             ? 'Sample shape — your own product lines appear here.'
             : 'Your returns are loaded but this app has not grouped them into '
@@ -957,8 +1004,10 @@ function returnsRender(){
       + '</tbody></table></div>'
       + '<div class="cc" style="font-size:11px;margin-top:8px;line-height:1.5">'
       + 'Grouped by ' + _rEsc((parents[0] || {}).grouped_by || "the product name")
-      + '. Trend compares the last three complete months with the first three, '
-      + 'so a quarter either way is noise and anything past that is a direction.'
+      + '. Trend: last 3 full months vs first 3. '
+      + _rHint('Trend compares the last three complete months with the first '
+      + 'three, so a quarter either way is noise and anything past that is a '
+      + 'direction.')
       + '</div>';
     h += '<div style="margin-bottom:24px">'
       + _riCard("By Parent Product",
@@ -997,9 +1046,11 @@ function returnsRender(){
               + '</tr>'; }).join("")
         + '</tbody></table></div>'
         + (part ? '<div class="cc" style="font-size:11px;margin-top:8px">'
-                  + '* the last month is not finished — it is shown, and left '
-                  + 'out of the trend, because three weeks against a full month '
-                  + 'reads as a collapse that has not happened.</div>' : "");
+                  + '* unfinished month — shown, but left out of the trend. '
+                  + _rHint('The last month is not finished — it is shown, and '
+                  + 'left out of the trend, because three weeks against a full '
+                  + 'month reads as a collapse that has not happened.')
+                  + '</div>' : "");
       h += '<div style="margin-bottom:24px">'
         + _riCard("Month by Month", months.length + " months", mTable)
         + '</div>';
@@ -1057,10 +1108,11 @@ function returnsRender(){
       + _riCard("Amazon's Returns Badge",
                 showing.length + ' already badged · ' + soon.length + ' at risk',
                 '<div class="cc" style="font-size:11.5px;line-height:1.6;'
-                + 'margin-bottom:10px">A badged listing shows shoppers a '
-                + '"frequently returned item" warning, and it costs conversion '
-                + 'on every visit from then on. "At risk" means it is not '
-                + 'showing yet — the cheaper half of the list.</div>' + rTable)
+                + 'margin-bottom:10px">Badged costs sales; at risk is fixable now. '
+                + _rHint('A badged listing shows shoppers a "frequently returned '
+                + 'item" warning, and it costs conversion on every visit from '
+                + 'then on. "At risk" means it is not showing yet — the cheaper '
+                + 'half of the list.') + '</div>' + rTable)
       + '</div>';
   } else {
     h += '<div style="margin-bottom:24px">'
@@ -1182,10 +1234,13 @@ function returnsRender(){
                 // not saying so reads as the whole picture.
                 + '<div class="cc" style="font-size:11px;margin-top:12px;'
                 + 'line-height:1.6">' + th.unplaced + ' comment'
+                + (th.unplaced === 1 ? " matches" : "s match")
+                + ' no theme — read them raw above. '
+                + _rHint(th.unplaced + ' comment'
                 + (th.unplaced === 1 ? " says" : "s say")
                 + ' something this app has no rule for, and are not counted '
                 + 'above. They are worth reading raw in the panel above — that '
-                + 'is where a theme nobody has thought of yet shows up.</div>')
+                + 'is where a theme nobody has thought of yet shows up.') + '</div>')
       + '</div>';
   }
 

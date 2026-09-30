@@ -80,6 +80,8 @@ const SUMMARY = {
   team: [{ user_id: "u_ali", label: "Ali", active: true }, { user_id: "u_sara", label: "Sara", active: true },
          { user_id: "u_gone", label: "Gone", active: false }],
 };
+// The list/summary requests; each load also asks /activity/breakdown beside it.
+const main = (s) => s.calls.filter((c) => c.indexOf("/activity/breakdown") !== 0);
 const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
 
 (async () => {
@@ -106,13 +108,15 @@ const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
     s.fetchReplies.push(SUMMARY);
     await vm.runInContext("perfOnOpen()", s);
     const h = el("perf_body").innerHTML;
-    check("asks the summary for the period", /^\/activity\/summary\?from=\d+&to=\d+$/.test(s.calls[0]), true);
+    check("asks the summary for the period", /^\/activity\/summary\?from=\d+&to=\d+$/.test(main(s)[0]), true);
     check("the shared data table (stk-table), numbers right-aligned", /<table class="stk-table"/.test(h) && /<th class="r">Actions<\/th>/.test(h), true);
     check("Ali's counts are drawn", /Ali<\/td><td class="r">5<\/td>/.test(h), true);
-    check("items touched shown beside the count", h.indexOf('2 <span class="cc" title="things touched">(6)</span>') > 0, true);
+    // 30 Sep 2026 redesign: the kinds of work are one stacked bar, with the
+    // counts (and things touched) in its tooltip, instead of a column each.
+    check("items touched kept in the work-mix bar", h.indexOf("Images 2 (6 things touched)") > 0, true);
     check("a quiet active member shows as 0", /Sara<\/td><td class="r">0<\/td>/.test(h), true);
     check("a disabled member with no work is left out", h.indexOf("Gone") < 0, true);
-    check("only kinds of work that happened get a column", [h.indexOf("Sent to Amazon") < 0, h.indexOf("Images") > 0], [true, true]);
+    check("only kinds of work that happened are in the legend", [h.indexOf("Sent to Amazon") < 0, h.indexOf("Images") > 0], [true, true]);
     check("failures and refusals are counted", /Failed or refused/.test(h), true);
     check("no score anywhere", /score|rating|rank/i.test(h), false);
     check("each Timeline button names its person", h.indexOf('aria-label="Timeline for Ali"') > 0, true);
@@ -139,7 +143,7 @@ const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
     s.fetchReplies.push(SUMMARY);
     await vm.runInContext("perfLoad()", s);
     check("every filter reaches the request",
-          /user=u_ali&account=acct_a&marketplace=UK&category=images&ok=0$/.test(s.calls[0]), true);
+          /user=u_ali&account=acct_a&marketplace=UK&category=images&ok=0$/.test(main(s)[0]), true);
     el("perf_user").value = "__all"; el("perf_account").value = ""; el("perf_mkt").value = "";
     el("perf_cat").value = ""; el("perf_ok").value = "";
     s.fetchReplies.push(TL([{ ts: 1800000000, user_label: "Ali", category: "listings", action: "listing.edit",
@@ -149,7 +153,7 @@ const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
         summary: "Refused: changed a listing's approval status", workspace_id: "acct_a", ok: false, detail: { refused: true } }]));
     await vm.runInContext("perfOpenTimeline('u_ali', 'Ali')", s);
     const h = el("perf_body").innerHTML;
-    check("a timeline is one person's list", /^\/activity\/list\?limit=200&from=\d+&to=\d+&user=u_ali$/.test(s.calls[1]), true);
+    check("a timeline is one person's list", /^\/activity\/list\?limit=200&from=\d+&to=\d+&user=u_ali$/.test(main(s)[1]), true);
     check("  the Employee filter follows it", el("perf_user").value, "u_ali");
     check("  each action with the field it changed", h.indexOf("field: item_name") > 0, true);
     check("  and its old and new value", h.indexOf("('Old title' → 'New title')") > 0, true);
@@ -160,12 +164,12 @@ const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
     el("perf_user").innerHTML = '<option value="__all">Everyone</option><option value="u_ali">Ali</option><option value="u_sara">Sara</option>';
     el("perf_user").value = "u_sara";
     await vm.runInContext("perfUserChanged()", s);
-    check("changing Employee with a timeline open opens THAT person's", /&user=u_sara$/.test(s.calls[2]), true);
+    check("changing Employee with a timeline open opens THAT person's", /&user=u_sara$/.test(main(s)[2]), true);
     check("  named in the header even with no rows", el("perf_body").innerHTML.indexOf("<b>Sara</b>") > 0, true);
     s.fetchReplies.push(SUMMARY);
     el("perf_user").value = "__all";
     await vm.runInContext("perfUserChanged()", s);
-    check("'Everyone' goes back to the summary", s.calls[3].indexOf("/activity/summary?") === 0, true);
+    check("'Everyone' goes back to the summary", main(s)[3].indexOf("/activity/summary?") === 0, true);
     s.fetchReplies.push(TL([]));
     await vm.runInContext("perfOpenTimeline('u_ali', 'Ali')", s);
     s.fetchReplies.push(SUMMARY);
@@ -173,7 +177,7 @@ const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
     check("back to everyone: focus on that person's Timeline button", s.focused, "tl:u_ali");
     s.fetchReplies.push(TL([]));
     await vm.runInContext("perfOpenTimeline('__shared', 'Owner (shared password)')", s);
-    check("the shared-password owner is asked for as an empty id", /&user=$/.test(s.calls[s.calls.length - 1]), true);
+    check("the shared-password owner is asked for as an empty id", /&user=$/.test(main(s)[main(s).length - 1]), true);
   }
 
   console.log("=== loading, error, empty, stale replies ===");
@@ -218,6 +222,50 @@ const TL = (rows) => ({ ok: true, categories: CATS, total: rows.length, rows });
     s.fetchReplies.push({ ok: true, categories: CATS, people: [], team: [] });
     await vm.runInContext("perfLoad()", s);
     check("empty with a filter: suggests clearing it", /Nothing matches these filters/.test(el("perf_body").innerHTML), true);
+  }
+
+  console.log("=== overview shapes and the drill-down (30 Sep 2026) ===");
+  {
+    // Days relative to today, so the test never ages: the 1st and 3rd days of "7 days".
+    const iso = (back) => { const d = new Date(); d.setDate(d.getDate() - back);
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+    const D1 = iso(6), D3 = iso(4);
+    const BD = { ok: true, categories: CATS,
+      days: [{ day: D1, actions: 3, failed: 1, people: 1 }, { day: D3, actions: 2, failed: 0, people: 1 }],
+      by_day: { u_ali: { [D1]: 3, [D3]: 2 } },
+      places: [{ workspace_id: "acct_a", marketplace: "UK", actions: 5, failed: 1 }],
+      actions: [{ category: "listings", action: "listing.edit", actions: 3, failed: 1, last_error: "Amazon said <no>" }],
+      after_sent: { edits: 2, skus: 1 } };
+    const { s, el } = page();
+    s.salesCombo = (o) => '<div id="' + o.id + '_wrap" data-cols="' + o.columns.length + '" data-lines="'
+      + o.lines.map((l) => l.values.join(",")).join("|") + '"></div>';
+    await vm.runInContext("PERF.period = '7d'", s);
+    s.fetchReplies.push(SUMMARY, BD);
+    await vm.runInContext("perfLoad()", s);
+    const h = el("perf_body").innerHTML;
+    check("the breakdown is asked with the same filters and the viewer's offset",
+          /^\/activity\/breakdown\?from=\d+&to=\d+&tz=-?\d+$/.test(s.calls[1]), true);
+    check("a chart of every day of the period, a quiet day as 0",
+          /data-cols="7"/.test(h) && /data-lines="[0-9,]*3,0,2[0-9,]*\|[0-9,]*1,0,0/.test(h), true);
+    check("the failure share is a bar on its card", /Failed or refused[\s\S]*?ui-stat-bar/.test(h) || /ui-stat-bar[^>]*var\(--red\)/.test(h), true);
+    check("changed-after-sending is a count, with its products", /Changed after sending/.test(h) && />1 product</.test(h), true);
+    check("days active out of the period", /2<span class="cc">\/7<\/span>/.test(h), true);
+    check("where: the account's own name", h.indexOf("A Ltd · UK") > 0, true);
+    check("what: the latest failure behind an (i), escaped", h.indexOf("Latest failure: Amazon said &lt;no&gt;") > 0, true);
+    check("still no score", /score|rating|rank/i.test(h), false);
+
+    s.fetchReplies.push(TL([{ ts: 1800000000, user_label: "Ali", category: "listings", action: "listing.edit",
+      summary: "Edited", workspace_id: "acct_a", ok: true, detail: {} }]), BD);
+    await vm.runInContext("perfOpenTimeline('u_ali', 'Ali')", s);
+    const t = el("perf_body").innerHTML;
+    check("the drill-down asks the breakdown for that person", /\/activity\/breakdown\?[^ ]*&user=u_ali&tz=/.test(s.calls[3]), true);
+    check("  and draws their chart, where/what and then the list",
+          [t.indexOf("perf_days_one_wrap") > 0, t.indexOf("A Ltd · UK") > 0, t.indexOf(">Edited") > 0], [true, true, true]);
+
+    const { s: s2, el: el2 } = page();
+    s2.fetchReplies.push(SUMMARY, { ok: false, error: "boom" });
+    await vm.runInContext("perfLoad()", s2);
+    check("a failed breakdown still draws the counts", /Ali<\/td><td class="r">5<\/td>/.test(el2("perf_body").innerHTML), true);
   }
 
   console.log("=== wiring ===");

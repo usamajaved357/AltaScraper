@@ -59,6 +59,11 @@ async function setMainImage(sku, url, opts){
       // and a staging button that silently writes to Amazon is exactly the kind
       // of surprise this app has been bitten by before.
       if(j && j.no_row){
+        // ALREADY SENT. A caller that has just pushed this image to Amazon's
+        // MAIN slot (ilSlotSend) only wants the app's own copy updated; with no
+        // row there is none, and falling through here pushed it a SECOND time,
+        // behind a second confirmation.
+        if(opts.noAmazonFallback) return false;
         return await _setMainOnAmazonOnly(sku, url, opts);
       }
       toast("Could not set the main image: " + ((j && j.error) || "unknown"));
@@ -102,6 +107,7 @@ async function _setMainOnAmazonOnly(sku, url, opts){
     const j = await (await fetch("/listing/push_image", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({confirmed:true, sku:sku, image_url:url,
+        made_as:(opts.madeAs || ""),
         marketplace:mkt,
         id:(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id) || ""})
     })).json();
@@ -249,12 +255,22 @@ async function openImageLibrary(sku, isLive){
 // with the SKU it belongs to.
 async function _ilLoad(){
   const all = !!IMGLIB.showAll;
+  // WHICH LISTING THIS LOAD IS FOR. Pick SKU A, then B before A's reply
+  // arrives, and A's images used to be drawn under B's name -- where "Use as
+  // main" would then set A's photo on B. A reply for a SKU (or view) that is no
+  // longer selected is dropped.
+  const askedSku = IMGLIB.sku, askedObj = IMGLIB;
+  const _stillAsked = function(){
+    return IMGLIB === askedObj && String(IMGLIB.sku) === String(askedSku)
+        && !!IMGLIB.showAll === all;
+  };
   _ilRender('<div class="cc" style="padding:20px"><span class="genspin"></span> Loading '
             + (all ? "every listing's images" : "this listing's images") + '…</div>');
   try{
     const url = all ? "/media/list"
                     : "/media/list?sku=" + encodeURIComponent(IMGLIB.sku);
     const j = await (await fetch(url)).json();
+    if(!_stillAsked()) return;
     if(!j || !j.ok){ _ilRender('<div class="cc" style="padding:20px;color:var(--red)">'
         + _ilEsc((j && j.error) || "Could not load images") + "</div>"); return; }
     const folders = j.folders || [];
@@ -298,6 +314,7 @@ async function _ilLoad(){
     IMGLIB.otherCount = 0;
     _ilDraw();
   }catch(e){
+    if(!_stillAsked()) return;
     _ilRender('<div class="cc" style="padding:20px;color:var(--red)">' + _ilEsc(String(e)) + "</div>");
   }
 }
@@ -744,8 +761,13 @@ function _ilDraw(){
              // jsArg, not JSON.stringify: the latter emits DOUBLE quotes, which
              // closed this onclick attribute and left the handler as `ilSetMain(`.
              // The button rendered perfectly and did nothing when pressed.
-             : '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
-               + 'onclick="ilSetMain(' + jsArg(f.url) + ')">Use as main</button>')
+             : (_ilBlockedMain(f.group)
+                 // Not offered for an image the slot rule refuses as MAIN.
+                 ? '<button class="db-chip" style="margin-top:4px;font-size:10.5px" disabled '
+                   + 'title="' + _ilEsc("Cannot be the main image: " + _ilBlockedMain(f.group)) + '">'
+                   + 'Not for main</button>'
+                 : '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
+                   + 'onclick="ilSetMain(' + jsArg(f.url) + ',' + jsArg(f.group || "") + ')">Use as main</button>'))
          // ALWAYS offered. This used to be hidden unless IMGLIB.live was true --
          // a flag the caller guesses from whatever the row happens to hold, and
          // which is false for a live listing whose catalogue has not been loaded
@@ -834,8 +856,27 @@ function _ilLastSendBanner(){
 }
 function ilDismissSend(){ IMGLIB.lastSend = null; _ilDraw(); }
 
-async function ilSetMain(url){
-  const ok = await setMainImage(IMGLIB.sku, url, {message:"Main image set ✓", reload:true});
+// The library folder an image sits in ("secondary", "aplus/basic", ...), read
+// from the files on screen -- what _ilBlockedMain and the server's
+// refuse_slot judge it by.
+function _ilGroupOf(url){
+  const f = (IMGLIB.files || []).find(function(x){ return x.url === url; });
+  return (f && f.group) || "";
+}
+
+async function ilSetMain(url, group){
+  // THE SAME RULE AS THE SLOT PICKER (_ilBlockedMain; server: refuse_slot). An
+  // image made as a secondary or A+ may not become the main image, whether it
+  // is staged on a draft or published through the no-row path.
+  const madeAs = (group != null && group !== "") ? String(group) : _ilGroupOf(url);
+  const blocked = _ilBlockedMain(madeAs);
+  if(blocked){
+    toast("Not used as the main image: " + blocked + ", made under rules that "
+        + "allow text and lifestyle scenes, which Amazon suppresses on MAIN.");
+    return;
+  }
+  const ok = await setMainImage(IMGLIB.sku, url, {message:"Main image set ✓", reload:true,
+                                                  madeAs: madeAs});
   if(ok){ IMGLIB.main = url; _ilDraw(); }
 }
 
@@ -1224,7 +1265,9 @@ async function ilSlotSend(slotKey){
                         + _ilEsc(slot.label||slotKey)+' — '+_ilEsc(j.note||"")+'</span>';
     // The app's own main-image copy only tracks MAIN, so only update it for that.
     if(slotKey === "main_product_image_locator"){
-      await setMainImage(IMGLIB.sku, url, {quiet:true});
+      // noAmazonFallback: it is on Amazon already; with no row in this app the
+      // only thing left to do is nothing -- never a second push.
+      await setMainImage(IMGLIB.sku, url, {quiet:true, noAmazonFallback:true});
       IMGLIB.main = url;
     }
     await openImageLibrary(IMGLIB.sku, IMGLIB.live);
@@ -1251,12 +1294,30 @@ async function ilPushLive(){
                         + 'use “Send as…” on the one you want.</span>';
     return;
   }
+  // ASKED FIRST, NAMING WHAT GOES WHERE. This published to a live listing on
+  // one click with `confirmed:true` hard-coded -- the flag the server trusts
+  // meant nothing because nobody had been asked.
+  const sku = IMGLIB.sku, img = IMGLIB.main;
+  const madeAs = _ilGroupOf(img);
+  const blocked = _ilBlockedMain(madeAs);
+  if(blocked){
+    if(st) st.innerHTML = '<span style="color:var(--red)">' + _ilEsc(
+      "Not sent: " + blocked + ", so it cannot be the MAIN image.") + '</span>';
+    return;
+  }
+  const imgName = String(img).split("?")[0].split("/").pop() || img;
+  if(!await uiConfirm("Send this image as the MAIN image of the LIVE Amazon listing "
+      + sku + "?\n\nImage: " + imgName + "\n\nIt replaces the main image shoppers see "
+      + "now, and Amazon does not keep the old one. Amazon usually shows it within "
+      + "a few minutes.")) return;
+  if(IMGLIB.sku !== sku) return;      // another listing was opened meanwhile
   if(st) st.innerHTML = '<span class="genspin"></span> sending to Amazon…';
   try{
     const j = await (await fetch("/listing/push_image", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({confirmed:true, sku:IMGLIB.sku,
-        image_url: IMGLIB.main || "",
+      body:JSON.stringify({confirmed:true, sku:sku,
+        image_url: img || "",
+        made_as: madeAs,
         marketplace:(typeof WS_MARKET !== "undefined" ? WS_MARKET : ""),
         product_type:((r && r.product_type) || ""),
         id:(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id) || ""})})).json();

@@ -35,7 +35,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
     @app.route("/leading", methods=["GET"])
     def leading_screen():
         wsid, mkt = _scope()
-        day = (request.args.get("day") or "").strip() or _lead.yesterday()
+        day = (request.args.get("day") or "").strip() or _lead.yesterday(marketplace=mkt)
         try:
             datetime.date.fromisoformat(day)
         except ValueError:

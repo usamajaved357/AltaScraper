@@ -97,16 +97,31 @@ def listing_from(record):
     r = record or {}
     attrs = r.get("attributes") or {}
 
+    # AMAZON'S CATALOG SENDS EACH ATTRIBUTE AS A LIST OF DICTS (bug round
+    # 30 Sep 2026): [{"value": "...", "language_tag": "en_GB",
+    # "marketplace_id": "..."}]. str() of one of those is the dict's Python
+    # repr, so every check read "{'value': 'Waterproof...', 'language_tag':
+    # ...}" -- the brand check could match the word "value", and a finding's
+    # "What" column quoted a dict. The value is taken; a plain string (the
+    # catalogue snapshot's shape) is kept as it is.
+    def _text(x):
+        if isinstance(x, dict):
+            v = x.get("value")
+            return "" if v is None else str(v)
+        return "" if x is None else str(x)
+
     def attr(name):
         v = attrs.get(name)
         if isinstance(v, list):
-            v = " | ".join(str(x) for x in v if x)
+            v = " | ".join(t for t in (_text(x) for x in v) if t)
+        elif isinstance(v, dict):
+            v = _text(v)
         return str(v or "")
 
     bullets = []
     bp = attrs.get("bullet_point")
     if isinstance(bp, list):
-        bullets = [str(x) for x in bp if x]
+        bullets = [t for t in (_text(x) for x in bp) if t]
     elif bp:
         # The catalogue joins repeated attributes with " | " -- split it back so
         # a finding can name WHICH bullet, which is the difference between a
@@ -326,20 +341,32 @@ def build(asin, listing, brand="", product_type="", ip_rules=None,
 
 
 def store(config_path, workspace_id, result):
+    """Keep one scan. The cap is PER ACCOUNT (bug round 30 Sep 2026): it was
+    300 across every account in one file, so an afternoon scanning one
+    account's catalogue quietly deleted every other account's history."""
+    acct = str(workspace_id or "")
     with _LOCK:
         data = load(config_path)
         row = dict(result)
-        row["account"] = str(workspace_id or "")
-        data.setdefault("scans", []).append(row)
-        if len(data["scans"]) > MAX_SCANS:
-            del data["scans"][:len(data["scans"]) - MAX_SCANS]
+        row["account"] = acct
+        allscans = data.setdefault("scans", [])
+        allscans.append(row)
+        mine = [i for i, s in enumerate(allscans) if s.get("account") == acct]
+        if len(mine) > MAX_SCANS:
+            drop = set(mine[:len(mine) - MAX_SCANS])      # this account's oldest
+            data["scans"] = [s for i, s in enumerate(allscans) if i not in drop]
         _save(config_path, data)
     return result
 
 
-def scans(config_path, workspace_id="", asin="", limit=100):
+def scans(config_path, workspace_id="", asin="", limit=100, marketplace=""):
+    """Stored scans, newest first. `marketplace` narrows to one store (bug
+    round 30 Sep 2026): the same ASIN scanned in UK and DE is two different
+    live listings, and the history mixed them under one account."""
+    mkt = str(marketplace or "").strip().upper()
     out = [s for s in load(config_path).get("scans", [])
            if (not workspace_id or s.get("account") == workspace_id)
-           and (not asin or s.get("asin") == str(asin).upper())]
+           and (not asin or s.get("asin") == str(asin).upper())
+           and (not mkt or str(s.get("marketplace") or "").upper() == mkt)]
     out.sort(key=lambda s: s.get("at", ""), reverse=True)
     return out[:limit] if limit else out

@@ -222,17 +222,17 @@ function variationsRender(q){
   // one concrete example first, then numbered steps, then the list.
   h += '<div style="font-size:12.5px;margin:2px 0 12px;padding:11px 13px;'
     + 'border:1px solid var(--line2);border-radius:8px;line-height:1.55">'
-    + '<b>What this does.</b> If you sell the same product in several colours or '
-    + 'sizes, each one is its own listing and they compete with each other — '
-    + 'reviews and sales split between them. Joining them makes Amazon show '
-    + '<i>one</i> product with a colour or size picker, and the reviews add up.'
-    + '<div class="cc" style="margin-top:6px">'
-    + 'Example: a ceiling fan in white and in black, listed separately, become one '
-    + 'fan with a colour choice.</div>'
+    + '<b>What this does.</b> One product with a colour or size picker. '
+    + uiHint('If you sell the same product in several colours or sizes, each one '
+      + 'is its own listing and they compete with each other — reviews and sales '
+      + 'split between them. Joining them makes Amazon show one product with a '
+      + 'colour or size picker, and the reviews add up. Example: a ceiling fan in '
+      + 'white and in black, listed separately, become one fan with a colour choice.')
     + '<div class="cc" style="margin-top:6px">'
     + '<b>Nothing is sent to Amazon until you have seen exactly what would be.</b> '
-    + 'Amazon accepts a half-finished family without complaining and the products '
-    + 'then quietly stop showing up, so every check runs first.</div>'
+    + uiHint('Amazon accepts a half-finished family without complaining and the '
+      + 'products then quietly stop showing up, so every check runs first.')
+    + '</div>'
     + '</div>';
 
   h += _varSteps(1);
@@ -252,7 +252,11 @@ function variationsRender(q){
   if(VARS.note){
     h += '<div class="cc" style="padding:14px;border:1px dashed var(--line2);border-radius:6px;font-size:12px">'
       + _vesc(VARS.note)+'</div>';
-    host.innerHTML = h; return;
+    host.innerHTML = h;
+    // The families panel is in the markup just written; without this it stayed
+    // empty whenever the list had a note ("nothing matches", "press Sync").
+    varFamiliesRender();
+    return;
   }
 
   h += '<div style="max-height:360px;overflow:auto;border:1px solid var(--line2);border-radius:6px">';
@@ -414,9 +418,10 @@ async function variationsStep2(){
   h += '<div style="font-size:12px;font-weight:600;margin-bottom:2px">'
     + 'What is different between them?</div>'
     + '<div class="cc" style="font-size:11px;margin-bottom:5px">'
-    + 'This is what shoppers will choose from — a colour picker, a size picker. '
-    + 'Only the options Amazon allows for this kind of product are listed, because '
-    + 'anything else is rejected or, worse, accepted and ignored.</div>';
+    + 'What shoppers pick from — colour, size… '
+    + uiHint('This is what shoppers will choose from — a colour picker, a size picker. '
+      + 'Only the options Amazon allows for this kind of product are listed, because '
+      + 'anything else is rejected or, worse, accepted and ignored.') + '</div>';
   if(VARS.themes.length){
     // SEARCHABLE, because LIGHT_FIXTURE alone allows 774 of these. A dropdown
     // with 774 entries is a list you scroll past, not one you choose from —
@@ -453,16 +458,18 @@ async function variationsStep2(){
   h += '<div style="font-size:12px;font-weight:600;margin:14px 0 2px">'
     + 'A code for the group itself</div>'
     + '<div class="cc" style="font-size:11px;margin-bottom:5px">'
-    + 'Every family needs its own code, separate from the products in it. Nobody '
-    + 'can buy this one — it exists to hold the others together. We suggest one; '
-    + 'change it if you like. It is <b>permanent on Amazon</b> once created.</div>'
+    + 'We suggest one. It is <b>permanent on Amazon</b> once created. '
+    + uiHint('Every family needs its own code, separate from the products in it. Nobody '
+      + 'can buy this one — it exists to hold the others together. We suggest one; '
+      + 'change it if you like. It is permanent on Amazon once created.') + '</div>'
     + '<input id="var_parent" placeholder="parent SKU" style="font-size:12px;padding:5px 8px;min-width:260px">';
 
   h += '<div style="font-size:12px;font-weight:600;margin:14px 0 2px">'
     + 'The title shoppers see for the group</div>'
     + '<div class="cc" style="font-size:11px;margin-bottom:5px">'
-    + 'Describe the product without the colour or size — those become the picker. '
-    + '“Ceiling fan with light and remote”, not “…, white”.</div>'
+    + 'Without the colour or size — those become the picker. '
+    + uiHint('Describe the product without the colour or size — those become the picker. '
+      + '“Ceiling fan with light and remote”, not “…, white”.') + '</div>'
     + '<input id="var_title" placeholder="parent title" style="font-size:12px;padding:5px 8px;width:100%;max-width:560px">';
 
   h += '<div style="margin-top:14px">'
@@ -488,7 +495,11 @@ async function variationsPreview(quiet){
   try{
     j = await (await fetch("/variations/preview",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({skus:VARS.picked, theme:theme, parent_sku:parent})})).json();
+      // The parent TITLE too: the preview builds the parent's attributes from
+      // it, and without it "this is exactly what would be sent" showed a parent
+      // with no title while Apply sent one.
+      body:JSON.stringify({skus:VARS.picked, theme:theme, parent_sku:parent,
+                           parent_title:((document.getElementById("var_title")||{}).value||"")})})).json();
   }catch(e){ out.innerHTML='<div class="cc" style="color:var(--red)">'+_vesc(String(e))+'</div>'; return; }
   if(!j || !j.ok){ out.innerHTML='<div class="cc" style="color:var(--red)">'+_vesc((j&&j.error)||"failed")+'</div>'; return; }
   VARS.preview = j;
@@ -594,6 +605,14 @@ async function variationsApply(){
       if(st) st.innerHTML = '<span style="color:var(--warn)">Parent created, '
         + (j.joined||[]).length+' joined, '+j.failed.length+' rejected: '
         + _vesc(j.failed.map(f => f.sku+" ("+f.error+")").join("; "))+'</span>';
+      return;
+    }
+    // ANY OTHER REFUSAL IS A REFUSAL. A 400 from the re-check ("already belongs
+    // to another family", "not confirmed", a missing theme) has no stage and no
+    // failed list, and fell through to "✓ family created — 0 products joined".
+    if(!j || !j.ok){
+      if(st) st.innerHTML = '<span style="color:var(--red)">Nothing was created: '
+        + _vesc((j && j.error) || "the server refused the request") + '</span>';
       return;
     }
     if(st) st.innerHTML = '<span style="color:var(--ok)">✓ family created — '

@@ -78,12 +78,15 @@ CK = read("monitor", "checker.py")
 
 print("== a run is saved as it goes, not once at the end ==")
 _body = CK.split("for i in range(0, total, _BATCH_SIZE):")[1].split("dur = round")[0]
-truthy("the save is INSIDE the batch loop", "_save_hist(config_path, d)" in _body)
+# Re-pinned 30 Sep 2026: the per-batch save is now _merge_save(), which
+# re-reads the file under the lock and lays only this run's changes over it, so
+# read marks and labels made during a run survive (bug round, MONITOR 13).
+truthy("the save is INSIDE the batch loop", "_merge_save(config_path, d," in _body)
 # ONE save inside the RUN. The module has others -- mark_alerts_read and
 # log_manual_label each write too -- so counting across the file measured
 # those as well.
 check("  and exactly one save inside the run body",
-      _body.count("_save_hist(config_path, d)"), 1)
+      _body.count("_merge_save(config_path, d,"), 1)
 truthy("why is written down", "SAVED AS IT GOES, not once at the end" in CK)
 truthy("  with the symptom it caused", "it has been ten minutes" in CK)
 

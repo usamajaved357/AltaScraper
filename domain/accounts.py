@@ -330,6 +330,28 @@ def resolve_catalog_creds(cfg: dict, account: dict, config_path: str = None):
     return account_creds(lender), lender
 
 
+def new_account_clash(cfg: dict, label: str, config_path: str = None) -> str:
+    """Why a NEW account with this label cannot be created, or "" when it can.
+
+    A new account has no id of its own; save_account names it _slug(label) and
+    then merges BY ID. So "Jack Reacherd (UK)" typed a second time, or any label
+    that slugs to an existing id, did not create anything -- it overwrote the
+    existing account in place, and the secrets it was saved with (blank on a
+    new form) went over the real ones (admin bug round, 30 Sep 2026).
+    """
+    new_id = _slug(label or "account")
+    hit = get_account(cfg, new_id, config_path)
+    if not hit:
+        return ""
+    return ("An account called %r already exists (id %s). Open that account to "
+            "change it, or give the new one a different name."
+            % (hit.get("label") or new_id, new_id))
+
+
+# Secrets a partial save must never blank: an empty value means "not supplied".
+_SECRET_FIELDS = ("lwa_client_secret", "refresh_token", "ebay_cert_id")
+
+
 def save_account(cfg: dict, config_path: str, account: dict) -> dict:
     """Add or update an account by id. Returns the saved account.
 
@@ -360,7 +382,12 @@ def save_account(cfg: dict, config_path: str, account: dict) -> dict:
     found = False
     for i, a in enumerate(accts):
         if a.get("id") == account["id"]:
-            accts[i] = {**a, **account}
+            # AN EMPTY SECRET NEVER OVERWRITES A STORED ONE. Removing a secret
+            # is not something a merge can do by accident.
+            incoming = {k: v for k, v in account.items()
+                        if not (k in _SECRET_FIELDS and not str(v or "").strip()
+                                and str(a.get(k) or "").strip())}
+            accts[i] = {**a, **incoming}
             found = True
             break
     if not found:

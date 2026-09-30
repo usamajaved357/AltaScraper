@@ -84,7 +84,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, **_kw):
             return jsonify({"ok": False, "error": str(e)[:300]}), 500
         out.update({"ok": True, "workspace": wsid, "marketplace": mkt,
                     "preset": preset,
-                    "compared_to": ({"start": prev[0], "end": prev[1]} if prev else None)})
+                    # The window summary() ACTUALLY compared against -- it is
+                    # cut to equal length when the newest days are missing.
+                    "compared_to": (out.get("compared_to")
+                                    or ({"start": prev[0], "end": prev[1]} if prev else None))})
         if out.get("empty"):
             out["note"] = ("Amazon has sent no traffic figures for this period "
                            "yet. Sessions and page views come from the Sales & "

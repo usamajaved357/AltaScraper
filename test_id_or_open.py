@@ -77,7 +77,7 @@ for f in sorted(glob.glob("routes/*.py")):
 # 51 on 29 Sep 2026 (evening): the tracking routes stopped falling back to the
 # open account (test_tracking_named_account.py). 47 the same evening: the two
 # pairs of copied _scope helpers became routes/scope.page_account / ads_account.
-CEILING = 47
+CEILING = 45   # 30 Sep 2026: the bell and /media no longer fall back to the open account
 print("  hand-written reads of the open account in routes/: %d (ceiling %d)" % (total, CEILING))
 if total > CEILING:
     fails.append("new hand-written read of active_account_id in routes/ (%d > %d): "

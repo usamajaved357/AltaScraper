@@ -89,9 +89,14 @@ INDICATORS = [
     {"key": "ordered_sales", "label": "Sales", "good": HIGHER_IS_BETTER,
      "kind": "money", "agg": "sum", "col": "ordered_sales",
      "blurb": "What those units were worth."},
+    # report_only: the Sales & Traffic report counts ORDER ITEMS here; days the
+    # live Orders feed has taken over carry distinct orders instead, so they
+    # are left out rather than mixed into one baseline (see series()).
     {"key": "orders", "label": "Orders", "good": HIGHER_IS_BETTER,
-     "kind": "count", "agg": "sum", "col": "orders",
-     "blurb": "How many separate purchases."},
+     "kind": "count", "agg": "sum", "col": "orders", "report_only": True,
+     "blurb": "Order items, as Amazon's Sales & Traffic report counts them. "
+              "Days filled from the live order feed (which counts whole "
+              "orders) are left out so one measure is compared with itself."},
     # Rates: recomputed from the parts, never averaged.
     {"key": "conversion", "label": "Conversion", "good": HIGHER_IS_BETTER,
      "kind": "percent", "agg": "ratio", "num": "units", "den": "sessions",
@@ -141,6 +146,14 @@ def _stdev(xs, mean=None):
     return math.sqrt(var)
 
 
+def _src(r):
+    """orders_source off a sqlite row that may not carry the column."""
+    try:
+        return r["orders_source"]
+    except (KeyError, IndexError):
+        return None
+
+
 def series(rows, ind):
     """{date: value} for one indicator, from raw per-day-per-ASIN rows.
 
@@ -163,6 +176,19 @@ def series(rows, ind):
     out = {}
     agg = ind["agg"]
     for d, day_rows in by_day.items():
+        if ind.get("report_only"):
+            # ONE MEASURE, OR NO BASELINE (bug round 30 Sep 2026). The live
+            # Orders feed (domain/live_reconcile, orders_source='orders_api')
+            # writes DISTINCT orders into the '*' row, where the Sales &
+            # Traffic report writes ORDER ITEMS -- a two-item order is one
+            # against two. A month of report days with a fortnight of live
+            # days on top judged every live day as a drop. Days the live feed
+            # owns are left out of this indicator entirely.
+            day_rows = [r for r in day_rows
+                        if str((r.get("orders_source") if isinstance(r, dict)
+                                else _src(r)) or "") != "orders_api"]
+            if not day_rows:
+                continue
         if agg == "sum":
             vals = [col(r, ind["col"]) for r in day_rows]
             vals = [v for v in vals if v is not None]
@@ -247,13 +273,25 @@ def assess(values_by_day, day, good, sigma_alert=SIGMA_ALERT, min_days=MIN_DAYS)
     return out
 
 
-def yesterday(today=None):
+def yesterday(today=None, marketplace=""):
     """The day this screen is about.
 
     Yesterday, not today: Amazon's sales and traffic report for the current day
     is partial all day, and judging a part-day against whole days would make
     every morning look like a collapse.
+
+    ON THE MARKETPLACE'S OWN CLOCK when one is named (bug round 30 Sep 2026).
+    The server's date was used, so between midnight UK and midnight Pacific a
+    US store was judged on a "yesterday" whose US day was still running --
+    the part-day this function exists to avoid. The zone comes from the one
+    table the app keeps (domain/orders_live, as routes/daily_routes does).
     """
+    if today is None and marketplace:
+        try:
+            from domain import orders_live as _ol
+            return _ol.day_start(marketplace, days_ago=1).date().isoformat()
+        except Exception:
+            pass
     t = today or datetime.date.today()
     if isinstance(t, str):
         t = datetime.date.fromisoformat(t)
@@ -286,16 +324,62 @@ def rows_for(config_path, workspace_id, marketplace, start, end):
     from data import db as _db
 
     sql = ("SELECT date, asin, sessions, page_views, units, orders, "
-           "       ordered_sales, buy_box_pct "
+           "       ordered_sales, buy_box_pct, orders_source "
            "FROM sales_daily "
            "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
            "  AND asin%s'*' ")
     conn = _db.get_db(config_path)
     args = (workspace_id, marketplace, start, end)
-    rows = conn.execute(sql % "=", args).fetchall()
-    if not rows:
-        rows = conn.execute(sql % "<>", args).fetchall()
-    return [dict(r) for r in rows]
+    try:
+        rows = conn.execute(sql % "=", args).fetchall()
+        rollup = True
+        if not rows:
+            rows = conn.execute(sql % "<>", args).fetchall()
+            rollup = False
+    except Exception as e:
+        # A database created before the orders_source column existed.
+        if "orders_source" not in str(e):
+            raise
+        sql = sql.replace(", orders_source ", " ")
+        rows = conn.execute(sql % "=", args).fetchall()
+        rollup = True
+        if not rows:
+            rows = conn.execute(sql % "<>", args).fetchall()
+            rollup = False
+    out = [dict(r) for r in rows]
+    if not rollup:
+        out = fill_quiet_days(out)
+    return out
+
+
+def fill_quiet_days(rows):
+    """Per-ASIN rows -> the same rows plus a ZERO row for each quiet day.
+
+    A DAY WITH NO SALES IS STILL A DAY (bug round 30 Sep 2026). With no '*'
+    rollup, a day on which nothing sold and nobody looked has no per-ASIN row
+    at all -- and `series` then skipped it as "not reported", so the baseline
+    was built from the busy days only and every ordinary day looked like a
+    collapse. Inside the span the report was synced for (its first to last
+    stored day), a missing day is a real zero; outside it, still unknown.
+    Rates are left alone: a zero-session day has no conversion, and
+    buy_box_pct stays None so it does not enter the weighted share.
+    """
+    dates = sorted({str(r.get("date") or "") for r in rows if r.get("date")})
+    if len(dates) < 2:
+        return rows
+    have = set(dates)
+    out = list(rows)
+    d = datetime.date.fromisoformat(dates[0])
+    last = datetime.date.fromisoformat(dates[-1])
+    while d <= last:
+        ds = d.isoformat()
+        if ds not in have:
+            out.append({"date": ds, "asin": "", "sessions": 0, "page_views": 0,
+                        "units": 0, "orders": 0, "ordered_sales": 0.0,
+                        "buy_box_pct": None, "orders_source": None,
+                        "quiet_day": True})
+        d += datetime.timedelta(days=1)
+    return out
 
 
 def build(rows, day=None, window_days=WINDOW_DAYS, sigma_alert=SIGMA_ALERT,

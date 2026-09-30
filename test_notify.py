@@ -154,19 +154,25 @@ POSTS.clear()
 N.set_channel(CFG, cid, enabled=False)   # leave only the narrowed one
 r = N.send(CFG, "A tracker thing", ["x"], event="tracker")
 check("  and not one it did not ask for", r["sent"], 0)
-# An empty events list means everything, so a channel added without thinking
-# about events still works.
+# An empty events list means THE USUAL ALERTS (notify.DEFAULT_EVENTS: the
+# outbound kinds plus the tracker round-up), so a channel added without
+# thinking about events still gets them. Re-pinned 30 Sep 2026: it used to mean
+# "everything", which sent every ordinary reprice to a default channel.
 N.set_channel(CFG, bid, events=[])
 r = N.send(CFG, "Anything", ["x"], event="tracker")
-check("  an empty event list means everything", r["sent"], 1)
+check("  an empty event list takes the usual alerts", r["sent"], 1)
+r = N.send(CFG, "A reprice", ["x"], event=N.PRICE_CHANGE)
+check("  but not an ordinary price change", r["sent"], 0)
 
 print("\n== the generic webhook gets parts, not a rendered string ==")
 POSTS.clear()
-N.send(CFG, "Subject here", ["one", "two"], event="daily", account="jack_uk")
+# "tracker", one of the usual alerts: this checks the payload's shape, and a
+# kind outside DEFAULT_EVENTS no longer reaches a default channel (30 Sep 2026).
+N.send(CFG, "Subject here", ["one", "two"], event="tracker", account="jack_uk")
 p = POSTS[0]["payload"]
 check("the subject is its own field", p["subject"], "Subject here")
 check("  the lines are a list", p["lines"], ["one", "two"])
-check("  the event is named", p["event"], "daily")
+check("  the event is named", p["event"], "tracker")
 check("  and the account is named", p["account"], "jack_uk")
 
 print("\n== testing a channel does not require enabling it ==")

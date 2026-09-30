@@ -121,11 +121,31 @@ async function imgpPick(sku) {
 // and is shared, so opening both pages is one wait rather than two.
 async function imgpLoad(force) {
   IMGP.loading = true; IMGP.note = ""; imgpRender();
+  const sc = (typeof screenScope === "function") ? screenScope() : null;
   await ppLoad(force);
+  // ppLoad RETURNS AT ONCE when another page's load is already in flight (the
+  // Image Studio opened first), so this used to copy the still-empty list and
+  // say "No products match." Wait for that load to finish instead.
+  // (productpicker.js itself is outside this change; the wait lives here.)
+  await _imgpWaitForPicker();
+  if (sc && typeof screenStillIn === "function" && !screenStillIn(sc)) return;
   IMGP.items = PPICK.items;
   IMGP.note = PPICK.error || "";
   IMGP.loading = false;
   imgpRender();
+}
+
+// Resolves once the shared picker is no longer loading (or after 60 s).
+function _imgpWaitForPicker() {
+  return new Promise(function (resolve) {
+    const t0 = Date.now();
+    (function tick() {
+      if (typeof PPICK === "undefined" || !PPICK.loading || Date.now() - t0 > 60000) {
+        resolve(); return;
+      }
+      setTimeout(tick, 150);
+    })();
+  });
 }
 
 function imagelibOnOpen() {

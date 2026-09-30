@@ -28,7 +28,9 @@ def truthy(label, cond):
 
 truthy("side mode is decided at 1100px", '"(min-width: 1100px)"' in JS)
 truthy("  and only when the table keeps its width beside the panel",
-       "ORD_SIDE_MIN = 760 + 380" in JS and "b.clientWidth >= ORD_SIDE_MIN" in JS)
+       # 980, re-pinned 30 Sep 2026: measured, the nine columns need ~960px;
+       # at 760 the panel opened and the cells overprinted (test_orders_no_overlap.py).
+       "ORD_SIDE_MIN = 980 + 380" in JS and "b.clientWidth >= ORD_SIDE_MIN" in JS)
 truthy("the panel is a second column (.ord-split), not an overlay",
        "ord-split" in JS and re.search(r"\.ord-split\s*\{[^}]*grid-template-columns", CSS))
 truthy("the panel has no scrim and is not position:fixed",

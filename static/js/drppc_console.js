@@ -290,9 +290,12 @@ function drpcSetup(){
   let h =
     '<div class="drp-head"><div>'
     + '<h1>Setup + readiness</h1>'
-    + '<div class="sub">Make the ' + _dEsc(w.display_name || "")
+    // LESS TEXT, MORE VISUAL (owner, 30 Sep 2026): every section's sentence
+    // now sits behind the (i) on its heading; headings and figures stay.
+    + '<div class="sub">' + _dEsc(w.display_name || "") + ' · measured against '
+    +   'what is stored' + uiHint('Make the ' + (w.display_name || "")
     +   ' proof legible before enabling analysis or Amazon execution. '
-    +   'Every check below is measured against what is actually stored.</div>'
+    +   'Every check below is measured against what is actually stored.') + '</div>'
     + '</div>'
     + '<button class="drp-ghost" onclick="drpcLoad(true)">🔄 Refresh evidence</button>'
     + '</div>';
@@ -300,9 +303,9 @@ function drpcSetup(){
   /* --- Section 1: the white workspace panel ------------------------------- */
   h += '<div class="drp-light">'
     + '<div class="drp-light-head"><div>'
-    +   '<h3>Workspace configuration</h3>'
-    +   '<div class="desc">These controls only determine eligibility. Saving '
-    +     'them does not run analysis or touch Amazon.</div></div>'
+    +   '<h3>Workspace configuration' + uiHint('These controls only determine '
+    +     'eligibility. Saving them does not run analysis or touch Amazon.')
+    +   '</h3></div>'
     +   '<button class="drp-gold-btn" onclick="drpcSaveConfig()">'
     +     'Save configuration</button>'
     + '</div>'
@@ -344,9 +347,9 @@ function drpcSetup(){
     + '</div>';
 
   /* --- Section 2: readiness ---------------------------------------------- */
-  h += '<div class="drp-h2">Proof readiness</div>'
-    + '<div class="drp-h2-sub">Green means the evidence or configuration '
-    +   'exists. It never means execution is automatically enabled.</div>'
+  h += '<div class="drp-h2">Proof readiness' + uiHint('Green means the '
+    +   'evidence or configuration exists. It never means execution is '
+    +   'automatically enabled.') + '</div>'
     + '<div class="drp-panel"><div class="drp-checks">'
     + (j.checks || []).map(function(c){
         return '<div class="drp-check' + (c.highlight ? " hl" : "") + '">'
@@ -369,9 +372,9 @@ function drpcSetup(){
 
   /* --- Section 3: plan readiness ----------------------------------------- */
   const p = j.plan;
-  h += '<div class="drp-h2">Plan readiness</div>'
-    + '<div class="drp-h2-sub">A plan is what a scheduled review measures '
-    +   'against. Without an active one there is nothing to score.</div>';
+  h += '<div class="drp-h2">Plan readiness' + uiHint('A plan is what a '
+    +   'scheduled review measures against. Without an active one there is '
+    +   'nothing to score.') + '</div>';
   if(p && p.status === "active"){
     h += '<div class="drp-panel" style="display:flex;justify-content:space-between;'
       + 'align-items:center;gap:14px"><div>'
@@ -387,20 +390,21 @@ function drpcSetup(){
       +   (p ? "Revision " + _dEsc(p.revision) + " is still a draft"
              : "No active plan") + '</div>'
       + '<div style="font-size:12px;color:var(--ppc-muted);margin-top:3px">'
-      +   'Saving writes a revision; activating is a separate act.</div></div>'
+      +   'Save → activate' + uiHint('Saving writes a revision; activating is '
+      +   'a separate act.') + '</div></div>'
       + '<span class="drp-pill red">● Plan cannot be scored</span></div>'
       + '<div class="drp-note bad">'
       + '<b>No active Goals + Strategy + Budget plan</b>'
-      + 'Nothing here can be measured against an intention nobody has recorded. '
+      + uiHint('Nothing here can be measured against an intention nobody has '
+      + 'recorded.') + ' '
       + '<span class="drp-mono">Closed by Plan · activate a revision.</span> '
       + '<button class="drp-cyan-link" onclick="drpcGo(\'plan\')">Open the plan'
       + '</button></div>';
   }
 
   /* --- Section 4: runtime ------------------------------------------------- */
-  h += '<div class="drp-h2">Runtime checks</div>'
-    + '<div class="drp-h2-sub">What the console can actually reach right '
-    +   'now.</div>'
+  h += '<div class="drp-h2">Runtime checks' + uiHint('What the console can '
+    +   'actually reach right now.') + '</div>'
     + '<div class="drp-cards">'
     + (j.runtime || []).map(function(r){
         return '<div class="drp-card">'
@@ -412,15 +416,15 @@ function drpcSetup(){
           + '</div>';
       }).join("")
     + '</div>'
-    + '<div class="drp-note good">✓ This console is read-only against Amazon. '
-    +   'Plans, rules and settings are written here; bids, budgets and campaign '
-    +   'states are not touched.</div>';
+    + '<div class="drp-note good">✓ This console is read-only against Amazon.'
+    +   uiHint('Plans, rules and settings are written here; bids, budgets and '
+    +   'campaign states are not touched.') + '</div>';
 
   /* --- Section 5: schedule and runs --------------------------------------- */
   const s = j.schedule || {}, job = s.job || {};
-  h += '<div class="drp-h2">Automation schedule</div>'
-    + '<div class="drp-h2-sub">The mirror runs first; anything that reads it '
-    +   'runs after, and only if it succeeded.</div>'
+  h += '<div class="drp-h2">Automation schedule' + uiHint('The mirror runs '
+    +   'first; anything that reads it runs after, and only if it succeeded.')
+    +   '</div>'
     + '<div class="drp-sched">'
     +   '<div class="c"><div class="k">Daily sync</div>'
     +     '<div style="margin:6px 0"><span class="drp-pill '
@@ -438,15 +442,15 @@ function drpcSetup(){
     +     '<div style="margin:6px 0"><span class="drp-pill">Reads the mirror</span>'
     +     '</div>'
     +     '<div style="font-size:12px;color:var(--ppc-muted);line-height:1.5">'
-    +       'Classification and readiness are computed on demand from what the '
-    +       'sync stored — there is no second cron, so they can never be stale '
-    +       'relative to it.</div></div>'
+    +       'Computed on demand' + uiHint('Classification and readiness are '
+    +       'computed on demand from what the sync stored — there is no second '
+    +       'cron, so they can never be stale relative to it.') + '</div></div>'
     + '</div>';
 
   h += '<div class="drp-h2">Recent automated runs</div>'
     + '<div class="drp-h2-sub">' + (j.runs || []).length
-    +   ' shown, failures included — a list of successes is how a job that has '
-    +   'been erroring for a fortnight goes unnoticed.</div>';
+    +   ' shown, failures included' + uiHint('A list of successes is how a job '
+    +   'that has been erroring for a fortnight goes unnoticed.') + '</div>';
   if(!(j.runs || []).length){
     h += '<div class="drp-empty">No sync has run for this account yet.</div>';
   }else{
@@ -482,11 +486,11 @@ function drpcSetup(){
 
   /* --- Section 6: lane classification ------------------------------------- */
   const pct = cls.classified_pct;
-  h += '<div class="drp-h2">Lane classification</div>'
-    + '<div class="drp-h2-sub">Which spend is branded, which is not, and by '
-    +   'whose decision. A term no rule matches stays unclassified — defaulting '
-    +   'it to non-branded would quietly move somebody else\'s spend into the '
-    +   'lane that carries the growth mandate.</div>'
+  h += '<div class="drp-h2">Lane classification' + uiHint('Which spend is '
+    +   'branded, which is not, and by whose decision. A term no rule matches '
+    +   'stays unclassified — defaulting it to non-branded would quietly move '
+    +   'somebody else\'s spend into the lane that carries the growth mandate.')
+    +   '</div>'
     + '<div class="drp-panel">'
     +   '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
     +     '<span style="font-size:26px;font-weight:700">'
@@ -517,18 +521,16 @@ function drpcSetup(){
   h += '<div class="drp-grid" style="display:grid;grid-template-columns:1fr 1fr;'
     + 'gap:16px;margin-top:10px">'
     + '<div class="drp-panel">'
-    +   '<div style="font-size:16px;font-weight:700">Add a reviewed rule</div>'
-    +   '<div style="font-size:12px;color:var(--ppc-muted);margin:4px 0 12px">'
-    +     'A rule is a decision somebody made, kept with the reason they made '
-    +     'it. It classifies from the moment it is saved.</div>'
+    +   '<div style="font-size:16px;font-weight:700;margin-bottom:12px">Add a '
+    +     'reviewed rule' + uiHint('A rule is a decision somebody made, kept '
+    +     'with the reason they made it. It classifies from the moment it is '
+    +     'saved.') + '</div>'
     +   drpcRuleForm(j)
     + '</div>'
     + '<div class="drp-panel">'
-    +   '<div style="font-size:16px;font-weight:700">Reviewed campaign lanes'
-    +   '</div>'
-    +   '<div style="font-size:12px;color:var(--ppc-muted);margin:4px 0 12px">'
-    +     'Campaigns assigned to a lane by exact id, rather than by what people '
-    +     'typed.</div>'
+    +   '<div style="font-size:16px;font-weight:700;margin-bottom:12px">'
+    +     'Reviewed campaign lanes' + uiHint('Campaigns assigned to a lane by '
+    +     'exact id, rather than by what people typed.') + '</div>'
     +   '<div style="font-size:26px;font-weight:700">' + exact.length + '</div>'
     +   '<div style="font-size:12px;color:var(--ppc-muted);margin-bottom:10px">'
     +     'of ' + drpcNum(j.campaigns_total) + ' mirrored campaigns</div>'
@@ -541,28 +543,28 @@ function drpcSetup(){
     + '</div></div>';
 
   /* --- Section 7: the rules table ----------------------------------------- */
-  h += '<div class="drp-h2">Priority-ordered rules</div>'
-    + '<div class="drp-h2-sub">Every match remains visible with its source and '
-    +   'rationale. The lowest priority number wins; the rest are still '
-    +   'listed against the term.</div>'
+  h += '<div class="drp-h2">Priority-ordered rules' + uiHint('Every match '
+    +   'remains visible with its source and rationale. The lowest priority '
+    +   'number wins; the rest are still listed against the term.') + '</div>'
     + '<div class="drp-panel">' + drpcRulesTable(j.rules || []) + '</div>';
 
   /* --- Section 8: the evidence -------------------------------------------- */
-  h += '<div class="drp-h2">Search-term evidence</div>'
-    + '<div class="drp-h2-sub">Highest-spend terms from the stored Search Term '
-    +   'Report, with the exact rule that classified each one.</div>'
+  h += '<div class="drp-h2">Search-term evidence' + uiHint('Highest-spend '
+    +   'terms from the stored Search Term Report, with the exact rule that '
+    +   'classified each one.') + '</div>'
     + '<div class="drp-panel">' + drpcEvidence(j.evidence || []) + '</div>';
 
   drpcMain(h);
 }
 
 function drpcToggle(id, title, on, desc, locked){
+  // The description is the (i) beside the title (owner, 30 Sep 2026).
   return '<div class="drp-toggle"><div class="t"><span>' + _dEsc(title)
+    + uiHint(desc)
     + '</span><button class="drp-sw' + (on ? " on" : "") + '" id="drpc_sw_' + id
     + '"' + (locked ? ' disabled' : ' onclick="drpcFlip(' + jsArg(id) + ')"')
-    + ' title="' + _dEsc(locked ? "Not a switch — see the note below." : "Click to change, then Save configuration.")
-    + '"></button></div>'
-    + '<div class="d">' + _dEsc(desc) + '</div></div>';
+    + ' title="' + _dEsc(locked ? "Not a switch — see the (i) beside it." : "Click to change, then Save configuration.")
+    + '"></button></div></div>';
 }
 
 function drpcFlip(id){
@@ -682,9 +684,9 @@ async function drpcDelRule(id){
 
 function drpcRulesTable(rules){
   if(!rules.length)
-    return '<div class="drp-empty">No rules configured yet. Until one exists, '
-      + 'every term is unclassified — which the coverage figure above reports '
-      + 'honestly rather than hiding.</div>';
+    return '<div class="drp-empty">No rules configured yet.' + uiHint('Until '
+      + 'one exists, every term is unclassified — which the coverage figure '
+      + 'above reports honestly rather than hiding.') + '</div>';
   return '<table class="drp-table"><thead><tr>'
     + ['Priority', 'Lane', 'Evidence', 'Match', 'Pattern / id', 'Source',
        'Rationale', ''].map(function(c, i){
@@ -709,8 +711,9 @@ function drpcRulesTable(rules){
 
 function drpcEvidence(rows){
   if(!rows.length)
-    return '<div class="drp-empty">No search terms stored for this account and '
-      + 'marketplace. Pull or upload a Search Term Report and this fills.</div>';
+    return '<div class="drp-empty">No search terms stored' + uiHint('No search '
+      + 'terms stored for this account and marketplace. Pull or upload a Search '
+      + 'Term Report and this fills.') + '</div>';
   return '<table class="drp-table"><thead><tr>'
     + '<th>Search term</th><th style="text-align:left">Lane</th>'
     + '<th style="text-align:left">Matched rule</th>'
@@ -752,12 +755,12 @@ function drpcState(){
 
   let h = '<div class="drp-head"><div>'
     + '<h1>Current state</h1>'
-    + '<div class="sub">The Amazon Ads structure as this app has it mirrored. '
-    +   'Refreshed by the advertising sync — this page reads what that stored '
-    +   'and never calls Amazon itself.</div>'
-    + '<div class="sub" style="margin-top:6px">'
+    + '<div class="sub">'
     +   (j.last_synced ? "Last synced " + _dEsc(j.last_synced)
-                       : "Nothing mirrored for this account yet.") + '</div>'
+                       : "Nothing mirrored for this account yet.")
+    +   uiHint('The Amazon Ads structure as this app has it mirrored. '
+    +   'Refreshed by the advertising sync — this page reads what that stored '
+    +   'and never calls Amazon itself.') + '</div>'
     + '</div>'
     + '<button class="drp-ghost" onclick="drpcLoad(true)">🔄 Reread mirror'
     + '</button></div>';
@@ -773,7 +776,7 @@ function drpcState(){
           + '<div class="l">' + _dEsc(k[1]) + '</div></div>';
       }).join("")
     + '</div>'
-    + '<div class="drp-note">' + _dEsc(j.why || "") + '</div>';
+    + (j.why ? '<div class="drp-note">— = unknown, not zero' + uiHint(j.why) + '</div>' : '');
 
   /* filters */
   const rows = drpcStateRows();
@@ -915,10 +918,10 @@ function drpcDetail(r){
     + '<span class="drp-chip"><span class="mu">Spend in window</span>'
     +   '<span class="kw">' + drpcMoney(r.spend) + '</span></span>'
     + '</div>'
-    + '<div class="drp-note">Bidding strategy and placement adjustments are '
-    +   'not stored by this app — the advertising sync keeps a campaign\'s '
-    +   'budget, status and daily spend. They are left out rather than '
-    +   'guessed.</div>';
+    + '<div class="drp-note">Bidding strategy: not stored' + uiHint('Bidding '
+    +   'strategy and placement adjustments are not stored by this app — the '
+    +   'advertising sync keeps a campaign\'s budget, status and daily spend. '
+    +   'They are left out rather than guessed.') + '</div>';
 
   if(!d){
     h += '<div class="drp-empty" style="margin-top:12px">'
@@ -928,9 +931,9 @@ function drpcDetail(r){
 
   if(!(d.ad_groups || []).length){
     h += '<div class="drp-empty" style="margin-top:12px">No search-term rows '
-      + 'for this campaign, so there is nothing to show underneath it. That '
-      + 'means nothing fired in the report\'s window — not that the campaign '
-      + 'is empty.</div></div>';
+      + 'for this campaign' + uiHint('No search-term rows for this campaign, '
+      + 'so there is nothing to show underneath it. That means nothing fired in '
+      + 'the report\'s window — not that the campaign is empty.') + '</div></div>';
     return h;
   }
 
@@ -947,7 +950,8 @@ function drpcDetail(r){
             + '</span>'; }).join("")
       + '</div></div>';
   });
-  h += '<div class="drp-note">' + _dEsc(d.why || "") + '</div>';
+  if(d.why) h += '<div class="drp-note">From the Search Term Report'
+    + uiHint(d.why) + '</div>';
   return h + '</div>';
 }
 
@@ -1003,26 +1007,32 @@ function drpcPerf(){
 
   let h = '<div class="drp-head"><div>'
     + '<h1>Performance</h1>'
-    + '<div class="sub">How the account is doing right now. The latest '
-    +   'complete reporting day is the verdict; today is a partial pulse '
-    +   'only.</div></div>'
+    + '<div class="sub">How the account is doing right now' + uiHint('How the '
+    +   'account is doing right now. The latest complete reporting day is the '
+    +   'verdict; today is a partial pulse only.') + '</div></div>'
     + (s.day ? '<span class="drp-pill cyan">Latest complete day: '
                + _dEsc(s.day) + '</span>' : "")
     + '</div>';
 
   if(!s.has_data){
     h += '<div class="drp-note bad"><b>Nothing to score</b>'
-      + _dEsc(s.why || "") + '</div>';
+      + (s.why ? uiHint(s.why) : "") + '</div>';
     drpcMain(h);
     return;
   }
 
   /* --- 1: the six cards -------------------------------------------------- */
   h += '<div class="drp-h2">Latest complete day · ' + _dEsc(s.day) + '</div>'
-    + '<div class="drp-h2-sub">Scored against this account\'s own baseline, '
-    +   _dEsc(b.start || "") + ' to ' + _dEsc(b.end || "") + ' — '
-    +   '<b>' + drpcNum(b.days_with_data) + ' advertising days found</b> of the '
-    +   drpcNum(b.asked_days) + ' asked for. ' + _dEsc(s.why || "") + '</div>'
+    // The counts stay visible; the sentence around them goes behind the (i).
+    + '<div class="drp-h2-sub">Baseline ' + _dEsc(b.start || "") + ' → '
+    +   _dEsc(b.end || "") + ' · <b>' + drpcNum(b.days_with_data) + ' of '
+    +   drpcNum(b.asked_days) + ' days</b>'
+    +   uiHint('Scored against this account\'s own baseline, '
+    +   (b.start || "") + ' to ' + (b.end || "") + ' — '
+    +   (b.days_with_data === null || b.days_with_data === undefined ? '—' : b.days_with_data)
+    +   ' advertising days found of the '
+    +   (b.asked_days === null || b.asked_days === undefined ? '—' : b.asked_days)
+    +   ' asked for. ' + (s.why || "")) + '</div>'
     + '<div class="drp-perf-cards">'
     + (s.cards || []).map(function(c){
         const st = DRPC_STATUS[c.status] || DRPC_STATUS.unknown;
@@ -1040,7 +1050,8 @@ function drpcPerf(){
           + '</div></div>';
       }).join("")
     + '</div>'
-    + '<div class="drp-note">' + _dEsc((j.rule || {}).text || "") + '</div>';
+    + ((j.rule || {}).text ? '<div class="drp-note">How a card is scored'
+       + uiHint(j.rule.text) + '</div>' : '');
 
   /* --- 2: today ---------------------------------------------------------- */
   h += '<div class="drp-panel" style="margin-top:16px">'
@@ -1055,14 +1066,14 @@ function drpcPerf(){
     +   '<span style="font-size:13px;color:var(--ppc-muted)">clicks '
     +     (t.has_ads ? drpcNum(t.clicks) : drpcUnk()) + '</span>'
     + '</div>'
-    + (t.why ? '<div class="drp-note" style="margin-top:8px">' + _dEsc(t.why)
-               + '</div>' : "")
+    + (t.why ? '<div class="drp-note" style="margin-top:8px">Partial day'
+               + uiHint(t.why) + '</div>' : "")
     + '</div>';
 
   /* --- 3: lanes ---------------------------------------------------------- */
   const ln = j.lanes || {};
-  h += '<div class="drp-h2">Strategy lanes</div>'
-    + '<div class="drp-h2-sub">' + _dEsc(ln.why || "") + '</div>'
+  h += '<div class="drp-h2">Strategy lanes' + (ln.why ? uiHint(ln.why) : "")
+    + '</div>'
     + '<div class="drp-panel">'
     + (ln.rules_active
        ? '<div class="drp-chips">'
@@ -1095,8 +1106,8 @@ function drpcPerf(){
         + (n > 0 ? "+" : "") + n.toFixed(1)
         + (kind === "points" ? "pts" : "%") + '</td>';
     };
-    h += '<div class="drp-h2">' + tr.span + '-day trend</div>'
-      + '<div class="drp-h2-sub">' + _dEsc(tr.why || "") + '</div>'
+    h += '<div class="drp-h2">' + tr.span + '-day trend'
+      + (tr.why ? uiHint(tr.why) : "") + '</div>'
       + '<div class="drp-panel"><table class="drp-table"><thead><tr>'
       + '<th>Window</th><th>Spend</th><th>Ad sales</th><th>Total sales</th>'
       + '<th>Ad orders</th><th>ACOS</th><th>TACOS</th><th>PPC CVR</th>'
@@ -1124,9 +1135,10 @@ function drpcPerf(){
 
   /* --- 5: what moved ----------------------------------------------------- */
   const dr = j.drivers || {};
-  h += '<div class="drp-h2">Change drivers</div>'
-    + '<div class="drp-h2-sub">' + _dEsc(dr.why || "") + ' Total movement '
-    +   drpcMoney(dr.total_movement) + '.</div>'
+  h += '<div class="drp-h2">Change drivers' + (dr.why ? uiHint(dr.why) : "")
+    + '</div>'
+    + '<div class="drp-h2-sub">Total movement ' + drpcMoney(dr.total_movement)
+    +   '</div>'
     + '<div class="drp-panel">'
     + ((dr.rows || []).length
        ? '<table class="drp-table"><thead><tr><th>Campaign</th>'
@@ -1215,8 +1227,8 @@ function drpcPerf(){
           + '<div class="s">' + drpcMoney(pl.budget.spent) + ' of '
           + drpcMoney(pl.budget.planned) + ' · day ' + pl.budget.days_elapsed
           + ' of ' + pl.budget.days_total
-          + '<br>Above 100% means the money is going out faster than the '
-          + 'calendar.</div>'
+          + uiHint('Above 100% means the money is going out faster than the '
+          + 'calendar.') + '</div>'
         : null, pl.budget_why || pl.why)
     + drpcPlanCard("goal", "Goal progress",
         (pl.has_plan && (pl.goals || []).length)
@@ -1234,10 +1246,9 @@ function drpcPerf(){
 
   /* --- 8: the gaps ------------------------------------------------------- */
   if((j.gaps || []).length){
-    h += '<div class="drp-h2">Evidence gaps</div>'
-      + '<div class="drp-h2-sub">Derived from the sections above rather than '
-      +   'kept by hand, so a gap disappears from this list the moment it '
-      +   'closes.</div>'
+    h += '<div class="drp-h2">Evidence gaps' + uiHint('Derived from the '
+      +   'sections above rather than kept by hand, so a gap disappears from '
+      +   'this list the moment it closes.') + '</div>'
       + '<div class="drp-panel"><ul class="drp-gaps">'
       + j.gaps.map(function(g){ return '<li>' + _dEsc(g) + '</li>'; }).join("")
       + '</ul></div>';
@@ -1273,9 +1284,9 @@ function drpcActivity(){
     + '<span class="drp-pill">' + drpcNum((j.events || []).length)
     +   ' events shown of ' + drpcNum(c.total) + '</span></div>';
 
-  h += '<div class="drp-note good"><b>Append-only ledger.</b> '
-    + _dEsc(j.why || "") + ' Nothing here is edited or removed; a correction is '
-    + 'a new entry.</div>';
+  h += '<div class="drp-note good"><b>Append-only ledger.</b>'
+    + uiHint((j.why ? j.why + ' ' : '') + 'Nothing here is edited or removed; '
+    + 'a correction is a new entry.') + '</div>';
 
   /* --- suggested changes -------------------------------------------------- */
   h += '<div class="drp-h2">Suggested changes</div>'
@@ -1288,11 +1299,12 @@ function drpcActivity(){
     +       'Read-only towards Amazon · a person applies any change by hand'
     +       (s.plan_active ? ' · plan active' : ' · no active plan') + '</div>'
     +     (s.plan_warning ? '<div style="font-size:12px;color:var(--ppc-orange);'
-                           + 'margin-top:3px">' + _dEsc(s.plan_warning)
-                           + '</div>' : "")
+                           + 'margin-top:3px">⚠ No active plan to measure against'
+                           + uiHint(s.plan_warning) + '</div>' : "")
     +   '</div></div>'
     + '<div class="drp-panel" style="margin-top:8px">'
-    +   '<div class="drp-empty">' + _dEsc(s.why || "") + '</div></div>';
+    +   '<div class="drp-empty">Nothing waiting' + (s.why ? uiHint(s.why) : "")
+    +   '</div></div>';
 
   /* --- the timeline ------------------------------------------------------- */
   const sel = function(id, cur, list, fn, lead){
@@ -1361,7 +1373,7 @@ function drpcPlanCard(kind, title, body, why){
   return '<div class="drp-perf-bottom-card ' + kind + '">'
     + '<div class="t">' + _dEsc(title) + '</div>'
     + (body ? body : '<div class="drp-empty" style="padding:14px">'
-                     + _dEsc(why || "") + '</div>')
+                     + 'Not available' + (why ? uiHint(why) : "") + '</div>')
     + '</div>';
 }
 
@@ -1393,9 +1405,10 @@ function drpcPlan(){
 
   let h = '<div class="drp-head"><div>'
     + '<h1>Goals + Strategy + Budget</h1>'
-    + '<div class="sub">What this business intends, written down so a review '
-    +   'has something to measure against. Every save creates a new revision; '
-    +   'only an activated revision is approved strategy.</div>'
+    + '<div class="sub">Save a draft → activate it' + uiHint('What this business '
+    +   'intends, written down so a review has something to measure against. '
+    +   'Every save creates a new revision; only an activated revision is '
+    +   'approved strategy.') + '</div>'
     + '</div><div class="drp-rev">'
     + (p ? '<span class="drp-pill ' + (p.status === "active" ? "green" : "cyan")
            + '">R' + _dEsc(p.revision) + ' · '
@@ -1410,10 +1423,9 @@ function drpcPlan(){
 
   /* 1 -- identity */
   h += '<div class="drp-light">'
-    + '<h3>Plan identity</h3>'
-    + '<div class="desc">Every save creates an immutable revision. Only an '
-    +   'activated revision is approved strategy — so saving often is safe, and '
-    +   'nothing you save starts governing anything by itself.</div>'
+    + '<h3>Plan identity' + uiHint('Every save creates an immutable revision. '
+    +   'Only an activated revision is approved strategy — so saving often is '
+    +   'safe, and nothing you save starts governing anything by itself.') + '</h3>'
     + '<div class="drp-fields two">'
     +   drpcF("Plan title", "text", "identity.title", d.identity.title)
     +   drpcF("Period start", "date", "identity.period_start",
@@ -1424,10 +1436,9 @@ function drpcPlan(){
   /* 2 -- operating constraints */
   h += '<div class="drp-light">'
     + '<div class="drp-light-head"><div>'
-    +   '<h3>Operating constraints</h3>'
-    +   '<div class="desc">Standing policy recorded when an operator rejects a '
-    +     'proposal. Enforced rows also gate compilation, so a proposal that '
-    +     'breaks one is never born.</div></div>'
+    +   '<h3>Operating constraints' + uiHint('Standing policy recorded when an '
+    +     'operator rejects a proposal. Enforced rows also gate compilation, so a '
+    +     'proposal that breaks one is never born.') + '</h3></div>'
     +   '<span class="drp-pill">' + d.constraints.length + ' active</span>'
     + '</div>'
     + (d.constraints.length
@@ -1437,17 +1448,16 @@ function drpcPlan(){
              + '<button class="drp-del" onclick="drpcDrop(\'constraints\',' + i
              + ')">🗑</button></div></div>'; }).join("")
        : '<div class="drp-empty" style="margin-top:14px">No standing '
-         + 'constraints yet. Rejecting a proposal and choosing "standing rule '
-         + 'for future runs" records one here.</div>')
+         + 'constraints yet.' + uiHint('Rejecting a proposal and choosing '
+         + '"standing rule for future runs" records one here.') + '</div>')
     + '</div>';
 
   /* 3 -- strategy document */
   h += '<div class="drp-light">'
     + '<div class="drp-light-head"><div>'
-    +   '<h3>Strategy document</h3>'
-    +   '<div class="desc">Narrative context belongs here. Measurable goals and '
-    +     'spend allocations stay structured below, where something can '
-    +     'actually check them.</div></div></div>'
+    +   '<h3>Strategy document' + uiHint('Narrative context belongs here. '
+    +     'Measurable goals and spend allocations stay structured below, where '
+    +     'something can actually check them.') + '</h3></div></div>'
     + '<div class="drp-f" style="margin-top:16px">'
     +   '<textarea class="drp-mono" rows="14" '
     +   'oninput="drpcSet(\'strategy\',this.value)" '
@@ -1457,10 +1467,9 @@ function drpcPlan(){
   /* 4 -- goals */
   h += '<div class="drp-light">'
     + '<div class="drp-light-head"><div>'
-    +   '<h3>Goals</h3>'
-    +   '<div class="desc">Machine-evaluable outcomes a future review can '
+    +   '<h3>Goals' + uiHint('Machine-evaluable outcomes a future review can '
     +     'measure. A goal with no window and no aggregation cannot be scored, '
-    +     'so both are asked for.</div></div>'
+    +     'so both are asked for.') + '</h3></div>'
     +   '<button class="drp-light-ghost" onclick="drpcAdd(\'goals\')">+ Add goal'
     +   '</button></div>'
     + (d.goals.length ? d.goals.map(function(g, i){
@@ -1487,9 +1496,9 @@ function drpcPlan(){
           +   drpcT("Rationale", "goals." + i + ".rationale", g.rationale)
           + '</div></div>';
       }).join("")
-      : '<div class="drp-empty" style="margin-top:14px">No goals yet. '
-        + 'The plan can be saved without one, but a review will have nothing '
-        + 'to score.</div>')
+      : '<div class="drp-empty" style="margin-top:14px">No goals yet.'
+        + uiHint('The plan can be saved without one, but a review will have '
+        + 'nothing to score.') + '</div>')
     + '</div>';
 
   /* 5 -- budget */
@@ -1497,10 +1506,9 @@ function drpcPlan(){
     return a + (Number(x.percentage) || 0); }, 0);
   h += '<div class="drp-light">'
     + '<div class="drp-light-head"><div>'
-    +   '<h3>Budget plan</h3>'
-    +   '<div class="desc">Intended spend — not the sum of Amazon\'s campaign '
-    +     'delivery ceilings, which is a different number and always higher.'
-    +   '</div></div>'
+    +   '<h3>Budget plan' + uiHint('Intended spend — not the sum of Amazon\'s '
+    +     'campaign delivery ceilings, which is a different number and always '
+    +     'higher.') + '</h3></div>'
     +   '<span class="drp-alloc-sum' + (alloc > 100 ? " over" : "") + '">'
     +     'Allocated: ' + alloc.toFixed(1) + '%'
     +     (alloc > 100 ? " — over 100%" : "") + '</span>'
@@ -1516,10 +1524,9 @@ function drpcPlan(){
 
   /* 6 -- allocations */
   h += '<div class="drp-light">'
-    + '<div class="drp-light-head"><div><h3>Allocations</h3>'
-    +   '<div class="desc">How the planned spend is meant to split. A split '
-    +     'written here is an intention — the measured split lives on PPC '
-    +     'Analytics.</div></div>'
+    + '<div class="drp-light-head"><div><h3>Allocations' + uiHint('How the '
+    +     'planned spend is meant to split. A split written here is an intention '
+    +     '— the measured split lives on PPC Analytics.') + '</h3></div>'
     +   '<button class="drp-light-ghost" onclick="drpcAdd(\'allocations\')">'
     +   '+ Add allocation</button></div>'
     + (d.allocations.length ? d.allocations.map(function(a, i){
@@ -1547,10 +1554,9 @@ function drpcPlan(){
 
   /* the revision trail */
   if((DRPC.history || []).length){
-    h += '<div class="drp-h2">Revision history</div>'
-      + '<div class="drp-h2-sub">Kept in full. A superseded revision is what '
-      +   'last month\'s proposals were made against, so deleting one would '
-      +   'make them unexplainable.</div>'
+    h += '<div class="drp-h2">Revision history' + uiHint('Kept in full. A '
+      +   'superseded revision is what last month\'s proposals were made '
+      +   'against, so deleting one would make them unexplainable.') + '</div>'
       + '<div class="drp-panel"><table class="drp-table"><thead><tr>'
       + '<th>Revision</th><th style="text-align:left">Status</th>'
       + '<th style="text-align:left">Title</th>'

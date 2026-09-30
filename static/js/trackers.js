@@ -108,6 +108,18 @@ function trkRender() {
   const cur = trkCur();
   const rows = TRK.metric ? TRK.rows.filter(function (r) { return r.metric === TRK.metric; })
                           : TRK.rows;
+  if (!rows.length && TRK.metric && TRK.rows.length) {
+    // A TAB with nothing on it is not an empty tracker: other tabs have rows.
+    // Saying "nothing is being tracked yet" here was simply wrong.
+    const m = (TRK.metrics || {})[TRK.metric] || {};
+    box.innerHTML = trkStatCards() + trkAddForm() +
+      uiEmpty("Nothing on the " + (m.tracker || TRK.metric) + " yet",
+        "Other trackers are watching " + TRK.rows.length + " number" +
+        (TRK.rows.length === 1 ? "" : "s") + " — see <b>All trackers</b>. " +
+        "Add an ASIN above and choose <b>" + esc(m.label || TRK.metric) +
+        "</b> to watch it here.");
+    return;
+  }
   if (!rows.length) {
     // An empty screen has to say what to DO, not just that it is empty. The
     // trackers are opt-in per ASIN, so "nothing here" is the normal first state
@@ -137,8 +149,10 @@ function trkRender() {
       "<td>" + esc(r.tracker) + "</td>" +
       "<td>" + trkFmt(r.value, r.kind, cur) + "</td>" +
       '<td><input class="ed trktgt" style="width:88px;padding:3px 6px;font-size:12px" ' +
-      'value="' + (r.target === null || r.target === undefined ? "" : r.target) + '" ' +
-      "onchange=\"trkSetTarget('" + r.asin + "','" + r.metric + "',this.value)\"></td>" +
+      'value="' + esc(r.target === null || r.target === undefined ? "" : String(r.target)) + '" ' +
+      // jsArg, not hand-quoted: the ASIN and metric come from the server's
+      // store, and a quote in either broke out of the handler (Rule 15).
+      'onchange="trkSetTarget(' + jsArg(r.asin) + "," + jsArg(r.metric) + ',this.value)"></td>' +
       "<td>" + trkDrift(r.drift) + "</td>" +
       "<td>" + (r.change === null || r.change === undefined ? '<span class="cc">—</span>'
                                                            : trkFmt(r.change, r.kind, cur)) + "</td>" +
@@ -199,6 +213,7 @@ async function trkAdd() {
   const metric = (document.getElementById("trk_metric") || {}).value || "";
   const target = (document.getElementById("trk_target") || {}).value || "";
   if (!asin.trim()) { toast("Enter an ASIN."); return; }
+  if (!/^[A-Za-z0-9]{10}$/.test(asin.trim())) { toast("An ASIN is 10 letters and digits, e.g. B0XXXXXXXX."); return; }
   const j = await (await fetch("/trackers/watch" + _trkQs(), {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ asin: asin, metric: metric, on: true, target: target })
@@ -274,6 +289,7 @@ async function alertsLoad() {
   if (_gone()) return;
   if (!j.ok) { if (box) box.innerHTML = '<div class="sresfail">' + esc(j.error || "failed") + "</div>"; return; }
   const cur = trkCur();
+  if (!box) { trkBadge(j.count); return; }   // badge still right with no panel
   if (!j.rows.length) {
     box.innerHTML =
       uiStats([{ label: "Off target", value: 0, tone: "good",
@@ -335,3 +351,17 @@ async function trkBadge(known) {
   // group would hide the alert.
   if (typeof navGroupBadges === "function") navGroupBadges();
 }
+
+/* THE BADGE AT BOOT. It was only ever drawn by opening Trackers or Alerts, so
+ * an off-target number was invisible in the sidebar until somebody happened to
+ * visit one of them. Drawn once the page has settled on an account; after an
+ * account switch the switch hook must call trkBadge() again (screenstate.js). */
+(function () {
+  const go = function () {
+    setTimeout(function () {
+      try { if (typeof acctId !== "function" || acctId()) trkBadge(); } catch (e) {}
+    }, 9000);
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
+  else go();
+})();

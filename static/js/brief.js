@@ -13,7 +13,7 @@
  * with a silent hole in it is worse than no brief: it reads as "nothing to
  * report" for the part it never read.
  */
-var BRIEF = {data: null, loading: false, asked: false};
+var BRIEF = {data: null, loading: false, asked: false, seq: 0};
 
 function _bfEsc(s) {
   return String(s === null || s === undefined ? "" : s)
@@ -41,13 +41,19 @@ function briefOnOpen() {
 }
 
 async function briefLoad() {
+  // NEWEST REQUEST WINS. A double click used to start two reads, and whichever
+  // came back last was drawn and cleared "loading" while the other was still
+  // running. Each read takes a number; only the latest one may draw.
+  const my = ++BRIEF.seq;
   BRIEF.loading = true; briefRender();
+  let j;
   try {
-    const j = await (await fetch("/brief")).json();
-    BRIEF.data = j;
+    j = await (await fetch("/brief")).json();
   } catch (e) {
-    BRIEF.data = {ok: false, error: "Could not load the brief: " + e};
+    j = {ok: false, error: "Could not load the brief: " + e};
   }
+  if (my !== BRIEF.seq) return;
+  BRIEF.data = j;
   BRIEF.loading = false;
   briefRender();
 }

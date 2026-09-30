@@ -127,16 +127,41 @@ def _norm_channel(c, include_secret=False):
            "url_shown": redact(c.get("url")),
            "added_at": c.get("added_at", ""),
            "last_result": c.get("last_result", ""),
-           "last_at": c.get("last_at", "")}
+           "last_at": c.get("last_at", ""),
+           # The same time in UTC, which is what the screen converts from.
+           "last_at_utc": _utc_label(c.get("last_at")) if c.get("last_at") else ""}
     if include_secret:
         out["url"] = c.get("url", "")
     return out
 
 
+def _account_matches(c, account):
+    """Does channel `c` belong to `account`? ONE reading, used by every caller.
+
+    A channel names the account it was added in. A channel with NO account is a
+    legacy one, added before channels were per account: it still receives
+    every account's alerts, exactly as it did, and the screen flags it "all
+    accounts" so the owner can assign it -- guessing which account it was meant
+    for would be the app deciding where another company's alerts go.
+    An event with no account (a caller that does not know) reaches every channel.
+    """
+    if not account:
+        return True
+    return str(c.get("account") or "") in ("", str(account))
+
+
+def channel_for(config_path, channel_id):
+    """The stored channel with this id (secret included), or None."""
+    for c in load(config_path).get("channels", []):
+        if str(c.get("id")) == str(channel_id):
+            return c
+    return None
+
+
 def channels(config_path, account=None, include_secret=False):
     out = []
     for c in load(config_path).get("channels", []):
-        if account and str(c.get("account") or "") not in ("", str(account)):
+        if not _account_matches(c, account):
             continue
         out.append(_norm_channel(c, include_secret))
     return out
@@ -174,7 +199,10 @@ def add_channel(config_path, kind, url, label="", account="", events=None,
         return {"ok": True, "channel": _norm_channel(c)}
 
 
-def set_channel(config_path, channel_id, enabled=None, label=None, events=None):
+def set_channel(config_path, channel_id, enabled=None, label=None, events=None,
+                account=None):
+    """Change one channel. `account` only ASSIGNS a legacy (account-less)
+    channel; a channel that already belongs to an account keeps it."""
     with _LOCK:
         data = load(config_path)
         for c in data.get("channels", []):
@@ -186,6 +214,8 @@ def set_channel(config_path, channel_id, enabled=None, label=None, events=None):
                 c["label"] = str(label).strip()
             if events is not None:
                 c["events"] = list(events or [])
+            if account and not str(c.get("account") or ""):
+                c["account"] = str(account)
             _save(config_path, data)
             return {"ok": True, "channel": _norm_channel(c)}
     return {"ok": False, "error": "No such channel."}
@@ -215,9 +245,42 @@ def _log(config_path, entry):
         _save(config_path, data)
 
 
-def log(config_path, limit=50):
-    lg = load(config_path).get("log", [])
-    return list(reversed(lg[-limit:])) if limit else list(reversed(lg))
+def _utc_label(at):
+    """A log time ("YYYY-MM-DD HH:MM:SS", server-local) as UTC, same format.
+
+    The bell's times come from SQLite's CURRENT_TIMESTAMP, which is UTC; the
+    log's are the server's local clock. Shown side by side they disagreed by the
+    server's offset, so both are handed to the screen in UTC and labelled once
+    there. "" when the time cannot be read.
+    """
+    try:
+        t = datetime.datetime.strptime(str(at), "%Y-%m-%d %H:%M:%S")
+        return t.astimezone(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+
+
+def log(config_path, limit=50, account=None):
+    """The newest delivery attempts, newest first.
+
+    With `account`, only that account's: entries stamped with it, and older
+    unstamped entries whose channel belongs to it (or is a legacy channel).
+    """
+    data = load(config_path)
+    lg = data.get("log", [])
+    if account:
+        mine = {str(c.get("id")) for c in data.get("channels", [])
+                if _account_matches(c, account)}
+        lg = [e for e in lg
+              if (str(e.get("account") or "") == str(account))
+              or (not e.get("account") and str(e.get("channel_id")) in mine)]
+    lg = lg[-limit:] if limit else lg
+    out = []
+    for e in reversed(lg):
+        e = dict(e)
+        e["at_utc"] = _utc_label(e.get("at"))
+        out.append(e)
+    return out
 
 
 def _recently_sent(config_path, key, quiet_hours):
@@ -321,7 +384,7 @@ def wants(config_path, kind, account=""):
     except Exception:
         return False
     for c in chans:
-        if account and str(c.get("account") or "") not in ("", str(account)):
+        if not _account_matches(c, account):
             continue
         ev = c.get("events") or []
         if "*" in ev or (kind and kind in ev):
@@ -344,17 +407,9 @@ def send(config_path, subject, lines=None, event="", account="", key="",
     """
     res = {"ok": True, "sent": 0, "skipped": 0, "failed": 0, "results": []}
     chans = [c for c in load(config_path).get("channels", [])
-             if c.get("enabled")]
-    if account:
-        chans = [c for c in chans
-                 if str(c.get("account") or "") in ("", str(account))]
+             if c.get("enabled") and _account_matches(c, account)]
     if event:
-        # An empty events list means "everything"; naming events narrows it.
-        # "*" means everything INCLUDING the quiet kinds -- see wants() below.
-        chans = [c for c in chans
-                 if not c.get("events")
-                 or event in (c.get("events") or [])
-                 or "*" in (c.get("events") or [])]
+        chans = [c for c in chans if channel_wants_event(c, event)]
     if not chans:
         res["note"] = "No enabled channel is set up to receive this."
         return res
@@ -365,6 +420,7 @@ def send(config_path, subject, lines=None, event="", account="", key="",
         for c in chans:
             _log(config_path, {"at": _iso(), "channel_id": c.get("id"),
                                "channel": c.get("label") or c.get("kind"),
+                               "account": str(account or c.get("account") or ""),
                                "event": event, "subject": subject,
                                "result": SKIPPED, "detail": res["note"]})
         return res
@@ -379,6 +435,7 @@ def send(config_path, subject, lines=None, event="", account="", key="",
             res["ok"] = False
         _log(config_path, {"at": _iso(), "channel_id": c.get("id"),
                            "channel": c.get("label") or c.get("kind"),
+                           "account": str(account or c.get("account") or ""),
                            "event": event, "subject": subject,
                            "result": SENT if ok else FAILED, "detail": detail})
     if res["sent"]:
@@ -404,6 +461,7 @@ def test(config_path, channel_id):
                                     "test", c.get("account", "")))
         _log(config_path, {"at": _iso(), "channel_id": c.get("id"),
                            "channel": c.get("label") or c.get("kind"),
+                           "account": str(c.get("account") or ""),
                            "event": "test", "subject": "Test message",
                            "result": SENT if ok else FAILED, "detail": detail})
         return {"ok": ok, "detail": detail}
@@ -447,6 +505,28 @@ ERROR = "error"
 # muted, and then the real alert is missed too -- the same reasoning as
 # QUIET_HOURS above, applied to volume instead of repetition.
 OUTBOUND_KINDS = (LARGE_MOVE, OUT_OF_STOCK, BACK_IN_STOCK, SUPPLIER_ENDED, ERROR)
+
+# The tracker round-up (/notify/send) is a button someone presses to send it,
+# so a channel on the usual alerts receives it.
+TRACKER = "tracker"
+
+# WHAT AN EMPTY EVENTS LIST MEANS -- the usual alerts, never every event. send()
+# read empty as "everything", so a channel left on the default received every
+# ordinary repricer price change whenever announce() was handed one (a channel
+# that asked for price_change made wants() true, and send() then delivered it
+# to EVERY default channel too). One definition, read by send() and the screen.
+DEFAULT_EVENTS = OUTBOUND_KINDS + (TRACKER,)
+
+
+def channel_wants_event(c, event):
+    """Does channel `c` take `event`? events [] = DEFAULT_EVENTS; ["*"] = all;
+    a named list = exactly those."""
+    ev = list(c.get("events") or [])
+    if "*" in ev:
+        return True
+    if ev:
+        return event in ev
+    return event in DEFAULT_EVENTS
 
 
 def record(config_path, workspace_id, kind, title, body="", sku="",
@@ -552,9 +632,14 @@ def mark_read(config_path, ids=None, workspace_id=None):
         conn = _db.get_db(config_path)
         if ids:
             ids = [int(i) for i in ids]
-            n = conn.execute(
-                "UPDATE notifications SET is_read=1 WHERE id IN (%s)"
-                % ",".join("?" * len(ids)), ids).rowcount
+            sql = ("UPDATE notifications SET is_read=1 WHERE id IN (%s)"
+                   % ",".join("?" * len(ids)))
+            # With an account, only ITS rows: the bell is open to every
+            # signed-in user now, and an id is not proof of whose row it is.
+            if workspace_id:
+                sql += " AND workspace_id=?"
+                ids = ids + [str(workspace_id)]
+            n = conn.execute(sql, ids).rowcount
         elif workspace_id:
             n = conn.execute(
                 "UPDATE notifications SET is_read=1 WHERE workspace_id=? "

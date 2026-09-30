@@ -177,6 +177,22 @@ def register(app, *, CONFIG_PATH, APP_PASSWORD=""):
                         "people": _act.summary(CONFIG_PATH, since, until, **f),
                         "team": _team()})
 
+    @app.route("/activity/breakdown")
+    def activity_breakdown():
+        """The overview's shapes (per day, per account, per kind of work, failures,
+        changes after sending) under the same filters as /activity/summary."""
+        from domain import activity as _act
+        try:
+            since, until, f = _filters()
+            tz = float(request.args.get("tz") or 0)
+            if not -900 <= tz <= 900:
+                raise ValueError("tz must be minutes from UTC")
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        return jsonify({"ok": True, "from": since, "to": until,
+                        "categories": _act.CATEGORIES,
+                        **_act.breakdown(CONFIG_PATH, since, until, tz_minutes=tz, **f)})
+
     @app.route("/activity/list")
     def activity_list():
         from domain import activity as _act

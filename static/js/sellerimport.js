@@ -30,9 +30,10 @@ function sellerImportRender(){
   if(!host) return;
   let h = '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
     + 'border:1px solid var(--line2);border-radius:6px">'
-    + 'Find everything an eBay seller lists, look through it with the pictures, '
-    + 'and draft the ones you want. <b>Nothing is sent to Amazon</b> — the ones '
-    + 'you keep become drafts here, and you publish them the usual way.</div>';
+    + '<b>Nothing is sent to Amazon</b> — kept items become drafts. '
+    + uiHint('Find everything an eBay seller lists, look through it with the pictures, '
+      + 'and draft the ones you want. Nothing is sent to Amazon — the ones '
+      + 'you keep become drafts here, and you publish them the usual way.') + '</div>';
 
   h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">'
     + '<input id="simp_seller" placeholder="eBay username, or a link to any of their items" '
@@ -45,11 +46,12 @@ function sellerImportRender(){
   // knows the second. Said here rather than left to be discovered, because when
   // it is wrong eBay does not say so -- it answers with its whole catalogue.
   h += '<div class="cc" style="font-size:11.5px;margin:0 0 12px">'
-    + 'The <b>username</b>, not the shop name — they are often different. '
-    + 'A shop at <code>ebay.co.uk/str/…</code> shows the shop name; the username '
-    + 'is on any of their listings under “Sold by”. '
-    + 'Easiest: <b>paste a link to anything they are selling</b> and the username '
-    + 'is read off it.</div>';
+    + 'The <b>username</b>, not the shop name — or <b>paste a link</b> to any item. '
+    + uiHint('The username, not the shop name — they are often different. '
+      + 'A shop at ebay.co.uk/str/… shows the shop name; the username '
+      + 'is on any of their listings under “Sold by”. '
+      + 'Easiest: paste a link to anything they are selling and the username '
+      + 'is read off it.') + '</div>';
 
   h += '<div id="simp_results"></div>';
   host.innerHTML = h;
@@ -63,7 +65,9 @@ async function sellerFind(){
   const out = document.getElementById("simp_results");
   if(out) out.innerHTML = '<div class="cc" style="padding:16px"><span class="genspin"></span> '
     + 'Searching eBay for this seller — several passes, so give it a moment…</div>';
-  SIMP.seller = seller; SIMP.screened = false;
+  // A NEW SEARCH IS A NEW LIST. The last seller's "Checked N of M" summary
+  // stayed above the new rows, reading as a verdict on items never checked.
+  SIMP.seller = seller; SIMP.screened = false; SIMP.screenSummary = null;
   try{
     const j = await (await fetch("/seller/find",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -133,8 +137,9 @@ function sellerImportResults(){
                        + _siEsc(x.t)+'</span>').join("")
       +  '</div>'
       +  '<div class="cc" style="font-size:11px;margin-top:6px">'
-      +  'Click any tile below to read exactly why — the reasons are carried onto '
-      +  'the draft, so they are still there when you come back to it.</div>'
+      +  'Click any tile below to read exactly why. '
+      +  uiHint('Click any tile below to read exactly why — the reasons are carried onto '
+         +  'the draft, so they are still there when you come back to it.') + '</div>'
       +  '</div>';
   }
 
@@ -328,8 +333,16 @@ async function sellerDraft(){
          + "blocked spends generation credits on a listing that can never be "
          + "published.";
   }
+  // THE SERVER REFUSES THE WHOLE BATCH when any selected item is blocked
+  // (/seller/draft, include_blocked is never sent from here). The confirm used
+  // to say only "N will be refused", as though the rest would go through, and
+  // then nothing was drafted. Said as it is, and nothing is sent.
   if(blocked){
-    msg += "\n\n" + blocked + " of these are BLOCKED by Amazon and will be refused.";
+    await (typeof uiAlert === "function" ? uiAlert : uiConfirm)(blocked + " of the selected item" + (sel.length===1?" is":"s are")
+      + " BLOCKED by Amazon. A draft that includes a blocked item is refused as "
+      + "a whole, so nothing will be drafted.\n\nUntick the blocked item"
+      + (blocked===1?"":"s") + " (marked “blocked”) and draft again.");
+    return;
   }
   if(!await uiConfirm(msg)) return;
   await _siDraft(sel, {});
@@ -343,6 +356,19 @@ async function _siDraft(sel, extra){
     const j = await (await fetch("/seller/draft",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:_siBody(body)})).json();
+    // PARTLY DONE IS NOT "COULD NOT DRAFT". The server answers ok:false when
+    // any one row failed, even with the rest written -- and this said only
+    // "Could not draft" and never reloaded the list, so drafts that did exist
+    // were invisible until a manual refresh.
+    if(!j.ok && Number(j.drafted) > 0){
+      const errs = j.errors || [], eerrs = j.enrol_errors || [];
+      toast("Drafted " + j.drafted + ", but " + errs.length + " could not be drafted"
+            + (errs.length ? ": " + (errs[0].sku ? errs[0].sku + " — " : "") + (errs[0].error || "") : "")
+            + (eerrs.length ? " · supplier not recorded on " + eerrs.length : "")
+            + ". Nothing was sent to Amazon.");
+      if(typeof loadRows === "function") loadRows();
+      return;
+    }
     if(!j.ok){
       // The server counted the expanded families and it is over the ceiling.
       // A real number, asked about once, rather than a silent cap.

@@ -75,6 +75,12 @@ def register(app, *, _APP_PASSWORD, CONFIG_PATH=None):
                 session.permanent = True
                 session["authed"] = True
                 session["uid"] = user["id"]
+                # The session generation this sign-in belongs to, as invite
+                # acceptance stores it: a later reset ends it (auth/guard.py).
+                try:
+                    session["sv"] = users.session_version(user)
+                except Exception:
+                    pass
                 return redirect(nxt or url_for("index"))
 
             if bootstrap and _APP_PASSWORD and pw == _APP_PASSWORD:

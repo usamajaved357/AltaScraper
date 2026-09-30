@@ -48,11 +48,17 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
 
     @app.route("/compliance/scans", methods=["GET"])
     def compliance_scans():
-        wsid, _mkt = _scope()
+        wsid, mkt = _scope()
         asin = (request.args.get("asin") or "").strip().upper()
-        return jsonify({"ok": True,
-                        "scans": _cs.scans(CONFIG_PATH, wsid, asin),
-                        "bands": _cs.BANDS})
+        # THE MARKETPLACE ON SCREEN ONLY (bug round 30 Sep 2026), and a read
+        # that fails says so rather than looking like an empty history.
+        try:
+            got = _cs.scans(CONFIG_PATH, wsid, asin, marketplace=mkt)
+        except Exception as e:
+            return jsonify({"ok": False, "error": "Could not read the scan "
+                            "history: %s" % str(e)[:160]}), 500
+        return jsonify({"ok": True, "account": wsid, "marketplace": mkt,
+                        "scans": got, "bands": _cs.BANDS})
 
     @app.route("/compliance/scan", methods=["POST"])
     def compliance_scan_one():
@@ -114,4 +120,5 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         _cs.store(CONFIG_PATH, wsid, result)
         result["ok"] = True
         result["brand"] = brand
+        result["account"] = wsid
         return jsonify(result)

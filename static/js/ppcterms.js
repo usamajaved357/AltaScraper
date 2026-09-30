@@ -231,8 +231,13 @@ function ppctRender(){
     + '</div></div>';
 
   if(j.report_note){
+    // One short line; the full sentence behind the (i) (owner, 30 Sep 2026).
+    const fixed = /fixed window/.test(j.report_note);
     h += '<div class="ppc-note" style="margin-bottom:14px">'
-      + _pEsc(j.report_note) + '</div>';
+      + '<i class="ti ti-calendar' + (fixed ? '-off' : '') + '"></i> '
+      + (fixed ? 'Fixed report window — does not follow the date picker'
+               : 'Follows the date picker')
+      + uiHint(j.report_note) + '</div>';
   }
 
   // MATCH TYPE and BRAND pills
@@ -255,7 +260,8 @@ function ppctRender(){
         ? ["All", "Branded", "Non-Branded"]
             .map(function(v){ return pill("brand", v); }).join("")
         : '<span style="font-size:11.5px;color:var(--ppc-muted)">no brand '
-          + 'words set, so terms cannot be split</span>')
+          + 'words set' + uiHint('No brand words set, so terms cannot be split')
+          + '</span>')
     + '</div>';
 
   // The brand word box. Adding one is what turns the split on, so it sits on

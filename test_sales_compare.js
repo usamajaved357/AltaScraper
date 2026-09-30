@@ -164,7 +164,14 @@ console.log("\n=== the two periods are matched BY DATE, on real reply shapes ===
 const picker = (function(){
   const s = SALES_JS.indexOf("function salesDrawCharts");
   const e = SALES_JS.indexOf("\nasync function salesReload");
-  return SALES_JS.slice(s, e);
+  // Re-pinned 30 Sep 2026 (reports bug round): the comparison now maps each
+  // column back through _sBackKey (bucket-aware, so Week/Month keep their
+  // dashed line), which lives beside the zoom helpers. The harness carries
+  // those two helpers with it; the day-granularity arithmetic is unchanged.
+  const hs = SALES_JS.indexOf("function _sBucketSpan");
+  const he = SALES_JS.indexOf("function salesZoomTo");
+  const helpers = (hs >= 0 && he > hs) ? SALES_JS.slice(hs, he) : "";
+  return helpers + "\n" + SALES_JS.slice(s, e);
 })();
 
 // new Function below runs in the GLOBAL scope, not the sandbox above.

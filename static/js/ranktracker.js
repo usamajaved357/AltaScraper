@@ -32,11 +32,20 @@ function _krtQs(extra) {
 function _krtEsc(s) {
   return (typeof esc === "function") ? esc(s) : String(s == null ? "" : s);
 }
+/* The account and marketplace a request went out for. A reply that lands after
+ * a switch belongs to the account just left and must not be drawn into this
+ * one -- nor its watch list kept, since the next Check now would act on it. */
+function _krtScope() { return (typeof screenScope === "function") ? screenScope() : null; }
+function _krtGone(sc) {
+  return !!(sc && typeof screenStillIn === "function" && !screenStillIn(sc));
+}
 
 async function krtLoad() {
   KRT.loading = true; krtRender();
+  const sc = _krtScope();
   try {
     const j = await (await fetch("/keywords/rank-tracker" + _krtQs())).json();
+    if (_krtGone(sc)) { KRT.loading = false; return; }
     if (j && j.ok) {
       KRT.watch = j.watch || []; KRT.history = j.history || [];
       KRT.counts = j.counts || null; KRT.what = j.what_this_measures || "";
@@ -44,7 +53,10 @@ async function krtLoad() {
     } else {
       KRT.note = (j && j.error) || "Could not read the tracker.";
     }
-  } catch (e) { KRT.note = "Could not read the tracker: " + e; }
+  } catch (e) {
+    if (_krtGone(sc)) { KRT.loading = false; return; }
+    KRT.note = "Could not read the tracker: " + e;
+  }
   KRT.loading = false; krtRender();
 }
 
@@ -54,6 +66,7 @@ async function krtAdd() {
   if (!kw || !asin) {
     KRT.note = "Both a keyword and one of your ASINs are needed."; krtRender(); return;
   }
+  const sc = _krtScope();
   try {
     const j = await (await fetch("/keywords/rank-tracker/add", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -62,6 +75,7 @@ async function krtAdd() {
         { keyword: kw, asin: asin,
           marketplace: (typeof WS_MARKET !== "undefined" ? WS_MARKET : "") }))
     })).json();
+    if (_krtGone(sc)) return;
     if (j && j.ok) {
       KRT.watch = j.watch || []; KRT.note = "";
       const a = document.getElementById("krt_kw"); if (a) a.value = "";
@@ -71,6 +85,7 @@ async function krtAdd() {
 }
 
 async function krtRemove(kw, asin) {
+  const sc = _krtScope();
   try {
     const j = await (await fetch("/keywords/rank-tracker/remove", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -79,8 +94,10 @@ async function krtRemove(kw, asin) {
         { keyword: kw, asin: asin,
           marketplace: (typeof WS_MARKET !== "undefined" ? WS_MARKET : "") }))
     })).json();
+    if (_krtGone(sc)) return;
     if (j && j.ok) KRT.watch = j.watch || [];
-  } catch (e) { KRT.note = "Could not remove it: " + e; }
+    else KRT.note = (j && j.error) || "Could not remove it.";
+  } catch (e) { if (_krtGone(sc)) return; KRT.note = "Could not remove it: " + e; }
   krtRender();
 }
 
@@ -114,6 +131,7 @@ async function krtCheckNow() {
   }
 
   KRT.checking = true; KRT.note = ""; krtRender();
+  const sc = _krtScope();
   try {
     const start = (document.getElementById("krt_start") || {}).value || "";
     const end = (document.getElementById("krt_end") || {}).value || "";
@@ -124,6 +142,7 @@ async function krtCheckNow() {
         { start: start, end: end,
           marketplace: (typeof WS_MARKET !== "undefined" ? WS_MARKET : "") }))
     })).json();
+    if (_krtGone(sc)) { KRT.checking = false; return; }
     if (j && j.ok) {
       KRT.watch = j.watch || KRT.watch; KRT.history = j.history || [];
       let n = "Checked " + j.checked + " keyword" + (j.checked === 1 ? "" : "s")
@@ -137,7 +156,10 @@ async function krtCheckNow() {
       }
       KRT.note = n;
     } else { KRT.note = (j && j.error) || "The check failed."; }
-  } catch (e) { KRT.note = "The check failed: " + e; }
+  } catch (e) {
+    if (_krtGone(sc)) { KRT.checking = false; return; }
+    KRT.note = "The check failed: " + e;
+  }
   KRT.checking = false; krtRender();
 }
 
@@ -196,9 +218,10 @@ function krtRender() {
          + "not available</span></td>"
          + "<td>" + (r ? _krtEsc(String(r.checked_at || "").slice(0, 16).replace("T", " "))
                        : '<span class="cc">—</span>') + "</td>"
-         + '<td><button class="ghost" onclick="krtRemove(' + "'"
-         + _krtEsc(String(w.keyword).replace(/'/g, "\\'")) + "','"
-         + _krtEsc(w.asin) + "'" + ')">Remove</button></td></tr>';
+         // jsArg, not hand-quoting: a keyword ending in a backslash or holding
+         // a double quote broke out of the handler (Rule 15).
+         + '<td><button class="ghost" onclick="krtRemove('
+         + jsArg(w.keyword) + "," + jsArg(w.asin) + ')">Remove</button></td></tr>';
     });
     h += "</tbody></table>";
 

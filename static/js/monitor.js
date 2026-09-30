@@ -114,7 +114,7 @@ function monUnknownsSection(unknowns, s){
     const badges = (u.high_risk?' <span class="hirisk">HIGH RISK</span>':'')
                  + (u.new_account?' <span class="newacct">NEW</span>':'')
                  + ((u.multi_account||1)>1?` <span class="multiacct" title="Same name on ${u.multi_account} seller IDs — likely one bad actor">${u.multi_account} accounts</span>`:'');
-    const fb = u.new_account ? '0 reviews' : ((u.feedback_pct!=null?u.feedback_pct+'%':'?')+' · '+(u.feedback_count||0));
+    const fb = u.new_account ? '0 reviews' : ((u.feedback_pct!=null?u.feedback_pct+'%':'?')+' · '+(u.feedback_count!=null?u.feedback_count:'?'));
     const price = (u.price!==null && u.price!==undefined) ? (esc(String(u.price))+' '+esc(u.currency||'')) : '—';
     return `<tr class="${u.high_risk?'hirow':(u.new_account?'newrow':'')}">
       <td class="monasin">${esc(u.asin)}</td><td>${esc(u.label||'')||'<span class="cc">—</span>'}</td>
@@ -168,6 +168,12 @@ function monLabelSeller(id, mkt){
   fetch("/monitor/seller_info?seller_id="+encodeURIComponent(id))
     .then(r=>r.json()).then(j=>{
       if(!j||!j.ok) return;
+      // THE REPLY MUST BE FOR THE SELLER STILL IN THE MODAL. Close one and
+      // open another quickly and the first reply landed second: seller A's
+      // name and classification were pre-filled against seller B's id, and
+      // Save wrote A's name onto B everywhere.
+      const open = document.getElementById("lbl_id");
+      if(String(j.seller_id||"") !== String(id) || !open || open.value !== String(id)) return;
       window._LBL_INFO=j;
       const nm=document.getElementById("lbl_name"); if(nm && j.name) nm.value=j.name;   // real name, NEVER the ASIN
       const kd=document.getElementById("lbl_kind"); if(kd && j.kind && j.kind!=="unknown") kd.value=j.kind;
@@ -321,9 +327,10 @@ function monChart(s){
     + '<span class="cc">' + total + ' across ' + keys.length + ' market'
     + (keys.length !== 1 ? 's' : '') + ' · worst is ' + esc(keys[0]) + '</span></div>'
     + '<div class="monbars">' + bars + '</div>'
-    + '<div class="cc moncard-foot">A seller this app has not been told about. '
-    + 'Name one and it stops counting here — use <b>Import seller names</b> for '
-    + 'a list of them.</div></div>';
+    + '<div class="cc moncard-foot">Name a seller to stop counting it. '
+    + uiHint('A seller this app has not been told about. Name one and it stops '
+      + 'counting here — use Import seller names for a list of them.')
+    + '</div></div>';
 }
 
 function monAsinBlock(r){
@@ -408,8 +415,12 @@ function monSellerChip(s){
   let extra = "";
   if(s.kind==="unknown"){
     const fc = s.feedback_count;
-    if(fc===0 || fc===null || fc===undefined)
+    // EXACTLY ZERO. A missing count is "not known", not a brand-new account;
+    // Amazon leaves it out for plenty of established sellers.
+    if(fc===0)
       extra = ' <span class="newacct" title="Brand-new account — 0 feedback (classic hijacker signature)">NEW</span>';
+    else if(fc===null || fc===undefined)
+      extra = ' <span class="fbnote" title="Amazon did not say how much feedback this seller has">feedback ?</span>';
     else
       extra = ` <span class="fbnote">${esc(String(s.feedback_pct!=null?s.feedback_pct:'?'))}%·${esc(String(fc))}</span>`;
   }
@@ -505,15 +516,20 @@ function renderMonStatus(st){
                  + 'stopped has been saved.</span>';
     return;
   }
-  if(!st.last_run){ el.textContent = "Not run yet — runs hourly while the app is open."; return; }
+  // WHAT THE SCHEDULE REALLY IS, from the server's own sentence -- this said
+  // that it ran every hour while the app was open, untrue since the
+  // clock became the owner's choice (off by default).
+  const _when = (typeof MON_SCHED !== "undefined" && MON_SCHED.loaded && MON_SCHED.explains)
+    ? MON_SCHED.explains : "It checks when you press Check now.";
+  if(!st.last_run){ el.textContent = "Not run yet. " + _when; return; }
   const bits = ["Last check: "+esc(st.last_run)];
   if(st.api_calls!=null) bits.push(st.api_calls+" API call"+(st.api_calls!==1?"s":""));
   if(st.duration!=null) bits.push(st.duration+"s");
   if(st.skipped) bits.push(st.skipped+" market"+(st.skipped!==1?"s":"")+" skipped");
   if(st.next_run_ts){ const m=Math.max(0,Math.round((st.next_run_ts*1000-Date.now())/60000)); bits.push("next in "+m+"m"); }
   let html = bits.join(" · ");
-  if(st.last_run_ok===false) html += ' <span style="color:var(--warn)">(some checks failed — see terminal)</span>';
-  if(st.overload) html += ' <span style="color:var(--red)">⚠ cycle nearly exceeds the hour — reduce scope (drop dead markets / inactive ASINs)</span>';
+  if(st.last_run_ok===false) html += ' <span style="color:var(--warn)">(some checks failed — the ASINs below say which and why)</span>';
+  if(st.overload) html += ' <span style="color:var(--red)">⚠ a check nearly takes as long as the gap between checks — reduce scope (drop dead markets / inactive ASINs)</span>';
   el.innerHTML = html;
 }
 
@@ -523,12 +539,37 @@ function updateMonBadge(n){
   else { b.style.display="none"; b.textContent=""; }
 }
 
+/* FOLLOW THE RUN UNTIL IT ENDS, NOT FOR THREE MINUTES.
+ *
+ * This stopped after 60 polls (three minutes) while a full run takes nine, so
+ * the button came back and the page stopped updating mid-run; and one failed
+ * status read threw out of the interval without clearing it. It now stops only
+ * when the server says the run is over, keeps going through the odd failed
+ * read, and gives up after five failures in a row -- saying so. One poll at a
+ * time: the next is scheduled after this one finishes. */
 function _monPoll(btn){
-  let n=0; const iv=setInterval(async ()=>{
-    await loadMonitorAlerts();
-    const s = await (await fetch("/monitor/status")).json();
-    if((!s.status || !s.status.running) || ++n>60){ clearInterval(iv); if(btn) btn.disabled=false; loadMonitorOverview(); }
-  }, 3000);
+  let fails = 0, seenRunning = false, polls = 0;
+  const done = function(msg){
+    if(btn) btn.disabled = false;
+    if(msg) toast(msg);
+    loadMonitorOverview();
+  };
+  const tick = async function(){
+    polls++;
+    try{
+      await loadMonitorAlerts();
+      const s = await (await fetch("/monitor/status")).json();
+      fails = 0;
+      const running = !!(s && s.status && s.status.running);
+      if(running) seenRunning = true;
+      // The thread may not have set `running` yet on the first read or two.
+      if(!running && (seenRunning || polls >= 3)){ done(""); return; }
+    }catch(e){
+      if(++fails >= 5){ done("Lost track of the check — it may still be running. Reload to see."); return; }
+    }
+    setTimeout(tick, 3000);
+  };
+  setTimeout(tick, 3000);
 }
 async function monCheckNow(){
   const btn = document.getElementById("mon_checkbtn");

@@ -217,8 +217,13 @@ def velocity_map(config_path, workspace_id, marketplace, days=WINDOW_DAYS,
     from data import db as _db
 
     out = {}
-    end = today or _dt.date.today()
-    start = end - _dt.timedelta(days=int(days))
+    # THE WINDOW IS `days` WHOLE DAYS, ENDING YESTERDAY (bug round 30 Sep 2026).
+    # It was today-minus-days THROUGH today: days+1 calendar days, the last of
+    # them only partly over, divided by `days`. Morning or evening, today's
+    # half-counted sales pulled the rate about. `today` is the as-at date; the
+    # last complete day is the one before it.
+    end = (today or _dt.date.today()) - _dt.timedelta(days=1)
+    start = end - _dt.timedelta(days=max(0, int(days) - 1))
     try:
         conn = _db.get_db(config_path)
         rows = conn.execute(
@@ -482,8 +487,14 @@ def rows(config_path, workspace_id, marketplace, overrides=None,
 
     # Most urgent first, then by the money at stake. The whole point of the
     # screen is that the top of it is the work.
+    #
+    # STATUS_ORDER runs healthiest -> most urgent, so sorting on its index put
+    # SAFE at the top -- the opposite of what this comment promised (bug round
+    # 30 Sep 2026). Urgency is the NEGATED rank; UNKNOWN is not the most urgent
+    # just because it is listed last, so it always goes to the bottom.
     rank = {s: i for i, s in enumerate(STATUS_ORDER)}
-    out.sort(key=lambda r: (rank.get(r["status"], 99),
+    out.sort(key=lambda r: (1 if r["status"] == UNKNOWN else 0,
+                            -rank.get(r["status"], -1),
                             -((r["velocity"] or 0) * (r["price"] or 0))))
     return out
 

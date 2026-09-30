@@ -1,7 +1,7 @@
     <div id="sec_weekly" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-calendar-stats"></i> Weekly KPIs</h2>
-        <div class="sub">One week, every headline figure, frozen so it cannot change afterwards. Built from the Business Report and the Campaign Manager export — uploaded, or read from what this app already syncs.</div></div>
+        <div class="sub">Every headline figure for one week, frozen. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="One week, every headline figure, frozen so it cannot change afterwards. Built from the Business Report and the Campaign Manager export — uploaded, or read from what this app already syncs." title="One week, every headline figure, frozen so it cannot change afterwards. Built from the Business Report and the Campaign Manager export — uploaded, or read from what this app already syncs."></i></div></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <span class="cc" style="font-size:11px">week of</span>
           <input type="date" id="wk_week" onchange="weeklyLoad()"
@@ -19,7 +19,7 @@
                a shoe in 14 sizes is one product. "Each child" is there for the
                per-variation read. -->
           <span class="cc" style="font-size:11px">rows</span>
-          <select class="db-chip" id="wk_group" aria-label="Rows" style="width:auto">
+          <select class="db-chip" id="wk_group" aria-label="Rows" style="width:auto" onchange="weeklySheetCancel()">
             <option value="parent">By parent ASIN</option>
             <option value="child">Each child ASIN</option>
           </select>

@@ -164,8 +164,12 @@ check("an arrow is rendered", /\u2191|\u2193/.test(js), true);
 // not just that it is.
 check("and the earlier figure is named, not just the change",
       /prevLabel\|\|"was"/.test(js), true);
+// Re-pinned 30 Sep 2026 (reports bug round): the label now follows the
+// SERVER's compared_to.kind (_sPrevLabel in sales_cards.js), because the
+// picker could say "year" while the figure on the card was still the previous
+// period -- "LY" over last month's number. Same rule, stricter source.
 check("  and it says LY only when the comparison really is a year",
-      /compareKind === "year" \? "LY" : "was"/.test(js), true);
+      /\(k === "year"\) \? "LY" : "was"/.test(js), true);
 check("no baseline says so instead of 0%", /no earlier period/.test(js), true);
 check("rising ad spend is NOT a win",
       /c\.key\s*===\s*"spend"\)\s*\?\s*!up\s*:\s*up/.test(js), true);

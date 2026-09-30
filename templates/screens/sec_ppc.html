@@ -1,7 +1,10 @@
     <div id="sec_ppc" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2>PPC</h2>
-        <div class="sub">What the advertising is doing, and what it is wasting. Every figure comes from your own Search Term Report — nothing here changes a bid, a budget or a campaign.</div></div>
+        <div class="sub">Ad spend, results and waste · read-only
+          <i class="ti ti-info-circle ui-hint" tabindex="0" role="img"
+             aria-label="What the advertising is doing, and what it is wasting. Every figure comes from your own Search Term Report — nothing here changes a bid, a budget or a campaign."
+             title="What the advertising is doing, and what it is wasting. Every figure comes from your own Search Term Report — nothing here changes a bid, a budget or a campaign."></i></div></div>
         <span class="spacer" style="flex:1"></span>
         <button class="db-chip" onclick="openGuide('ppc')"
                 title="What this page does, where the figures come from, and what each one means.">
@@ -23,8 +26,9 @@
 
       <details class="foldgroup" style="margin:18px 0 14px">
         <summary><i class="ti ti-tools"></i> Campaign builder, harvester and the agent
-          <span class="cc">— the tools that MAKE things: bulk campaign files,
-          harvest and negative lists, audits and weekly decks.</span></summary>
+          <i class="ti ti-info-circle ui-hint" tabindex="0" role="img"
+             aria-label="The tools that MAKE things: bulk campaign files, harvest and negative lists, audits and weekly decks."
+             title="The tools that MAKE things: bulk campaign files, harvest and negative lists, audits and weekly decks."></i></summary>
       <div style="display:grid;grid-template-columns:340px 1fr;gap:14px;min-height:420px">
         <!-- Left: shortcut buttons -->
         <div>
@@ -48,7 +52,11 @@
         <div style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden">
           <div id="ppc_chatlog" style="flex:1;padding:14px;overflow-y:auto;min-height:360px;max-height:520px;background:var(--as-lit-0d1220-bg)">
             <div style="opacity:.75;font-size:13px;line-height:1.5">
-              <b>PPC Agent.</b> Describe what you want — build campaigns, harvest a search-term report, audit, dashboard, forecast, weekly deck. The agent knows the full PPC skill set from the handover doc and applies your standing rules (never touches bids/budgets without your value; SKU on ads; kw + PT never share; every kw in all 3 match types).
+              <b>PPC Agent</b>
+              <i class="ti ti-info-circle ui-hint" tabindex="0" role="img"
+                 aria-label="Describe what you want — build campaigns, harvest a search-term report, audit, dashboard, forecast, weekly deck. The agent knows the full PPC skill set from the handover doc and applies your standing rules (never touches bids/budgets without your value; SKU on ads; kw + PT never share; every kw in all 3 match types)."
+                 title="Describe what you want — build campaigns, harvest a search-term report, audit, dashboard, forecast, weekly deck. The agent knows the full PPC skill set from the handover doc and applies your standing rules (never touches bids/budgets without your value; SKU on ads; kw + PT never share; every kw in all 3 match types)."></i>
+              — describe what you want.
               <br><br>
               Scoped to: <b id="ppc_ctx">this workspace</b>.
             </div>
@@ -68,7 +76,10 @@
         <div class="modal" style="max-width:640px">
           <button class="x" onclick="ppcCloseBuilder()">×</button>
           <h3><i class="ti ti-plus"></i> Build Sponsored Products campaigns</h3>
-          <div class="cc" style="margin:6px 0 12px">Feed a keyword export + ASIN/SKU. The tool buckets keywords (drop/head/comp/core), builds 5 campaigns with the full-coverage structure, and validates before letting you download.</div>
+          <div class="cc" style="margin:6px 0 12px">Keyword file + ASIN/SKU → 5 validated campaigns
+            <i class="ti ti-info-circle ui-hint" tabindex="0" role="img"
+               aria-label="Feed a keyword export + ASIN/SKU. The tool buckets keywords (drop/head/comp/core), builds 5 campaigns with the full-coverage structure, and validates before letting you download."
+               title="Feed a keyword export + ASIN/SKU. The tool buckets keywords (drop/head/comp/core), builds 5 campaigns with the full-coverage structure, and validates before letting you download."></i></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
             <div><label class="cc" style="font-size:11px">ASIN</label><input id="pb_asin" placeholder="B0EXAMPLE1" style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px"></div>
             <div><label class="cc" style="font-size:11px">Seller SKU (NOT ASIN)</label><input id="pb_sku" placeholder="MYSKU-001" style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px"></div>
@@ -102,7 +113,10 @@
         <div class="modal" style="max-width:640px">
           <button class="x" onclick="ppcCloseHarvest()">×</button>
           <h3><i class="ti ti-tractor"></i> Harvest a Sponsored Products Search Term Report</h3>
-          <div class="cc" style="margin:6px 0 12px">Applies the $10 rule + break-even ACOS: converters → harvest bulk (3 match types); past-$10 zero-order → negatives bulk; everything else → colour-coded status sheet. Already-targeted keywords are excluded from harvest to prevent duplicate (keyword, match-type) pairs on upload.</div>
+          <div class="cc" style="margin:6px 0 12px">Converters → harvest · past-$10 no-order → negatives · rest → status sheet
+            <i class="ti ti-info-circle ui-hint" tabindex="0" role="img"
+               aria-label="Applies the $10 rule + break-even ACOS: converters → harvest bulk (3 match types); past-$10 zero-order → negatives bulk; everything else → colour-coded status sheet. Already-targeted keywords are excluded from harvest to prevent duplicate (keyword, match-type) pairs on upload."
+               title="Applies the $10 rule + break-even ACOS: converters → harvest bulk (3 match types); past-$10 zero-order → negatives bulk; everything else → colour-coded status sheet. Already-targeted keywords are excluded from harvest to prevent duplicate (keyword, match-type) pairs on upload."></i></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
             <div><label class="cc" style="font-size:11px">ASIN</label><input id="ph_asin" placeholder="B0EXAMPLE1" style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px"></div>
             <div><label class="cc" style="font-size:11px">Seller SKU (NOT ASIN)</label><input id="ph_sku" placeholder="MYSKU-001" style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px"></div>
@@ -136,7 +150,10 @@
           <div style="margin-bottom:10px">
             <label class="cc" style="font-size:11px">Files (multi-select; drop the right family for the task)</label>
             <input type="file" id="pd_files" multiple style="width:100%;background:var(--as-lit-0d1220-bg);border:1px solid var(--line);color:var(--as-text-primary);border-radius:6px;padding:7px">
-            <div class="cc" style="font-size:11px;margin-top:4px;opacity:.7">Accepted families: SP bulk export, Search Term Report, Business Report, Brand Analytics SQP, Scale Insights exports. I auto-detect from column headers.</div>
+            <div class="cc" style="font-size:11px;margin-top:4px;opacity:.7">Detected automatically
+              <i class="ti ti-info-circle ui-hint" tabindex="0" role="img"
+                 aria-label="Accepted families: SP bulk export, Search Term Report, Business Report, Brand Analytics SQP, Scale Insights exports. I auto-detect from column headers."
+                 title="Accepted families: SP bulk export, Search Term Report, Business Report, Brand Analytics SQP, Scale Insights exports. I auto-detect from column headers."></i></div>
           </div>
           <div style="margin-bottom:10px">
             <label class="cc" style="font-size:11px">Context / notes (optional — brand, week, targets, whatever helps)</label>

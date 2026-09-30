@@ -101,7 +101,16 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                                 "missing": gaps,
                                 "error": "Not connected yet, so there is no "
                                          "response to show."}), 400
-            got = _ads.raw_sample(creds, mkt, what)
+            if what == "campaigns":
+                # Amazon RETIRED /v2/sp/campaigns (HTTP 404 "Method Not Found",
+                # route sweep 30 Sep 2026). The v3 list is the live read, the
+                # same call Campaign Analytics' status uses (a read: changes nothing).
+                from api import amazon_ads_manage as _m
+                got = _m._call("POST", "/sp/campaigns/list", creds, mkt,
+                               {"stateFilter": {"include": ["ENABLED", "PAUSED", "ARCHIVED"]},
+                                "maxResults": 10})
+            else:
+                got = _ads.raw_sample(creds, mkt, what)
         except Exception as e:
             return jsonify({"ok": False,
                             "error": "%s: %s" % (type(e).__name__, str(e)[:250])}), 502

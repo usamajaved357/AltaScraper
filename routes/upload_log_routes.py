@@ -20,15 +20,25 @@ from flask import jsonify, request, Response, send_file
 def register(app, *, CONFIG_PATH, _state):
 
     def _account():
+        # THE ACCOUNT THE PAGE NAMED, and only that (CLAUDE.md Rule 14). It used
+        # to fall back to the server's open account when none was named, so a
+        # request with no ?account= was answered with whichever company another
+        # tab had last opened. No name now means a refusal (_need_account).
         return str(request.args.get("account") or request.args.get("id")
-                   or (_state or {}).get("active_account_id") or "").strip()
+                   or "").strip()
+
+    def _need_account():
+        return jsonify({"ok": False,
+                        "error": "No account was named with this request, so "
+                                 "no upload history was read. Reload the page "
+                                 "and open an account."}), 400
 
     @app.route("/uploads/list")
     def uploads_list():
         from domain import upload_log as _ul
         aid = _account()
         if not aid:
-            return jsonify({"ok": False, "error": "Open an account first."}), 400
+            return _need_account()
         kind = str(request.args.get("kind") or "").strip() or None
         try:
             limit = int(request.args.get("limit") or 200)
@@ -41,6 +51,8 @@ def register(app, *, CONFIG_PATH, _state):
     @app.route("/uploads/detail/<int:upload_id>")
     def uploads_detail(upload_id):
         from domain import upload_log as _ul
+        if not _account():
+            return _need_account()
         rec = _ul.get(CONFIG_PATH, upload_id, _account())
         if not rec:
             return jsonify({"ok": False, "error": "No such upload in this account."}), 404
@@ -52,6 +64,8 @@ def register(app, *, CONFIG_PATH, _state):
     @app.route("/uploads/file/<int:upload_id>")
     def uploads_file(upload_id):
         from domain import upload_log as _ul
+        if not _account():
+            return _need_account()
         rec = _ul.get(CONFIG_PATH, upload_id, _account())
         path = _ul.file_path(CONFIG_PATH, rec) if rec else ""
         if not path:
@@ -62,6 +76,8 @@ def register(app, *, CONFIG_PATH, _state):
     @app.route("/uploads/report/<int:upload_id>")
     def uploads_report(upload_id):
         from domain import upload_log as _ul
+        if not _account():
+            return _need_account()
         rec = _ul.get(CONFIG_PATH, upload_id, _account())
         if not rec:
             return jsonify({"ok": False, "error": "No such upload in this account."}), 404

@@ -329,8 +329,11 @@ function ppcSubCard(o){
 function ppcUnavailable(title, why){
   return '<div class="ppc-panel ppc-panel-sm">'
     + '<div class="ppc-panel-title-sm">' + _pEsc(title) + '</div>'
+    // Less text, more visual (owner, 30 Sep 2026): one short line, and the full
+    // reason -- what is missing and what would fix it -- behind the (i).
     + '<div style="font-size:12px;line-height:1.6;color:var(--ppc-muted)">'
-    + _pEsc(why) + '</div></div>';
+    + '<i class="ti ti-chart-bar-off"></i> Not available yet'
+    + uiHint(why) + '</div></div>';
 }
 
 /* Where the profit figures come from, said once per page.
@@ -359,16 +362,18 @@ function ppcRatesNote(r){
   }
   if(!bits.length){
     return '<div class="ppc-note warn"><b>Profit cannot be worked out for this '
-      + 'window.</b> ' + _pEsc(r.why || "This account has no measured fee rate "
+      + 'window.</b> ' + uiHint(r.why || "This account has no measured fee rate "
       + "or no costed orders, so there is no honest way to say whether a "
       + "campaign made money. The profit and cohort columns are left blank "
       + "rather than filled with a guess.") + '</div>';
   }
-  return '<div class="ppc-note">Profit here is <b>estimated</b>: Amazon '
-    + 'attributes sales to a campaign but not the stock cost or the fee, so this '
-    + 'applies the account\'s own rates — ' + bits.join(", ") + '.'
-    + (r.why ? ' <span style="color:var(--ppc-orange)">' + _pEsc(r.why)
-               + '</span>' : '')
+  // The rates stay visible (they are numbers); the explanation goes behind (i).
+  return '<div class="ppc-note">Profit <b>estimated</b> · ' + bits.join(" · ")
+    + uiHint("Profit here is estimated: Amazon attributes sales to a campaign "
+      + "but not the stock cost or the fee, so this applies the account's own "
+      + "rates.")
+    + (r.why ? ' <span style="color:var(--ppc-orange)"><i class="ti ti-alert-triangle"></i> '
+               + 'caveat' + uiHint(r.why) + '</span>' : '')
     + '</div>';
 }
 
@@ -382,10 +387,13 @@ function ppcAvailabilityNote(av){
     return av[k] && !av[k].ok && av[k].why;
   });
   if(!off.length) return "";
-  let h = '<div class="ppc-note warn"><b>Some panels on this page cannot be '
-    + 'drawn from what is stored.</b><ul style="margin:5px 0 0 16px;padding:0">';
-  off.forEach(function(k){ h += '<li>' + _pEsc(av[k].why) + '</li>'; });
-  return h + '</ul></div>';
+  // One line and a count; each panel's reason behind the (i), one per line.
+  return '<div class="ppc-note warn"><i class="ti ti-alert-triangle"></i> '
+    + '<b>Some panels on this page cannot be drawn from what is stored.</b> '
+    + '<span style="color:var(--ppc-muted)">' + off.length + ' panel'
+    + (off.length === 1 ? '' : 's') + '</span>'
+    + uiHint(off.map(function(k){ return "• " + av[k].why; }).join("\n"))
+    + '</div>';
 }
 
 /* THE EMPTY SCREEN, EXPLAINED PROPERLY.
@@ -415,15 +423,17 @@ function ppcAvailabilityNote(av){
 function ppcNoData(av, what){
   const c = (av && av.connection) || {};
   const camp = (av && av.campaigns) || {};
-  let title, body, cls;
+  let title, body, cls, act;
   if(c.ok === false){
     cls = "warn";
+    act = "Connect the Advertising login";
     title = "This account has no Amazon Advertising login connected";
     body = c.why + " Advertising figures are read with a SEPARATE login from "
          + "the Selling Partner one, so nothing on this page can be filled "
          + "until that is set — it is not that the window is empty.";
   }else if(c.ok === true && !camp.ok){
     cls = "warn";
+    act = "Run the advertising sync";
     title = "Connected, but nothing has been mirrored yet";
     body = "The Advertising login for this account resolves, so the connection "
          + "is good. No advertising rows are stored yet — the sync has not run, "
@@ -431,23 +441,26 @@ function ppcNoData(av, what){
          + "and this page fills.";
   }else{
     cls = "";
+    act = "Widen the date range";
     title = "No advertising figures in this window";
     body = "This account has advertising data stored, but none inside the dates "
          + "chosen. Widen the range — the figures are there, just not here.";
   }
   return '<div class="ppc-note ' + cls + '" style="padding:16px 18px">'
     + '<b style="font-size:15px;display:block;margin-bottom:6px">'
-    + _pEsc(title) + '</b>'
-    + '<div style="line-height:1.6">' + _pEsc(body) + '</div>'
-    + (what ? '<div style="margin-top:8px;font-size:12px;opacity:.8">'
-              + _pEsc(what) + '</div>' : "")
+    + _pEsc(title) + uiHint(body + (what ? "\n\n" + what : "")) + '</b>'
+    // The next step as one arrow line; the reasoning (and the caller's note on
+    // what this screen would show) is behind the (i).
+    + '<div style="line-height:1.6"><i class="ti ti-arrow-right"></i> '
+    + _pEsc(act) + '</div>'
     + '</div>';
 }
 
 function ppcProductNote(av){
   const p = av && av.ad_products;
   if(!p || !p.why) return "";
-  return '<div class="ppc-note warn">' + _pEsc(p.why) + '</div>';
+  return '<div class="ppc-note warn"><i class="ti ti-alert-triangle"></i> '
+    + 'Sponsored Products only' + uiHint(p.why) + '</div>';
 }
 
 /* ---- reloading without blanking the screen --------------------------------

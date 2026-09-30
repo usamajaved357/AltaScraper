@@ -116,6 +116,10 @@ CATALOG = [
     (W, "/drppc/console/plan",      "=", "ppc", "ppc.plan_save", "Saved a Dr PPC plan", "plan"),
     (W, "/drppc/console/rule/delete", "=", "ppc", "ppc.rule_delete", "Deleted a Dr PPC rule", "rule"),
     (W, "/drppc/console/rule",      "=", "ppc", "ppc.rule_add", "Added a Dr PPC rule", "rule"),
+    # Campaign controls (30 Sep 2026): real changes on Amazon -- state, budget,
+    # bid, negatives. domain/ppc_control also keeps its own before/after record.
+    (W, "/ppc/control/change",      "=", "ppc", "ppc.control_change", "Changed a campaign on Amazon", "campaign"),
+    (W, "/ppc/control/negative",    "=", "ppc", "ppc.control_negative", "Added a negative on Amazon", "campaign"),
 
     # ---- orders and tracking ----
     (W, "/tracking/set",            "=", "orders", "order.tracking_set", "Set tracking on an order", "order"),

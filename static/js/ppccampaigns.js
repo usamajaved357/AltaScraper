@@ -285,8 +285,10 @@ function _ppccRing(prods, matches, NICE, PCOL, MCOL){
   const live = (matches || []).filter(function(m){ return (m.spend || 0) > 0; });
   if(live.length > 1){
     return {
-      caption: "Total spend, split by match type — this account runs only one "
-               + "ad product, so the product split would be one whole circle",
+      // Short on screen; the reason is the (i) beside it (owner, 30 Sep 2026).
+      caption: "Total spend, split by match type",
+      why: "Total spend, split by match type — this account runs only one "
+           + "ad product, so the product split would be one whole circle",
       segments: live.map(function(m){
         const k = String(m.key).toUpperCase();
         // THE SERVER'S LABEL, when it sends one. The match types now come from
@@ -452,7 +454,7 @@ function ppccBreakdown(j, cur){
               color: PCOL[k] || "var(--ppc-muted)", values: s.values};
     });
   let cols = dbp.dates || [];
-  let chartNote = "Spend per day by ad product";
+  let chartNote = "Spend per day by ad product", chartWhy = "";
 
   // ONE BAND IS NOT A BREAKDOWN.
   //
@@ -492,7 +494,8 @@ function ppccBreakdown(j, cur){
               color: MCOL[k] || "var(--ppc-muted)", values: s.values};
     });
     cols = mtd.columns || [];
-    chartNote = "Spend per day by match type — this account runs one ad "
+    chartNote = "Spend per day by match type";
+    chartWhy = "Spend per day by match type — this account runs one ad "
               + "product, so a split by product would be a single line";
   }
 
@@ -508,7 +511,8 @@ function ppccBreakdown(j, cur){
               values: s.values};
     });
     cols = pd.dates || [];
-    chartNote = "Spend per day by placement — this account runs one ad product, "
+    chartNote = "Spend per day by placement";
+    chartWhy = "Spend per day by placement — this account runs one ad product, "
               + "and no targeting report is stored yet, so neither a product "
               + "nor a match-type split can be drawn";
   }
@@ -530,7 +534,8 @@ function ppccBreakdown(j, cur){
     + '<div style="text-align:center">'
     +   ppcDonut(_ppccRing(prods, matches, NICE, PCOL, MCOL).segments, 220)
     +   '<div style="font-size:12px;color:var(--ppc-muted)">'
-    +   _pEsc(_ppccRing(prods, matches, NICE, PCOL, MCOL).caption) + '</div>'
+    +   _pEsc(_ppccRing(prods, matches, NICE, PCOL, MCOL).caption)
+    +   uiHint(_ppccRing(prods, matches, NICE, PCOL, MCOL).why || "") + '</div>'
     +   '<div style="font-size:26px;font-weight:700">'
     +   ppcMoney0(totalSpend, cur) + '</div>'
     + '</div>'
@@ -539,7 +544,8 @@ function ppccBreakdown(j, cur){
           // The caption stays -- it says WHICH cut of the spend is on screen,
           // which is not an instruction and cannot be guessed from the chart.
           // The gesture advertisement is gone, app-wide, by request.
-          ? ('<div class="ppc-charthint">' + _pEsc(chartNote) + '</div>' + chart)
+          ? ('<div class="ppc-charthint">' + _pEsc(chartNote)
+             + uiHint(chartWhy) + '</div>' + chart)
           : '<div style="font-size:12px;color:var(--ppc-muted)">No daily '
             + 'campaign rows in this window.</div>')
     + '</div>'
@@ -689,11 +695,9 @@ function ppccMap(j, cur){
     + '<div style="display:flex;justify-content:space-between;'
     +   'align-items:flex-start;flex-wrap:wrap;gap:8px">'
     + '<div><div style="font-size:15px;font-weight:700">Campaign Profitability '
-    +   'Map</div>'
-    +   '<div style="font-size:12px;color:var(--ppc-muted);margin-top:2px">'
-    +   'Each dot is a campaign. Size is sales volume, colour is the ACOS band, '
-    +   'and the dashed rule is break even. Click one to open its row below.'
-    +   '</div></div>'
+    +   'Map' + uiHint('Each dot is a campaign. Size is sales volume, colour is '
+    +   'the ACOS band, and the dashed rule is break even. Click one to open its '
+    +   'row below.') + '</div></div>'
     + (hidden ? '<span style="font-size:12px;color:var(--ppc-muted)" '
                 + 'title="Campaigns spending far more than the rest are left '
                 + 'out so the others are not squeezed into one row of pixels. '
@@ -824,12 +828,13 @@ function ppccCohorts(j, cur){
 
   return '<div class="ppc-panel">'
     + '<div style="font-size:15px;font-weight:700;margin-bottom:2px">'
-    +   'Performance Cohorts</div>'
-    + '<div style="font-size:12px;color:var(--ppc-muted);margin-bottom:14px">'
-    +   'By estimated profit on the days whose sales have landed: a loss is '
-    +   '<b>unprofitable</b>, under 10% of spend is <b>marginal</b>. <b>No sales</b> '
-    +   'spent money and got nothing back; <b>no activity</b> did not run.'
-    + '</div>'
+    +   'Performance Cohorts'
+    // The definitions moved behind the (i): the coloured bar and the cards
+    // carry the split (owner, 30 Sep 2026: less text, more visual).
+    +   uiHint('By estimated profit on the days whose sales have landed: a loss '
+    +   'is unprofitable, under 10% of spend is marginal. No sales spent money '
+    +   'and got nothing back; no activity did not run.') + '</div>'
+    + '<div style="margin-bottom:14px"></div>'
     + bar + cards + '</div>';
 }
 

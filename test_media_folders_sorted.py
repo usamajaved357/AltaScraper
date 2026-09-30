@@ -124,7 +124,11 @@ check("there are four ways to save", len(_calls), 4)
 _without = [i for i, c in enumerate(_calls) if "kind:" not in c[:400]]
 check("  and every one of them sends the kind", _without, [])
 truthy("  including the auto-save after a redo",
-       "auto-save the redo too" in HW and "kind:r.kind" in HW)
+       # Re-pinned 30 Sep 2026 (bug round): the redo's kind is now worked out
+       # from the job's payload kind by _studioEffectiveKind -- a strategist
+       # batch's kind is "concept", which is not a folder -- and sent as _kind.
+       "auto-save the redo too" in HW and "kind:_kind" in HW
+       and "_studioEffectiveKind(r.kind" in HW)
 truthy("  and after a refine", "A REFINED IMAGE IS THE SAME KIND" in HW)
 
 

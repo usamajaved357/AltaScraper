@@ -46,9 +46,16 @@ async function weeklyLoad(){
     if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
     if(j && j.ok){
       WK.weeks = j.weeks || [];
-      WK.change = j.change || {};
+      WK.changes = j.changes || {};
       WK.brandTerms = j.brand_terms || [];
       WK.week = _wkPick();
+      // THE SHOWN WEEK AGAINST ITS OWN WEEK BEFORE. j.change was always the
+      // newest week against the second newest, so picking an older week in the
+      // date box printed the newest week's movement beside the older week's
+      // figures. Each week's own change comes from the server (compare(), one
+      // definition), and is empty when the calendar week before it is not
+      // stored -- a gap is not "the week before".
+      WK.change = (WK.week && WK.changes[WK.week.week_start]) || {};
       WK.note = "";
     }else{
       WK.note = (j && j.error) || "Could not read the stored weeks.";
@@ -237,8 +244,15 @@ function _wkX(v){
    backwards on half the rows. */
 function _wkDelta(key){
   const c = WK.change[key];
-  if(!c || c.better === null || c.better === undefined || !isFinite(c.pct)) return "";
+  if(!c || c.better === null || c.better === undefined) return "";
   const cls = c.better ? "wk-up" : "wk-down";
+  // NO PERCENTAGE FROM ZERO. compare() sends pct null when the week before was
+  // 0, and isFinite(null) is TRUE in JavaScript -- so it printed "+0.0%" for a
+  // figure that went from nothing to something. Said as "new" instead.
+  if(c.pct === null || c.pct === undefined || !isFinite(c.pct)){
+    return '<span class="wk-d ' + cls + '" title="was ' + _wkEsc(String(c.from))
+         + ' the week before, so there is no percentage">new</span>';
+  }
   const sign = c.delta > 0 ? "+" : "";
   return '<span class="wk-d ' + cls + '" title="was ' + _wkEsc(String(c.from))
        + ' the week before">' + sign + (c.pct * 100).toFixed(1) + '%</span>';
@@ -279,10 +293,11 @@ function weeklyRender(){
   if(WK.fellBack){
     h += '<div class="odp-note" style="padding:11px 13px;margin-bottom:12px">'
       + '<b>No pack for the week of ' + _wkEsc(WK.fellBack) + '.</b> '
-      + 'Showing the most recent one instead — the week of '
-      + _wkEsc(w.week_start) + ', below. Nothing is missing; that week was '
-      + 'simply never built. Press Build from connected account, or upload its '
-      + 'reports, to store it.</div>';
+      + 'Showing the week of ' + _wkEsc(w.week_start) + ' instead. '
+      + uiHint('Showing the most recent one instead — the week of '
+        + w.week_start + ', below. Nothing is missing; that week was '
+        + 'simply never built. Press Build from connected account, or upload its '
+        + 'reports, to store it.') + '</div>';
   }
 
   // TWO MARKETPLACES IN ONE PACK. Named rather than averaged away: a Business
@@ -359,9 +374,10 @@ function weeklyRender(){
     + 'money that was never winning new customers.">i</span></div>';
   if(!(WK.brandTerms || []).length){
     h += '<div class="odp-note" style="padding:11px 14px">'
-      + '<b>No brand terms are set</b>, so every campaign counts as '
-      + 'non-branded. That is a setting, not a finding — add your brand words '
-      + 'on the PPC screen and this splits properly.</div>';
+      + '<b>No brand terms are set</b> — all campaigns count as non-branded. '
+      + uiHint('No brand terms are set, so every campaign counts as '
+        + 'non-branded. That is a setting, not a finding — add your brand words '
+        + 'on the PPC screen and this splits properly.') + '</div>';
   }
   h += '<table class="stk-table"><thead><tr><th></th>'
     + '<th class="r">Campaigns</th><th class="r">Spend</th>'
@@ -742,8 +758,14 @@ function _wkGroup(){
 
 function _wkQuery(){
   const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT) ? CUR_ACCOUNT.id : "";
-  const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
-  return "?id=" + encodeURIComponent(a) + "&marketplace=" + encodeURIComponent(m)
+  // NEVER "__all__". That is the sidebar's word for every marketplace, not a
+  // country; sent as one, the server upper-cased it to "__ALL__" and exported
+  // or wrote a grid for a marketplace that does not exist. Left out, the
+  // server uses the account's own marketplace -- the rule scopeQs() follows.
+  const m = (typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+    ? WS_MARKET : "";
+  return "?id=" + encodeURIComponent(a)
+       + (m ? "&marketplace=" + encodeURIComponent(m) : "")
        + "&group=" + encodeURIComponent(_wkGroup());
 }
 
@@ -819,6 +841,9 @@ async function weeklySheetSync(){
   }
 }
 
+/* Also the Rows dropdown's onchange (sec_weekly.html): a dry run approved for
+   "By parent" must not be confirmed as a write of "Each child" -- the plan the
+   owner said yes to described a different grid. */
 function weeklySheetCancel(){
   _WK_PENDING = null;
   const out = document.getElementById("wk_sheetmsg");

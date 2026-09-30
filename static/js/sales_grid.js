@@ -354,19 +354,41 @@ function salesGridFollow(){
 /* Fetch the grid's OWN series, when it has been taken off the screen's range.
    Same endpoint, same shape -- only the two parameters differ, so nothing about
    how a figure is produced can drift between the chart and the grid. */
+/* The grid, redrawn for WHATEVER PERIOD IT IS ON. The screen's reload and the
+   late live-orders fill both called salesDrawGrid(SALES.series) -- the screen's
+   range -- even when the grid had been given its own period, so the toolbar
+   said "7d · Week" over thirty days of daily columns. When the grid has its own
+   period it is re-fetched for it instead. */
+function salesRedrawGrid(){
+  if(SALES.gridGran || SALES.gridPreset) return salesLoadGrid();
+  if(SALES.series) salesDrawGrid(SALES.series);
+}
+
 async function salesLoadGrid(){
   if(!SALES.gridGran && !SALES.gridPreset){
     SALES.gridSeries = null;
     if(SALES.series) salesDrawGrid(SALES.series);
     return;
   }
-  if(SALES.gridBusy) return;
+  // NEWEST CLICK WINS. A click while a load was out used to be dropped
+  // (gridBusy) -- the pill lit up for the new period and the grid kept the old
+  // one. Each load takes a ticket; only the latest may draw.
+  const tk = SALES.gridSeq = (SALES.gridSeq || 0) + 1;
   SALES.gridBusy = true;
   const host = document.getElementById("sales_grid");
   if(host) host.style.opacity = ".45";
   try{
-    const q = ["preset=" + encodeURIComponent(SALES.gridPreset || SALES.preset || "30d"),
+    const preset = SALES.gridPreset || SALES.preset || "30d";
+    const q = ["preset=" + encodeURIComponent(preset),
                "granularity=" + encodeURIComponent(SALES.gridGran || SALES.gran || "day")];
+    // A CUSTOM PERIOD CARRIES ITS DATES. With the grid following a custom
+    // screen range (only its granularity changed), "preset=custom" went alone
+    // and the server fell back to its default window.
+    if(preset === "custom"){
+      if(!(SALES.start && SALES.end)){ return; }
+      q.push("start=" + encodeURIComponent(SALES.start));
+      q.push("end=" + encodeURIComponent(SALES.end));
+    }
     if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
     if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
       q.push("marketplace=" + encodeURIComponent(WS_MARKET));
@@ -380,13 +402,16 @@ async function salesLoadGrid(){
     // and no revenue on the day that took three: the grid was on the settlement
     // calendar the whole time while claiming the order one.
     const j = await _sFetch("/sales/series?" + q.join("&"));
+    if(tk !== SALES.gridSeq) return;
     if(j && j.ok){ SALES.gridSeries = j; salesDrawGrid(j); }
   }catch(e){
     // Left as it was rather than blanked: the previous grid is still true of
     // the period it was drawn for, and the toolbar says which that is.
   }finally{
-    SALES.gridBusy = false;
-    if(host) host.style.opacity = "";
+    if(tk === SALES.gridSeq){
+      SALES.gridBusy = false;
+      if(host) host.style.opacity = "";
+    }
   }
 }
 

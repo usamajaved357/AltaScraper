@@ -62,6 +62,9 @@ function rbHtml() {
   if (typeof uiSource === "function") {
     h += uiSource([
       {k: "Source", v: "Amazon Finances, per settled order"},
+      // WHICH STORE, said on the page: the server now resolves it from the
+      // account the page named, and an unnamed one means every marketplace.
+      {k: "Marketplace", v: m.marketplace || "all marketplaces"},
       {k: "Checked", v: _rbNum(m.orders_checked || 0) + " settled, "
                         + _rbNum(m.refunds_checked || 0) + " refunded"},
       {k: "Rule", v: "Amazon's published refund administration fee"},
@@ -148,7 +151,10 @@ async function rbLoad(force) {
   try {
     const _sc = (typeof screenScope === "function") ? screenScope() : null;  // audit S5
     const j = await (await fetch("/inventory/money-back" + _rbQs())).json();
-    if(_sc && !screenStillIn(_sc)) return;   // switched account/marketplace meanwhile
+    // switched account/marketplace meanwhile. RB.loading is cleared first: a
+    // bare return left it true for good, so rbLoad() refused every later ask
+    // and the page sat on "Checking…" until reload (bug round 30 Sep 2026).
+    if(_sc && !screenStillIn(_sc)) { RB.loading = false; return; }
     if (j && j.ok) { RB.data = j; }
     else { RB.error = (j && j.error) || "Could not read the settled orders."; }
   } catch (e) {

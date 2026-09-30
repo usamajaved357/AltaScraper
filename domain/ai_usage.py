@@ -297,7 +297,9 @@ def install_anthropic_recorder(config_path):
         except Exception as e:
             # A failed call still spent its input tokens. A month of retries
             # must not look free.
-            record(cp, feature=CONTEXT.get("feature") or "unknown",
+            # "" rather than "unknown": record() then files it under the
+            # request that made it (unnamed_feature), which can be looked up.
+            record(cp, feature=CONTEXT.get("feature") or "",
                    provider="anthropic", model=model,
                    workspace_id=whose(),
                    ok=False, error=str(e)[:200],
@@ -305,7 +307,7 @@ def install_anthropic_recorder(config_path):
                    ms=int((time.time() - t0) * 1000))
             raise
         i, o = tokens_from_anthropic(resp)
-        record(cp, feature=CONTEXT.get("feature") or "unknown",
+        record(cp, feature=CONTEXT.get("feature") or "",
                provider="anthropic", model=model,
                workspace_id=whose(),
                input_tokens=i, output_tokens=o,

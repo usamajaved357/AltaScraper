@@ -57,10 +57,15 @@ truthy("which day the week starts on is a named constant",
        /const SALES_WEEK_START = [0-6];/.test(S));
 truthy("  and it is Sunday, to agree with Orbit and with Amazon",
        /const SALES_WEEK_START = 0;/.test(S));
+// Re-pinned 30 Sep 2026 (reports bug round, SALES 9): the week is worked out
+// on the BROWSER'S local day, not UTC -- getUTC*/toISOString put "today" on
+// Greenwich time, so after midnight UK summer time the card asked for the
+// wrong day. Same arithmetic, local calendar; the end is todayU, that day
+// pinned to UTC midnight.
 truthy("the offset is worked out FROM the constant",
-       /const dow = \(today\.getUTCDay\(\) - SALES_WEEK_START \+ 7\) % 7;/.test(W));
-truthy("  and the week starts there", /today\.getUTCDate\(\) - dow/.test(W));
-truthy("it runs to today, not seven days back", /base\(wkStart, today\)/.test(W));
+       /const dow = \(today\.getDay\(\) - SALES_WEEK_START \+ 7\) % 7;/.test(W));
+truthy("  and the week starts there", /today\.getDate\(\) - dow/.test(W));
+truthy("it runs to today, not seven days back", /base\(wkStart, todayU\)/.test(W));
 truthy("  which is a calendar cut, not a rolling window",
        !/86400000 \* 7\s*\)?\s*,\s*today/.test(W));
 truthy("the prior week is the calendar week before",

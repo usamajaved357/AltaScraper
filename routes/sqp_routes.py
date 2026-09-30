@@ -41,11 +41,18 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         wsid, mkt = _scope()
         # SQP is reported by WEEK. Default to the week that finished most
         # recently rather than the current one, which is always partial.
-        today = datetime.date.today()
-        end = today - datetime.timedelta(days=today.weekday() + 1)   # last Saturday
-        start = end - datetime.timedelta(days=6)
-        s = (request.args.get("start") or "").strip() or start.isoformat()
-        e = (request.args.get("end") or "").strip() or end.isoformat()
+        #
+        # FROM THE ONE PLACE THAT KNOWS WHAT AMAZON'S WEEK IS (bug round
+        # 30 Sep 2026). This worked it out itself: "last Saturday" was
+        # today - (weekday + 1), which is the last SUNDAY, so every default
+        # request asked for a Mon-Sun week Amazon does not report, and with no
+        # allowance for the ~48h before a week's data is ready.
+        # brand_analytics._last_complete_week() is the Sun-Sat week with that
+        # allowance, and the Brand Analytics screen already uses it (Rule 12).
+        from domain import brand_analytics as _ba
+        start_iso, end_iso = _ba._last_complete_week()
+        s = (request.args.get("start") or "").strip() or start_iso
+        e = (request.args.get("end") or "").strip() or end_iso
         try:
             datetime.date.fromisoformat(s)
             datetime.date.fromisoformat(e)

@@ -70,7 +70,25 @@ function _aiColour(name){
   return palette[Math.abs(h) % palette.length];
 }
 
-function aiUsageOnOpen(){ if(!AIU.data) aiUsageLoad(); else aiUsageRender(); }
+/* WHICH ACCOUNT TO ASK ABOUT. "" = every account, the comparison this screen
+ * is for -- but only for somebody allowed every account. For anyone else the
+ * server answers "Choose an account" and there was nothing on the page to
+ * choose with, so the screen was a dead end (admin bug round, 30 Sep 2026).
+ * They now get the account they have open, which the doorman has already
+ * agreed they may see. */
+function _aiScope(){
+  try{
+    const all = (typeof ME === "undefined" || !ME) || (ME.workspaces || []).indexOf("*") >= 0;
+    if(all) return "";
+    return (typeof acctId === "function") ? (acctId() || "") : "";
+  }catch(e){ return ""; }
+}
+function aiUsageOnOpen(){
+  // Held figures are for the scope they were read in; another account's are
+  // not this one's.
+  if(!AIU.data || String(AIU.dataFor || "") !== _aiScope()) aiUsageLoad();
+  else aiUsageRender();
+}
 function aiUsageSetDays(d){
   // Picking a window ENDS a zoom, or the banner would claim a range the screen
   // is no longer showing.
@@ -118,8 +136,12 @@ async function aiUsageLoad(){
     const _q = (AIU.start && AIU.end)
       ? ("start=" + encodeURIComponent(AIU.start) + "&end=" + encodeURIComponent(AIU.end))
       : ("days=" + AIU.days);
-    const j = await (await fetch("/aiusage/summary?" + _q)).json();
+    const _sc = _aiScope();
+    const j = await (await fetch("/aiusage/summary?" + _q
+                                 + (_sc ? "&id=" + encodeURIComponent(_sc) : ""))).json();
+    AIU.dataFor = _sc;
     if(!j || !j.ok){
+      AIU.data = null;              // a failure never leaves older figures to reopen
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _aiEsc((j && j.error) || "Could not read the usage record") + '</div>';
       return;
@@ -214,7 +236,10 @@ function _aiChart(d){
   }
   return '<div style="margin:0 0 16px">' + head
     + salesChart(pts, {title: "Spend per day", kind: "money", color: "#6ac7e8",
-                       id: "aiu_daily", onZoom: "aiZoomTo", width: 980, height: 240,
+                       // The box's own width (graph audit, 30 Sep 2026): a fixed
+                       // 980 was scaled down to a sliver on a phone.
+                       id: "aiu_daily", onZoom: "aiZoomTo", height: 240,
+                       width: (typeof scChartWidth === "function") ? scChartWidth("aiu_body", 980) : 980,
                        subtitle: "US dollars. Hover any day for the figure."})
     + '</div>';
 }

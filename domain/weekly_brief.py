@@ -62,17 +62,49 @@ def _pct(now, was):
     return round(100.0 * (now - was) / abs(was), 1)
 
 
-def _accounts(cfg):
+def _account_marketplaces(a):
+    """Every marketplace an account sells in, default first, no repeats.
+
+    The brief used to read only default_marketplace, so an EU account that
+    sells in DE, FR and IT was reported on DE alone and the other two were a
+    silent hole -- the opposite of what this page is for.
+    """
+    seen, out = set(), []
+    for m in [a.get("default_marketplace")] + list(a.get("marketplaces") or []):
+        m = str(m or "").strip().upper()
+        if m and m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out
+
+
+def _accounts(cfg, visible=None):
+    """One entry per (account, marketplace) the brief should read.
+
+    `visible` is an optional predicate on the account record: the route passes
+    the signed-in user's visibility rule (auth.users.visible_accounts) so a
+    user scoped to one workspace is never shown the others' figures here.
+    An account with no marketplace at all still gets one entry with an empty
+    marketplace, so each section reports it as "not read" instead of dropping it.
+    """
     out = []
     for a in (cfg.get("accounts") or []):
         aid = str(a.get("id") or "").strip()
         if not aid:
             continue
-        out.append({
-            "id": aid,
-            "label": str(a.get("name") or a.get("label") or aid),
-            "marketplace": str(a.get("default_marketplace") or "").upper(),
-        })
+        if visible is not None and not visible(a):
+            continue
+        base = str(a.get("name") or a.get("label") or aid)
+        mkts = _account_marketplaces(a)
+        for m in (mkts or [""]):
+            out.append({
+                "id": aid,
+                # The marketplace is named on the label only when the account
+                # has more than one, so the single-marketplace rows read as
+                # before.
+                "label": base if len(mkts) <= 1 else "%s (%s)" % (base, m),
+                "marketplace": m,
+            })
     return out
 
 
@@ -94,7 +126,7 @@ def _sales_section(config_path, accounts, end):
     rows, notes = [], []
     for a in accounts:
         if not a["marketplace"]:
-            notes.append("%s has no default marketplace set, so it was not "
+            notes.append("%s has no marketplace set, so it was not "
                          "read." % a["label"])
             continue
         try:
@@ -347,10 +379,12 @@ def _ads_section(config_path, accounts, end):
             "why": "Spend is the fastest lever there is, in both directions."}
 
 
-def build(config_path, cfg, today=None):
-    """The whole brief. Reads only; writes nothing; contacts nobody."""
+def build(config_path, cfg, today=None, visible=None):
+    """The whole brief. Reads only; writes nothing; contacts nobody.
+
+    `visible`: optional predicate on an account record (see _accounts)."""
     end = today or (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
-    accounts = _accounts(cfg or {})
+    accounts = _accounts(cfg or {}, visible=visible)
     if not accounts:
         return {"ok": False,
                 "error": "No accounts are configured, so there is nothing to "
@@ -359,7 +393,9 @@ def build(config_path, cfg, today=None):
     brief = {
         "ok": True,
         "generated_for": end,
-        "accounts": len(accounts),
+        # Distinct accounts, not (account, marketplace) pairs.
+        "accounts": len({a["id"] for a in accounts}),
+        "marketplaces_read": len([a for a in accounts if a["marketplace"]]),
         "sales": _sales_section(config_path, accounts, end),
         "off_track": _off_track_section(config_path, accounts, end),
         "profit": _profit_section(config_path, accounts, end),

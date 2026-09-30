@@ -51,6 +51,82 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
 
     _BASE_DIR = os.path.dirname(os.path.abspath(str(CONFIG_PATH)))
 
+    # ---- WHOSE RUN IS IT (admin bug round, 30 Sep 2026) ------------------
+    # Supplier Import state was one set for the whole server: any account's
+    # page could read another account's run log and results, re-attach to its
+    # live run, and /miles/stop killed whatever process held the shared handle
+    # -- including a colleague's run in another account, or a non-Miles
+    # generator run. Each run now records the account and person that started
+    # it (in its run-log meta), and reads, re-attach and Stop are held to it.
+    _RID_RE = re.compile(r"^[A-Za-z0-9._-]{1,160}$")
+
+    def _req_account():
+        """The account this request is for: the page's, else the open one."""
+        try:
+            from domain import request_account as _ra
+            a = _ra.named(request)
+            if a:
+                return str(a)
+        except Exception:
+            pass
+        try:
+            return str(((_active_account() or {}) if callable(_active_account) else {}).get("id") or "")
+        except Exception:
+            return ""
+
+    def _account_refusal(what):
+        """An SSE reply refusing a run whose page names another account than the
+        one the server has open (account-scope review, 30 Sep 2026). The run's
+        sheet, credentials and marketplace come from the OPEN account, so a tab
+        still showing A must not generate into B. None = go ahead."""
+        try:
+            from domain import request_account as _ra
+            _open = ((_active_account() or {}) if callable(_active_account) else {}).get("id") or ""
+            why = _ra.mismatch_for_write(request, {"active_account_id": _open}, what)
+        except Exception as e:
+            why = "Could not check which account this run is for: %s" % e
+        if not why:
+            return None
+
+        def refuse():
+            yield "data: [error] %s\n\n" % why.replace("\n", " ")
+            yield "event: end\ndata: end\n\n"
+        return Response(refuse(), mimetype="text/event-stream")
+
+    def _caller_uid():
+        try:
+            from domain import job_owner as _jo
+            return str(_jo.current() or "")
+        except Exception:
+            return ""
+
+    def _safe_rid(rid):
+        """A run id that names a file in miles_runs/ and nothing else."""
+        rid = str(rid or "").strip()
+        return rid if (_RID_RE.match(rid) and ".." not in rid) else ""
+
+    def _run_meta(rid):
+        """The run's meta: live in memory, else its saved .json, else {}."""
+        m = _runlog.status(rid) if rid else None
+        if m:
+            return m
+        rid = _safe_rid(rid)
+        if not rid:
+            return {}
+        try:
+            with open(os.path.join(_BASE_DIR, "miles_runs", rid + ".json"),
+                      encoding="utf-8") as f:
+                m = json.load(f)
+            return m if isinstance(m, dict) else {}
+        except Exception:
+            return {}
+
+    def _run_visible(rid, acct=None):
+        """May the requesting account see this run? A run from before runs
+        recorded their account has no owner to check and stays visible."""
+        owner = str(_run_meta(rid).get("account") or "")
+        return (not owner) or owner == (_req_account() if acct is None else acct)
+
     def _sse_run(stream_fn):
         """Wrap a route's SSE stream() with the persistent run-log engine.
 
@@ -59,8 +135,17 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         stops the harvest/generate or loses the log. If a run is already in progress, this
         RE-ATTACHES to it (replays the log so far, then follows live) instead of starting or
         blocking a second run. Falls back to the plain stream if the engine ever errors."""
+        _acct = _req_account()
+        _uid = _caller_uid()
         try:
             aid = _runlog.active_id()
+            if aid and _runlog.is_running(aid) and not _run_visible(aid, _acct):
+                # ANOTHER ACCOUNT'S RUN. Never replayed here, and not joined.
+                def _other():
+                    yield ("data: [busy] a Supplier Import run for another account "
+                           "is in progress -- try again when it finishes\n\n")
+                    yield "event: end\ndata: end\n\n"
+                return Response(_other(), mimetype="text/event-stream")
             if aid and _runlog.is_running(aid):
                 def _reattach():
                     import time as _t2
@@ -78,6 +163,15 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 return Response(_reattach(), mimetype="text/event-stream")
             src = (_MILES_STATE.get("source") or "").strip() or "miles-run"
             _rid, _tail = _runlog.run_stream(_BASE_DIR, src, stream_fn)
+            # Whose run this is. The meta is saved on every line and at the
+            # end, so the stamp reaches the run's .json with the rest.
+            try:
+                _m = _runlog.status(_rid)
+                if isinstance(_m, dict):
+                    _m["account"] = _acct
+                    _m["owner"] = _uid
+            except Exception:
+                pass
             return Response(_tail, mimetype="text/event-stream")
         except Exception:
             return Response(stream_fn(), mimetype="text/event-stream")
@@ -87,7 +181,8 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         """Is a harvest/generate run in progress? Powers re-attach after a page reload."""
         aid = _runlog.active_id()
         m = _runlog.status(aid) if aid else None
-        if not (aid and m):
+        # Another account's run is not "active" on this account's screen.
+        if not (aid and m) or not _run_visible(aid):
             return jsonify({"ok": True, "active": False})
         return jsonify({"ok": True, "active": _runlog.is_running(aid), "id": aid,
                         "source": m.get("source"), "state": m.get("state"),
@@ -101,26 +196,35 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
             frm = int(request.args.get("from", "0") or "0")
         except ValueError:
             frm = 0
-        if not rid:
+        if not rid or not _run_visible(rid):
             return jsonify({"ok": True, "lines": [], "next": 0, "state": "none"})
         return jsonify({"ok": True, **_runlog.tail(rid, frm)})
 
     @app.route("/miles/runs")
     def miles_runs():
-        """List past runs (newest first): uploaded source, time, state, per-SKU counts."""
-        return jsonify({"ok": True, "runs": _runlog.list_runs(_BASE_DIR)})
+        """List past runs (newest first): uploaded source, time, state, per-SKU counts.
+        Only this account's (and older runs that recorded no account)."""
+        _acct = _req_account()
+        runs = [r for r in _runlog.list_runs(_BASE_DIR)
+                if _run_visible(r.get("id"), _acct)]
+        return jsonify({"ok": True, "runs": runs})
 
     @app.route("/miles/run_log")
     def miles_run_log():
         """The full saved log text for a run (survives reloads)."""
-        rid = (request.args.get("id") or "").strip()
+        # A SAFE id: this names a file on disk, and "../x" named one outside.
+        rid = _safe_rid(request.args.get("id"))
+        if not rid or not _run_visible(rid):
+            return Response("(no log)", mimetype="text/plain; charset=utf-8", status=404)
         return Response(_runlog.read_log(_BASE_DIR, rid) or "(no log)",
                         mimetype="text/plain; charset=utf-8")
 
     @app.route("/miles/run_csv")
     def miles_run_csv():
         """Download a per-SKU status CSV for a run."""
-        rid = (request.args.get("id") or "").strip()
+        rid = _safe_rid(request.args.get("id"))
+        if not rid or not _run_visible(rid):
+            return jsonify({"ok": False, "error": "run not found"}), 404
         p = _runlog.write_csv(_BASE_DIR, rid)
         if not p or not os.path.exists(p):
             return jsonify({"ok": False, "error": "run not found"}), 404
@@ -157,6 +261,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         _MILES_STATE["items"] = clean
         # remember the uploaded file's name so each run's saved log is headed with it
         _MILES_STATE["source"] = str(b.get("filename", "") or "").strip()
+        # ...and which account's list it is, so another account's Harvest
+        # cannot run it (admin bug round, 30 Sep 2026).
+        _MILES_STATE["items_account"] = _req_account()
         done = _miles_load_history()
         already = [it for it in clean if it in done]
         # KEPT IN THE UPLOAD HISTORY, with the file the browser read the list from.
@@ -164,7 +271,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
             from domain import upload_log as _ul
             _acc = (_active_account() or {}) if callable(_active_account) else {}
             _f = b.get("file") or {}
-            _ul.record(CONFIG_PATH, str(_acc.get("id") or ""),
+            # Filed under the account the list was uploaded FOR (the one whose
+            # harvest will accept it), not whichever the server has open.
+            _ul.record(CONFIG_PATH, _MILES_STATE["items_account"] or str(_acc.get("id") or ""),
                        str(_acc.get("default_marketplace") or ""), "miles_items",
                        _f.get("name") or _MILES_STATE["source"] or "item list",
                        _ul.decode_data_url(_f.get("data")),
@@ -181,7 +290,16 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
 
     @app.route("/miles/clear_history", methods=["POST"])
     def miles_clear_history():
-        """Forget which item numbers were harvested, so they can run again."""
+        """Forget which item numbers were harvested, so they can run again.
+
+        The history is ONE file for the whole server (it is keyed by item
+        number, not account), so this is refused while a Supplier Import run
+        is going -- clearing under a live harvest made it re-do what it had
+        just done -- and the page asks for confirmation first (miles.js)."""
+        _aid = _runlog.active_id()
+        if _aid and _runlog.is_running(_aid):
+            return jsonify({"ok": False, "error": "A Supplier Import run is in "
+                            "progress. Clear the history when it has finished."}), 409
         done = _miles_load_history()
         n = len(done)
         _miles_save_history(set())
@@ -202,8 +320,40 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
 
     @app.route("/miles/stop", methods=["POST"])
     def miles_stop():
-        """Kill any in-flight harvest OR generation subprocess immediately, then
-        release the busy lock so a new run can start."""
+        """Kill the in-flight Supplier Import harvest / generation, then release
+        the busy lock so a new run can start.
+
+        ONLY A MILES RUN, AND ONLY THE CALLER'S (admin bug round, 30 Sep 2026).
+        This killed whatever process held the shared handle -- a colleague's
+        run in another account, or a listing-generator run that has nothing to
+        do with Supplier Import. Same rule as /stop: your account, your run."""
+        _aid = _runlog.active_id()
+        _m = _runlog.status(_aid) if _aid else None
+        if not (_aid and _m and _runlog.is_running(_aid)):
+            # A STUCK LOCK IS STILL RELEASED (review, 30 Sep 2026): with no live
+            # run in the log but the busy flag left on by a crashed stream, Stop
+            # is the only way to start again. Only a lock whose process is gone
+            # -- a live process may be somebody's generator run, never killed here.
+            _p = _running.get("proc")
+            if _running.get("on") and (_p is None or _p.poll() is not None):
+                try:
+                    with _run_lock:
+                        _running["on"] = False
+                        _running["proc"] = None
+                except Exception:
+                    _running["on"] = False
+                    _running["proc"] = None
+                return jsonify({"ok": True, "killed": False, "released": True})
+            return jsonify({"ok": False, "killed": False,
+                            "error": "No Supplier Import run is in progress."}), 409
+        if not _run_visible(_aid):
+            return jsonify({"ok": False, "killed": False, "forbidden": True,
+                            "error": "That run belongs to another account."}), 403
+        _owner = str(_m.get("owner") or "")
+        _me = _caller_uid()
+        if _owner and _me and _owner != _me:
+            return jsonify({"ok": False, "killed": False, "forbidden": True,
+                            "error": "That run was started by somebody else."}), 403
         _MILES_STATE["cancel"] = True
         # Kill the generator subprocess if one is running
         proc = _running.get("proc")
@@ -230,6 +380,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
     def miles_generate():
         """Run the generator's 'miles' mode: turn harvested bundles into Amazon
         draft listings (compliance + IP + copy). Streams the generator output."""
+        _no = _account_refusal("generated")
+        if _no is not None:
+            return _no
         _cfg_path = str(CONFIG_PATH)
         # scope to the active account's sheet + marketplace, like generate does
         try:
@@ -384,6 +537,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
     def miles_optimize():
         """PHASE 2: pull real Search Query Performance for the live ASINs in the
         Miles sheet and rewrite the copy to front-load converting queries."""
+        _no = _account_refusal("optimised")
+        if _no is not None:
+            return _no
         _cfg_path = str(CONFIG_PATH)
         try:
             _acc = _active_account()
@@ -463,8 +619,16 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
     def miles_run():
         """Stream the Miles harvest over SSE. Reads the stashed item numbers, runs
         the harvester (search -> match -> scrape -> download -> Drive -> bundle)."""
+        _no = _account_refusal("harvested")
+        if _no is not None:
+            return _no
         # Read state in the request context (SSE generator runs outside it).
         _items = list(_MILES_STATE.get("items") or [])
+        _run_acct = _req_account()
+        # The uploaded list belongs to the account it was uploaded in.
+        _items_acct = str(_MILES_STATE.get("items_account") or "")
+        if _items and _items_acct and _items_acct != _run_acct:
+            _items = []
         _skip_done = (request.args.get("skip_done", "1") == "1")
         _auto_img = (request.args.get("auto_image", "") == "1")   # OFF by default; images made separately
         _cfg_path = str(CONFIG_PATH)
@@ -756,6 +920,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         yield f"data: [error]   {item}: {res.get('message','')}\n\n"
 
                 _miles_save_history(done)
+                _MILES_STATE["results_account"] = _run_acct
                 _MILES_STATE["results"] = {
                     "ok": len(results["products"]),
                     "needs_review": results["needs_review"],
@@ -841,6 +1006,10 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
     def miles_results():
         """Return the last harvest's summary for the UI."""
         r = _MILES_STATE.get("results")
+        # Another account's harvest is not this account's result.
+        _ra = str(_MILES_STATE.get("results_account") or "")
+        if r and _ra and _ra != _req_account():
+            r = None
         if not r:
             return jsonify({"ok": False, "message": "no harvest run yet"})
         # don't ship the full product text blobs to the list view; summarise

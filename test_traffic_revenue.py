@@ -80,15 +80,21 @@ print("\n=== the queries that must NOT change ===")
 # measured, so excluding the rollup row is right for them -- including it would
 # double every session on the page.
 truthy("daily() still excludes the account rollup", "AND asin<>'*' " in T)
-check("  in both places that aggregate products — daily() and per_asin()",
-      T.count("asin<>'*'"), 2)
+# Re-pinned 30 Sep 2026 (reports bug round): asin_daily() -- the Top ASINs
+# Trend -- now excludes the rollup row too, because on "By parent" it groups
+# by the parent key and the '*' row must not become a product. Three places.
+check("  in every place that aggregates products — daily(), per_asin(), asin_daily()",
+      T.count("asin<>'*'"), 3)
 
 print("\n=== a 30-day heading over a 28-day window ===")
 # MEASURED on jack_uk, 17 Aug 2026: the newest day with any traffic was the
 # 14th -- Amazon answered the fetch for the 15th and 16th with QuotaExceeded.
 # The tiles said 30 days and every rate divided by 28, with nothing saying so.
 truthy("freshness is worked out", "def freshness(" in T)
-truthy("  and reported on the answer", '"freshness": freshness(' in T)
+# Re-pinned 30 Sep 2026: worked out once (`fresh = freshness(...)`) because
+# the change figures now use it too (equal-length comparison), then reported.
+truthy("  and reported on the answer",
+       "fresh = freshness(" in T and '"freshness": fresh' in T)
 truthy("it names the last day that has data", '"last": last' in T)
 truthy("  and how many are missing", '"missing_days"' in T)
 truthy("  and says which window the figures ACTUALLY cover",

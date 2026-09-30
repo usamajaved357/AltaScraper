@@ -36,8 +36,17 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
             cfg = _cfg() if callable(_cfg) else (_cfg or {})
         except Exception:
             cfg = {}
+        # ONLY THE ACCOUNTS THIS USER MAY OPEN. "Every account" means every
+        # account the caller can see -- a user scoped to one workspace must not
+        # read the others' revenue here when every other screen refuses it.
+        # auth.users.visible_accounts is the one rule (Rule 12); it falls open
+        # when nobody is signed in, the same as auth/guard.py.
+        def _visible(acct):
+            from auth import users as _users
+            return bool(_users.visible_accounts(CONFIG_PATH, [acct]))
         try:
-            return jsonify(_wb.build(CONFIG_PATH, cfg, today=day))
+            return jsonify(_wb.build(CONFIG_PATH, cfg, today=day,
+                                     visible=_visible))
         except Exception as e:
             # The brief reads five separate things across every account, and a
             # failure in one of them is reported by that section rather than

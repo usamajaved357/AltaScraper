@@ -226,12 +226,37 @@ def build(rows, min_impressions=MIN_IMPRESSIONS, weak=WEAK_SHARE, limit=200):
     on are precisely the big ones you are losing, and sorting by your own units
     puts those at the bottom.
     """
+    # WHAT WENT ELSEWHERE IS A FACT ABOUT THE SEARCH, NOT ABOUT ONE OF YOUR
+    # ASINs (bug round 30 Sep 2026). The report comes per (query, own ASIN), and
+    # the query's purchase total repeats on every one of its rows. Worked out
+    # per row, a search two of your products appear for counted your OTHER
+    # product's sales as "went elsewhere", and the summary added the total in
+    # twice. So it is worked out once per search: the total, less every one of
+    # your products' purchases for it.
+    #
+    # AND AN UNKNOWN PURCHASE COUNT IS NOT ZERO. Amazon omitting your figure
+    # made `mine` 0, which claimed the whole total had gone to competitors.
+    # Unknown own purchases leave "missed" unknown.
+    per_query = {}
+    for r in rows:
+        q = str(r.get("query") or "")
+        g = per_query.setdefault(q, {"total": None, "mine": 0.0, "unknown": False})
+        t = _n(r.get("purchases_total"))
+        if t is not None and (g["total"] is None or t > g["total"]):
+            g["total"] = t
+        m = _n(r.get("purchases"))
+        if m is None:
+            g["unknown"] = True
+        else:
+            g["mine"] += m
+    for g in per_query.values():
+        g["missed"] = (None if (g["total"] is None or g["unknown"])
+                       else max(0.0, g["total"] - g["mine"]))
+
     out = []
     for r in rows:
         d = diagnose(r, min_impressions, weak)
-        mine = _n(r.get("purchases")) or 0
-        total = _n(r.get("purchases_total"))
-        missed = (total - mine) if total is not None else None
+        missed = per_query.get(str(r.get("query") or ""), {}).get("missed")
         row = dict(r)
         row.update({"shares": d["shares"], "break": d["break"],
                     "means": d["means"], "do": d["do"], "note": d["note"],
@@ -251,12 +276,17 @@ def summary(rows):
                    "count": 0, "missed": 0.0, "means": "", "do": ""}
     out["unreadable"] = {"key": "unreadable", "label": "Too little data to say",
                          "count": 0, "missed": 0.0, "means": "", "do": ""}
+    # Each search's "went elsewhere" is added to a slot ONCE, however many of
+    # your ASINs it appears for (bug round 30 Sep 2026) -- see build().
+    counted = set()
     for r in rows:
         b = r.get("break") or ("unreadable" if r.get("note", "").startswith("Too few")
                                or r.get("note", "").startswith("Amazon reported no")
                                else "none")
         slot = out.get(b) or out["none"]
         slot["count"] += 1
-        if r.get("missed"):
+        key = (slot["key"], str(r.get("query") or ""))
+        if r.get("missed") and key not in counted:
+            counted.add(key)
             slot["missed"] += r["missed"]
     return out

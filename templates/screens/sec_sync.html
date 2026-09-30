@@ -1,7 +1,7 @@
 <div id="sec_sync" class="wspanel">
   <div class="wstoolbar bleed">
     <div><h2>Compare with Amazon</h2>
-    <div class="sub">When the app and Amazon disagree about a listing, this shows you both, field by field, and lets you pick which side wins for each.</div></div>
+    <div class="sub">App vs Amazon, field by field — you pick the winner. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="When the app and Amazon disagree about a listing, this shows you both, field by field, and lets you pick which side wins for each." title="When the app and Amazon disagree about a listing, this shows you both, field by field, and lets you pick which side wins for each."></i></div></div>
   </div>
 
   <!-- WHAT IT IS FOR, IN THE CASE THAT BRINGS PEOPLE HERE.
@@ -11,19 +11,12 @@
        useful thing and the name now says it. -->
   <div style="font-size:12.5px;margin:2px 0 14px;padding:11px 13px;
        border:1px solid var(--as-border-subtle);border-radius:8px;line-height:1.55">
-    <b>When you would use this.</b> You changed a title in the app but Amazon
-    still shows the old one. Or someone edited the listing in Seller Central and
-    the app does not know. Pull brings Amazon's version in so you can see exactly
-    what differs; push sends yours the other way.
+    <b>Pull</b> Amazon&#39;s version in; <b>push</b> yours out. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="When you would use this: you changed a title in the app but Amazon still shows the old one. Or someone edited the listing in Seller Central and the app does not know. Pull brings Amazon&#39;s version in so you can see exactly what differs; push sends yours the other way." title="When you would use this: you changed a title in the app but Amazon still shows the old one. Or someone edited the listing in Seller Central and the app does not know. Pull brings Amazon&#39;s version in so you can see exactly what differs; push sends yours the other way."></i>
     <div class="cc" style="margin-top:6px">
-      <b>You do not normally come here directly.</b> Press the
-      <i class="ti ti-arrows-exchange"></i> button on any live listing and it
-      opens here with that SKU filled in and already checked.
+      Usually opened from <i class="ti ti-arrows-exchange"></i> on a live listing. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="You do not normally come here directly. Press the compare (two arrows) button on any live listing and it opens here with that SKU filled in and already checked." title="You do not normally come here directly. Press the compare (two arrows) button on any live listing and it opens here with that SKU filled in and already checked."></i>
     </div>
     <div class="cc" style="margin-top:6px">
-      Nothing is overwritten without your per-field choice. Push stays locked
-      until you unlock it, refuses borrowed credentials, and the first live write
-      is a reviewed one-listing test.
+      Push is locked; nothing is overwritten without your choice. <i class="ti ti-info-circle ui-hint" tabindex="0" role="img" aria-label="Nothing is overwritten without your per-field choice. Push stays locked until you unlock it, refuses borrowed credentials, and the first live write is a reviewed one-listing test." title="Nothing is overwritten without your per-field choice. Push stays locked until you unlock it, refuses borrowed credentials, and the first live write is a reviewed one-listing test."></i>
     </div>
   </div>
 
@@ -39,7 +32,7 @@
       <button class="btn" id="sync_push_btn" onclick="syncPush()" disabled title="Push is locked"><i class="ti ti-upload"></i> Push to Amazon</button>
     </div>
     <label class="minlbl" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px">
-      <input type="checkbox" id="sync_push_unlock" onchange="syncTogglePushLock(this)"> Unlock push buttons (backend still halts the actual write until the reviewed first-push test, and always refuses borrowed credentials)
+      <input type="checkbox" id="sync_push_unlock" onchange="syncTogglePushLock(this)"> Unlock push buttons <i class="ti ti-info-circle ui-hint" onclick="event.preventDefault()" tabindex="0" role="img" aria-label="The backend still halts the actual write until the reviewed first-push test, and always refuses borrowed credentials." title="The backend still halts the actual write until the reviewed first-push test, and always refuses borrowed credentials."></i>
     </label>
   </div>
 

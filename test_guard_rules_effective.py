@@ -68,7 +68,9 @@ INTENDED_OPEN = {
     # (/ppc/control/change, /ppc/control/negative) need publish.
     ("GET", "/ppc/control/campaigns"): "reads Amazon's campaign list (state, budget); changes nothing -- the /ppc/control writes need publish",
     ("GET", "/ppc/control/structure"): "reads one campaign's ad groups/keywords/targets from Amazon; changes nothing -- writes need publish",
-    ("GET", "/notify/inbox"): "the bell: this account's own notifications, read-only",
+    # ("GET", "/notify/inbox") WAS HERE and is gone (30 Sep 2026): the bell now
+    # has its own RULES line with None -- open to every signed-in user, not
+    # merely left open under manage_accounts -- so it declares no permission.
     ("GET", "/notify/channels"): "channel list WITHOUT the webhook URL (include_secret is never passed); changing needs manage_accounts",
     ("GET", "/notify/log"): "what was sent, read-only",
     ("GET", "/sourcing/template.csv"): _SOURCING_READ,

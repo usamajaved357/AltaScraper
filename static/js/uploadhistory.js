@@ -109,6 +109,8 @@ function _uphDetailHtml(u){
       + (u.sku_count > 60 ? " … and " + (u.sku_count - 60) + " more (in the report)" : "") + '</div>';
   }
   if(!d) return out + '<div class="cc">Loading rows…</div>';
+  if(d.error) return out + '<div class="sresfail">' + esc(d.error)
+    + ' <button class="db-chip" onclick="uploadsRetryDetail(' + Number(u.id) + ')">Try again</button></div>';
   const rows = d.report || [];
   if(!rows.length) return out + '<div class="cc">This upload reported no per-row detail.</div>';
   const cols = [];
@@ -128,32 +130,56 @@ function _uphDetailHtml(u){
   return out;
 }
 
+// Which account a reply was asked for (screenstate.js). Guarded so this page
+// still works if that file is not loaded.
+function _uphScope(){ return (typeof screenScope === "function") ? screenScope() : null; }
+function _uphStill(sc){ return (typeof screenStillIn === "function") ? screenStillIn(sc) : true; }
+
 async function uploadsToggle(id){
   UPH.open = (UPH.open === id) ? null : id;
   uploadsRender();
-  if(UPH.open !== id || UPH.detail[id]) return;
+  // A detail that FAILED is not cached as "no rows": {error} is retried on the
+  // next open instead of saying "This upload reported no per-row detail".
+  if(UPH.open !== id || (UPH.detail[id] && !UPH.detail[id].error)) return;
+  delete UPH.detail[id];
+  uploadsRender();
+  const sc = _uphScope();
+  let d;
   try{
     const j = await (await fetch(_uphLink("/uploads/detail/", id))).json();
-    UPH.detail[id] = (j && j.ok) ? j.upload : {report: []};
+    d = (j && j.ok) ? j.upload
+      : {error: (j && j.error) || "Could not load this upload's rows."};
   }catch(e){
-    UPH.detail[id] = {report: []};
+    d = {error: "Could not load this upload's rows: " + String((e && e.message) || e)};
   }
+  if(!_uphStill(sc)) return;          // the account changed while it loaded
+  UPH.detail[id] = d;
   uploadsRender();
+}
+
+function uploadsRetryDetail(id){
+  delete UPH.detail[id];
+  UPH.open = null;                    // uploadsToggle re-opens it and asks again
+  return uploadsToggle(id);
 }
 
 async function uploadsLoad(){
   UPH.loading = true; UPH.error = ""; uploadsRender();
   const sel = document.getElementById("uph_kind");
   const kind = sel ? sel.value : "";
+  const sc = _uphScope();
+  let uploads = null, kinds = null, err = "";
   try{
     const url = "/uploads/list" + (kind ? "?kind=" + encodeURIComponent(kind) : "");
     const j = await (await fetch((typeof acctUrl === "function") ? acctUrl(url) : url)).json();
     if(!j || !j.ok) throw new Error((j && j.error) || "could not read the upload history");
-    UPH.uploads = j.uploads || [];
-    UPH.kinds = j.kinds || {};
+    uploads = j.uploads || []; kinds = j.kinds || {};
   }catch(e){
-    UPH.error = String((e && e.message) || e);
+    err = String((e && e.message) || e);
   }
+  // A reply for the account the page has since left is dropped, not drawn.
+  if(!_uphStill(sc)) return;
+  if(err){ UPH.error = err; } else { UPH.uploads = uploads; UPH.kinds = kinds; }
   UPH.loading = false;
   uploadsRender();
 }

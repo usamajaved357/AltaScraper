@@ -422,9 +422,14 @@ function financeBasisToggle(){
     + '<span class="cc" style="font-size:11px;text-transform:uppercase;'
     +   'letter-spacing:.5px">Basis</span>'
     + btn("orders", "Order-based") + btn("settlement", "Settlement")
-    + '</div>'
-    + '<div class="cc" style="font-size:11.5px;line-height:1.6;margin:0 0 10px">'
-    + _fesc(said) + _fesc(cover) + '</div>';
+    // What the basis means is behind the (i); the share not yet settled stays
+    // on the line as a number (owner, 30 Sep 2026: less text, more visual).
+    + uiHint(said + cover)
+    + (cover && t.revenue
+       ? '<span class="cc" style="font-size:11.5px">'
+         + Math.round(100 * Number(t.estimated_revenue || 0) / t.revenue)
+         + '% not settled yet</span>' : '')
+    + '</div>';
 }
 
 /* The gap between what the products contributed and what the account kept.
@@ -448,9 +453,8 @@ function financeOverhead(cur){
     + '<span class="cc" style="font-size:12px">'
     +   (FIN.openOverhead ? "▾" : "▸") + '</span>'
     + '<div style="flex:1"><div style="font-weight:600">Account-level '
-    +   'overhead</div>'
-    +   '<div class="cc" style="font-size:11.5px">The gap between what the '
-    +   'products contributed and what the account kept</div></div>'
+    +   'overhead' + uiHint('The gap between what the products contributed and '
+    +   'what the account kept') + '</div></div>'
     + '<div style="font-size:18px;font-weight:700">'
     +   _fmoney(o.total, cur) + '</div></div>';
   // A PART THAT COULD NOT BE READ, said on the panel whether it is open or
@@ -489,8 +493,8 @@ function financeOverhead(cur){
       +   'padding:8px 0 0;border-top:1px solid var(--line2);font-weight:700;'
       +   'font-size:15px"><div>Net profit</div><div>'
       +   money(o.net_profit) + '</div></div>'
-      + (o.why ? '<div class="cc" style="font-size:11px;margin-top:9px;'
-                 + 'line-height:1.6">' + _fesc(o.why) + '</div>' : '')
+      + (o.why ? '<div class="cc" style="font-size:11px;margin-top:9px">'
+                 + 'How this is worked out' + uiHint(o.why) + '</div>' : '')
       + '</div>';
   }
   return h + '</div>';
@@ -522,9 +526,10 @@ function financeRender(){
       +  _fesc(FIN.meta.end)+'</b>'
       +  (FIN.filter !== "all"
           ? ' — showing <b>'+_fesc((FIN_FILTERS.filter(x=>x.k===FIN.filter)[0]||{}).t)
-            +'</b> only, and the totals below are for those '+visible.length
-            +' row'+(visible.length===1?'':'s')+', not the whole period.'
-          : '.')
+            +'</b> only · '+visible.length+' row'+(visible.length===1?'':'s')
+            + uiHint('The totals below are for those '+visible.length
+            +' row'+(visible.length===1?'':'s')+', not the whole period.')
+          : '')
       +  '</div>';
   }
 
@@ -554,10 +559,16 @@ function financeRender(){
     if(!text) return;
     const lvl = (typeof n === 'string') ? 'warn' : ((n && n.level) || 'warn');
     const s = FIN_NOTE_STYLE[lvl] || FIN_NOTE_STYLE.warn;
-    h += '<div class="cc" style="font-size:12px;margin:2px 0 10px;padding:9px 11px;'
+    // THE FIRST SENTENCE ON THE LINE, THE REST BEHIND ITS (i) (owner, 30 Sep
+    // 2026: less text, more visual). The colour and icon still carry how loud
+    // it is; the whole note is in the hover, word for word.
+    const cut = text.search(/[.!?](\s|$)/);
+    const head = (cut > 0 && cut < text.length - 1) ? text.slice(0, cut + 1) : text;
+    h += '<div class="cc" style="font-size:12px;margin:2px 0 10px;padding:7px 11px;'
       +  'border:1px solid '+s.border+';background:'+s.bg+';border-radius:6px'
       +  (s.fg ? ';color:'+s.fg : '')+'">'
-      +  '<i class="ti '+s.icon+'"></i> '+_fesc(text)+'</div>';
+      +  '<i class="ti '+s.icon+'"></i> '+_fesc(head)
+      +  (head !== text ? uiHint(text) : '')+'</div>';
   });
 
   if(!FIN.rows.length){
@@ -568,7 +579,12 @@ function financeRender(){
     const have = (FIN.meta && FIN.meta.have) || {};
     h += '<div class="cc" style="padding:18px;border:1px dashed var(--line2);border-radius:6px;'
       +  'font-size:12.5px;line-height:1.6">'
-      +  (why ? _fesc(why)
+      +  (why ? (function(){
+               // First sentence on screen, the full reason behind the (i).
+               const c = why.search(/[.!?](\s|$)/);
+               return (c > 0 && c < why.length - 1)
+                 ? _fesc(why.slice(0, c + 1)) + uiHint(why) : _fesc(why);
+             })()
              : 'Nothing in this period yet. Finance data is pulled per day — press '
                + '<b>Sync</b> on the Sales screen and come back.');
     // A one-click way out of the commonest case, rather than a date box to work
@@ -625,10 +641,11 @@ function financeRender(){
       h += '<div class="cc" style="font-size:11.5px;margin:-6px 0 12px;'
         + 'padding:7px 10px;border:1px solid var(--warn-line);background:var(--warn-bg);'
         + 'border-radius:6px;max-width:760px">'
-        + '<i class="ti ti-clock"></i> This period includes <b>today</b>, which '
-        + 'is not over. Amazon also posts fees and refunds for a day after it — '
-        + 'so the last few days here will keep changing, and comparing them with '
-        + 'a finished month reads as a fall that has not happened.</div>';
+        + '<i class="ti ti-clock"></i> Includes <b>today</b> — still changing'
+        + uiHint('This period includes today, which is not over. Amazon also '
+        + 'posts fees and refunds for a day after it — so the last few days here '
+        + 'will keep changing, and comparing them with a finished month '
+        + 'reads as a fall that has not happened.') + '</div>';
     }
   }
 
@@ -680,10 +697,10 @@ function financeRender(){
   // (30 Sep 2026). Two net profits on one screen was the review's first bug.
 
   h += '<div class="salespanel"><div class="panelhead"><div>'
-    +  '<div class="paneltitle">Every product, and what it left behind</div>'
-    +  '<div class="panelsub">Totals are recomputed from the parts, never summed '
+    +  '<div class="paneltitle">Every product, and what it left behind'
+    +  uiHint('Totals are recomputed from the parts, never summed '
     +  'from the column above — summing would quietly drop every product whose '
-    +  'contribution is withheld and present the remainder as the whole.</div>'
+    +  'contribution is withheld and present the remainder as the whole.') + '</div>'
     +  '</div></div>';
   h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:820px">'
     +  '<thead><tr>';
