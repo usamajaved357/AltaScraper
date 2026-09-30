@@ -197,6 +197,35 @@ function _rpDot(r){
   return ['rp-dd', 'Nothing has been read for this SKU yet.'];
 }
 
+/* ARMED? WHICH WAY? -- readable down the table without opening a row.
+ *
+ *     "I WANT SOME SORT OF INDICATION AND SYMBOL WHICH TELLS ME WHAT IS THE
+ *      RULE SET ON THE REPRICER DOWN ONLY, UP AND DOWN OR WHAT ... A SYMBOL
+ *      ... THAT IF THE ITEM IS ARMED" (owner, 30 Sep 2026)
+ *
+ * Two marks beside the status dot:
+ *   bolt       green = armed (live), dim bolt-off = dry run
+ *   direction  up only / both ways / = the floor -- from the SKU's own rule,
+ *              "up_only" when unset, exactly what domain/sourcing.py uses
+ *              (rule.get("direction") or "up_only").
+ */
+const RP_DIR_MARK = {
+  up_only:     ['ti-arrow-up',        'rp-g', 'Up only: the price can only ever go up'],
+  up_and_down: ['ti-arrows-vertical', 'rp-b', 'Up and down: the price follows the supplier both ways'],
+  match_floor: ['ti-equal',           'rp-y', 'Matches the floor: the price sits exactly on the calculated floor'],
+};
+function _rpRuleMarks(r){
+  const live = (r.mode === "live");
+  const dir = String((r.rule || {}).direction || "up_only");
+  const dm = RP_DIR_MARK[dir] || RP_DIR_MARK.up_only;
+  return '<i class="ti ' + (live ? 'ti-bolt rp-g' : 'ti-bolt-off rp-d') + ' rp-mark" role="img" '
+    + 'aria-label="' + (live ? 'Armed' : 'Dry run') + '" title="'
+    + (live ? 'Armed: auto-pricing can change this SKU on Amazon'
+            : 'Dry run: not armed, nothing reaches Amazon') + '"></i>'
+    + '<i class="ti ' + dm[0] + ' ' + dm[1] + ' rp-mark" role="img" aria-label="'
+    + _sesc(dm[2]) + '" title="' + _sesc(dm[2]) + '"></i>';
+}
+
 /* The cheapest usable supplier's history, for the row's sparkline.
  * One line per SKU, not one per supplier -- the row is about the SKU, and the
  * supplier it would actually buy from is the one whose cost decides its price.
@@ -416,7 +445,8 @@ function sourcingRow(r, i){
   h += '<td>' + (_spark(_rpRowHist(r), {title: it.title || r.sku})
                  || '<span class="rp-d" style="font-size:9px">no history</span>')
     + '</td>'
-    + '<td><span class="rp-dot ' + dot[0] + '" title="' + _sesc(dot[1])
+    + '<td class="rp-marks">' + _rpRuleMarks(r)
+    + '<span class="rp-dot ' + dot[0] + '" title="' + _sesc(dot[1])
     + '"></span></td></tr>';
 
   // ---- the panel, in a row of its own ----------------------------------
