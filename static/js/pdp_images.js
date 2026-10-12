@@ -383,6 +383,81 @@ function _pdpiAssignedNow(){
   return r ? _pdpiAssigned(r) : {};
 }
 
+/* WHAT A SLOT IS SHOWING: the draft's picture, else the one Amazon holds there.
+ * The one rule, read by the slot grid and by the full-size viewer, so the
+ * viewer can never step through a different set of pictures from the one on
+ * screen (Rule 12). */
+function _pdpiSlotUrl(s, assigned){
+  return (assigned && assigned[s.key]) || (s && s.current) || "";
+}
+
+/* ---- seeing a picture full size ---------------------------------------- */
+
+/* "I want to go to the image section inside that product detail page draft
+ *  item and click on the image to have a preview at a bigger size ... I also
+ *  want to have arrows that can go right and left" (owner, 12 Oct 2026).
+ *
+ * THE VIEWER IS THE IMAGE LIBRARY'S -- ilPreview in listingimages.js, already
+ * used by the Image library and the media screen (settings.js), with arrows,
+ * the arrow keys, Escape, Download and Open. It is called here, not copied, so
+ * the three behave alike and there is one thing to fix (Rule 12). It is the
+ * same page for a draft and for a live listing: a slot shows whichever picture
+ * it holds, and so does the viewer.
+ *
+ * WHAT IT IS OPENED FROM, and why each click is the one it is:
+ *   a SLOT's picture   clicking it. It had no click of its own (the × is its
+ *                      own button; the slot is a drop target), so nothing is
+ *                      taken away. Arrows step through the filled slots, in
+ *                      the order the grid shows them.
+ *   a STRIP picture    its magnifier. A click on the picture already means
+ *                      "put it in the next empty slot", and that stays.
+ *                      Arrows step through the tab that is open.
+ *
+ * The full-size address is used, not a thumbnail: the slots and the strip draw
+ * the original URL, and the viewer is given the same one. */
+
+/* The name a picture goes by in the viewer: its file name, without the query
+ * string a Drive or CDN address carries. */
+function _pdpiPicName(url){
+  const tail = String(url || "").split("?")[0].split("#")[0].split("/").pop();
+  try{ return decodeURIComponent(tail) || "image"; }catch(e){ return tail || "image"; }
+}
+
+/* Every filled slot, in the grid's order, as the viewer's list. */
+function _pdpiSlotPictures(){
+  const assigned = _pdpiAssignedNow();
+  const out = [];
+  (PDPI.slots || []).forEach(function(s){
+    const url = _pdpiSlotUrl(s, assigned);
+    if(url) out.push({key: s.key, url: url,
+                      name: _pdpiSlotName(s.key) + " · " + _pdpiPicName(url)});
+  });
+  return out;
+}
+
+function _pdpiOpenViewer(list, at){
+  const it = list[at];
+  if(!it) return;
+  // The viewer lives in listingimages.js; a new tab is the fallback if that
+  // file has not loaded (as settings.js does).
+  if(typeof ilPreview === "function") ilPreview(it.url, it.name, list, at);
+  else window.open(it.url, "_blank");
+}
+
+/* A slot's picture, full size, with the other filled slots either side. */
+function pdpImgPreviewSlot(key){
+  const list = _pdpiSlotPictures();
+  _pdpiOpenViewer(list, list.findIndex(function(p){ return p.key === key; }));
+}
+
+/* A strip picture, full size, with the rest of that tab either side. */
+function pdpImgPreviewStrip(url){
+  const list = _pdpiStripPictures().map(function(u){
+    return {url: u, name: _pdpiPicName(u)};
+  });
+  _pdpiOpenViewer(list, list.findIndex(function(p){ return p.url === url; }));
+}
+
 /* pdpImgPick() removed with the card view: nothing calls it any more. */
 
 /* ---- drag and drop ----------------------------------------------------- */
@@ -617,13 +692,20 @@ function _pdpiSlotsHtml(){
   return _pdpiStatusLine() + '<div class="pdpi-slots">' + PDPI.slots.map(function(s){
     const draft = assigned[s.key] || "";
     const liveUrl = s.current || "";
-    const url = draft || liveUrl;
+    const url = _pdpiSlotUrl(s, assigned);
     const onlyLive = !draft && !!liveUrl;
     return '<div class="pdpi-slot' + (url ? " filled" : "") + '"'
       + ' ondragover="pdpImgDragOver(event)" ondragleave="pdpImgDragLeave(event)"'
       + ' ondrop="pdpImgDrop(event,' + jsArg(s.key) + ')">'
       + '<div class="pdpi-slotimg">'
-      +   (url ? '<img src="' + esc(url) + '" loading="lazy" onerror="this.remove()">'
+      // CLICK THE PICTURE TO SEE IT FULL SIZE (pdpImgPreviewSlot, below). The
+      // picture had no click of its own -- the × is a separate button and the
+      // slot is only a drop target -- so nothing it did before is taken away.
+      // role/tabindex: reachable from the keyboard too (a11y.js).
+      +   (url ? '<img src="' + esc(url) + '" loading="lazy" onerror="this.remove()"'
+                 + ' role="button" tabindex="0" title="Click to view it full size"'
+                 + ' alt="' + esc(_pdpiSlotName(s.key)) + '"'
+                 + ' onclick="pdpImgPreviewSlot(' + jsArg(s.key) + ')">'
                : '<i class="ti ti-plus"></i><span class="pdpi-empty">empty</span>')
       + '</div>'
       + '<div class="pdpi-slotname">' + esc(_pdpiSlotName(s.key)) + '</div>'
@@ -643,13 +725,18 @@ function _pdpiSlotsHtml(){
 function _pdpiArg(s){ return jsArg(s || ""); }
 
 /* One ~72px picture in the strip. Click fills the next empty slot; it can also
- * be dragged onto a particular slot. No caption -- the long filenames went. */
+ * be dragged onto a particular slot. No caption -- the long filenames went.
+ * The magnifier in its corner opens it full size (pdpImgPreviewStrip) and
+ * stops there: the click must not also fill a slot. */
 function _pdpiThumb(url, extra){
   return '<div class="pdpi-thumb" draggable="true" title="Click to put it in the next empty slot, or drag it onto one"'
     + ' ondragstart="pdpImgDragStart(event,' + _pdpiArg(url) + ')"'
     + ' onclick="pdpImgFillNext(' + _pdpiArg(url) + ')">'
     + '<img src="' + esc(url) + '" loading="lazy"'
     +   ' onerror="this.parentNode.classList.add(\'bad\');this.remove()">'
+    + '<button class="pdpi-zoom" title="View it full size" aria-label="View it full size"'
+    +   ' onclick="event.stopPropagation();pdpImgPreviewStrip(' + _pdpiArg(url) + ')">'
+    +   '<i class="ti ti-zoom-in"></i></button>'
     + (extra || "")
     + '</div>';
 }
@@ -687,7 +774,8 @@ function _pdpiStripHtml(){
   }
   return tabHtml + body
     + '<div class="pdpi-hint">Click an image → it fills the next empty slot. '
-    + 'Or “Fill empty slots” to assign them all.</div>';
+    + 'Or “Fill empty slots” to assign them all. '
+    + 'Its magnifier, or a picture in a slot, opens it full size.</div>';
 }
 
 

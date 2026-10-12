@@ -423,6 +423,10 @@ function pdpClose(opts){
   // Reopening the same listing reads its slots again: a failed or old read
   // (no Push button, stale "on Amazon") no longer outlives the page.
   if(typeof pdpImagesForget === "function"){ try{ pdpImagesForget(); }catch(e){} }
+  // A picture opened full size from the Images tab (ilPreview, listingimages.js)
+  // sits over everything; it goes with the page it belongs to -- including
+  // when the page closes for an account switch or Back/Forward.
+  if(typeof ilPreviewClose === "function"){ try{ ilPreviewClose(); }catch(e){} }
   const _opener = PDP_OPENER; PDP_OPENER = null;
   // THE LIST UNDERNEATH IS ANOTHER COPY OF THE ROW, and it goes stale the same
   // way the hero did.

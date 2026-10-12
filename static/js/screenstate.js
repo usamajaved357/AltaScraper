@@ -375,6 +375,10 @@ function screenForgetAll(){
   // competes with the account you have just opened for the browser's six
   // connections, which is the whole reason it is paced in the first place.
   if(typeof schemasAbandon === "function") schemasAbandon();
+  // AND A PICTURE OPEN FULL SIZE (ilPreview, listingimages.js). It is a layer
+  // over the whole app, so nothing else being reset would take it down, and it
+  // is a picture from the account you have just left.
+  if(typeof ilPreviewClose === "function"){ try{ ilPreviewClose(); }catch(e){} }
   // AND THE ORDERS. This one holds real customers' names, towns and postcodes,
   // and it keeps them in ORD.rows rather than only in the panel -- which
   // ordersOnOpen then reuses instead of loading ("if(!ORD.rows.length)"). So

@@ -132,6 +132,7 @@ bottom-right corner and must win. Each `<link>` carries its reason.
 | `screenScope / screenStillIn`, `_srcScopeNow / _srcStillIn` | screenstate.js, sourcing.js | a reply or a confirmed write stays in the account it started in |
 | `acctBody / acctUrl / scopeQs` | reqscope.js, scopeq.js | naming the account on every request |
 | `salesCombo` (lines may carry their own `color`) | salescharts.js | every line/area chart |
+| `ilPreview(url, name, items, index)` / `ilPreviewClose()` | listingimages.js | THE full-size image viewer (Image library, media screen, PDP Images tab): ×/backdrop/Esc close, arrows + ←/→ stop at the ends, "N of M", loading and could-not-load text; keys in the capture phase so Esc never reaches the page behind; closed by pdpClose, navTo and screenForgetAll |
 
 ## 7. Layers (z-index)
 
