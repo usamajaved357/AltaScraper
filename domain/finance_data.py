@@ -936,28 +936,50 @@ def recost(config_path, workspace_id, marketplace, start, end):
     for i in range(0, len(oids), 500):
         part = oids[i:i + 500]
         for L in conn.execute(
-                "SELECT order_id, COALESCE(asin,'') asin, COALESCE(units,0) units, "
-                "cogs FROM order_lines WHERE workspace_id=? AND order_id IN (%s)"
+                "SELECT order_id, COALESCE(asin,'') asin, COALESCE(sku,'') sku, "
+                "COALESCE(units,0) units, lower(COALESCE(status,'')) status "
+                "FROM order_lines WHERE workspace_id=? AND order_id IN (%s)"
                 % ",".join("?" * len(part)), [workspace_id] + part):
+            # A cancelled line shipped nothing, so it settled nothing.
+            if L["status"] in ("canceled", "cancelled"):
+                continue
             lines[L["order_id"]].append(L)
 
-    want = defaultdict(lambda: {"units": 0.0, "cogs": 0.0, "cogs_units": 0.0})
+    # PRICED THE WAY THE PULL PRICED THEM (order_cogs.line_cost_fn: the cost on
+    # the line, else the product's), not from the frozen column alone -- a line
+    # never frozen (another marketplace of the account, an order older than the
+    # freeze) would otherwise read as uncosted and drop a real cost (review,
+    # 12 Oct 2026). Not filtered by marketplace, as finance_fetch does not.
+    from domain import cogs_store as _cs
+    from domain import order_cogs as _oc
+    cost_of = _oc.line_cost_fn(config_path, workspace_id, None,
+                               overrides=_cs.all_overrides(config_path),
+                               order_ids=oids)
+
+    want = defaultdict(lambda: {"units": 0.0, "cogs": 0.0, "cogs_units": 0})
     broken = set()
     for f in fees:
         ls = [L for L in lines.get(f["order_id"]) or [] if int(L["units"] or 0) > 0]
         if not ls:
             broken.add(f["d"])
             continue
-        share = min(1.0, float(f["units"]) / float(sum(int(L["units"]) for L in ls)))
+        total = sum(int(L["units"]) for L in ls)
+        # PART OF A MULTI-PRODUCT ORDER settling on its own cannot be traced to
+        # WHICH product settled -- order_fees counts units per order, not per
+        # SKU -- so that day is not rebuilt (review, 12 Oct 2026).
+        if int(f["units"]) < total and len({L["sku"] for L in ls}) > 1:
+            broken.add(f["d"])
+            continue
         for L in ls:
-            u = int(L["units"]) * share
+            u = int(L["units"]) if int(f["units"]) >= total else int(f["units"])
+            cost, _src = cost_of(L["sku"], f["order_id"])
             for key in ((f["d"], "*"), (f["d"], L["asin"] or None)):
                 if key[1] is None:
                     continue
                 w = want[key]
                 w["units"] += u
-                if L["cogs"] is not None:
-                    w["cogs"] += float(L["cogs"]) * u
+                if cost is not None:
+                    w["cogs"] += float(cost) * u
                     w["cogs_units"] += u
 
     have = {(r["date"], r["asin"]): r for r in conn.execute(

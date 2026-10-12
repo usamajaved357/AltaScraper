@@ -398,7 +398,7 @@ const FIN_COLS = [
   // than netted off Revenue, so "Revenue" still means what Amazon charged and
   // the discount can be seen for what it is.
   {k:"promos",       t:"Promotions",    kind:"money", tip:"Coupons and deals you funded. Amazon sends the full price separately from the discount, so this is money that never reached you"},
-  {k:"contribution", t:"Contribution",  kind:"money", tip:"Revenue − VAT − fees − refunds − promotions + returned fees + reimbursements − COGS. Before advertising."},
+  {k:"contribution", t:"Contribution",  kind:"money", tip:"Revenue − VAT − fees − refunds − promotions + returned fees + reimbursements − COGS − this product's ad spend (with the VAT on it where the account cannot reclaim it)."},
   {k:"margin_pct",   t:"Margin",        kind:"pct"},
 ];
 

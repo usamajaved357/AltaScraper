@@ -321,6 +321,36 @@ def freeze_range(config_path, workspace_id, marketplace, start, end, mode,
             "kept_order_costs": kept_order, "mode": mode}
 
 
+# WHAT ensure_costed LAST SAW, per window: it runs at the top of every profit
+# route, often several times a page, and repeating it when nothing it reads has
+# changed is wasted writes on a GET (review, 12 Oct 2026). set_for_order bumps
+# _GEN, because an order's own cost changes no id or timestamp it can see.
+# arch-ok: module-mutable-global -- a per-process memo of work already done; losing it only repeats that work
+_ENSURED = {}
+# arch-ok: module-mutable-global -- a per-process write counter that only ever invalidates the memo above
+_GEN = [0]
+_ENSURE_TTL = 600
+
+
+def _data_stamp(config_path, workspace_id, overrides):
+    """Everything ensure_costed's answer depends on, cheaply: the newest order
+    line and settlement row, the last finance pull, the product costs, and the
+    order-cost writes made in this process."""
+    import hashlib
+    import json
+    conn = _db.get_db(config_path)
+    q = lambda sql: (conn.execute(sql, (workspace_id,)).fetchone() or {"m": None})["m"]
+    try:
+        costs = hashlib.sha1(json.dumps(overrides or {}, sort_keys=True,
+                                        default=str).encode()).hexdigest()
+    except Exception:
+        costs = None
+    return (q("SELECT MAX(id) m FROM order_lines WHERE workspace_id=?"),
+            q("SELECT MAX(id) m FROM order_fees WHERE workspace_id=?"),
+            q("SELECT MAX(fetched_at) m FROM finance_daily WHERE workspace_id=?"),
+            costs, _GEN[0])
+
+
 def ensure_costed(config_path, workspace_id, marketplace, start, end):
     """Freeze the product cost onto every not-yet-costed order line in a window
     -> freeze_range's report, or {"error": ...}. Never raises.
@@ -331,6 +361,17 @@ def ensure_costed(config_path, workspace_id, marketplace, start, end):
     uncosted -- or costed -- depending on which page had been opened first
     (12 Oct 2026). Lines that already carry a cost are never touched, an
     order's own cost least of all (freeze_range)."""
+    import time as _time
+    try:
+        from domain import cogs_store as _cs
+        _ov = _cs.all_overrides(config_path)
+        key = (str(config_path), workspace_id, marketplace, str(start), str(end))
+        stamp = _data_stamp(config_path, workspace_id, _ov)
+        seen = _ENSURED.get(key)
+        if seen and seen[0] == stamp and _time.time() - seen[1] < _ENSURE_TTL:
+            return {"unchanged": True}
+    except Exception:
+        key, stamp = None, None
     try:
         from domain import cogs_store as _cs
         # FROM 90 DAYS EARLIER: a day's settled money can belong to an order
@@ -353,6 +394,16 @@ def ensure_costed(config_path, workspace_id, marketplace, start, end):
                                            marketplace, start, end)
     except Exception as e:
         out["finance_recost"] = {"error": str(e)[:200]}
+    if key is not None:
+        if len(_ENSURED) > 500:
+            _ENSURED.clear()
+        # Stamped AFTER the work: its own writes change nothing the stamp reads.
+        try:
+            _ENSURED[key] = (_data_stamp(config_path, workspace_id,
+                                         _cs.all_overrides(config_path)),
+                             _time.time())
+        except Exception:
+            pass
     return out
 
 
@@ -366,7 +417,9 @@ def lines_of_order(config_path, workspace_id, marketplace, order_id, sku=None):
          "FROM order_lines WHERE workspace_id=? AND marketplace=? AND order_id=?")
     args = [workspace_id, marketplace, str(order_id)]
     if sku:
-        q += " AND sku=?"
+        # Capitals folded, as the frozen costs fold them (cogs_store.norm): a
+        # SKU typed in another case is the same product (review, 12 Oct 2026).
+        q += " AND UPPER(TRIM(sku))=UPPER(TRIM(?))"
         args.append(str(sku))
     return [{"sku": r["sku"], "units": int(r["units"] or 0)}
             for r in conn.execute(q, args)]
@@ -379,6 +432,7 @@ def set_for_order(config_path, workspace_id, marketplace, order_id, cost,
     Marked 'manual-order' so nothing later overwrites it, and so the screen can
     show which figures a person stood behind.
     """
+    _GEN[0] += 1                 # ensure_costed must look again (_data_stamp)
     conn = _db.get_db(config_path)
     now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     args = [None if cost is None else round(float(cost), 4), ORDER_SOURCE, now,

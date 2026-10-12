@@ -178,12 +178,19 @@ def missing_days(conn, workspace_id, marketplace, start, end):
         "SELECT DISTINCT date FROM ads_daily WHERE workspace_id=? AND "
         "marketplace=? AND asin='*' AND date>=? AND date<=?",
         (workspace_id, marketplace, str(start)[:10], str(end)[:10]))}
-    if not have:
+    # THE ACCOUNT'S LAST STORED DAY, not the window's: a gap at the END of the
+    # window -- or a window lying wholly inside one -- is still a gap when a
+    # later day was downloaded (review, 12 Oct 2026).
+    r = conn.execute(
+        "SELECT MAX(date) m FROM ads_daily WHERE workspace_id=? AND "
+        "marketplace=? AND asin='*'", (workspace_id, marketplace)).fetchone()
+    if not r or not r["m"]:
         return []
+    upto = min(str(r["m"])[:10], str(end)[:10])
     out = []
     d = _dt.date.fromisoformat(str(start)[:10])
-    last = _dt.date.fromisoformat(max(have))
-    while d < last:
+    last = _dt.date.fromisoformat(upto)
+    while d <= last:
         if d.isoformat() not in have:
             out.append(d.isoformat())
         d += _dt.timedelta(days=1)

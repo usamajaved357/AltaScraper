@@ -224,8 +224,10 @@ def apply_sheet(config_path, workspace_id, marketplace, headers, rows):
         # THE ONE WRITER. set_for_order marks it 'manual-order', which is the
         # top of the trust order in domain/order_cogs.resolve -- so a later
         # sync, a supplier price change or a re-freeze cannot overwrite it.
+        # The SKU as the order line stores it, so a sheet typed in other
+        # capitals writes the line it matched.
         n = _oc.set_for_order(config_path, workspace_id, marketplace, oid,
-                              unit_cost, sku or None)
+                              unit_cost, (lines[0]["sku"] if sku else None))
         out["set"] += n
         out["rows"].append({"order_id": oid, "cost": cost, "units": units,
                             "unit_cost": round(unit_cost, 2), "lines": n,

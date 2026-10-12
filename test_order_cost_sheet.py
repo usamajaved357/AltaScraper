@@ -110,6 +110,12 @@ check("fan line 12.00", stored("203-0000000-0000003", "FAN"), 12.0)
 check("roller line 9.00", stored("203-0000000-0000003", "ROLLER"), 9.0)
 check("both set", rep2.get("set"), 2)
 
+print("== a SKU typed in other capitals is the same product ==")
+rep3 = _ocs.apply_sheet(CFG, A, M, ["order id", "sku", "cost"], [
+    ["203-0000000-0000003", "roller", "9.50"]])
+check("matched and set", rep3.get("set"), 1)
+check("on the stored line", stored("203-0000000-0000003", "ROLLER"), 9.5)
+
 print("== the template shows `cost now` on the same whole-line basis ==")
 h, rows = _ocs.template_rows(CFG, A, M)
 now = {(r[0], r[2]): r[h.index("cost now")] for r in rows}

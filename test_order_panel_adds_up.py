@@ -69,7 +69,9 @@ OJ = open(os.path.join(HERE, "static", "js", "orders.js"), encoding="utf-8").rea
 check("labelled order profit, before ads",
       '"Order profit"' in OJ and "before ads" in OJ, True)
 check("cancelled orders are not in it", '"canceled"' in OJ, True)
-check("orders not shipped yet are said", "not shipped yet" in OJ, True)
+check("orders not settled yet are said, from the fee basis",
+      "not settled yet" in OJ and "r.fees_basis" in OJ, True)
+check("profit is kept per currency", "_pfBy[c]" in OJ, True)
 
 print()
 if fails:

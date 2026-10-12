@@ -53,6 +53,11 @@ check("and the note says so", "2026-08-03" in (w.get("note") or ""), True)
 check("  without naming the days not downloaded yet",
       "2026-08-05" in (w.get("note") or ""), False)
 
+print("== a gap at the END of a window is still a gap when later days exist ==")
+w3 = _ac.for_window(CFG, A, M, "2026-08-02", "2026-08-03", True)
+check("3 Aug named though the window ends on it", w3.get("missing_days"),
+      ["2026-08-03"])
+
 print("== no gap, no warning ==")
 w2 = _ac.for_window(CFG, A, M, "2026-08-01", "2026-08-02", True)
 check("nothing listed", w2.get("missing_days"), None)

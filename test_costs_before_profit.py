@@ -76,6 +76,19 @@ check("and it reports what it did", (rep.get("priced"), rep.get("kept_order_cost
       (1, 1))
 
 
+print("== and does not repeat itself when nothing it reads has changed ==")
+check("a second call with nothing new is skipped",
+      _oc.ensure_costed(CFG, A, M, "2026-09-01", "2026-09-30").get("unchanged"),
+      True)
+_oc.set_for_order(CFG, A, M, "206-0000000-0000002", 9.10)
+check("an order's own cost set since -> it looks again",
+      _oc.ensure_costed(CFG, A, M, "2026-09-01", "2026-09-30").get("unchanged"),
+      None)
+_cs.set_cost(CFG, A, SKU, 7.99)
+check("a product cost changed since -> it looks again",
+      _oc.ensure_costed(CFG, A, M, "2026-09-01", "2026-09-30").get("unchanged"),
+      None)
+
 print("== every profit route takes the step before it reads ==")
 
 

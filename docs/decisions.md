@@ -119,8 +119,9 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   - **Go ahead with the fixes and the levels**: Order profit (before ads, All
     Orders) / profit after ads (Finance per product, PPC) / Net profit (Sales
     card, P&L, Finance account profit, PPC NET PROFIT).
-  The missing-cost rule below now holds on every screen (the grid, PPC NET
-  PROFIT and Brand view used to go blank). The order-cost sheet's `cost` is
+  The missing-cost rule below now holds on every PERIOD profit (the grid, PPC
+  NET PROFIT and Brand view used to go blank); an ORDER with no cost has no
+  order profit, so the All Orders tile leaves it out and says how many. The order-cost sheet's `cost` is
   what the whole order LINE cost; the app divides it by the units.
   Source: chat, 12 Oct 2026.
 - **18 Aug 2026 — Profit is measured, never padded.** "do not add 3 pounds

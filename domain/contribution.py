@@ -46,6 +46,28 @@ def _f(v):
         return 0.0
 
 
+def _settled_account_figure(totals):
+    """WHAT THE ACCOUNT KEPT on the settlement basis, as opposed to what the
+    products contributed between them: less the fees and the ad spend no row
+    carries (the note says both come off). Only when the contribution is known
+    at all: a real cost off an unknown is an unknown, not a negative."""
+    if totals.get("contribution") is not None and (
+            totals.get("unattributed_fees") or totals.get("unattributed_ad_spend")):
+        totals["account_contribution"] = round(
+            totals["contribution"] - (totals.get("unattributed_fees") or 0.0)
+            - (totals.get("unattributed_ad_spend") or 0.0), 2)
+
+
+def _unmatched_ads(ads, rows):
+    """Per-product ad spend (VAT added) on products with NO row here -> float.
+    It comes off no row, so it is named rather than dropped while the card says
+    "after X of ad spend" (settlement basis; review, 12 Oct 2026)."""
+    shown = {r["asin"] for r in rows}
+    gap = round(sum(_f(a.get("spend")) for k, a in (ads or {}).items()
+                    if k not in shown), 2)
+    return gap if gap >= 0.01 else 0.0
+
+
 def _after_ads(contribution, ad_spend):
     """A product's contribution with its ad spend taken off -- both bases.
 
@@ -251,12 +273,8 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
     rows.sort(key=lambda x: (-(x["revenue"] or 0), x["asin"]))
     totals = totals_for(rows)
     totals.update(unattributed(conn, workspace_id, marketplace, start, end, rows))
-    # WHAT THE ACCOUNT KEPT, as opposed to what the products contributed between
-    # them. Only when the contribution is known at all: subtracting a real cost
-    # from an unknown gives an unknown, not a negative.
-    if totals.get("contribution") is not None and totals.get("unattributed_fees"):
-        totals["account_contribution"] = round(
-            totals["contribution"] - totals["unattributed_fees"], 2)
+    totals["unattributed_ad_spend"] = _unmatched_ads(ads, rows)
+    _settled_account_figure(totals)
     return rows, totals
 
 

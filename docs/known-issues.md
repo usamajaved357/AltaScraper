@@ -759,7 +759,8 @@ redesign) listed seven items; the five kept here were re-checked in the code:
   (test_cogs_two_methods). finance_daily.cogs being costed only when a day is
   pulled: FIXED 12 Oct 2026 on claude/keen-noether-qkn0r0 (finance_data.recost,
   via order_cogs.ensure_costed; a day that does not fully reconcile keeps its
-  pulled cost). Inventory: active/cogs-inventory-2026-09-30.md.
+  pulled cost; test_settled_costs_follow.py). Inventory:
+  active/cogs-inventory-2026-09-30.md.
 - **Latent: `/row`, `/edit`, `/delete`, `/live/pull_row` locate a row by SKU in
   the session's workspace** unless the request names one; with shared SKUs this
   could edit another account's row. Fixing touches about 16 JS call sites, so it

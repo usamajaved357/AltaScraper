@@ -74,6 +74,28 @@ fee("203-9", "2026-09-06", 1)
 line("203-3", "B0FAN", 1, 12.99, "manual-order")
 fee("203-3", "2026-09-06", 1)
 fin("2026-09-06", "*", 2, 15.00, 1)
+# 7 Sep (review, 12 Oct 2026): a line never frozen -- sold in another
+# marketplace of the account -- still has its product cost; a two-product
+# order settling one unit on its own cannot be traced to a product; a
+# cancelled line settles nothing.
+from domain import cogs_store as _cs              # noqa: E402
+_cs.set_cost(CFG, A, "SKU-B0MAT", 6.50)
+c.execute("INSERT INTO order_lines (workspace_id, marketplace, order_id, "
+          "purchase_date, asin, sku, units, revenue, currency, status) "
+          "VALUES (?,?,?,?,?,?,?,?,?,?)",
+          (A, "DE", "203-4", "2026-03-01T10:00:00Z", "B0MAT", "SKU-B0MAT", 1,
+           12.0, "EUR", "Shipped"))
+fee("203-4", "2026-09-07", 1)
+line("203-5", "B0FAN", 1, 13.99, "manual-order")
+c.execute("UPDATE order_lines SET status='Canceled' WHERE order_id='203-5'")
+line("203-5", "B0MAT", 1, 6.50, "manual-order")
+fee("203-5", "2026-09-07", 1)
+fin("2026-09-07", "*", 2, 0.0, 0)
+# 8 Sep: two products in one order, one unit settles alone.
+line("203-6", "B0FAN", 1, 13.99, "manual-order")
+line("203-6", "B0MAT", 1, 6.50, "manual-order")
+fee("203-6", "2026-09-08", 1)
+fin("2026-09-08", "*", 1, 3.0, 1)
 c.commit()
 
 rep = _oc.ensure_costed(CFG, A, M, "2026-09-01", "2026-09-30")
@@ -92,7 +114,12 @@ print("== a day that does not reconcile keeps what it had ==")
 check("6 Sep untouched (one unit cannot be traced)", row("2026-09-06", "*"),
       (15.0, 1))
 check("ensure_costed reports the re-cost",
-      (rep.get("finance_recost") or {}).get("rewritten"), 2)
+      (rep.get("finance_recost") or {}).get("rewritten"), 3)
+print("== the review's cases ==")
+check("an unfrozen line is priced from its product cost; a cancelled line "
+      "settles nothing", row("2026-09-07", "*"), (13.0, 2))
+check("one unit of a two-product order settling alone is not guessed",
+      row("2026-09-08", "*"), (3.0, 1))
 
 print()
 if fails:
