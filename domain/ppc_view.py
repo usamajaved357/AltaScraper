@@ -265,7 +265,38 @@ def opportunity(term):
     return "", ""
 
 
-def by_term(rows, brands=None):
+def profit_of(sales, spend, rates):
+    """What ad sales left after VAT, Amazon's fee, the stock and the ad spend
+    (with the VAT an account that cannot reclaim it pays on that spend) ->
+    float, or None when the rates behind it are unknown.
+
+    ppc_analytics.ad_profit is THE formula (Rule 12); this only unpacks the
+    `rates` that ppc_analytics.rates() measured for the same window. This page
+    used to call `sales - spend` its profit -- no fee, no stock, no VAT -- so a
+    campaign read far more profitable here than on PPC Analytics (owner, 12
+    Oct 2026: "the PPC page shows me another number")."""
+    if not rates:
+        return None
+    from domain import ppc_analytics as _pa
+    p = _pa.ad_profit(sales, spend, rates.get("fee_rate"), rates.get("cogs_rate"),
+                      rates.get("vat_share") or 0.0,
+                      rates.get("ad_vat_ratio") or 0.0)
+    return None if p is None else round(p, 2)
+
+
+def _share_of_profit(rows):
+    """Fill each row's pct_profit: its share of the POSITIVE profit pool.
+    None everywhere when any row's profit is unknown or the pool is not
+    positive -- a share of a total that cannot be stated is not a share."""
+    known = [e["profit"] for e in rows if e.get("profit") is not None]
+    pool = sum(known) if len(known) == len(rows) else None
+    for e in rows:
+        e["pct_profit"] = (rate(e["profit"], pool)
+                           if (pool and pool > 0 and e.get("profit") is not None)
+                           else None)
+
+
+def by_term(rows, brands=None, rates=None):
     """One row per search term, Orbit's Search Terms table.
 
     Aggregated across match types, campaigns and ad groups -- the report has a
@@ -307,7 +338,7 @@ def by_term(rows, brands=None):
         e["cvr"] = rate(e["orders"], e["clicks"])
         e["cpc"] = rate(e["spend"], e["clicks"], pct=False)
         e["cpa"] = rate(e["spend"], e["orders"], pct=False)
-        e["profit"] = round(e["sales"] - e["spend"], 2)
+        e["profit"] = profit_of(e["sales"], e["spend"], rates)
         e["branded"] = is_branded(e["search_term"], brands)
         flag, why = opportunity(e)
         e["opportunity"] = flag
@@ -320,7 +351,7 @@ def by_term(rows, brands=None):
     return out
 
 
-def by_match_type(rows):
+def by_match_type(rows, rates=None):
     """Orbit's campaign-type table, on the cut this report can actually make.
 
     Orbit splits by SP/SB/SD, which the Search Term Report does not carry -- it
@@ -344,28 +375,26 @@ def by_match_type(rows):
         e["sales"] += _f(r.get("sales"))
 
     tot_spend = sum(e["spend"] for e in agg.values())
-    tot_profit = sum(e["sales"] - e["spend"] for e in agg.values())
     out = []
     for e in agg.values():
+        e["profit"] = profit_of(e["sales"], e["spend"], rates)
         e["spend"] = round(e["spend"], 2)
         e["sales"] = round(e["sales"], 2)
-        e["profit"] = round(e["sales"] - e["spend"], 2)
         e["acos"] = rate(e["spend"], e["sales"])
         e["ctr"] = rate(e["clicks"], e["impressions"])
         e["cvr"] = rate(e["orders"], e["clicks"])
         e["cpc"] = rate(e["spend"], e["clicks"], pct=False)
         e["cpa"] = rate(e["spend"], e["orders"], pct=False)
         e["pct_spend"] = rate(e["spend"], tot_spend)
-        # A share of a NEGATIVE total is meaningless -- if the advertising lost
-        # money overall, "this bucket is 140% of profit" is noise. Left out.
-        e["pct_profit"] = (rate(e["profit"], tot_profit)
-                           if tot_profit > 0 else None)
         out.append(e)
+    # A share of a NEGATIVE total is meaningless -- if the advertising lost
+    # money overall, "this bucket is 140% of profit" is noise. Left out.
+    _share_of_profit(out)
     out.sort(key=lambda x: -x["spend"])
     return out
 
 
-def by_campaign(rows):
+def by_campaign(rows, rates=None):
     """Orbit's Campaign Analytics table, on what the report actually carries.
 
     Orbit splits campaigns by SP / SB / SD and shows Enabled / Paused. The
@@ -397,15 +426,14 @@ def by_campaign(rows):
                 e[s].add(v)
 
     tot_spend = sum(e["spend"] for e in agg.values())
-    tot_profit = sum(e["sales"] - e["spend"] for e in agg.values())
     out = []
     for e in agg.values():
         e["ad_groups"] = sorted(e["ad_groups"])
         e["match_types"] = sorted(e["match_types"])
         e["terms"] = len(e["terms"])
+        e["profit"] = profit_of(e["sales"], e["spend"], rates)
         e["spend"] = round(e["spend"], 2)
         e["sales"] = round(e["sales"], 2)
-        e["profit"] = round(e["sales"] - e["spend"], 2)
         e["acos"] = rate(e["spend"], e["sales"])
         e["roas"] = rate(e["sales"], e["spend"], pct=False)
         e["ctr"] = rate(e["clicks"], e["impressions"])
@@ -413,9 +441,8 @@ def by_campaign(rows):
         e["cpc"] = rate(e["spend"], e["clicks"], pct=False)
         e["cpa"] = rate(e["spend"], e["orders"], pct=False)
         e["pct_spend"] = rate(e["spend"], tot_spend)
-        e["pct_profit"] = (rate(e["profit"], tot_profit)
-                           if tot_profit > 0 else None)
         out.append(e)
+    _share_of_profit(out)
     out.sort(key=lambda x: -x["spend"])
     return out
 

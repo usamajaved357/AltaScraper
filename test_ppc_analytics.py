@@ -211,20 +211,38 @@ truthy("  and the split is worse than the blend, which is the point",
        split["non_branded"]["acos"] > t["acos"])
 
 print("\n=== match type, with share of spend against share of profit ===")
-mt = PV.by_match_type(ROWS)
+# RE-PINNED 12 Oct 2026. "Profit" here was ad sales minus ad spend -- no
+# Amazon fee, no stock, no VAT on ads -- so this page showed a campaign far
+# more profitable than PPC Analytics did. It is now ppc_analytics.ad_profit on
+# the rates ppc_analytics.rates() measures (ppc_view.profit_of).
+RATES = {"fee_rate": 0.15, "cogs_rate": 0.40, "vat_share": 0.0,
+         "ad_vat_ratio": 0.2}
+mt = PV.by_match_type(ROWS, RATES)
 by = {m["match_type"]: m for m in mt}
 check("broad and exact", sorted(by.keys()), ["broad", "exact"])
 check("broad spend", by["broad"]["spend"], 143.0)
 check("  as a share", by["broad"]["pct_spend"], round(143.0 / 203.0 * 100, 1))
-check("broad profit", by["broad"]["profit"], round(400.0 - 143.0, 2))
+# 400 sales - 143 x 1.2 (ad VAT) - 400 x (0.15 fee + 0.40 stock) = 8.40
+check("broad profit is after fee, stock and ad VAT", by["broad"]["profit"], 8.4)
+truthy("  not sales minus spend", by["broad"]["profit"] != round(400.0 - 143.0, 2))
 truthy("  and its share of profit is lower than its share of spend",
-       by["broad"]["pct_profit"] < by["broad"]["pct_spend"])
+       by["broad"]["pct_profit"] is None
+       or by["broad"]["pct_profit"] < by["broad"]["pct_spend"])
+check("with no rates, profit is unknown -- not sales minus spend",
+      PV.by_match_type(ROWS)[0]["profit"], None)
 # A share of a negative total is meaningless.
 neg = PV.by_match_type([{"search_term": "x", "match_type": "broad",
                          "clicks": 20, "impressions": 100, "orders": 0,
-                         "spend": 50.0, "sales": 0.0}])
+                         "spend": 50.0, "sales": 0.0}], RATES)
 check("no share-of-profit when the advertising lost money overall",
       neg[0]["pct_profit"], None)
+camp = PV.by_campaign(ROWS, RATES)
+check("campaign profit uses the same formula",
+      round(sum(c["profit"] for c in camp), 2),
+      round(sum(m["profit"] for m in mt), 2))
+check("and so do search terms",
+      round(sum(t["profit"] for t in PV.by_term(ROWS, None, RATES)), 2),
+      round(sum(m["profit"] for m in mt), 2))
 
 print("\n=== the route surface ===")
 R = io.open(_os_repo.path.join(_REPO, r"routes\ppc_routes.py"), encoding="utf-8").read()
