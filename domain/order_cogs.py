@@ -321,6 +321,22 @@ def freeze_range(config_path, workspace_id, marketplace, start, end, mode,
             "kept_order_costs": kept_order, "mode": mode}
 
 
+def lines_of_order(config_path, workspace_id, marketplace, order_id, sku=None):
+    """[{"sku", "units"}] -- the lines of one order, optionally one SKU's.
+
+    For a caller holding what a WHOLE order (or line) cost, which has to be
+    turned into the per-unit figure set_for_order stores."""
+    conn = _db.get_db(config_path)
+    q = ("SELECT COALESCE(sku,'') AS sku, COALESCE(units,0) AS units "
+         "FROM order_lines WHERE workspace_id=? AND marketplace=? AND order_id=?")
+    args = [workspace_id, marketplace, str(order_id)]
+    if sku:
+        q += " AND sku=?"
+        args.append(str(sku))
+    return [{"sku": r["sku"], "units": int(r["units"] or 0)}
+            for r in conn.execute(q, args)]
+
+
 def set_for_order(config_path, workspace_id, marketplace, order_id, cost,
                   sku=None):
     """Correct one order's cost by hand. That order only, for ever.

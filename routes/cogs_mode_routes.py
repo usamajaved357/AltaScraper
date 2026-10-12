@@ -237,11 +237,20 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account,
             bits.append("%d cost%s could not be read as a number."
                         % (res["bad_number"],
                            "" if res["bad_number"] == 1 else "s"))
+        if res.get("needs_sku"):
+            bits.append("%d order%s more than one product, so the cost was not "
+                        "set: give each product its own row with its SKU."
+                        % (res["needs_sku"],
+                           " has" if res["needs_sku"] == 1 else "s have"))
+        if res["set"]:
+            bits.append("Each cost is what that order line cost in total; it "
+                        "was divided by the line's units.")
         if not bits:
             bits.append("Nothing in that file changed anything.")
         res["note"] = " ".join(bits)
         _keep(ok=res["set"], skipped=res["blank"],
-              errors=res["unknown_order"] + res["bad_number"],
+              errors=(res["unknown_order"] + res["bad_number"]
+                      + res.get("needs_sku", 0)),
               summary=res["note"], rows=res.get("rows") or [])
         return jsonify(res)
 

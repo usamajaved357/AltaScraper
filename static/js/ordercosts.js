@@ -70,9 +70,11 @@ function orderCostsTemplate(uncostedOnly){
   window.location = "/cogs/orders/template.csv?" + qs;
   _ocNote(uncostedOnly
     ? "Downloading the orders that have no cost yet. Fill in the <b>cost</b> "
-      + "column — the price you actually paid for that order — and upload it back."
+      + "column — the price you actually paid for that order line, all its "
+      + "units together — and upload it back."
     : "Downloading every order in this window. The <b>cost now</b> column shows "
-      + "what the app currently believes; fill in <b>cost</b> only where that is "
+      + "what the app currently believes for each whole line; fill in "
+      + "<b>cost</b> (all the line's units together) only where that is "
       + "wrong or missing. Rows left blank are skipped.");
 }
 

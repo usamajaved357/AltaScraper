@@ -46,6 +46,18 @@ def _f(v):
         return 0.0
 
 
+def _after_ads(contribution, ad_spend):
+    """A product's contribution with its ad spend taken off -- both bases.
+
+    Only when the spend is known: an unknown spend taken off as nought makes
+    every advertised product look better than it is, by exactly what is being
+    spent on it. The settlement basis read it, added the VAT, showed it and
+    said "after X of ad spend" -- and never took it off (12 Oct 2026)."""
+    if contribution is None or ad_spend is None:
+        return contribution
+    return round(contribution - _f(ad_spend), 2)
+
+
 def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     """One row per ASIN that had money move in the window, biggest revenue first.
 
@@ -195,9 +207,10 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         costed = int(d["cogs_units"] or 0)
         # The same rule the dashboard applies, called rather than repeated: a
         # bucket with any uncosted unit reports nothing at all.
-        contribution = _sd.profit_for([{
+        contribution = _after_ads(_sd.profit_for([{
             "units_shipped": units, "cogs_units": costed,
-            "cogs": _f(d["cogs"]), "net_proceeds": net}], allow_uncosted=True)
+            "cogs": _f(d["cogs"]), "net_proceeds": net}], allow_uncosted=True),
+            None if a is None else a.get("spend"))
 
         row = {
             "asin": asin,
@@ -381,11 +394,7 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
             "units_shipped": units, "cogs_units": costed,
             "cogs": cogs, "charges": charges, "net_proceeds": net}],
             allow_uncosted=True)
-        # AND ADVERTISING COMES OFF IT. Only when it is known: subtracting an
-        # unknown ad spend as if it were nought makes every advertised product
-        # look better than it is, by exactly what is being spent on it.
-        if contribution is not None and ad is not None:
-            contribution = round(contribution - ad, 2)
+        contribution = _after_ads(contribution, ad)
         # AND A ROW WHOSE FEE IS UNKNOWN CANNOT STATE A CONTRIBUTION EITHER.
         # The fee was left out, not estimated at nought, so the figure would
         # flatter this product by whatever Amazon charges on its unsettled part.
