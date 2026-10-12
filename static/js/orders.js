@@ -598,12 +598,18 @@ function ordersRender(){
   });
   // Profit only exists once the second pass has worked out what sold, so it is
   // shown as unknown until then rather than as zero.
-  let _pf = null, _pfCur = "", _pfKnown = 0, _pfBlank = 0;
+  // CANCELLED ORDERS ARE NOT SALES (the Sales and Finance screens leave them
+  // out), and an order not yet shipped is in, at an estimated fee, and said
+  // -- the owner's choice of 12 Oct 2026.
+  let _pf = null, _pfCur = "", _pfKnown = 0, _pfBlank = 0, _pfOpen = 0;
   (ORD.rows || []).forEach(function(r){
+    const st = String(r.status || "").toLowerCase();
+    if(st === "canceled" || st === "cancelled") return;
     if(r.profit === null || r.profit === undefined){ _pfBlank++; return; }
     _pf = (_pf === null ? 0 : _pf) + Number(r.profit);
     _pfCur = _pfCur || r.currency || "";
     _pfKnown++;
+    if(st === "pending" || st === "unshipped" || st === "partiallyshipped") _pfOpen++;
   });
   // NOTHING COUNTED IS NOT NOTHING SOLD.
   //
@@ -636,12 +642,20 @@ function ordersRender(){
            : ((s.orders ? ((s.units || 0) / s.orders).toFixed(1) : "0")
               + " per order")},
   ].concat(_revCards).concat([
-    {label: "Profit", value: (_pf === null ? "" : _oMoney(_pf, _pfCur)),
+    // ORDER PROFIT: before ads and the account's own charges, which belong to
+    // a period rather than an order -- the Sales page's Profit takes them off.
+    {label: "Order profit", value: (_pf === null ? "" : _oMoney(_pf, _pfCur)),
      tone: (_pf === null) ? "" : (_pf < 0 ? "bad" : "good"),
+     title: "What these orders made after Amazon's fees, their cost and any "
+          + "refund -- BEFORE advertising and the subscription. The Sales "
+          + "page's Profit takes those off as well, so it is lower.",
      note: (_pf === null)
            ? (ORD.profit ? "working out\u2026" : "Profit is off")
-           : (_pfBlank ? _pfKnown + " of " + (_pfKnown + _pfBlank)
-                         + " costed" : "all orders")},
+           : ((_pfBlank ? _pfKnown + " of " + (_pfKnown + _pfBlank)
+                          + " costed — the rest are not in it"
+                        : "before ads")
+              + (_pfOpen ? " · " + _pfOpen + " not shipped yet (fee estimated)"
+                         : ""))},
   ]));
 
   if(!ORD.rows.length){

@@ -350,6 +350,9 @@ def apply_refund(d, refund, vat_rate=None, order_total=None):
     fees_back = round(float(refund.get("refund_fees_returned") or 0.0), 2)
     d["refunded"] = round(back, 2)
     d["refund_fees_returned"] = fees_back
+    # What the refund took off the profit, so the panel's sum adds up:
+    # paid - VAT - fee - cost - refund_net = profit (12 Oct 2026).
+    d["refund_net"] = round(net_back - fees_back, 2)
     d["profit_before_refund"] = d["profit"]
     d["profit"] = round(float(d["profit"]) - net_back + fees_back, 2)
     # MARGIN over the same base as before (what the buyer paid, less VAT):
@@ -480,6 +483,11 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None,
         "vat": round(t_vat, 2),
         "vat_rate": vat_rate,
         "order_total": total,
+        # THE VAT OUT OF WHAT THE BUYER PAID -- the base profit_for works on,
+        # so the panel can draw paid -> VAT -> fee -> cost = profit and have it
+        # add up (it drew the lines' ItemPrice, before coupon and shipping).
+        "order_vat": (round(_vat_in(total, vat_rate), 2)
+                      if total is not None else None),
         "fees": round(t_fee, 2) if order_fee is not None else None,
         "fee_rate": rate,
         # WHERE THE FEE CAME FROM, so the panel can say "Amazon charged" rather
