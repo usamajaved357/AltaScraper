@@ -98,6 +98,16 @@ function salesDrawGrid(ser){
            const d = _sDeltaPct(shown, prev);
            let tip = m.label + ": " + txt;
            if(blank && shown === 0) tip += " — no orders that day";
+           // TOO HIGH, AND SAID (owner: "show profit as wrong ... the user
+           // should know he needs to add cogs"). The cell used to go blank;
+           // it now shows the figure in the warning colour with the reason.
+           const unc = (m.uncosted || [])[i] || 0;
+           if(unc > 0 && !blank){
+             tip += "\nTOO HIGH: " + unc + " unit" + (unc === 1 ? "" : "s")
+                  + " sold here " + (unc === 1 ? "has" : "have")
+                  + " no cost recorded, so nothing was taken off for "
+                  + (unc === 1 ? "it" : "them") + ".";
+           }
            if(d !== null && prev !== null && prev !== undefined){
              const sign = d > 0 ? "+" : "";
              tip += "\n" + sign + d.toFixed(1) + "% vs "
@@ -107,7 +117,9 @@ function salesDrawGrid(ser){
              else tip += (t.indexOf("45,212,168") >= 0)
                        ? " — better for profit" : " — worse for profit";
            }
-           return '<td'+(t?' style="background:'+t+'"':'')
+           const sty = (t ? 'background:' + t + ';' : '')
+                     + (unc > 0 && !blank ? 'color:var(--as-warning)' : '');
+           return '<td'+(sty?' style="'+sty+'"':'')
                 + ' title="'+_sEsc(tip)+'">'+_sEsc(txt)+'</td>';
          }).join("")
        + '</tr>';

@@ -731,6 +731,15 @@ function ppcaProfitability(j, cur){
                               ? ('<span style="color:var(--ppc-red)"> '
                                  + '<i class="ti ti-alert-triangle"></i> Profit may be '
                                  + 'too high' + uiHint(np.profit_gaps.join("; "))
+                                 + '</span>') : "")
+                           // Units with no cost: shown and said, as on Sales
+                           // (12 Oct 2026) -- it used to be a blank card.
+                           + (np.too_high
+                              ? ('<span style="color:var(--ppc-orange)"> '
+                                 + '<i class="ti ti-alert-triangle"></i> Too high: '
+                                 + np.uncosted_units + ' unit'
+                                 + (np.uncosted_units === 1 ? '' : 's')
+                                 + ' without a cost' + uiHint(np.too_high)
                                  + '</span>') : ""),
                     note: period,
                     // THE CARD IS THE SALES PAGE'S PROFIT, ADS ALREADY OFF. The

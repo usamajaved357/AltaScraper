@@ -744,14 +744,19 @@ function salesDrawCharts(ser){
     // The reason was already on the screen, under the cards, as the COGS
     // coverage note. It is said HERE too because here is where the dot is, and
     // it is the same fact from the same place rather than a second opinion.
+    // SINCE 12 OCT 2026 SUCH A DAY IS DRAWN, NOT DROPPED -- the owner's rule
+    // ("show profit as wrong ... the user should know he needs to add cogs"),
+    // the same as the Profit card -- and this says which days are too high.
     const _pm = (rows || []).filter(function(m){ return m.key === "profit"; })[0];
-    const _pdays = _pm ? (_pm.cells || []).filter(function(v){
-      return v !== null && v !== undefined; }).length : 0;
-    const _sparse = (_pm && _pdays > 0 && _pdays < Math.max(2, dates.length / 3))
-      ? ' <b>Profit</b> is drawn on only ' + _pdays + ' of these ' + dates.length
-        + ' days: a day is left out when any unit shipped that day has no cost '
-        + 'recorded, so the line breaks rather than guessing. Enter costs on the '
-        + 'Listings screen and the rest fill in.'
+    const _hiDays = _pm ? (_pm.uncosted || []).filter(function(n, i){
+      const v = (_pm.cells || [])[i];
+      return n > 0 && v !== null && v !== undefined; }).length : 0;
+    const _sparse = _hiDays
+      ? ' <b>Profit</b> is too high on ' + _hiDays + ' of these ' + dates.length
+        + ' days: some units sold then have no cost recorded, so nothing was '
+        + 'taken off for them (those grid cells are in the warning colour). Add '
+        + 'the costs on the All Orders screen (Sheets &gt; Upload costs) or the '
+        + 'Listings screen.'
       : '';
     let note = (SALES._chartBasis === "order")
       ? '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'

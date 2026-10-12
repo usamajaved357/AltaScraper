@@ -663,8 +663,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         for key, label, kind, good, _how in _sd.METRICS:
             cells = [_sd.aggregate(buckets[b], key) for b in order]
             if any(c is not None for c in cells):
-                metrics.append({"key": key, "label": label, "kind": kind,
-                                "good": good, "cells": cells})
+                m = {"key": key, "label": label, "kind": kind,
+                     "good": good, "cells": cells}
+                # A profit cell over uncosted units is shown and marked too
+                # high (sales_data.aggregate), so the grid needs the count.
+                if key in ("profit", "margin"):
+                    m["uncosted"] = [_sd.uncosted_units(buckets[b]) for b in order]
+                metrics.append(m)
         # IS ADVERTISING EVEN CONNECTED FOR THIS ACCOUNT?
         #
         # The metrics list already drops spend, ACOS and TACOS when there is

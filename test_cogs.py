@@ -188,9 +188,17 @@ check("  not a margin either", d2["margin_pct"], None)
 check("  though its cost of goods is still shown", d2["cogs"], 10.0)
 
 print("\n=== a week containing one uncosted day is not 'the rest of the week' ===")
+# RE-PINNED 12 Oct 2026, the owner's rule ("if no cogs are added show profit
+# as wrong ... the user should know he needs to add cogs"): the bucket was
+# withheld here while the Sales card showed a figure for the same days. It is
+# shown now, and uncosted_units() says how far too high -- never a partial
+# week passed off as the whole (the uncosted day's revenue is IN it).
 w = sd.aggregate(ser, "profit")
-check("the whole bucket is withheld", w, None)
-check("  and so is its margin", sd.aggregate(ser, "margin_pct"), None)
+check("the bucket is shown, not withheld", w is not None, True)
+truthy_ = (w or 0) > sd.aggregate([d1], "profit")
+check("  and it includes the uncosted day, so it is too high", truthy_, True)
+check("  and says by how many units", sd.uncosted_units(ser) > 0, True)
+check("  and so is its margin", sd.aggregate(ser, "margin_pct") is not None, True)
 check("but the costed day alone still reports",
       sd.aggregate([d1], "profit"), 31.0)
 check("  and fees still sum across both", sd.aggregate(ser, "total_fees"), 17.25)
@@ -215,7 +223,11 @@ keys = [m["key"] for m in j2["metrics"]]
 for k in ("cogs", "profit", "margin_pct", "units_shipped"):
     check("the grid offers %s" % k, k in keys, True)
 prof = [m for m in j2["metrics"] if m["key"] == "profit"][0]
-check("profit is blank on the uncosted day, not zero", prof["cells"], [31.0, None])
+# Shown in the warning colour with the count, not blank (re-pinned 12 Oct 2026).
+check("profit on the uncosted day is shown, too high", prof["cells"][0], 31.0)
+check("  the uncosted day has a figure", prof["cells"][1] is not None, True)
+check("  and the grid is told which day is too high",
+      [bool(n) for n in prof.get("uncosted", [])], [False, True])
 
 print("\n=== a cost typed later reaches a day only when that day is re-pulled ===")
 # The screen tells the user to set a cost and then press Sync. This is that path,

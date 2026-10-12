@@ -1196,12 +1196,26 @@ def aggregate(rows, key):
         return _pct(_sum(rows, how[1]), _sum(rows, how[2]))
     if how[0] == "weighted":
         return _weighted(rows, key, how[1])
+    # THE OWNER'S RULE, HERE TOO: "if no cogs are added show profit as wrong
+    # ... the user should know he needs to add cogs". A bucket with an uncosted
+    # unit used to be blank on the grid, PPC NET PROFIT and Brand view while
+    # the Sales card showed a figure -- three screens, two answers (12 Oct
+    # 2026). It is shown now, and uncosted_units() says how far too high.
     if how[0] == "profit":
-        return profit_for(rows)
+        return profit_for(rows, allow_uncosted=True)
     if how[0] == "margin":
-        p, charged = profit_for(rows), _sum(rows, "principal")
+        p, charged = profit_for(rows, allow_uncosted=True), _sum(rows, "principal")
         return _pct(p, charged) if p is not None else None
     return _sum(rows, key)
+
+
+def uncosted_units(rows):
+    """Units shipped in these rows with no cost recorded -> int. A profit over
+    them is too high by what those units cost; every screen showing one says
+    so (aggregate's profit and margin)."""
+    units = _sum(rows, "units_shipped") or 0
+    costed = _sum(rows, "cogs_units") or 0
+    return max(0, int(round(float(units) - float(costed))))
 
 
 def profit_for(rows, allow_uncosted=False):
@@ -1210,9 +1224,10 @@ def profit_for(rows, allow_uncosted=False):
     `allow_uncosted=True` is the owner's rule for a figure that carries its own
     warning: "if no cogs are added show profit as wrong ... the user should know
     he needs to add cogs" (domain/order_profit.py). The uncosted units then add
-    revenue and no cost, and the CALLER must say the figure is too high. The
-    daily grid keeps the default, because a cell has nowhere to put that
-    warning.
+    revenue and no cost, and the CALLER must say the figure is too high. Every
+    screen now does (12 Oct 2026): aggregate() passes True and the grid marks
+    the cell with uncosted_units(); the default is kept for callers that have
+    nowhere to say it.
 
     Not the sum of the daily profits: a week containing one uncosted day would
     then report the other six days' profit as the week's, which is a smaller
@@ -1330,6 +1345,8 @@ def totals(config_path, workspace_id, marketplace, start, end, asin=None,
     # the account's own charges, its other postings (signed), own costs.
     for k in ("ad_cost", "account_charges", "other_amazon", "own_costs"):
         out[k] = _sum(rows, k)
+    # How far the profit above is too high, for the screen to say (aggregate).
+    out["uncosted_units"] = uncosted_units(rows)
     return out
 
 

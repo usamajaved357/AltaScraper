@@ -1326,13 +1326,10 @@ def net_profit(config_path, workspace_id, marketplace, start, end, totals=None):
     every unit is costed" rule all live in sales_data, and a second
     implementation would have to track every one of them.
 
-    IT WITHHOLDS FOR THE SAME REASON THE SALES PAGE DOES. An uncosted unit
-    brings revenue and no cost, so a total including it is too high -- and this
-    app's rule everywhere is that a bucket with any uncosted unit reports
-    nothing rather than something flattering. When Sales withholds, this
-    withholds, and says which units are missing a cost. That is also the honest
-    answer to the report above: the two screens differ because one of them is
-    refusing to answer, not because they disagree about the money.
+    AN UNCOSTED UNIT IS COUNTED AND SAID, as on the Sales page (12 Oct 2026):
+    the owner's rule is to show the profit and say it is too high, never to
+    leave it blank on one screen while another shows it. `uncosted_units` and
+    `too_high` carry that to the card.
     """
     from domain import sales_data as _sd
 
@@ -1369,6 +1366,15 @@ def net_profit(config_path, workspace_id, marketplace, start, end, totals=None):
 
     sp = st.get("profit")
     out["sales_profit"] = sp
+    unc = int(st.get("uncosted_units") or 0)
+    out["uncosted_units"] = unc
+    if unc and sp is not None:
+        out["too_high"] = (
+            "TOO HIGH: %d unit%s sold in this window %s no cost recorded, so "
+            "nothing was taken off for %s -- the same figure, and the same "
+            "warning, as the Sales page." % (unc, "" if unc == 1 else "s",
+                                             "has" if unc == 1 else "have",
+                                             "it" if unc == 1 else "them"))
     # What ads COST the profit (VAT and invoices included, domain/ad_cost) --
     # `ad_spend` above stays the Ads API's own figure.
     out["ad_cost"] = st.get("ad_cost")
@@ -1387,10 +1393,8 @@ def net_profit(config_path, workspace_id, marketplace, start, end, totals=None):
         except Exception:
             gap = ""
         out["why"] = (
-            ("Some of the units sold in this window have no cost recorded (%s), "
-             "so profit is left blank rather than counted as if those units "
-             "were free. The Sales page leaves it blank for the same reason and "
-             "over the same days — that is why the two screens differ." % gap)
+            ("The account's profit for these days could not be worked out "
+             "(%s)." % gap)
             if gap else
             ("The Sales page cannot work out a profit for these days, so "
              "neither can this. They read the same figures."))

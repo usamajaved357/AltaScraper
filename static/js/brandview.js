@@ -28,6 +28,17 @@ function _bvEsc(s){
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/* A profit over units with no cost: shown, in the warning colour, and the
+ * reason on hover -- the owner's rule on every profit screen (12 Oct 2026). */
+function _bvHigh(html, uncosted){
+  const n = Number(uncosted || 0);
+  if(!n) return html;
+  return '<span style="color:var(--as-warning)" title="Too high: ' + n
+    + ' unit' + (n === 1 ? '' : 's') + ' sold here ' + (n === 1 ? 'has' : 'have')
+    + ' no cost recorded, so nothing was taken off for '
+    + (n === 1 ? 'it' : 'them') + '.">' + html + '</span>';
+}
+
 function _bvMoney(v, cur){
   if(v === null || v === undefined) return '<span class="cc">—</span>';
   if(typeof curMoney === "function") return _bvEsc(curMoney(v, cur || ""));
@@ -117,7 +128,7 @@ function brandviewDraw(){
         + ' ' + _bvDelta(b.ordered_sales, b.prev_ordered_sales) + '</div>'
         + '<div class="cc bvcursub">' + _bvNum(b.units) + ' units · '
         + _bvNum(b.orders) + ' orders · profit '
-        + (b.profit_complete ? _bvMoney(b.profit, b.currency)
+        + (b.profit_complete ? _bvHigh(_bvMoney(b.profit, b.currency), b.uncosted_units)
             : '<span class="cc" title="One of these marketplaces has a product '
               + 'with no cost recorded, so a subtotal would understate what it '
               + 'cost and overstate what was made.">not all costed</span>')
@@ -153,7 +164,7 @@ function brandviewDraw(){
         + '<td>' + _bvNum(r.orders) + '</td>'
         + '<td>' + _bvMoney(r.total_fees, r.currency) + '</td>'
         + '<td>' + _bvMoney(r.cogs, r.currency) + '</td>'
-        + '<td>' + _bvMoney(r.profit, r.currency) + '</td>'
+        + '<td>' + _bvHigh(_bvMoney(r.profit, r.currency), r.uncosted_units) + '</td>'
         + '<td>' + (r.margin_pct === null || r.margin_pct === undefined
             ? '<span class="cc">—</span>'
             : _bvEsc(Number(r.margin_pct).toFixed(1)) + '%') + '</td>'
