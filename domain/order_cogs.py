@@ -321,6 +321,24 @@ def freeze_range(config_path, workspace_id, marketplace, start, end, mode,
             "kept_order_costs": kept_order, "mode": mode}
 
 
+def ensure_costed(config_path, workspace_id, marketplace, start, end):
+    """Freeze the product cost onto every not-yet-costed order line in a window
+    -> freeze_range's report, or {"error": ...}. Never raises.
+
+    THE STEP EVERY PROFIT SCREEN TAKES BEFORE IT READS. It used to be taken only
+    by /sales/summary (and part-way through it, after the grid's totals were
+    already read), so P&L, Finance, PPC and Brand view showed an order as
+    uncosted -- or costed -- depending on which page had been opened first
+    (12 Oct 2026). Lines that already carry a cost are never touched, an
+    order's own cost least of all (freeze_range)."""
+    try:
+        from domain import cogs_store as _cs
+        return freeze_range(config_path, workspace_id, marketplace, start, end,
+                            None, _cs.all_overrides(config_path))
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
 def lines_of_order(config_path, workspace_id, marketplace, order_id, sku=None):
     """[{"sku", "units"}] -- the lines of one order, optionally one SKU's.
 

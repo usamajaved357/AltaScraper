@@ -127,8 +127,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         vat = _sd.vat_rate_for(_cfg, wsid)
 
         rows = []
+        from domain import order_cogs as _oc
         for mkt in _marketplaces_for(acc, wsid):
             try:
+                _oc.ensure_costed(CONFIG_PATH, wsid, mkt, start, end)
+                _oc.ensure_costed(CONFIG_PATH, wsid, mkt, pstart, pend)
                 now = _sd.totals(CONFIG_PATH, wsid, mkt, start, end,
                                  vat_rate=vat, basis="order")
                 was = _sd.totals(CONFIG_PATH, wsid, mkt, pstart, pend,
