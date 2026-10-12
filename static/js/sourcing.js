@@ -449,10 +449,18 @@ function sourcingRender(j){
     // rules ask for. Same cost, different price, so different profit -- and
     // with both called plain "Profit" the pair read as a contradiction rather
     // than as a before and an after.
-    +  '<th title="What is left per unit after Amazon, postage and ads, at the '
-    +  'price this SKU sells for TODAY. The tiles in the open panel answer the '
-    +  'same question about the price the rules would set instead.">Profit now</th>'
-    +  '<th title="Today&#39;s profit as a share of the cash you put in">ROI now</th>'
+    // THE NEXT SALE, NOT THE LAST ONES (owner's choice, 12 Oct 2026): worked
+    // out at today's supplier price, which is what the repricer acts on --
+    // so it differs from Sales and All Orders, which use what you actually
+    // paid. The line under it is that measured figure, from the Finance
+    // screen's own calculation, so the two can be read side by side.
+    +  '<th title="What the NEXT sale would leave per unit after Amazon, postage '
+    +  'and ads, at the price this SKU sells for today and the supplier&#39;s '
+    +  'price today. Under it: what each unit REALLY left over the last 30 '
+    +  'days (after fees, your recorded cost, refunds and its ads) - the same '
+    +  'figure the Finance screen shows. The tiles in the open panel answer the '
+    +  'next-sale question at the price the rules would set instead.">Profit next sale</th>'
+    +  '<th title="The next sale&#39;s profit as a share of the cash you would put in">ROI next sale</th>'
     +  '<th title="What this SKU&#39;s cheapest supplier has been charging">Trend</th>'
     +  '<th style="width:58px" title="Armed (bolt) or dry run, which way the price may move (up only / both ways / = floor), and the status dot">Rule</th>'
     +  '</tr></thead><tbody id="rp_body">';

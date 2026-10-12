@@ -260,6 +260,40 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
     return rows, totals
 
 
+def recent_per_unit(config_path, workspace_id, marketplace, days=30,
+                    vat_rate=None, today=None):
+    """{asin: {profit_per_unit, units, uncosted_units, start, end}} -- what
+    each product REALLY left per unit sold over the last `days`, after Amazon's
+    fees, its cost, refunds and its own ad spend. Never raises ({} on failure).
+
+    The Repricer's "profit" is the next sale at today's supplier price (the
+    owner's choice, 12 Oct 2026); this is the measured figure shown beside it,
+    from by_product_orders -- the Finance screen's own calculation, so the two
+    screens cannot drift (Rule 12)."""
+    import datetime as _dt
+    end = (today or _dt.date.today())
+    start = end - _dt.timedelta(days=max(1, int(days)) - 1)
+    s, e = start.isoformat(), end.isoformat()
+    try:
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(config_path, workspace_id, marketplace, s, e)
+        rows, _t = by_product_orders(config_path, workspace_id, marketplace,
+                                     s, e, vat_rate=vat_rate)
+    except Exception:
+        return {}
+    out = {}
+    for r in rows or []:
+        units = int(r.get("units") or 0)
+        c = r.get("contribution")
+        if not r.get("asin") or not units or c is None:
+            continue
+        out[r["asin"]] = {"profit_per_unit": round(float(c) / units, 2),
+                          "units": units,
+                          "uncosted_units": int(r.get("uncosted_units") or 0),
+                          "start": s, "end": e}
+    return out
+
+
 def by_product_orders(config_path, workspace_id, marketplace, start, end,
                       vat_rate=None):
     """The same table, on the ORDER calendar rather than the money calendar.
