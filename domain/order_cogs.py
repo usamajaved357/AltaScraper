@@ -333,10 +333,27 @@ def ensure_costed(config_path, workspace_id, marketplace, start, end):
     order's own cost least of all (freeze_range)."""
     try:
         from domain import cogs_store as _cs
-        return freeze_range(config_path, workspace_id, marketplace, start, end,
-                            None, _cs.all_overrides(config_path))
+        # FROM 90 DAYS EARLIER: a day's settled money can belong to an order
+        # placed weeks before it (finance_fetch re-reads 95 days for that
+        # reason), and the re-cost below prices those orders too.
+        try:
+            _from = (_dt.date.fromisoformat(str(start)[:10])
+                     - _dt.timedelta(days=90)).isoformat()
+        except ValueError:
+            _from = start
+        out = freeze_range(config_path, workspace_id, marketplace, _from, end,
+                           None, _cs.all_overrides(config_path))
     except Exception as e:
         return {"error": str(e)[:200]}
+    # AND THE SETTLED FIGURES FOLLOW (finance_data.recost): a cost set after
+    # Amazon's money was pulled used to wait for a re-pull to reach them.
+    try:
+        from domain import finance_data as _fd
+        out["finance_recost"] = _fd.recost(config_path, workspace_id,
+                                           marketplace, start, end)
+    except Exception as e:
+        out["finance_recost"] = {"error": str(e)[:200]}
+    return out
 
 
 def lines_of_order(config_path, workspace_id, marketplace, order_id, sku=None):

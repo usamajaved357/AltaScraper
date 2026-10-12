@@ -307,17 +307,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         from domain import cogs as _cogs
         cov = _cogs.coverage(CONFIG_PATH, (_acc or {}).get("id") or wsid, mkt,
                              _cogs_overrides())
-        # "and it fills in" would NOT have been true. Cost is priced onto each day
-        # when that day's finance data is pulled, so a cost typed today does not
-        # reach days already stored -- pressing Sync re-fetches them and re-prices
-        # them, and only then does profit appear. Saying so is the difference
-        # between a screen that looks broken and one that tells you the next step.
+        # A COST SET TODAY REACHES EVERY DAY NOW, already-pulled ones included
+        # (order_cogs.ensure_costed -> finance_data.recost, 12 Oct 2026), and a
+        # profit over uncosted units is shown and marked too high rather than
+        # withheld -- so the note says that, not "press Sync".
         cov["note"] = ("" if cov["unknown"] == 0 else
-                       "%d of %d SKUs have no cost, so profit is only shown for "
-                       "periods where every unit shipped was costed. Set a cost on "
-                       "the listings screen, or rebuild the SKU, then press Sync -- "
-                       "costs are applied when each day is pulled, so already-pulled "
-                       "days need re-pulling before profit appears."
+                       "%d of %d SKUs have no cost, so profit is TOO HIGH wherever "
+                       "they sold (those figures are marked). Add the costs on the "
+                       "All Orders screen (Sheets > Upload costs) or the Listings "
+                       "screen and the figures update."
                        % (cov["unknown"], cov["total"]))
 
         # PROFIT ON THE ORDERS PLACED IN THIS WINDOW, from the owner's own cost

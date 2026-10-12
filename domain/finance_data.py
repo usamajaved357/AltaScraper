@@ -899,3 +899,90 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None):
         "AND date>=? AND date<=? AND asin=? ORDER BY date",
         (workspace_id, marketplace, start, end, asin or "*")).fetchall()
     return {r["date"]: dict(r) for r in rows}
+
+
+def recost(config_path, workspace_id, marketplace, start, end):
+    """Bring finance_daily's cost of goods up to the costs held NOW -> report.
+
+    finance_daily.cogs is priced when Amazon's money is pulled, so a cost set
+    afterwards -- an order-cost sheet uploaded, a product cost typed -- reached
+    the settled figures (the Finance settlement tab, the money-basis and
+    product-filtered Sales grid) only after "Re-read 95 days" (owner, 12 Oct
+    2026: "accurate profit numbers ... inside each tab of finance").
+
+    Rebuilt from what is already stored, with no call to Amazon: order_fees
+    holds the units each order settled on each day, order_lines what each of
+    its units costs now (order_cogs: an order's own cost, else the product's).
+
+    ONLY A DAY THAT FULLY RECONCILES IS REWRITTEN. If the units settled on a day
+    cannot all be traced to orders with known lines -- an order older than the
+    order history, a part of the pull that failed -- the day keeps the cost it
+    was given, because a partial rebuild would drop real costs and raise the
+    profit. A product row is rewritten only when its own units reconcile too.
+    """
+    from collections import defaultdict
+    conn = _db.get_db(config_path)
+    s, e = str(start)[:10], str(end)[:10]
+    fees = conn.execute(
+        "SELECT substr(posted_date,1,10) d, order_id, units FROM order_fees "
+        "WHERE workspace_id=? AND marketplace=? AND units > 0 "
+        "  AND substr(posted_date,1,10) >= ? AND substr(posted_date,1,10) <= ?",
+        (workspace_id, marketplace, s, e)).fetchall()
+    out = {"days": 0, "rewritten": 0, "kept": 0}
+    if not fees:
+        return out
+    oids = sorted({r["order_id"] for r in fees})
+    lines = defaultdict(list)
+    for i in range(0, len(oids), 500):
+        part = oids[i:i + 500]
+        for L in conn.execute(
+                "SELECT order_id, COALESCE(asin,'') asin, COALESCE(units,0) units, "
+                "cogs FROM order_lines WHERE workspace_id=? AND order_id IN (%s)"
+                % ",".join("?" * len(part)), [workspace_id] + part):
+            lines[L["order_id"]].append(L)
+
+    want = defaultdict(lambda: {"units": 0.0, "cogs": 0.0, "cogs_units": 0.0})
+    broken = set()
+    for f in fees:
+        ls = [L for L in lines.get(f["order_id"]) or [] if int(L["units"] or 0) > 0]
+        if not ls:
+            broken.add(f["d"])
+            continue
+        share = min(1.0, float(f["units"]) / float(sum(int(L["units"]) for L in ls)))
+        for L in ls:
+            u = int(L["units"]) * share
+            for key in ((f["d"], "*"), (f["d"], L["asin"] or None)):
+                if key[1] is None:
+                    continue
+                w = want[key]
+                w["units"] += u
+                if L["cogs"] is not None:
+                    w["cogs"] += float(L["cogs"]) * u
+                    w["cogs_units"] += u
+
+    have = {(r["date"], r["asin"]): r for r in conn.execute(
+        "SELECT date, asin, units, cogs, cogs_units FROM finance_daily "
+        "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=?",
+        (workspace_id, marketplace, s, e))}
+    days = {d for d, _a in want}
+    out["days"] = len(days)
+    for (d, a), w in sorted(want.items()):
+        row = have.get((d, a))
+        if row is None or d in broken:
+            out["kept"] += 1
+            continue
+        # The day's own units must be exactly what the orders account for.
+        if int(round(w["units"])) != int(row["units"] or 0):
+            out["kept"] += 1
+            continue
+        cogs, cu = round(w["cogs"], 4), int(round(w["cogs_units"]))
+        if (round(float(row["cogs"] or 0), 4) == cogs
+                and int(row["cogs_units"] or 0) == cu):
+            continue
+        conn.execute(
+            "UPDATE finance_daily SET cogs=?, cogs_units=? WHERE workspace_id=? "
+            "AND marketplace=? AND date=? AND asin=?",
+            (cogs, cu, workspace_id, marketplace, d, a))
+        out["rewritten"] += 1
+    conn.commit()
+    return out
