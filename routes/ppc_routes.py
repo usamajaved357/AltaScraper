@@ -772,6 +772,26 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
         except Exception:
             return False
 
+    _PROFIT_NOTE = ("Profit is what the ad sales left after Amazon's fee, the "
+                    "stock cost and the ad spend (with the VAT you pay on it), "
+                    "at this account's average fee and stock-cost rates for "
+                    "these days -- the same figure PPC Analytics shows.")
+    _PROFIT_UNKNOWN = ("Profit is not shown: this account's fee or stock-cost "
+                       "rate for these days could not be measured yet.")
+
+    def _ppc_rates(aid, mkt, start, end):
+        """ppc_analytics.rates for the report's days, after costing them --
+        or None when there are no days or they cannot be measured."""
+        if not (aid and mkt and start and end):
+            return None
+        try:
+            from domain import order_cogs as _oc
+            from domain import ppc_analytics as _pa
+            _oc.ensure_costed(CONFIG_PATH, aid, mkt, start, end)
+            return _pa.rates(CONFIG_PATH, aid, mkt, start, end)
+        except Exception:
+            return None
+
     @app.route("/ppc/analytics")
     def ppc_analytics():
         """Everything the advertising screen draws, from the stored report."""
@@ -852,6 +872,9 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
         if _ts and _te:
             total_sales = _pv.total_sales_for(CONFIG_PATH, aid, mkt, _ts, _te)
         totals = _pv.totals(rows, total_sales=total_sales)
+        # PROFIT ON THE SAME RATES AS PPC ANALYTICS, for the same days: the
+        # account's fee rate, stock-cost rate and VAT (ppc_view.profit_of).
+        rates = _ppc_rates(aid, mkt, _ts, _te)
 
         # AGAINST THE PREVIOUS REPORT. Orbit puts a period-over-period change
         # under every headline figure and it is most of what makes them useful:
@@ -877,9 +900,13 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
             "totals": totals,
             "change": change,
             "compared_with": (all_reports[1] if change is not None else None),
-            "terms": _pv.by_term(rows, brands)[:400],
-            "match_types": _pv.by_match_type(rows),
-            "campaigns": _pv.by_campaign(rows),
+            "terms": _pv.by_term(rows, brands, rates)[:400],
+            "match_types": _pv.by_match_type(rows, rates),
+            "campaigns": _pv.by_campaign(rows, rates),
+            "profit_note": (_PROFIT_NOTE if (rates
+                                             and rates.get("fee_rate") is not None
+                                             and rates.get("cogs_rate") is not None)
+                            else _PROFIT_UNKNOWN),
             "branded": _pv.branded_split(rows, brands),
             "brand_terms": brands,
             # Whether the figures on this page follow the date picker, and why.
@@ -907,7 +934,9 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
             return jsonify({"ok": False,
                             "error": "no report to export"}), 400
         rows = _pv.load_rows(CONFIG_PATH, aid, mkt, meta["report_id"])
-        terms = _pv.by_term(rows, _pv.brand_terms(CONFIG_PATH, aid))
+        terms = _pv.by_term(rows, _pv.brand_terms(CONFIG_PATH, aid),
+                            _ppc_rates(aid, mkt, meta.get("date_from"),
+                                       meta.get("date_to")))
         name = "search-terms-%s-%s-%s.csv" % (aid or "account", mkt or "",
                                               meta.get("date_to") or "")
         return Response(

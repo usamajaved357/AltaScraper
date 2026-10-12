@@ -119,8 +119,11 @@ truthy("Escape closes the preview and stops there",
        /ev\.stopPropagation\(\);\s*\n\s*ilPreviewClose\(\);/.test(LIB));
 truthy("  so the library behind it stays open",
        /reach the library behind it and shut both/.test(LIB));
+// Re-pinned 12 Oct 2026: the handler is now added in the CAPTURE phase (so it
+// runs before the product page's and escape.js's Escape handlers), and a
+// listener added with capture is only removed by a call that passes it too.
 truthy("the key handler is removed when it closes",
-       /document\.removeEventListener\("keydown", _ilPreviewKey\)/.test(LIB));
+       /document\.removeEventListener\("keydown", _ilPreviewKey, true\)/.test(LIB));
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

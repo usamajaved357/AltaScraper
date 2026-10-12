@@ -23,6 +23,7 @@ WHAT IS DELIBERATELY NOT GUESSED
     * Recording NEVER raises and never blocks the call it is measuring. A
       failure to write a usage row must not fail a listing generation.
 """
+import threading
 import time
 
 from data import db as _db
@@ -201,6 +202,29 @@ def cost_from_openrouter(payload):
 # ledger as "unknown", which is precisely the spend worth knowing about.
 CONTEXT = {"feature": "", "workspace_id": "", "sku": "", "config_path": ""}
 
+# AND THE STEP'S OWN THREAD KEEPS ITS NAME TOO. CONTEXT above is one value for
+# the whole process, and every web request clears its feature on the way in
+# (dashboard before_request) -- while a batch image call waits 30-90 seconds
+# for the provider, the page polling its progress every two seconds wiped the
+# name, and the call was filed as "call from /": $34.59 of $49.24 on
+# nestwell_goods (owner, 12 Oct 2026: "I see there is a lot of AI spend").
+# A name set on a thread is read first by calls on that same thread; CONTEXT
+# remains the fallback, so a name a route sets still reaches a worker that set
+# none of its own. And the recorders read the name when the call STARTS.
+_TL = threading.local()
+
+
+def current(key):
+    """The context value a call made on THIS thread should be recorded with."""
+    v = getattr(_TL, key, None)
+    return v if v else (CONTEXT.get(key) or "")
+
+
+def set_step(name):
+    """Name the step about to call a provider -- on this thread and globally."""
+    CONTEXT["feature"] = name
+    _TL.feature = name
+
 
 def unnamed_feature():
     """A name for a call that did not name itself.
@@ -257,6 +281,8 @@ def set_context(feature=None, workspace_id=None, sku=None, config_path=None):
                  ("sku", sku), ("config_path", config_path)):
         if v is not None:
             CONTEXT[k] = v
+            if k in ("feature", "sku"):
+                setattr(_TL, k, v)
 
 
 def install_anthropic_recorder(config_path):
@@ -292,6 +318,9 @@ def install_anthropic_recorder(config_path):
         t0 = time.time()
         model = kwargs.get("model") or (args[0] if args else "") or ""
         cp = CONTEXT.get("config_path") or config_path
+        # WHAT THIS CALL IS FOR, read NOW -- not after a reply that can take a
+        # minute, by which time another request has cleared CONTEXT.
+        feat, sku = current("feature"), current("sku")
         try:
             resp = original(self, *args, **kwargs)
         except Exception as e:
@@ -299,19 +328,19 @@ def install_anthropic_recorder(config_path):
             # must not look free.
             # "" rather than "unknown": record() then files it under the
             # request that made it (unnamed_feature), which can be looked up.
-            record(cp, feature=CONTEXT.get("feature") or "",
+            record(cp, feature=feat,
                    provider="anthropic", model=model,
                    workspace_id=whose(),
                    ok=False, error=str(e)[:200],
-                   sku=CONTEXT.get("sku") or "",
+                   sku=sku,
                    ms=int((time.time() - t0) * 1000))
             raise
         i, o = tokens_from_anthropic(resp)
-        record(cp, feature=CONTEXT.get("feature") or "",
+        record(cp, feature=feat,
                provider="anthropic", model=model,
                workspace_id=whose(),
                input_tokens=i, output_tokens=o,
-               sku=CONTEXT.get("sku") or "",
+               sku=sku,
                ms=int((time.time() - t0) * 1000))
         return resp
 

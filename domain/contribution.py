@@ -46,6 +46,40 @@ def _f(v):
         return 0.0
 
 
+def _settled_account_figure(totals):
+    """WHAT THE ACCOUNT KEPT on the settlement basis, as opposed to what the
+    products contributed between them: less the fees and the ad spend no row
+    carries (the note says both come off). Only when the contribution is known
+    at all: a real cost off an unknown is an unknown, not a negative."""
+    if totals.get("contribution") is not None and (
+            totals.get("unattributed_fees") or totals.get("unattributed_ad_spend")):
+        totals["account_contribution"] = round(
+            totals["contribution"] - (totals.get("unattributed_fees") or 0.0)
+            - (totals.get("unattributed_ad_spend") or 0.0), 2)
+
+
+def _unmatched_ads(ads, rows):
+    """Per-product ad spend (VAT added) on products with NO row here -> float.
+    It comes off no row, so it is named rather than dropped while the card says
+    "after X of ad spend" (settlement basis; review, 12 Oct 2026)."""
+    shown = {r["asin"] for r in rows}
+    gap = round(sum(_f(a.get("spend")) for k, a in (ads or {}).items()
+                    if k not in shown), 2)
+    return gap if gap >= 0.01 else 0.0
+
+
+def _after_ads(contribution, ad_spend):
+    """A product's contribution with its ad spend taken off -- both bases.
+
+    Only when the spend is known: an unknown spend taken off as nought makes
+    every advertised product look better than it is, by exactly what is being
+    spent on it. The settlement basis read it, added the VAT, showed it and
+    said "after X of ad spend" -- and never took it off (12 Oct 2026)."""
+    if contribution is None or ad_spend is None:
+        return contribution
+    return round(contribution - _f(ad_spend), 2)
+
+
 def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     """One row per ASIN that had money move in the window, biggest revenue first.
 
@@ -195,9 +229,10 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         costed = int(d["cogs_units"] or 0)
         # The same rule the dashboard applies, called rather than repeated: a
         # bucket with any uncosted unit reports nothing at all.
-        contribution = _sd.profit_for([{
+        contribution = _after_ads(_sd.profit_for([{
             "units_shipped": units, "cogs_units": costed,
-            "cogs": _f(d["cogs"]), "net_proceeds": net}], allow_uncosted=True)
+            "cogs": _f(d["cogs"]), "net_proceeds": net}], allow_uncosted=True),
+            None if a is None else a.get("spend"))
 
         row = {
             "asin": asin,
@@ -238,13 +273,43 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
     rows.sort(key=lambda x: (-(x["revenue"] or 0), x["asin"]))
     totals = totals_for(rows)
     totals.update(unattributed(conn, workspace_id, marketplace, start, end, rows))
-    # WHAT THE ACCOUNT KEPT, as opposed to what the products contributed between
-    # them. Only when the contribution is known at all: subtracting a real cost
-    # from an unknown gives an unknown, not a negative.
-    if totals.get("contribution") is not None and totals.get("unattributed_fees"):
-        totals["account_contribution"] = round(
-            totals["contribution"] - totals["unattributed_fees"], 2)
+    totals["unattributed_ad_spend"] = _unmatched_ads(ads, rows)
+    _settled_account_figure(totals)
     return rows, totals
+
+
+def recent_per_unit(config_path, workspace_id, marketplace, days=30,
+                    vat_rate=None, today=None):
+    """{asin: {profit_per_unit, units, uncosted_units, start, end}} -- what
+    each product REALLY left per unit sold over the last `days`, after Amazon's
+    fees, its cost, refunds and its own ad spend. Never raises ({} on failure).
+
+    The Repricer's "profit" is the next sale at today's supplier price (the
+    owner's choice, 12 Oct 2026); this is the measured figure shown beside it,
+    from by_product_orders -- the Finance screen's own calculation, so the two
+    screens cannot drift (Rule 12)."""
+    import datetime as _dt
+    end = (today or _dt.date.today())
+    start = end - _dt.timedelta(days=max(1, int(days)) - 1)
+    s, e = start.isoformat(), end.isoformat()
+    try:
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(config_path, workspace_id, marketplace, s, e)
+        rows, _t = by_product_orders(config_path, workspace_id, marketplace,
+                                     s, e, vat_rate=vat_rate)
+    except Exception:
+        return {}
+    out = {}
+    for r in rows or []:
+        units = int(r.get("units") or 0)
+        c = r.get("contribution")
+        if not r.get("asin") or not units or c is None:
+            continue
+        out[r["asin"]] = {"profit_per_unit": round(float(c) / units, 2),
+                          "units": units,
+                          "uncosted_units": int(r.get("uncosted_units") or 0),
+                          "start": s, "end": e}
+    return out
 
 
 def by_product_orders(config_path, workspace_id, marketplace, start, end,
@@ -381,11 +446,7 @@ def by_product_orders(config_path, workspace_id, marketplace, start, end,
             "units_shipped": units, "cogs_units": costed,
             "cogs": cogs, "charges": charges, "net_proceeds": net}],
             allow_uncosted=True)
-        # AND ADVERTISING COMES OFF IT. Only when it is known: subtracting an
-        # unknown ad spend as if it were nought makes every advertised product
-        # look better than it is, by exactly what is being spent on it.
-        if contribution is not None and ad is not None:
-            contribution = round(contribution - ad, 2)
+        contribution = _after_ads(contribution, ad)
         # AND A ROW WHOSE FEE IS UNKNOWN CANNOT STATE A CONTRIBUTION EITHER.
         # The fee was left out, not estimated at nought, so the figure would
         # flatter this product by whatever Amazon charges on its unsettled part.

@@ -196,6 +196,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         except Exception:
             _promos_by_sku = {}
         _policy_days = _run.shipping_policy_days(CONFIG_PATH)
+        # WHAT EACH PRODUCT REALLY MADE, beside what the next sale would make
+        # (owner, 12 Oct 2026). Once for the whole list, keyed by ASIN.
+        try:
+            from domain import contribution as _contrib
+            from domain import sales_data as _sd
+            _real = _contrib.recent_per_unit(
+                CONFIG_PATH, wsid, mkt, 30, vat_rate=_sd.vat_rate_for(_cfg, wsid))
+        except Exception:
+            _real = {}
         rows = []
         for d in run["decisions"]:
             pairs = _repo.pairs_for(CONFIG_PATH, d["workspace_id"],
@@ -291,6 +300,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                              (d.get("decision") or {}).get("source_id"),
                              promo=_promos_by_sku.get(d["sku"])),
                          "item": _cat.look(idx, d["sku"]),
+                         "real_30d": _real.get(
+                             (_cat.look(idx, d["sku"]) or {}).get("asin") or ""),
                          "rule": _rule})
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "rows": rows, "counts": run["counts"],

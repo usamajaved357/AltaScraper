@@ -420,11 +420,25 @@ function ppcaKpis(j, cur, t, ch){
   // calling it +16.9% answers a question nobody asked.
   const cu = j.change_units || {};
 
+  // BEFORE VAT, AND SAID. These are Campaign Manager's own figures (spend,
+  // ACOS, CPC), so bids can be compared with the console. On an account that
+  // cannot reclaim VAT, Amazon charges 1.2x this -- it said "What Amazon
+  // charged" over the smaller number (12 Oct 2026). Every profit figure on
+  // this page and elsewhere already counts the VAT.
+  const _avr = Number(((j.rates || {}).ad_vat_ratio) || 0);
+  const _spendHelp = _avr > 0
+    ? ("Ad spend BEFORE VAT, as Amazon's Campaign Manager shows it (ACOS and "
+       + "CPC are on the same basis). Amazon adds " + Math.round(_avr * 100)
+       + "% VAT, which this account cannot reclaim, so it actually charged "
+       + ppcMoney0((Number(t.spend) || 0) * (1 + _avr), cur).replace(/<[^>]*>/g, "")
+       + ". Every profit figure counts that VAT.")
+    : "What Amazon charged for the ads in this window, as Campaign Manager shows it.";
   return '<div class="ppc-kpis">'
-    + ppcKpi({label: "SPEND", value: ppcMoney0(t.spend, cur),
+    + ppcKpi({label: _avr > 0 ? "SPEND (EX VAT)" : "SPEND",
+              value: ppcMoney0(t.spend, cur),
               change: ppcChangeBare(ch.spend, "down", _ppcaWhy(j, "spend"), cu.spend),
               spark: ppcSparkline(col("spend"), "var(--ppc-red)"),
-              help: "What Amazon charged for the ads in this window."})
+              help: _spendHelp})
     + ppcKpi({label: "SALES", value: ppcMoney0(t.sales, cur),
               change: ppcChangeBare(ch.sales, "up", _ppcaWhy(j, "sales"), cu.sales),
               spark: ppcSparkline(col("ad_sales"), "var(--ppc-green)"),
@@ -731,6 +745,15 @@ function ppcaProfitability(j, cur){
                               ? ('<span style="color:var(--ppc-red)"> '
                                  + '<i class="ti ti-alert-triangle"></i> Profit may be '
                                  + 'too high' + uiHint(np.profit_gaps.join("; "))
+                                 + '</span>') : "")
+                           // Units with no cost: shown and said, as on Sales
+                           // (12 Oct 2026) -- it used to be a blank card.
+                           + (np.too_high
+                              ? ('<span style="color:var(--ppc-orange)"> '
+                                 + '<i class="ti ti-alert-triangle"></i> Too high: '
+                                 + np.uncosted_units + ' unit'
+                                 + (np.uncosted_units === 1 ? '' : 's')
+                                 + ' without a cost' + uiHint(np.too_high)
                                  + '</span>') : ""),
                     note: period,
                     // THE CARD IS THE SALES PAGE'S PROFIT, ADS ALREADY OFF. The

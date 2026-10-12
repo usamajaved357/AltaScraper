@@ -46,6 +46,13 @@ function _pvMoney(v){
   return _pvSym() + Number(v).toLocaleString(undefined,
     {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
+/* WHAT "PROFIT" MEANS HERE, on every Profit column header. It was ad sales
+ * minus ad spend; it is now the PPC Analytics figure (after Amazon's fee, the
+ * stock cost and VAT on ads), and the server says which (12 Oct 2026). */
+function _pvProfitTitle(){
+  const n = (PPCV.data && PPCV.data.profit_note) || "";
+  return n ? ' title="' + _pvEsc(n) + '"' : '';
+}
 function _pvShort(v){
   if(v === null || v === undefined) return "—";
   const n = Number(v);
@@ -334,7 +341,7 @@ function _pvMatchTable(j){
     + 'and returning 12% of the profit is the one to look at.">i</span></div>'
     + '<table class="stk-table"><thead><tr>'
     + '<th>Match type</th><th class="r">Spend</th><th class="r">% of spend</th>'
-    + '<th class="r">Sales</th><th class="r">Profit</th>'
+    + '<th class="r">Sales</th><th class="r"' + _pvProfitTitle() + '>Profit</th>'
     + '<th class="r">% of profit</th><th class="r">ACOS</th>'
     + '<th class="r">CPC</th><th class="r">CVR</th></tr></thead><tbody>';
   rows.forEach(function(r){
@@ -426,7 +433,9 @@ function _pvTermTable(j){
   });
 
   const head = function(col, label, cls){
-    return '<th class="' + (cls || "") + '" onclick="ppcSort(' + jsArg(col) + ')">'
+    return '<th class="' + (cls || "") + '"'
+      + (col === "profit" ? _pvProfitTitle() : '')
+      + ' onclick="ppcSort(' + jsArg(col) + ')">'
       + _pvEsc(label) + (PPCV.sort === col
         ? '<span class="dir">' + (PPCV.dir > 0 ? "▲" : "▼") + '</span>' : '')
       + '</th>';
@@ -544,7 +553,7 @@ function _pvCampaignTable(j){
     + '<table class="stk-table"><thead><tr>'
     + '<th>Campaign</th><th class="r">Terms</th><th class="r">Spend</th>'
     + '<th class="r">% of spend</th><th class="r">Sales</th>'
-    + '<th class="r">Profit</th><th class="r">% of profit</th>'
+    + '<th class="r"' + _pvProfitTitle() + '>Profit</th><th class="r">% of profit</th>'
     + '<th class="r">ACOS</th><th class="r">CPC</th></tr></thead><tbody>';
   use.forEach(function(r){
     const over = (r.pct_profit !== null && r.pct_spend !== null

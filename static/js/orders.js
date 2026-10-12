@@ -598,13 +598,26 @@ function ordersRender(){
   });
   // Profit only exists once the second pass has worked out what sold, so it is
   // shown as unknown until then rather than as zero.
-  let _pf = null, _pfCur = "", _pfKnown = 0, _pfBlank = 0;
+  // CANCELLED ORDERS ARE NOT SALES (the Sales and Finance screens leave them
+  // out), and an order not yet shipped is in, at an estimated fee, and said
+  // -- the owner's choice of 12 Oct 2026.
+  // PER CURRENCY, like the Charged cards beside it: pounds and euros are not
+  // added together (review, 12 Oct 2026). "Fee estimated" is every costed order
+  // whose fee Amazon has not settled yet -- shipped ones included -- read from
+  // the row's own fee basis, not from its status.
+  const _pfBy = {}, _pfOrder = [];
+  let _pfKnown = 0, _pfBlank = 0, _pfOpen = 0;
   (ORD.rows || []).forEach(function(r){
+    const st = String(r.status || "").toLowerCase();
+    if(st === "canceled" || st === "cancelled") return;
     if(r.profit === null || r.profit === undefined){ _pfBlank++; return; }
-    _pf = (_pf === null ? 0 : _pf) + Number(r.profit);
-    _pfCur = _pfCur || r.currency || "";
+    const c = r.currency || "";
+    if(!(c in _pfBy)){ _pfBy[c] = 0; _pfOrder.push(c); }
+    _pfBy[c] += Number(r.profit);
     _pfKnown++;
+    if(r.fees_basis && r.fees_basis !== "actual") _pfOpen++;
   });
+  const _pf = _pfOrder.length ? _pfBy[_pfOrder[0]] : null;
   // NOTHING COUNTED IS NOT NOTHING SOLD.
   //
   // The banner above already says an account refused. The cards under it went on
@@ -636,12 +649,23 @@ function ordersRender(){
            : ((s.orders ? ((s.units || 0) / s.orders).toFixed(1) : "0")
               + " per order")},
   ].concat(_revCards).concat([
-    {label: "Profit", value: (_pf === null ? "" : _oMoney(_pf, _pfCur)),
-     tone: (_pf === null) ? "" : (_pf < 0 ? "bad" : "good"),
+    // ORDER PROFIT: before ads and the account's own charges, which belong to
+    // a period rather than an order -- the Sales page's Profit takes them off.
+    {label: "Order profit",
+     value: (_pf === null ? "" : _pfOrder.map(function(c){
+               return _oMoney(_pfBy[c], c); }).join(" · ")),
+     tone: (_pf === null) ? "" : (_pfOrder.some(function(c){ return _pfBy[c] < 0; })
+                                  ? "bad" : "good"),
+     title: "What these orders made after Amazon's fees, their cost and any "
+          + "refund -- BEFORE advertising and the subscription. The Sales "
+          + "page's Profit takes those off as well, so it is lower.",
      note: (_pf === null)
            ? (ORD.profit ? "working out\u2026" : "Profit is off")
-           : (_pfBlank ? _pfKnown + " of " + (_pfKnown + _pfBlank)
-                         + " costed" : "all orders")},
+           : ((_pfBlank ? _pfKnown + " of " + (_pfKnown + _pfBlank)
+                          + " costed — the rest are not in it"
+                        : "before ads")
+              + (_pfOpen ? " · " + _pfOpen + " not settled yet (fee estimated)"
+                         : ""))},
   ]));
 
   if(!ORD.rows.length){

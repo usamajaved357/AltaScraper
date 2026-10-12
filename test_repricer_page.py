@@ -161,8 +161,16 @@ truthy("margin and ROI appear at the listed price",
        "'Margin' + atLbl," in _full and "'ROI' + atLbl" in _full)
 truthy("  and each says WHICH price it is about",
        "const atLbl" in JS and "' at ' + at : ' now'" in JS)
-truthy("  while the table's own columns say they are today's",
-       ">Profit now</th>" in JS and ">ROI now</th>" in JS)
+# Re-pinned 12 Oct 2026: "now" became "next sale" -- the owner chose to keep
+# the supplier's price today here and say so, with the measured 30-day figure
+# under it (contribution.recent_per_unit).
+truthy("  while the table's own columns say they are the next sale's",
+       ">Profit next sale</th>" in JS and ">ROI next sale</th>" in JS)
+truthy("  with what each unit really left beside it",
+       "r.real_30d" in io.open(_os_repo.path.join(_REPO, "static", "js",
+                                                  "sourcing_row.js"),
+                               encoding="utf-8").read()
+       and "recent_per_unit(" in R)
 truthy("  and again with the coupon on",
        bool(_sep) and "'Margin'," in _promo and "'ROI'," in _promo)
 truthy("the handling time in force is shown", "'Handling'," in JS)

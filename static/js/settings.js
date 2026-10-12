@@ -341,8 +341,10 @@ async function openAISettings(){
   body.innerHTML=`
     ${keyNote}
     <table class="kv" style="margin-top:10px">
-      <tr><td class="k">Prompt enhancement model<br><span class="cc">writes the detailed image prompt</span></td>
+      <tr><td class="k">Text model<br><span class="cc">reads the product and suggests image ideas</span></td>
           <td class="v"><select class="ed" id="ai_text">${opt(s.text_models||[], s.select.prompt_enhance)}</select></td></tr>
+      <tr><td class="k">Image instruction model<br><span class="cc">writes the detailed instruction for EVERY image (and every Redo) &mdash; a cheaper model here saves the most</span></td>
+          <td class="v"><select class="ed" id="ai_write"><option value=""${(s.select.prompt_write||"")?"":" selected"}>Same as the text model</option>${opt(s.text_models||[], s.select.prompt_write||"")}</select></td></tr>
       <tr><td class="k">Image generation model<br><span class="cc">Nano Banana, GPT Image, Seedream, etc.</span></td>
           <td class="v"><select class="ed" id="ai_image">${opt(s.image_models||[], s.select.image_generate)}</select></td></tr>
     </table>
@@ -480,12 +482,13 @@ function closeAISettings(){ document.getElementById("aimodal").classList.remove(
 async function saveAISettings(){
   const t=(document.getElementById("ai_text")||{}).value;
   const i=(document.getElementById("ai_image")||{}).value;
+  const w=((document.getElementById("ai_write")||{}).value)||"";
   try{
     // THE REPLY IS READ. It was thrown away, so a refused or failed save
     // (403, or config.json not writable) still said "AI selection saved" and
     // closed the box (admin bug round, 30 Sep 2026).
     const r = await fetch("/ai/settings",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({prompt_enhance:t,image_generate:i})});
+      body:JSON.stringify({prompt_enhance:t,image_generate:i,prompt_write:w})});
     let j = null; try{ j = await r.json(); }catch(e){ j = null; }
     if(!r.ok || !j || !j.ok){
       toast("Could not save: " + ((j && j.error) || ("HTTP " + r.status)));

@@ -371,6 +371,41 @@ change needs it, via register injection.
 - test_order_sources_ui.js, like test_order_panel.js, fails when run on its
   own (`_srcDeliveryLine is not a function`) and passes under run_tests.py.
 
+## Profit accuracy round, 12 Oct 2026 — on branch claude/keen-noether-qkn0r0, NOT in production
+
+From the owner's nestwell_goods loss analysis (cloud session; GitHub push was
+refused with 403, so the commits exist only there and as patch files until
+access is fixed). Owner decisions: docs/decisions.md, 12 Oct 2026.
+- FIXED: order-cost sheet stored an order LINE's cost as per-unit (2-unit
+  orders costed double); a no-SKU sheet wrote one figure on every line of a
+  two-product order. test_order_cost_sheet.py.
+- FIXED: Finance settlement contribution never subtracted per-product ads
+  while saying it had (contribution._after_ads). test_contribution.py.
+- FIXED: a missing Ads API day counted as no ad cost, silently
+  (ad_cost.missing_days). test_ad_days_missing.py.
+- FIXED: product costs were frozen onto orders only by /sales/summary, so
+  other screens depended on which page was opened first
+  (order_cogs.ensure_costed on every profit route). test_costs_before_profit.py.
+- FIXED: PPC page (search terms) "Profit" was ad sales - spend
+  (ppc_view.profit_of -> ppc_analytics.ad_profit). test_ppc_analytics.py.
+- FIXED: grid / PPC NET PROFIT / Brand view blank on any uncosted unit, while
+  the Sales card showed a figure (one rule: shown, marked). test_cogs.py.
+- FIXED: All Orders panel line did not add up (item price, no refund);
+  tile now "Order profit", cancelled out, unshipped counted and said.
+  test_order_panel_adds_up.py.
+- FIXED: Repricer "Profit now" relabelled "Profit next sale" + real 30-day
+  per-unit profit. test_repricer_real_profit.py.
+- FIXED: ad spend labelled "What Amazon charged" but ex-VAT on the ad screens.
+  test_profit_levels_labelled.py.
+- STILL OPEN: the PPC Analytics per-campaign/ASIN "ad profit" uses the
+  account's AVERAGE fee and stock-cost rates (labelled ESTIMATED); per-ASIN
+  rates would be better. Old ad rows on 30-day attribution older than the
+  60-day re-pull floor stay so (data). The sourcing sheet's order numbers
+  with stray text / a missing digit need correcting by hand before upload.
+- NOT VISUALLY VERIFIED: the profit screens (no live data in the cloud
+  container; the app cannot reach Amazon from there). The PDP image preview
+  WAS checked in a browser with seeded data.
+
 ## Fixed on the development branch, NOT yet in production
 
 On `claude-environment-setup` (local, not merged or deployed — production still
@@ -721,9 +756,11 @@ redesign) listed seven items; the five kept here were re-checked in the code:
   Owner's two-method rule (30 Sep 2026) now also holds under "Work costs out
   again": `freeze_range` never re-costs an order-specific cost, and retired
   'sku'/'tracked' frozen figures give way to the product cost
-  (test_cogs_two_methods). Still open: finance_daily.cogs is costed when a day
-  is pulled, so a later order cost reaches the settled Sales cards only after
-  that day is re-pulled. Inventory: active/cogs-inventory-2026-09-30.md.
+  (test_cogs_two_methods). finance_daily.cogs being costed only when a day is
+  pulled: FIXED 12 Oct 2026 on claude/keen-noether-qkn0r0 (finance_data.recost,
+  via order_cogs.ensure_costed; a day that does not fully reconcile keeps its
+  pulled cost; test_settled_costs_follow.py). Inventory:
+  active/cogs-inventory-2026-09-30.md.
 - **Latent: `/row`, `/edit`, `/delete`, `/live/pull_row` locate a row by SKU in
   the session's workspace** unless the request names one; with shared SKUs this
   could edit another account's row. Fixing touches about 16 JS call sites, so it

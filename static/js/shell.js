@@ -1264,6 +1264,9 @@ function navTo(sec){
   // a container on a page nobody is looking at, and the modal would open empty.
   if(CUR_SEC === "imagelib" && sec !== "imagelib"
      && typeof imagelibOnLeave === "function") imagelibOnLeave();
+  // A picture open full size (ilPreview) belongs to the screen it was opened
+  // on; it is a layer over everything and would otherwise follow you.
+  if(typeof ilPreviewClose === "function"){ try{ ilPreviewClose(); }catch(e){} }
   CUR_SEC=sec;
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
   // The breadcrumb follows the screen. AFTER the active class above, because

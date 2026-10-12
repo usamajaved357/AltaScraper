@@ -294,7 +294,8 @@ def _run_autofix_bg_inner(jid):
                 if _moved():
                     return
                 try:
-                    with _app.app.test_request_context(json={"sku": sku},
+                    with _app.app.test_request_context("/autofix/suggest",
+                                                  json={"sku": sku},
                                                   query_string={"account": acct} if acct else {}):
                         sres = _app.app.view_functions["suggest"]().get_json() or {}
                 except Exception as e:

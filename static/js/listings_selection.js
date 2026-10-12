@@ -223,8 +223,16 @@ async function batchAutoGenerate(kind){
   kind=kind||"secondary";
   const skus=selectedSkus();
   if(!skus.length){ toast("Select some listings first"); return; }
-  const per=(kind==="aplus")?7:7; // 7 secondary or up to 7 A+ modules
+  // HOW MANY PER PRODUCT, chosen before anything is paid for (owner, 12 Oct
+  // 2026). A+ keeps 7 modules: those layouts need exactly that many.
+  let per=7;
   const n=skus.length;
+  if(kind!=="aplus"){
+    const _v=await uiPrompt("How many secondary images per product?", "7",
+      {type:"number", min:1, max:8, suffix:"images each", title:"Auto-generate"});
+    if(_v===null) return;
+    per=Math.max(1, Math.min(8, parseInt(_v,10)||7));
+  }
   if(!await uiConfirm("Auto-generate "+(kind==="aplus"?"A+ modules":"secondary images")+" for "+n+
               " product"+(n>1?"s":"")+" (~"+(n*per)+" images). The strategist proposes ideas and "+
               "generates them all in the background. You can keep working. Continue?")) return;
@@ -245,7 +253,9 @@ async function batchAutoGenerate(kind){
       const sj=await (await fetch("/genimage/strategize",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({product_image:ref,
           product_images:(typeof _refCandidates==="function"?_refCandidates(it):[ref]),
-          title:(it&&it.title)||"", kind:kind,
+          // The row itself, so the server never looks a SKU up in another
+          // account (SKUs repeat across accounts, CLAUDE.md Rule 14).
+          title:(it&&it.title)||"", sku:sku, listing:(it||null), kind:kind,
           n:per, text_provider:(window.AI_TEXT||null)})})).json();
       if(!sj.ok){ toast("Strategist failed for "+sku+": "+(sj.error||"unknown")); continue; }
       concepts=sj.concepts||[];

@@ -117,6 +117,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if basis not in ("orders", "settlement"):
             basis = "orders"
         vat = _sd.vat_rate_for(_cfg, wsid)
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, wsid, mkt, start, end)
         if basis == "settlement":
             rows, totals = _contrib.by_product(CONFIG_PATH, wsid, mkt,
                                                start, end, vat_rate=vat)

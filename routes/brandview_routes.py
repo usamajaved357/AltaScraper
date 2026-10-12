@@ -127,8 +127,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         vat = _sd.vat_rate_for(_cfg, wsid)
 
         rows = []
+        from domain import order_cogs as _oc
         for mkt in _marketplaces_for(acc, wsid):
             try:
+                _oc.ensure_costed(CONFIG_PATH, wsid, mkt, start, end)
+                _oc.ensure_costed(CONFIG_PATH, wsid, mkt, pstart, pend)
                 now = _sd.totals(CONFIG_PATH, wsid, mkt, start, end,
                                  vat_rate=vat, basis="order")
                 was = _sd.totals(CONFIG_PATH, wsid, mkt, pstart, pend,
@@ -160,6 +163,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 "total_fees": now.get("total_fees"),
                 "cogs": now.get("cogs"),
                 "profit": now.get("profit"),
+                # Units with no cost: the profit is shown and too high by
+                # them, as on every profit screen (12 Oct 2026).
+                "uncosted_units": now.get("uncosted_units") or 0,
                 "margin_pct": now.get("margin_pct"),
                 "refunds": now.get("refunds"),
                 "prev_ordered_sales": was.get("ordered_sales"),
@@ -180,6 +186,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                         "ordered_sales": 0.0, "units": 0,
                                         "orders": 0, "profit": 0.0,
                                         "profit_complete": True,
+                                        "uncosted_units": 0,
                                         "prev_ordered_sales": 0.0})
             b["marketplaces"] += 1
             b["ordered_sales"] += float(r.get("ordered_sales") or 0)
@@ -201,6 +208,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                     b["profit_complete"] = False
             else:
                 b["profit"] += float(r["profit"])
+                b["uncosted_units"] += int(r.get("uncosted_units") or 0)
         for b in by_cur.values():
             b["ordered_sales"] = round(b["ordered_sales"], 2)
             b["prev_ordered_sales"] = round(b["prev_ordered_sales"], 2)

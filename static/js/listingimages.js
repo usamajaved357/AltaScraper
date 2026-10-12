@@ -956,9 +956,34 @@ let _IL_PREVIEW = null;
 // galleries (Rule 12) and the other one has no list to give it.
 let _IL_SET = { items: [], i: 0 };
 
+// THE PRODUCT PAGE USES IT TOO (12 Oct 2026).
+//
+//     "I'm also not able to view the images inside the product detail page when
+//      there is a draft in my app ... click on the image to have a preview at a
+//      bigger size. When I'm done previewing, I can cross that preview screen.
+//      I also want to have arrows that can go right and left"
+//
+// pdp_images.js calls this with the listing's own pictures, not a copy of it,
+// so the three galleries step, close and fail the same way (Rule 12). What the
+// product page needed that the library had been living without:
+//   * an × in the corner -- "Close" at the bottom is easy to miss on a picture
+//     that fills the screen;
+//   * the key handler in the CAPTURE phase -- the product page's own Escape
+//     handler (pdp.js) and escape.js both listen on the document and were
+//     registered first, so a bubbling listener here ran LAST: Escape closed the
+//     product page behind the picture as well as the picture;
+//   * "Loading image…" while a large file arrives, and a sentence instead of a
+//     broken-image icon when it never does;
+//   * the left arrow already dimmed when the first picture opens, not only
+//     after the first step.
+let _IL_OPENER = null;    // what had focus before the viewer opened
+
 function ilPreview(url, name, items, index){
   if(!url) return;
   ilPreviewClose();
+  // Focus goes back here on close (docs/design-system.md: overlays restore
+  // focus). Read after the close above, so it is never the old viewer's ×.
+  _IL_OPENER = document.activeElement || null;
   // Normalise the list: [{url, name}] or plain urls, either is accepted so a
   // caller does not have to reshape its own data to use this.
   const list = Array.isArray(items) ? items.map(function(it){
@@ -973,16 +998,27 @@ function ilPreview(url, name, items, index){
 
   const el = document.createElement("div");
   el.id = "ilpreview";
+  // A dialog to assistive technology, and to uiFocusInLayer (dialog.js): with
+  // focus on the × below, the product page's Tab trap stands aside for it.
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.setAttribute("aria-label", "Image preview");
   el.style.cssText = "position:fixed;inset:0;z-index:400;background:rgba(6,9,15,.92);"
     + "display:flex;align-items:center;justify-content:center;flex-direction:column;"
     + "gap:10px;padding:26px;cursor:zoom-out";
   el.innerHTML =
-      (many ? '<button class="ilnav ilprev" title="Previous (left arrow)" '
+      '<button class="ilclose" id="ilpreviewx" title="Close (Esc)" aria-label="Close the preview" '
+    + 'onclick="event.stopPropagation();ilPreviewClose()"><i class="ti ti-x"></i></button>'
+    + (many ? '<button class="ilnav ilprev" title="Previous (left arrow)" aria-label="Previous image" '
             + 'onclick="event.stopPropagation();ilStep(-1)">'
             + '<i class="ti ti-chevron-left"></i></button>' : '')
-    + (many ? '<button class="ilnav ilnext" title="Next (right arrow)" '
+    + (many ? '<button class="ilnav ilnext" title="Next (right arrow)" aria-label="Next image" '
             + 'onclick="event.stopPropagation();ilStep(1)">'
             + '<i class="ti ti-chevron-right"></i></button>' : '')
+    // Where "Loading image…" and "could not load" are said. The picture is
+    // hidden until it has arrived, so neither a blank frame nor the browser's
+    // broken-image icon is ever what you are looking at.
+    + '<div class="cc ilmsg" id="ilpreviewmsg" role="status"></div>'
     + '<img id="ilpreviewimg" src="' + _ilEsc(url) + '" alt="' + _ilEsc(name || "") + '" '
     + 'style="max-width:94vw;max-height:82vh;object-fit:contain;border-radius:8px;'
     + 'background:var(--sidebar);box-shadow:0 18px 60px rgba(0,0,0,.6);cursor:default">'
@@ -1004,9 +1040,46 @@ function ilPreview(url, name, items, index){
   el.addEventListener("click", function(ev){
     if(ev.target === el) ilPreviewClose();
   });
+  // ONE img for the life of the viewer (ilStep swaps its src), so these two
+  // listeners cover every picture stepped to.
+  const img = el.querySelector("#ilpreviewimg");
+  if(img){
+    img.addEventListener("load", function(){ _ilImgState("ok"); });
+    img.addEventListener("error", function(){ _ilImgState("bad"); });
+  }
   document.body.appendChild(el);
   _IL_PREVIEW = el;
-  document.addEventListener("keydown", _ilPreviewKey);
+  _ilImgState((img && img.complete && img.naturalWidth > 0) ? "ok" : "loading");
+  _ilSyncNav();
+  // CAPTURE PHASE, so this sees the key before the product page's and
+  // escape.js's handlers on the same document (see the note above ilPreview).
+  document.addEventListener("keydown", _ilPreviewKey, true);
+  const x = el.querySelector("#ilpreviewx");
+  if(x && typeof x.focus === "function"){ try{ x.focus({preventScroll: true}); }catch(e){} }
+}
+
+// LOADING, LOADED, OR NOT THERE -- the one place the viewer says which.
+function _ilImgState(state){
+  const img = document.getElementById("ilpreviewimg");
+  const msg = document.getElementById("ilpreviewmsg");
+  if(img) img.style.display = (state === "ok") ? "" : "none";
+  if(!msg) return;
+  msg.style.display = (state === "ok") ? "none" : "";
+  msg.textContent = (state === "bad")
+    ? "This image could not be loaded. Use Open to try it in a new tab."
+    : "Loading image…";
+  msg.classList.toggle("bad", state === "bad");
+}
+
+// Grey out the arrow that can no longer do anything -- on opening as well as
+// after a step, or the first picture opens with a "previous" that does nothing.
+function _ilSyncNav(){
+  const set = _IL_SET;
+  const n = (set && set.items) ? set.items.length : 0;
+  const prev = document.querySelector("#ilpreview .ilprev");
+  const next = document.querySelector("#ilpreview .ilnext");
+  if(prev) prev.classList.toggle("off", set.i <= 0);
+  if(next) next.classList.toggle("off", set.i >= n - 1);
 }
 
 // Move to the picture n places away, WITHOUT rebuilding the viewer.
@@ -1026,7 +1099,12 @@ function ilStep(n){
   set.i = to;
   const it = set.items[to];
   const img = document.getElementById("ilpreviewimg");
-  if(img){ img.src = it.url; img.alt = it.name || ""; }
+  if(img){
+    _ilImgState("loading");
+    img.src = it.url; img.alt = it.name || "";
+    // Already in the browser's cache: nothing more to wait for.
+    if(img.complete && img.naturalWidth > 0) _ilImgState("ok");
+  }
   const nm = document.getElementById("ilpreviewname");
   if(nm) nm.textContent = it.name || "";
   const ct = document.getElementById("ilpreviewcount");
@@ -1040,11 +1118,7 @@ function ilStep(n){
   const op = document.getElementById("ilpreviewopen");
   if(op) op.setAttribute("onclick", "event.stopPropagation();window.open("
     + jsArg(it.url) + ",'_blank')");
-  // Grey out the arrow that can no longer do anything.
-  const prev = document.querySelector("#ilpreview .ilprev");
-  const next = document.querySelector("#ilpreview .ilnext");
-  if(prev) prev.classList.toggle("off", to <= 0);
-  if(next) next.classList.toggle("off", to >= set.items.length - 1);
+  _ilSyncNav();
 }
 
 function _ilPreviewKey(ev){
@@ -1058,20 +1132,33 @@ function _ilPreviewKey(ev){
   }
   // Escape closes the PREVIEW and stops there. Without this the same key would
   // reach the library behind it and shut both, so a glance at one picture would
-  // cost you the panel you were working in.
+  // cost you the panel you were working in. preventDefault as well: that is how
+  // escape.js and the product page know a key has already been dealt with.
   if(ev.key === "Escape"){
+    ev.preventDefault();
     ev.stopPropagation();
     ilPreviewClose();
   }
 }
 
+// Also called on an account or marketplace switch (screenForgetAll), a screen
+// change (navTo) and the product page closing (pdpClose): a picture of the
+// listing you have left must not stay over the screen you are on. Safe to call
+// when nothing is open.
 function ilPreviewClose(){
+  const was = _IL_PREVIEW, back = _IL_OPENER;
   _IL_SET = { items: [], i: 0 };
-  document.removeEventListener("keydown", _ilPreviewKey);
+  _IL_OPENER = null;
+  // The same capture flag it was added with, or it is never removed.
+  document.removeEventListener("keydown", _ilPreviewKey, true);
   if(_IL_PREVIEW && _IL_PREVIEW.parentNode){
     _IL_PREVIEW.parentNode.removeChild(_IL_PREVIEW);
   }
   _IL_PREVIEW = null;
+  if(was && back && back !== document.body && back.isConnected
+     && typeof back.focus === "function"){
+    try{ back.focus({preventScroll: true}); }catch(e){}
+  }
 }
 
 // THE SLOT IS A CHOICE YOU MAKE, NOT A QUESTION YOU ARE ASKED AFTERWARDS.

@@ -213,6 +213,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         asin = (request.args.get("asin") or "").strip() or None
 
         _vat = _sd.vat_rate_for(_cfg, wsid)
+        # COSTS FIRST, then every figure below reads the same order lines. The
+        # freeze used to run half-way down, after these totals were read, so the
+        # grid and the Profit card on one screen saw different costs.
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, wsid, mkt, start, end)
         # THE CARDS ARE ON THE SAME CALENDAR AS THE GRID BELOW THEM. They are
         # sums of the very rows it draws, so the basis has to be handed in here
         # too. It was not: the cards stayed on the money calendar while the grid
@@ -237,6 +242,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             p_end = (_dt.datetime.strptime(start, "%Y-%m-%d") - _dt.timedelta(days=1))
             p_start = p_end - _dt.timedelta(days=span - 1)
             compare_kind = "period"
+        _oc.ensure_costed(CONFIG_PATH, wsid, mkt, p_start.strftime("%Y-%m-%d"),
+                          p_end.strftime("%Y-%m-%d"))
         prev = _sd.totals(CONFIG_PATH, wsid, mkt, p_start.strftime("%Y-%m-%d"),
                           p_end.strftime("%Y-%m-%d"), asin, _vat,
                           basis=_basis())
@@ -300,17 +307,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         from domain import cogs as _cogs
         cov = _cogs.coverage(CONFIG_PATH, (_acc or {}).get("id") or wsid, mkt,
                              _cogs_overrides())
-        # "and it fills in" would NOT have been true. Cost is priced onto each day
-        # when that day's finance data is pulled, so a cost typed today does not
-        # reach days already stored -- pressing Sync re-fetches them and re-prices
-        # them, and only then does profit appear. Saying so is the difference
-        # between a screen that looks broken and one that tells you the next step.
+        # A COST SET TODAY REACHES EVERY DAY NOW, already-pulled ones included
+        # (order_cogs.ensure_costed -> finance_data.recost, 12 Oct 2026), and a
+        # profit over uncosted units is shown and marked too high rather than
+        # withheld -- so the note says that, not "press Sync".
         cov["note"] = ("" if cov["unknown"] == 0 else
-                       "%d of %d SKUs have no cost, so profit is only shown for "
-                       "periods where every unit shipped was costed. Set a cost on "
-                       "the listings screen, or rebuild the SKU, then press Sync -- "
-                       "costs are applied when each day is pulled, so already-pulled "
-                       "days need re-pulling before profit appears."
+                       "%d of %d SKUs have no cost, so profit is TOO HIGH wherever "
+                       "they sold (those figures are marked). Add the costs on the "
+                       "All Orders screen (Sheets > Upload costs) or the Listings "
+                       "screen and the figures update."
                        % (cov["unknown"], cov["total"]))
 
         # PROFIT ON THE ORDERS PLACED IN THIS WINDOW, from the owner's own cost
@@ -325,18 +330,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # different questions and both are worth having.
         try:
             from domain import order_profit as _op
-            from domain import order_cogs as _oc
-            # Freeze a cost onto any line that has not got one yet, at the price
-            # that applied WHEN THAT ORDER ARRIVED. Done before reading, so a
-            # newly-synced day is costed the first time it is looked at; lines
-            # that already carry a cost are never touched, which is what stops
-            # last month's profit moving when a supplier changes their price.
-            _mode = _oc.mode_for(_cfg, wsid)
-            try:
-                _oc.freeze_range(CONFIG_PATH, wsid, mkt, start, end, _mode,
-                                 _cogs_overrides())
-            except Exception:
-                pass          # costing is best-effort; the figures still come back
+            # The window's costs were frozen at the top of this route
+            # (order_cogs.ensure_costed), before anything on it was read.
             # THE SAME REVENUE THE CARDS SHOW is handed in, so profit cannot be
             # worked out over a different set of trade. Deriving it twice, from
             # two stores filled by two passes over two windows, produced
@@ -354,7 +349,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                  # is then that product's figures, spend
                                  # included, so the profit must be its too.
                                  asin=(asin or None))
-            est["cogs_mode"] = _mode
+            est["cogs_mode"] = _oc.mode_for(_cfg, wsid)
             # NET, like the P&L: the account's own charges, its other postings
             # and the costs entered by hand come off the account-wide figure.
             # From overhead_for itself, the P&L's own step: this estimate is on
@@ -421,6 +416,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if not mkt:
             return jsonify({"ok": False, "error": "no marketplace selected"}), 400
         start, end, _preset = _range()
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, wsid, mkt, start, end)
         try:
             got = _pnl.build(CONFIG_PATH, wsid, mkt, start, end,
                              _sd.vat_rate_for(_cfg, wsid))
@@ -451,6 +448,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": False, "error": "no marketplace selected"}), 400
         start, end, _preset = _range()
         line = str(request.args.get("line") or "")
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, wsid, mkt, start, end)
         try:
             got = _pl.ledger(CONFIG_PATH, wsid, mkt, start, end, line,
                              vat_rate=_sd.vat_rate_for(_cfg, wsid))
@@ -646,6 +645,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
         # The basis is chosen by _basis(), which is the only place that reads
         # the parameter -- see the note there on why the default is "order".
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, wsid, mkt, start, end)
         _meta = {}
         rows = _sd.series(CONFIG_PATH, wsid, mkt, start, end, asin,
                           vat_rate=_sd.vat_rate_for(_cfg, wsid),
@@ -660,8 +661,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         for key, label, kind, good, _how in _sd.METRICS:
             cells = [_sd.aggregate(buckets[b], key) for b in order]
             if any(c is not None for c in cells):
-                metrics.append({"key": key, "label": label, "kind": kind,
-                                "good": good, "cells": cells})
+                m = {"key": key, "label": label, "kind": kind,
+                     "good": good, "cells": cells}
+                # A profit cell over uncosted units is shown and marked too
+                # high (sales_data.aggregate), so the grid needs the count.
+                if key in ("profit", "margin"):
+                    m["uncosted"] = [_sd.uncosted_units(buckets[b]) for b in order]
+                metrics.append(m)
         # IS ADVERTISING EVEN CONNECTED FOR THIS ACCOUNT?
         #
         # The metrics list already drops spend, ACOS and TACOS when there is

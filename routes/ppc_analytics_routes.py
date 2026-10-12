@@ -159,6 +159,10 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         from domain import ppc_view as _pv_mod
 
         avail = _avail(aid, mkt)
+        # Costs onto any uncosted order first: the cost rate and NET PROFIT
+        # read the same order lines as every other profit screen.
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, aid, mkt, start, end)
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
         now = _pa.totals_for(CONFIG_PATH, aid, mkt, start, end)
         # LIKE WITH LIKE: the days this window's ad data covers against the same
@@ -274,6 +278,10 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
 
         from domain import ppc_view as _pv
 
+        # Costs onto any uncosted order first: the cost rate and NET PROFIT
+        # read the same order lines as every other profit screen.
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, aid, mkt, start, end)
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
         meta = _pv.report_meta(CONFIG_PATH, aid, mkt)
 
@@ -356,6 +364,10 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
 
         from domain import ppc_targeting as _pt
 
+        # Costs onto any uncosted order first: the cost rate and NET PROFIT
+        # read the same order lines as every other profit screen.
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, aid, mkt, start, end)
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
         mat = _pa.maturity(CONFIG_PATH, aid, mkt, start, end)
         camps = _pa.campaigns(CONFIG_PATH, aid, mkt, start, end, rates,
@@ -450,6 +462,10 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account):
         if bad:
             return bad
         start, end, _ps, _pe = _window()
+        # Costs onto any uncosted order first: the cost rate and NET PROFIT
+        # read the same order lines as every other profit screen.
+        from domain import order_cogs as _oc
+        _oc.ensure_costed(CONFIG_PATH, aid, mkt, start, end)
         rates = _pa.rates(CONFIG_PATH, aid, mkt, start, end)
         rows = _pa.terms(CONFIG_PATH, aid, mkt, rates, limit=100000)
 

@@ -170,6 +170,33 @@ def api_start(conn, workspace_id, marketplace):
     return (r["d"] if r else None) or None
 
 
+def missing_days(conn, workspace_id, marketplace, start, end):
+    """Days in [start, end] with no account-wide Ads API row although a later
+    day has one -> sorted 'YYYY-MM-DD' list. A gap the download left, which
+    would otherwise be counted as a day of no advertising."""
+    have = {r["date"] for r in conn.execute(
+        "SELECT DISTINCT date FROM ads_daily WHERE workspace_id=? AND "
+        "marketplace=? AND asin='*' AND date>=? AND date<=?",
+        (workspace_id, marketplace, str(start)[:10], str(end)[:10]))}
+    # THE ACCOUNT'S LAST STORED DAY, not the window's: a gap at the END of the
+    # window -- or a window lying wholly inside one -- is still a gap when a
+    # later day was downloaded (review, 12 Oct 2026).
+    r = conn.execute(
+        "SELECT MAX(date) m FROM ads_daily WHERE workspace_id=? AND "
+        "marketplace=? AND asin='*'", (workspace_id, marketplace)).fetchone()
+    if not r or not r["m"]:
+        return []
+    upto = min(str(r["m"])[:10], str(end)[:10])
+    out = []
+    d = _dt.date.fromisoformat(str(start)[:10])
+    last = _dt.date.fromisoformat(upto)
+    while d <= last:
+        if d.isoformat() not in have:
+            out.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    return out
+
+
 def by_day(config_path, workspace_id, marketplace, start, end, vat_registered,
            detail=False):
     """{date: cost} for the window, and a dict saying how it was measured.
@@ -210,6 +237,21 @@ def by_day(config_path, workspace_id, marketplace, start, end, vat_registered,
         if add_vat and vatinfo["note"] and "ads_api" in used:
             # Estimated (UK) or not included (elsewhere) -- said, never silent.
             notes.append(vatinfo["note"])
+        # A DAY THE DOWNLOAD MISSED READS AS NO AD COST AT ALL. A failed or
+        # expired report leaves no row, and nothing above can tell that from a
+        # day with no ads -- so the profit rose by that day's spend, silently
+        # (12 Oct 2026). Only gaps BETWEEN stored days are named: the days
+        # after the last one are simply not downloaded yet.
+        gaps = missing_days(conn, workspace_id, marketplace,
+                            max(start, first), end)
+        if gaps:
+            info["missing_days"] = gaps
+            shown = ", ".join(gaps[:5]) + (" and %d more" % (len(gaps) - 5)
+                                           if len(gaps) > 5 else "")
+            notes.append("No ad figures were downloaded for %d day%s (%s). If "
+                         "ads ran then, their cost is missing from this figure, "
+                         "not zero." % (len(gaps), "" if len(gaps) == 1 else "s",
+                                        shown))
     inv_end = end if not first else min(end, _day_before(first))
     if start <= inv_end:
         for r in conn.execute(

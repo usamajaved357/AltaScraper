@@ -216,9 +216,11 @@ function _studioAddResult(job, j, grid){
     // The SKU and what the image IS travel with the redo, so a redone image is
     // saved under its own product and filed in its own folder (it used to be
     // saved under the product TITLE, with kind "concept").
+    // AND THE INSTRUCTION IT WAS DRAWN FROM, so Redo draws again from it
+    // rather than paying to re-read the product and re-write it (12 Oct 2026).
     if(j._kind&&j._payload){ STUDIO._reroll[cardId]={kind:j._kind, payload:j._payload,
       label:(job.strategy||job.sku), sku:(job.sku||j.sku||(j._payload&&j._payload.sku)||""),
-      madeAs:(job.kind||"main"), tier:(job.tier||"")}; }
+      madeAs:(job.kind||"main"), tier:(job.tier||""), prompt:(j.detailed_prompt||"")}; }
     const canReroll = !!(j._kind&&j._payload);
     const _driveLine = j.drive_direct_url
       ? `<div class="cc" style="color:var(--ok);font-size:10.5px;padding:0 8px 4px">\u2713 saved to Drive</div>`
@@ -274,8 +276,11 @@ async function studioReroll(cardId){
            : r.kind==="aplus" ? "/genimage/generate"
            : "/genimage/recipe";
   try{
+    // The same request, plus the instruction already paid for (run_pipeline
+    // reuse_prompt). Endpoints that do not take it simply ignore it.
+    const _body = Object.assign({}, r.payload, r.prompt ? {reuse_prompt:r.prompt} : {});
     const j=await (await fetch(ep,{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(r.payload)})).json();
+      body:JSON.stringify(_body)})).json();
     if(j&&j.ok&&j.data_url){
       // THE REDO KEEPS ITS SKU. It was saved under r.payload.sku OR THE TITLE,
       // and its card's Save/Drive buttons were given '' -- so a redone image

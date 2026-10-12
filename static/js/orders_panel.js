@@ -331,8 +331,18 @@ function _opFlow(t, cur, tail){
   // a dash that says what would fill it.
   const costKnown = !(t.cogs_complete === false
                       || t.cogs === null || t.cogs === undefined);
+  // THE SAME BASE THE PROFIT IS WORKED ON: what the buyer paid for the whole
+  // order (coupon already off, postage in), then its VAT at the account's
+  // rate, then any refund. It drew the lines' item price and no refund, so on
+  // a refunded, discounted or posted order the line did not add up to the
+  // profit printed at its end (12 Oct 2026).
+  const paid = (t.order_total === null || t.order_total === undefined)
+    ? t.revenue : t.order_total;
+  const vat = _opNum(t.order_vat);
+  const refund = _opNum(t.refund_net);
   return '<div class="o-flow">'
-    + step(t.revenue, "Buyer paid")
+    + step(paid, "Buyer paid")
+    + (vat ? arrow + step(-Math.abs(vat), "VAT", "neg") : "")
     + arrow
     + step(t.fees === null || t.fees === undefined ? null : -Math.abs(_opNum(t.fees) || 0),
            "Amazon fee", "neg")
@@ -340,6 +350,7 @@ function _opFlow(t, cur, tail){
     + step(costKnown ? -Math.abs(_opNum(t.cogs) || 0) : null, "Cost", "neg",
            "No cost is recorded for this order. Set one at the end of this line "
            + "and the profit follows.")
+    + (refund ? arrow + step(-refund, "Refunded", "neg") : "")
     + eq
     + step(t.profit, "Profit",
            (_opNum(t.profit) !== null && _opNum(t.profit) < 0) ? "bad" : "good",

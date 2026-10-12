@@ -243,7 +243,12 @@ function salesDrawPpcCards(sum){
 
   const CARDS = [
     {label: "Ad Spend", value: n(t.spend), kind: "money",
-     note: "What Amazon charged for clicks in this period. " + SP},
+     // Before VAT, as Campaign Manager shows it (12 Oct 2026): it said "what
+     // Amazon charged", which is 1.2x this on an account that cannot reclaim
+     // VAT. The profit figures count that VAT (domain/ad_cost).
+     note: "Ad spend before VAT, as Amazon's Campaign Manager shows it. An "
+         + "account that is not VAT-registered also pays the VAT on it, and "
+         + "every profit figure counts that. " + SP},
     {label: "ACOS", value: n(t.acos), kind: "pct", lowerIsBetter: true,
      note: "Ad spend as a share of the sales advertising is credited with "
          + "(spend ÷ ad sales). Lower is better."},

@@ -47,6 +47,13 @@ from domain.image_rules import (            # noqa: F401  (re-exported)
 from domain import request_account as _rqa
 
 
+def _reuse_of(b):
+    """The finished instruction a Redo sends back (run_pipeline reuse_prompt):
+    the picture is drawn again without paying to re-read the product or
+    re-write the instruction (owner, 12 Oct 2026). Capped, it is only text."""
+    return str((b or {}).get("reuse_prompt") or "")[:20000]
+
+
 BRAND_UNBRANDED = "unbranded"
 BRAND_BRANDED = "branded"
 BRAND_KEEP = "keep"
@@ -458,7 +465,11 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         product_images = b.get("product_images") or ([product_image] if product_image else [])
         title = b.get("title", "")
         kind = b.get("kind", "main")          # 'main' | 'secondary'
-        n = int(b.get("n", 3) or 3)
+        # The number the user chose (12 Oct 2026), within what Amazon allows.
+        try:
+            n = max(1, min(8, int(b.get("n", 3) or 3)))
+        except (TypeError, ValueError):
+            n = 3
         tprov = b.get("text_provider") or None
         # per-run custom instructions for the strategist (NOT the saved standing
         # instructions) -- e.g. "don't show pets", "pour the medicine into the tub in
@@ -480,6 +491,12 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # vision step returns a paraphrase of the photograph, and the facts that
         # matter most for a set of images -- what is in the box, and how many --
         # do not survive it.
+        # KEPT FOR THE BATCH THESE IDEAS START, so it does not pay to read the
+        # same product again (ai_providers.remember_spec, 12 Oct 2026).
+        try:
+            ai_providers.remember_spec(_rqa.named_now(), b.get("sku"), spec)
+        except Exception:
+            pass
         res = ai_providers.strategize_images(_cfg(), image=product_images, product_title=title,
                                              product_spec=spec, n=n, kind=kind, provider=tprov,
                                              custom_instructions=custom_instr,
@@ -682,7 +699,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         _ref_img = product_image if _want_ref else ""
         _extra_ref = (product_image
                       if (_want_ref and kind in ("aplus", "secondary")) else "")
-        res = ai_providers.run_pipeline(_cfg(), brief=brief, reference_image=_ref_img,
+        res = ai_providers.run_pipeline(_cfg(), reuse_prompt=_reuse_of(b), brief=brief, reference_image=_ref_img,
                                         product_title=title, text_provider=tprov, image_provider=iprov,
                                         image_kind=image_kind, strength=strength,
                                         target_w=_tw, target_h=_th, extra_reference=_extra_ref,
@@ -703,7 +720,12 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                                         # claims, the palette -- already travel in the
                                         # brief from the listing, which is the better
                                         # source for them anyway.
-                                        read_product=_want_ref)
+                                        read_product=_want_ref,
+                                        # THE STRATEGIST ALREADY READ IT: reused,
+                                        # not paid for again (remember_spec).
+                                        product_spec=(ai_providers.recalled_spec(
+                                            _rqa.named_now(), b.get("sku"))
+                                            if _want_ref else ""))
         if not res.get("ok"):
             return jsonify(res), 400
         return _imgresult(res, extra={"concept": concept})
@@ -841,7 +863,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         if spec:
             brief += ("\n\nEXACT PRODUCT SPEC (reproduce the product precisely from this; apply the LOGO RULE "
                       "above to any branding):\n" + spec)
-        res = ai_providers.run_pipeline(_cfg(), brief=brief, reference_image=product_image,
+        res = ai_providers.run_pipeline(_cfg(), reuse_prompt=_reuse_of(b), brief=brief, reference_image=product_image,
                                         product_title=title, text_provider=tprov, image_provider=iprov,
                                         image_kind="main", strength=strength, read_product=False)
         if not res.get("ok"):
@@ -894,7 +916,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 f"Treatment: {rec['instructions']}"
             )
             # if the recipe has a template image, mention it (gen model uses product ref as the anchor)
-            res = ai_providers.run_pipeline(_cfg(), brief=brief, reference_image=product_image,
+            res = ai_providers.run_pipeline(_cfg(), reuse_prompt=_reuse_of(b), brief=brief, reference_image=product_image,
                                             product_title=title, text_provider=tprov, image_provider=iprov, strength=strength)
             if not res.get("ok"):
                 return jsonify(res), 400
@@ -907,7 +929,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                      + " Keep the product itself identical to the reference image (same shape, colour, "
                        "label and text); only change the scene, angle, lighting and composition."
                      + (f" Inspiration to draw from: {inspiration}" if inspiration else ""))
-            res = ai_providers.run_pipeline(_cfg(), brief=brief, reference_image=product_image,
+            res = ai_providers.run_pipeline(_cfg(), reuse_prompt=_reuse_of(b), brief=brief, reference_image=product_image,
                                             product_title=title, text_provider=tprov, image_provider=iprov, strength=strength)
             if not res.get("ok"):
                 return jsonify(res), 400

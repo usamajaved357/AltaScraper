@@ -184,6 +184,12 @@ check("that product's spend is read", {r["asin"]: r for r in rows2}[A1]["ad_spen
 check("  the products with none stay unknown",
       {r["asin"]: r for r in rows2}[A2]["ad_spend"], None)
 check("  and the total is no longer blank", totals2["ad_spend"], 12.5)
+# AND IT IS TAKEN OFF. The settlement basis put it in the row, the card said
+# "after 12.50 of ad spend", and the contribution never moved (12 Oct 2026).
+_c1 = {r["asin"]: r for r in rows}[A1]["contribution"]
+check("  and it comes off that product's contribution",
+      {r["asin"]: r for r in rows2}[A1]["contribution"],
+      None if _c1 is None else round(_c1 - 12.5, 2))
 
 print("\n=== the total is recomputed, not summed ===")
 # A1 45.00 + A3 7.50 = 52.50 if you sum the column. That would silently drop A2's
@@ -203,7 +209,9 @@ fin("2026-08-03", A2, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 12.00, 1)   # cost the missing
 rows3, totals3 = C.by_product(CFG, WS, MKT, "2026-08-01", "2026-08-31")
 b3 = {r["asin"]: r for r in rows3}
 check("the product reports now", b3[A2]["contribution"], 18.5)
-check("  and so does the period", totals3["contribution"], 71.0)
+# Re-pinned 12 Oct 2026: 71.00 less A1's 12.50 of ad spend (inserted above).
+# The old pin was the bug -- the spend was read, shown, and never taken off.
+check("  and so does the period", totals3["contribution"], 58.5)
 truthy("  with no 'uncosted' warning left",
        not any("no cost recorded" in n for n in _texts(C.notes(rows3, totals3))))
 
@@ -236,7 +244,7 @@ truthy("  and it says which way the number is wrong",
 # spend is not connected" -- the screen colours it differently and this is what
 # tells it to.
 check("  marked as serious, not as a footnote", j["notes"][0]["level"], "bad")
-check("  and a contribution the screen can show", j["totals"]["contribution"], 71.0)
+check("  and a contribution the screen can show", j["totals"]["contribution"], 58.5)
 
 # THE OTHER CALENDAR IS A DIFFERENT QUESTION, and on this fixture it has no
 # answer at all: there are no order_lines, only settled money. Nought rows is
@@ -297,11 +305,12 @@ b4 = {r["asin"]: r for r in rows4}
 # A1: 100.00 charged -> 16.67 VAT -> 83.33 net -> - 15.00 fees - 40.00 cogs
 check("A1 VAT out of 100.00", b4[A1]["vat"], 16.67)
 check("  revenue after VAT", b4[A1]["net_revenue"], 83.33)
-check("  contribution drops by the VAT", b4[A1]["contribution"], 28.33)
+# 28.33 after VAT, less A1's 12.50 of ad spend (re-pinned 12 Oct 2026).
+check("  contribution drops by the VAT", b4[A1]["contribution"], 15.83)
 check("  which is lower than before", b4[A1]["contribution"] < 45.0, True)
 truthy("  and the screen explains which basis was used",
        any("did not itemise" in n for n in _texts(C.notes(rows4, tot4))))
-check("the total moves too", tot4["contribution"], 41.0)
+check("the total moves too", tot4["contribution"], 28.5)
 check("no marketplace -> a clear refusal",
       Flask(__name__) and c.get("/finance/contribution").status_code, 200)
 

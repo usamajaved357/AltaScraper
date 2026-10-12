@@ -446,8 +446,22 @@ function sourcingRow(r, i){
   const roiTone = (roi == null) ? 'rp-d'
                 : (roi < 0) ? 'rp-r'
                 : (tgt != null && roi < +tgt) ? 'rp-y' : 'rp-g';
+  // AND UNDER IT, WHAT EACH UNIT REALLY LEFT over the last 30 days -- the
+  // Finance screen's figure (contribution.recent_per_unit), so the next-sale
+  // estimate is never read as the past (12 Oct 2026).
+  const real = r.real_30d || null;
+  const realLine = real
+    ? '<div class="rp-d" style="font-size:9.5px;font-weight:400" title="'
+      + _sesc('Measured: ' + real.units + ' unit' + (real.units === 1 ? '' : 's')
+              + ' sold ' + real.start + ' to ' + real.end + ', after Amazon’s '
+              + 'fees, your recorded cost, refunds and this product’s ads.'
+              + (real.uncosted_units ? ' TOO HIGH: ' + real.uncosted_units
+                 + ' of them have no cost recorded.' : ''))
+      + '">real ' + _sesc(_smoney(real.profit_per_unit)) + ' (30d)'
+      + (real.uncosted_units ? ' !' : '') + '</div>'
+    : '';
   h += '<td class="rp-p ' + (pf == null ? 'rp-d' : pf < 0 ? 'rp-r' : 'rp-g') + '">'
-    + (pf != null ? _smoney(pf) : '&mdash;') + '</td>'
+    + (pf != null ? _smoney(pf) : '&mdash;') + realLine + '</td>'
     + '<td class="' + roiTone + '" style="font-size:10.5px;font-weight:500" title="'
     + (tgt != null ? 'You asked for ' + tgt + '% on this SKU' : 'No ROI target set')
     + '">' + (roi != null ? roi.toFixed(0) + '%' : '&mdash;') + '</td>';

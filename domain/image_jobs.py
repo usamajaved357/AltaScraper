@@ -321,20 +321,23 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                     payload.pop("account_id", None)
                 _job_q = ({"account": str(job.get("_acct_id"))}
                           if job.get("_acct_id") else {})
+                # A REAL PATH, so a step that names nothing is filed as this
+                # job's kind rather than "call from /" (12 Oct 2026).
+                _job_path = "/genimage/job/%s" % (kind or "unknown")
                 if kind in ("recipe", "creative"):
-                    with _app.app.test_request_context(json=payload, query_string=_job_q):
+                    with _app.app.test_request_context(_job_path, json=payload, query_string=_job_q):
                         resp = _app.app.view_functions["genimage_recipe"]()
                 elif kind == "concept":
-                    with _app.app.test_request_context(json=payload, query_string=_job_q):
+                    with _app.app.test_request_context(_job_path, json=payload, query_string=_job_q):
                         resp = _app.app.view_functions["genimage_from_concept"]()
                 elif kind == "source":
-                    with _app.app.test_request_context(json=payload, query_string=_job_q):
+                    with _app.app.test_request_context(_job_path, json=payload, query_string=_job_q):
                         resp = _app.app.view_functions["genimage_process_source"]()
                 elif kind == "secondary":
-                    with _app.app.test_request_context(json=payload, query_string=_job_q):
+                    with _app.app.test_request_context(_job_path, json=payload, query_string=_job_q):
                         resp = _app.app.view_functions["genimage_secondary_v2"]()
                 elif kind == "aplus":
-                    with _app.app.test_request_context(json=payload, query_string=_job_q):
+                    with _app.app.test_request_context(_job_path, json=payload, query_string=_job_q):
                         resp = _app.app.view_functions["aplus_generate"]()
                 else:
                     _app._job_push(jid, {"ok": False, "label": label, "error": "unknown job kind"})

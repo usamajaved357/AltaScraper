@@ -372,11 +372,21 @@ function _sProfitCard(sum, byKey){
   (est.profit_gaps || []).forEach(function(g){
     warns.push("Profit may be too high: " + g + ".");
   });
+  // ORDERS NOT SETTLED YET ARE IN IT, MARKED (owner's choice, 12 Oct 2026):
+  // the live screen needs today's orders, at the fee rate this account pays,
+  // until Amazon settles them.
+  const open = Number(est.orders_estimated || 0);
+  const openNote = open ? (open + " order" + (open === 1 ? " is" : "s are")
+                           + " not settled yet (fee estimated)") : "";
+  // NET PROFIT: the last of the three levels -- after ads and the account's
+  // own charges, where All Orders' "Order profit" is before them. The same
+  // figure as the P&L and Finance's account profit (order_profit.for_period).
   return {
-    key: "profit", kind: "money", label: "Profit",
+    key: "profit", kind: "money", label: "Net profit",
     value: est.profit,
     previous: null, delta_pct: null,
-    note: warns.length ? warns.join(" ") : (est.note || ""),
+    note: [warns.length ? warns.join(" ") : (est.note || ""), openNote]
+            .filter(Boolean).join(" · "),
     warn: warns.length > 0,
     detail: est,
   };

@@ -53,6 +53,9 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                 "select": {
                     "prompt_enhance": ai_providers.select(cfg, "prompt_enhance"),
                     "image_generate": ai_providers.select(cfg, "image_generate"),
+                    # "" = same as the text model (ai_providers.writer_model).
+                    "prompt_write": str((cfg.get("ai_select") or {})
+                                        .get("prompt_write") or ""),
                 },
                 "admin": {
                     # whether the "how it works" logic panels are shown at all,
@@ -69,6 +72,13 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                 sel["prompt_enhance"] = b["prompt_enhance"]
             if b.get("image_generate"):
                 sel["image_generate"] = b["image_generate"]
+            # Blank means "same as the text model", so it can be cleared.
+            if "prompt_write" in b:
+                pw = str(b.get("prompt_write") or "").strip()
+                if pw:
+                    sel["prompt_write"] = pw
+                else:
+                    sel.pop("prompt_write", None)
             raw["ai_select"] = sel
             _write_config(raw)
             _state["cfg"] = None

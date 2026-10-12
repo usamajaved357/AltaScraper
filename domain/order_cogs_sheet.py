@@ -46,6 +46,14 @@ ORDER_COLS = ("order id", "order-id", "amazon order id", "amazon-order-id",
 
 # The template's own columns. `cost` is the one to fill in; the rest are there
 # so the person filling it in can see WHICH order they are pricing.
+#
+# `cost` IS WHAT THAT ORDER LINE COST, ALL ITS UNITS TOGETHER -- the figure on a
+# supplier receipt, which is what the screen asks for ("the price you actually
+# paid for that order") and what a seller's own sourcing log holds. The app
+# stores a cost PER UNIT (order_lines.cogs; order_profit.line_cogs multiplies it
+# back by the units), so apply_sheet divides by the line's units. It used to
+# store the figure as it came, and every two-unit order was costed twice over.
+# `cost now` is shown on the same basis, so a row copied across is unchanged.
 TEMPLATE_HEADERS = ["order id", "date", "sku", "product", "units",
                     "revenue", "cost now", "where from", "cost"]
 
@@ -84,8 +92,9 @@ def template_rows(config_path, workspace_id, marketplace, start=None, end=None,
             r["title"] or "",
             r["units"] if r["units"] is not None else "",
             r["revenue"] if r["revenue"] is not None else "",
-            # What the app believes today, so an unchanged row can be left alone.
-            "" if r["cogs"] is None else round(float(r["cogs"]), 2),
+            # What the app believes today, so an unchanged row can be left alone
+            # -- for the whole line, the same basis the `cost` column is read on.
+            "" if r["cogs"] is None else _line_total(r["cogs"], r["units"]),
             _where_from(r["cogs_source"]),
             "",                       # the column to fill in
         ])
@@ -104,6 +113,15 @@ def _where_from(src):
         "tracked": "an old cost, from the supplier price at the time",
         "sku": "an old cost, read from the SKU name",
     }.get(str(src or ""), "not costed")
+
+
+def _line_total(unit_cost, units):
+    """A stored per-unit cost -> what the whole line cost, for the sheet."""
+    try:
+        n = int(units or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return round(float(unit_cost) * max(n, 1), 2)
 
 
 def _num(v):
@@ -141,7 +159,7 @@ def apply_sheet(config_path, workspace_id, marketplace, headers, rows):
     i_sku = _sheets.pick(headers, ("sku", "seller sku", "merchant sku"))
 
     out = {"ok": True, "set": 0, "cleared": 0, "blank": 0, "unknown_order": 0,
-           "bad_number": 0, "rows": [],
+           "bad_number": 0, "needs_sku": 0, "rows": [],
            "columns": {"order": (headers[i_order] if i_order >= 0 else ""),
                        "cost": (headers[i_cost] if i_cost >= 0 else ""),
                        "sku": (headers[i_sku] if i_sku >= 0 else "")}}
@@ -181,19 +199,37 @@ def apply_sheet(config_path, workspace_id, marketplace, headers, rows):
             out["rows"].append({"order_id": oid, "cost": raw,
                                 "result": "a cost cannot be negative"})
             continue
-        # THE ONE WRITER. set_for_order marks it 'manual-order', which is the
-        # top of the trust order in domain/order_cogs.resolve -- so a later
-        # sync, a supplier price change or a re-freeze cannot overwrite it.
-        n = _oc.set_for_order(config_path, workspace_id, marketplace, oid, cost,
-                              sku or None)
-        if not n:
+        lines = _oc.lines_of_order(config_path, workspace_id, marketplace,
+                                   oid, sku or None)
+        if not lines:
             out["unknown_order"] += 1
             out["rows"].append({"order_id": oid, "cost": cost,
                                 "result": ("no line in this account and "
                                            "marketplace matches that order"
                                            + (" and SKU" if sku else ""))})
             continue
+        # ONE FIGURE FOR AN ORDER OF TWO PRODUCTS CANNOT BE SPLIT HONESTLY. It
+        # used to be written onto every line, so the order was costed once per
+        # product. Refused and said, so the row can be filled in per SKU.
+        if not sku and len({L["sku"] for L in lines}) > 1:
+            out["needs_sku"] += 1
+            out["rows"].append({"order_id": oid, "cost": cost,
+                                "result": ("this order has %d products -- give "
+                                           "each its own row with its SKU"
+                                           % len({L["sku"] for L in lines}))})
+            continue
+        # What the line cost -> what one unit cost, which is what is stored.
+        units = sum(max(L["units"], 0) for L in lines) or 1
+        unit_cost = round(cost / units, 4)
+        # THE ONE WRITER. set_for_order marks it 'manual-order', which is the
+        # top of the trust order in domain/order_cogs.resolve -- so a later
+        # sync, a supplier price change or a re-freeze cannot overwrite it.
+        # The SKU as the order line stores it, so a sheet typed in other
+        # capitals writes the line it matched.
+        n = _oc.set_for_order(config_path, workspace_id, marketplace, oid,
+                              unit_cost, (lines[0]["sku"] if sku else None))
         out["set"] += n
-        out["rows"].append({"order_id": oid, "cost": cost, "lines": n,
+        out["rows"].append({"order_id": oid, "cost": cost, "units": units,
+                            "unit_cost": round(unit_cost, 2), "lines": n,
                             "result": "set"})
     return out

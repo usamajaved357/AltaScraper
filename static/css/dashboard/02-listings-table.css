@@ -317,6 +317,19 @@
   /* Dimmed, not removed: an arrow that vanishes at the last picture moves the
      other one under your cursor. */
   #ilpreview .ilnav.off{opacity:.2;cursor:default;background:color-mix(in srgb, var(--as-lit-ffffff-ov) 4%, transparent)}
+  /* THE × IN THE CORNER -- "I can cross that preview screen" (12 Oct 2026).
+     The arrows' own square, pinned top-right where every viewer puts it; the
+     "Close" chip under the picture stays for anyone who looks there. 44px, the
+     touch-target size for an icon button. */
+  #ilpreview .ilclose{position:fixed;top:14px;right:14px;width:44px;height:44px;
+                      border:none;border-radius:10px;padding:0;
+                      background:color-mix(in srgb, var(--as-lit-ffffff-ov) 7%, transparent);color:var(--as-text-primary);font-size:22px;
+                      cursor:pointer;display:flex;align-items:center;
+                      justify-content:center;z-index:3;transition:background .12s}
+  #ilpreview .ilclose:hover{background:color-mix(in srgb, var(--as-lit-ffffff-ov) 16%, transparent)}
+  /* "Loading image…" / "could not be loaded", where the picture will be. */
+  #ilpreview .ilmsg{font-size:12.5px;margin:0;padding:48px 24px;cursor:default;text-align:center}
+  #ilpreview .ilmsg.bad{color:var(--red)}
   .mediadel{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;
             background:rgba(0,0,0,.6);border:none;color:var(--red);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center}
   .mediadel:hover{background:var(--red-bg)}

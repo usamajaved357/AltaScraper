@@ -194,7 +194,7 @@ function ppctRender(){
   };
   h += '<div class="ppc-kpis tight">'
     + card("SPEND", ppcMoney0(t.spend, cur), ch.spend, "down",
-           "What Amazon charged for the ads in this window.")
+           "Ad spend before VAT, as Amazon's Campaign Manager shows it. An account that is not VAT-registered also pays the VAT on it; the profit figures count that.")
     + card("SALES", ppcMoney0(t.sales, cur), ch.sales, "up",
            "Sales Amazon attributes to those ads.")
     + card("ACOS", ppcPct(t.acos_pct), ch.acos_pct, "down",

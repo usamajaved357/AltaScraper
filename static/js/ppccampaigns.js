@@ -362,7 +362,7 @@ function ppccBreakdown(j, cur){
             + "cost per click of nothing."],
     ["CPA", "Spend ÷ ad orders — what one order cost to buy. Blank when there "
             + "were no orders."],
-    ["SPEND", "What Amazon charged for these ads. Its figure, not an estimate."],
+    ["SPEND", "Ad spend before VAT, as Amazon's Campaign Manager shows it -- its figure, not an estimate. An account that is not VAT-registered also pays the VAT on it; the profit columns count that."],
     ["% SPEND", "This group's share of the window's total ad spend."],
     ["SALES", "Sales Amazon ATTRIBUTED to these ads within its own attribution "
               + "window. Not the same as total sales, and not everything these "
