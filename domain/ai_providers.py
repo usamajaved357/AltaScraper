@@ -89,7 +89,8 @@ def _feature(name):
     the prompt, draw it -- and those four are exactly what someone looking at a
     bill wants told apart.
     """
-    _AI_CONTEXT["feature"] = name
+    from domain import ai_usage as _usage
+    _usage.set_step(name)
 
 
 def _count_images(payload):
@@ -115,18 +116,21 @@ def _count_images(payload):
     return n
 
 
-def _record_openrouter(body, payload, ok=True, error="", ms=0):
-    """Log one OpenRouter call against whatever context was set. Never raises."""
+def _record_openrouter(body, payload, ok=True, error="", ms=0, ctx=None):
+    """Log one OpenRouter call against whatever context was set. Never raises.
+
+    `ctx` is (feature, sku) as they stood when the call STARTED (_post), so a
+    request that cleared CONTEXT during the wait cannot rename it."""
     try:
         cp = _AI_CONTEXT.get("config_path") or ""
         if not cp:
             return                      # nowhere to write it; not worth guessing
         from domain import ai_usage as _usage
+        feat, sku = ctx or (_usage.current("feature"), _usage.current("sku"))
         model = (body or {}).get("model") or ""
         i, o = _usage.tokens_from_openrouter(payload or {})
         n_img = _count_images(payload)
-        _usage.record(cp, feature=(_AI_CONTEXT.get("feature")
-                                   or _usage.unnamed_feature()),
+        _usage.record(cp, feature=(feat or _usage.unnamed_feature()),
                       provider="openrouter", model=model,
                       workspace_id=_aiu_whose(),
                       input_tokens=i, output_tokens=o, images=n_img,
@@ -136,7 +140,7 @@ def _record_openrouter(body, payload, ok=True, error="", ms=0):
                       # never heard of, which is how an image came to be recorded
                       # at no cost at all.
                       cost_usd=_usage.cost_from_openrouter(payload),
-                      ok=ok, error=error, sku=_AI_CONTEXT.get("sku") or "", ms=ms)
+                      ok=ok, error=error, sku=sku or "", ms=ms)
     except Exception:
         pass
 
@@ -160,6 +164,9 @@ def _post(url, config, body, timeout=120):
     account".
     """
     _t0 = time.time()
+    from domain import ai_usage as _usage
+    # The step's name as it is NOW; the reply can take a minute (ai_usage._TL).
+    _ctx = (_usage.current("feature"), _usage.current("sku"))
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
                                  headers=_headers(config), method="POST")
     try:
@@ -169,9 +176,10 @@ def _post(url, config, body, timeout=120):
         # A failed call still spent its input tokens, and a month of retries
         # must not look free.
         _record_openrouter(body, None, ok=False, error=str(e)[:200],
-                           ms=int((time.time() - _t0) * 1000))
+                           ms=int((time.time() - _t0) * 1000), ctx=_ctx)
         raise
-    _record_openrouter(body, payload, ms=int((time.time() - _t0) * 1000))
+    _record_openrouter(body, payload, ms=int((time.time() - _t0) * 1000),
+                       ctx=_ctx)
     return payload
 
 
