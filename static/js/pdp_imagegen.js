@@ -162,6 +162,16 @@ async function pdpImgGenRun(preset){
   } else {
     // The strategist first: it reads the listing and designs the set.
     const sKind = (preset === "aplus") ? "aplus" : "secondary";
+    // HOW MANY, asked before anything is paid for (owner, 12 Oct 2026). A+
+    // keeps its module count; those layouts need exactly that many.
+    let _n = (sKind === "aplus") ? 5 : 7;
+    if(sKind === "secondary" && typeof uiPrompt === "function"){
+      const _v = await uiPrompt("How many secondary images should the strategist design and generate?",
+                                "7", {type: "number", min: 1, max: 8, suffix: "images",
+                                      title: "Secondary set"});
+      if(_v === null) return;
+      _n = Math.max(1, Math.min(8, parseInt(_v, 10) || 7));
+    }
     _pdpigSay('<span class="genspin"></span> Designing the ' + (sKind === "aplus" ? "A+ modules" : "secondary set") + '…');
     try{
       const j = await (await fetch("/genimage/strategize", {method: "POST",
@@ -169,7 +179,7 @@ async function pdpImgGenRun(preset){
         body: JSON.stringify({product_image: ref,
           product_images: (typeof _refCandidates === "function") ? _refCandidates(r) : [ref],
           title: r.title || "", sku: sku, listing: r, kind: sKind,
-          n: (sKind === "aplus" ? 5 : 7), text_provider: (window.AI_TEXT || null),
+          n: _n, text_provider: (window.AI_TEXT || null),
           custom_instructions: instr})})).json();
       if(!j || !j.ok || !(j.concepts || []).length){
         _pdpigSay('<span class="bad">' + esc((j && j.error) || "No ideas came back — try again.") + '</span>');

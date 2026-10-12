@@ -965,10 +965,22 @@ def strategize_images(config: dict, image="", product_title: str = "",
         return {"ok": False, "error": f"OpenRouter strategist failed: {str(e)[:200]}"}
 
 
+def writer_model(config: dict, provider: str = None) -> str:
+    """The model that writes each image's detailed instruction.
+
+    ITS OWN SETTING, ai_select.prompt_write (owner, 12 Oct 2026: "can we drop
+    down the AI spend"). This step runs once for EVERY image -- and again on
+    every Redo -- so it was the largest text cost, all of it on the model that
+    also reads the product. Set, it wins over the run's text model, because it
+    is a deliberate cost choice; unset, nothing changes."""
+    chosen = str(((config or {}).get("ai_select") or {}).get("prompt_write") or "").strip()
+    return chosen or provider or select(config, "prompt_enhance")
+
+
 def enhance_prompt(config: dict, brief: str, product_title: str = "",
                    provider: str = None, image_kind: str = "main") -> dict:
     _feature("image: write the prompt")
-    model = provider or select(config, "prompt_enhance")
+    model = writer_model(config, provider)
     if not _key(config):
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
     if not model:
@@ -1652,12 +1664,40 @@ def hard_constraints(product_spec):
             + "\n".join("- " + k for k in keep))
 
 
+# THE STRATEGIST'S PRODUCT READING, per account and SKU (12 Oct 2026, owner:
+# "can we drop down the AI spend"). A strategist batch read each product twice
+# -- once to suggest the ideas, once more for the images -- because the batch
+# jobs carry no listing and so missed the reading's cache. Kept here, the batch
+# it starts reuses it. Keyed by ACCOUNT as well: SKUs repeat across accounts.
+# arch-ok: module-mutable-global -- a short-lived cache of a paid reading; losing it only means one more read
+_SPEC_BY_SKU = {}
+_SPEC_TTL = 6 * 3600
+
+
+def remember_spec(account, sku, spec):
+    """Keep the strategist's reading of one account's SKU for its batch."""
+    if not (account and sku and spec):
+        return
+    if len(_SPEC_BY_SKU) > 500:
+        _SPEC_BY_SKU.clear()
+    _SPEC_BY_SKU[(str(account), str(sku))] = (str(spec), time.time())
+
+
+def recalled_spec(account, sku):
+    """The reading remember_spec kept, if still fresh -> str ('' if none)."""
+    hit = _SPEC_BY_SKU.get((str(account or ""), str(sku or "")))
+    if hit and time.time() - hit[1] < _SPEC_TTL:
+        return hit[0]
+    return ""
+
+
 def run_pipeline(config: dict, brief: str, reference_image="",
                  product_title: str = "", text_provider: str = None,
                  image_provider: str = None, image_kind: str = "main",
                  read_product: bool = True, strength: float = 0.25,
                  extra_reference: str = "", target_w: int = 0, target_h: int = 0,
-                 media_root: str = "", spec_image: str = "", listing=None) -> dict:
+                 media_root: str = "", spec_image: str = "", listing=None,
+                 product_spec: str = "", reuse_prompt: str = "") -> dict:
     """Vision-first pipeline:
     1) (optional) vision AI reads the ACTUAL product in detail (exact label text,
        shape, colours, material) so the model can't alter it,
@@ -1673,10 +1713,19 @@ def run_pipeline(config: dict, brief: str, reference_image="",
     copy of a copy and let small errors compound with every edit. Reading the
     ORIGINAL product photo instead keeps every round anchored to the real thing.
     Defaults to reference_image, so every existing caller is unaffected.
+
+    product_spec: a reading already paid for (recalled_spec) -- used instead of
+    reading the product again. reuse_prompt: the finished instruction an
+    earlier image was drawn from -- a Redo then only draws again, without
+    re-reading the product or re-writing the instruction (12 Oct 2026).
     """
-    product_spec = ""
+    if reuse_prompt:
+        return _draw(config, str(reuse_prompt), reference_image, image_provider,
+                     strength, target_w, target_h, extra_reference, media_root,
+                     product_spec=product_spec, text_provider="(reused)")
+    product_spec = product_spec or ""
     _spec_src = spec_image or reference_image
-    if read_product and _spec_src:
+    if read_product and _spec_src and not product_spec:
         # The listing goes with it: the photograph cannot say how big the thing
         # is or what it is for, and those are the two ways a generated image is
         # most often wrong.
@@ -1738,6 +1787,18 @@ def run_pipeline(config: dict, brief: str, reference_image="",
             f"matters within about 6% of any edge. Text touching the edge is "
             f"the single most common way one of these is ruined."
         )
+    return _draw(config, detailed, reference_image, image_provider, strength,
+                 target_w, target_h, extra_reference, media_root,
+                 product_spec=product_spec, text_provider=enh.get("provider"))
+
+
+def _draw(config, detailed, reference_image, image_provider, strength,
+          target_w, target_h, extra_reference, media_root,
+          product_spec="", text_provider=None):
+    """Step 3 of run_pipeline: draw `detailed` -- a FINISHED instruction (facts
+    and canvas already in it) -- once, retry once if the words were refused,
+    resize to the target. Split out so a Redo can draw again from the
+    instruction it already paid for (run_pipeline reuse_prompt)."""
     # strength LOW so the model preserves the actual product from the reference
     # (only the scene/angle/background change, not the product itself).
     # size '4K' = Seedream's max (4096px); SAME $0.04 cost as 2K, and gives
@@ -1795,7 +1856,7 @@ def run_pipeline(config: dict, brief: str, reference_image="",
            # are entitled to know which ones. detailed_prompt above is the
            # softened version, so it can be read in full.
            "softened_prompt": bool(img.get("softened_prompt")),
-           "text_provider": enh.get("provider"), "image_provider": img.get("provider")}
+           "text_provider": text_provider, "image_provider": img.get("provider")}
     if img.get("image_b64"):
         out["image_b64"] = img["image_b64"]; out["mime"] = img.get("mime", "image/png")
     elif img.get("image_url"):

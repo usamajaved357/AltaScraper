@@ -315,6 +315,7 @@ function renderStudio(){
         <label class="cc" style="display:block;margin-bottom:3px">Instructions for the strategist (optional, not saved) ${uiHint('e.g. "don\'t show pets", "show the product in only some images, not all"')}</label>
         <textarea id="strat_instr_main" class="ed" rows="2" placeholder='e.g. no people; show one close-up of the texture; keep it minimal' style="margin-bottom:8px"></textarea>
         <button class="primary" onclick="studioStrategize('main')"><i class="ti ti-sparkles"></i> Suggest image ideas</button>
+        ${_studioCountSelect('main', 6, 3)}
         <button class="primary" onclick="studioStrategize('main', true)" style="margin-left:6px" title="Ask the strategist for ideas AND generate them all automatically — no manual picking"><i class="ti ti-bolt"></i> Suggest &amp; auto-generate${batch?(' ('+n+' products)'):''}</button>
         <span id="studio_strat_status" class="cc" style="margin-left:8px"></span>
         ${howWorks('strategist')}
@@ -620,6 +621,7 @@ function secondaryPaneHTML(batch,n){
       <label class="cc" style="display:block;margin-bottom:3px">Instructions for the strategist (optional, not saved) ${uiHint('e.g. "don\'t show pets", "pour the medicine into the tub in one image", "show the product in only some images, not all"')}</label>
       <textarea id="strat_instr_secondary" class="ed" rows="2" placeholder='e.g. no pets; one image pouring liquid into a tub; show product in ~half the images so the buyer still knows what it is' style="margin-bottom:8px"></textarea>
       <button class="primary" onclick="studioStrategize('secondary')"><i class="ti ti-sparkles"></i> Suggest secondary ideas</button>
+      ${_studioCountSelect('secondary', 8, 7)}
       <button class="primary" onclick="studioStrategize('secondary', true)" style="margin-left:6px" title="Ask the strategist for ideas AND generate them all automatically — no manual picking"><i class="ti ti-bolt"></i> Suggest &amp; auto-generate${batch?(' ('+n+' products)'):''}</button>
       <span id="sec_strat_status" class="cc" style="margin-left:8px"></span>
       ${howWorks('secAI')}
@@ -1102,6 +1104,22 @@ async function loadStudioInstructions(){
     if(ta && !ta.value) ta.value=window.IMG_INSTRUCTIONS;
   }catch(e){}
 }
+// HOW MANY IMAGES, chosen before "Suggest & auto-generate" (owner, 12 Oct
+// 2026: "give the user an option to select the number of images before
+// creating. He selects the number and then clicks on Suggest and
+// auto-generate"). The strategist is asked for exactly that many ideas, so a
+// set is only as large -- and only costs -- what was asked for.
+// (Line comments: an "image/*" earlier in this file would pair with a block
+// comment's close in test_genimage_buttons.py's comment stripper.)
+function _studioCountSelect(kind, max, dflt){
+  let o = "";
+  for(let i = 1; i <= max; i++){
+    o += '<option value="' + i + '"' + (i === dflt ? " selected" : "") + ">" + i + "</option>";
+  }
+  return '<label class="cc" style="margin-left:6px" title="How many images to suggest and generate">'
+    + 'Images <select class="ed" id="strat_n_' + kind + '" style="width:auto;display:inline-block">'
+    + o + "</select></label>";
+}
 async function studioStrategize(kind, autoGen){
   const statusId = kind==="main" ? "studio_strat_status" : (kind==="aplus" ? "ap_strat_status" : "sec_strat_status");
   const boxId = kind==="main" ? "studio_concepts" : (kind==="aplus" ? "ap_concepts" : "sec_concepts");
@@ -1133,6 +1151,12 @@ async function studioStrategize(kind, autoGen){
                    || (document.getElementById("ap_tier")||{}).value || "basic");
     _n = _tier==="premium" ? 7 : 5;
     STUDIO.aplusTier = _tier;   // remember so generated modules go to the right subfolder
+  }
+  // THE NUMBER CHOSEN BESIDE THE BUTTON wins for main and secondary. A+ keeps
+  // its tier's module count: those layouts need exactly that many.
+  if(kind !== "aplus"){
+    const _pick = parseInt((document.getElementById("strat_n_" + kind) || {}).value, 10);
+    if(_pick > 0) _n = _pick;
   }
   try{
     // per-run instructions for the strategist (not saved) — keyed by section

@@ -124,6 +124,18 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   order profit, so the All Orders tile leaves it out and says how many. The order-cost sheet's `cost` is
   what the whole order LINE cost; the app divides it by the units.
   Source: chat, 12 Oct 2026.
+- **12 Oct 2026 — AI spend: cheaper where it counts, never fewer images by
+  default.** "I see there is a lot of AI spend. Can we drop down the AI spend
+  and replace it with something else?" Of the proposals he approved: readable
+  labels on the AI spend page; a separate model setting for writing each image's
+  instruction (Settings: "Image instruction model", ai_select.prompt_write; set,
+  it wins over the run's text model); not paying twice (a strategist batch
+  reuses the strategist's product reading, per account+SKU; Redo reuses the
+  instruction and only redraws). He REJECTED fewer images per click: "give the
+  user an option to select the number of images before creating. He selects the
+  number and then clicks on Suggest and auto-generate." Studio main/secondary
+  have a count beside the button; the PDP "Secondary set" and the Listings bulk
+  button ask how many. A+ keeps its tier's module count. Source: chat, 12 Oct 2026.
 - **18 Aug 2026 — Profit is measured, never padded.** "do not add 3 pounds
   postage and 2 pounds ad cost and 1 pound profit space on your own, if i added
   this rule earlier, remove it. i want to be shown the profit as the truth."
