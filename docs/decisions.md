@@ -80,8 +80,9 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   are added show profit as wrong i agree do not subtract cogs this is the
   standard way, the user should know he needs to add cogs otherwise the profit
   numbers wont be accurate." Applied to Finance on 28 Sep 2026 (it hid the
-  figure); the Sales grid's daily cells still withhold, having nowhere to put
-  the warning. Source: domain/order_profit.py docstring.
+  figure), and to the Sales grid, PPC NET PROFIT and Brand view on 12 Oct 2026
+  (the figure in the warning colour, with the uncosted-unit count). Source:
+  domain/order_profit.py docstring.
 - **28 Sep 2026 — He delegated the remaining profit rules to Claude** ("i want
   you to chose the logics you think is accurate ... report me all at the end").
   Those choices are listed in known-issues "Fixed on the development branch" as
@@ -101,6 +102,27 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   domain/ad_cost.py). A refund's coupon give-back makes the refund smaller on
   the refund date. Source: chat, 30 Sep 2026; active/plan-profit-accuracy-2026-09-30.md.
 
+- **12 Oct 2026 — One profit calculation, three labelled levels.** After his
+  own loss analysis of nestwell_goods (27 Jul - 5 Oct) disagreed with the app:
+  "My goal is to have accurate profit numbers and/or loss numbers inside each
+  tab of finance ... The repricer shows me another number for the profits, the
+  Sales tab shows me another number, and the PPC page shows me another number.
+  They don't talk to each other." Asked, he chose (all four recommended
+  options):
+  - **Ads count on the CLICK date** (unchanged; not the bill date his analysis
+    used).
+  - **Orders not shipped/settled yet count, marked** as estimated (the Sales
+    card and the All Orders tile say how many).
+  - **The Repricer's profit stays on the supplier's price today**, labelled
+    "Profit next sale", with what each unit really left over the last 30 days
+    beside it (contribution.recent_per_unit).
+  - **Go ahead with the fixes and the levels**: Order profit (before ads, All
+    Orders) / profit after ads (Finance per product, PPC) / Net profit (Sales
+    card, P&L, Finance account profit, PPC NET PROFIT).
+  The missing-cost rule below now holds on every screen (the grid, PPC NET
+  PROFIT and Brand view used to go blank). The order-cost sheet's `cost` is
+  what the whole order LINE cost; the app divides it by the units.
+  Source: chat, 12 Oct 2026.
 - **18 Aug 2026 — Profit is measured, never padded.** "do not add 3 pounds
   postage and 2 pounds ad cost and 1 pound profit space on your own, if i added
   this rule earlier, remove it. i want to be shown the profit as the truth."
