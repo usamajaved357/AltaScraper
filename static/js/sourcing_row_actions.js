@@ -164,7 +164,7 @@ let SRC_BUF_ITEMS = [];
 // Whether anything was chosen since the dialog opened. See `blank` below.
 let SRC_BUF_TOUCHED = false;
 
-function _srcBufferModal(title, cur, dflt, onSave, blank){
+function _srcBufferModal(title, cur, dflt, onSave, blank, note){
   // dflt is the account's number, or null when this IS the account's number
   // (it has nothing under it to fall back to).
   //
@@ -176,11 +176,13 @@ function _srcBufferModal(title, cur, dflt, onSave, blank){
   SRC_BUF_TOUCHED = false;
   _srcModal(title,
     '<div style="font-size:12.5px;line-height:1.6">'
+    + (note ? '<div class="cc" style="font-size:11.5px;margin:-4px 0 8px">'
+              + note + '</div>' : '')
     + '<div id="src_bufseg">'
     + uiSeg(SRC_BUF_ITEMS, blank ? "" : (cur == null ? "d" : String(cur)), "_srcBufPick")
     + '</div>'
-    + '<label class="cc" style="font-size:11.5px;display:block;margin-top:10px">'
-    + 'Or any number of days, 0 to 30</label>'
+    + '<label for="src_buf" class="cc" style="font-size:11.5px;display:block;'
+    + 'margin-top:10px">Or any number of days, 0 to 30</label>'
     + '<input id="src_buf" type="number" min="0" max="30" step="1" value="'
     + (cur == null ? '' : (+cur)) + '" placeholder="' + (dflt == null ? '0' : 'default')
     + '" oninput="_srcBufMark(this.value)" style="width:110px;margin-top:4px">'
@@ -195,7 +197,15 @@ function _srcBufferModal(title, cur, dflt, onSave, blank){
       }
       const el = document.getElementById("src_buf");
       const v = el ? String(el.value).trim() : "";
-      return onSave(v === "" ? null : v);
+      // CHECKED ONCE, HERE, before anything is sent: a box the browser cannot
+      // read reports "" -- which would mean "Default" -- and 31 would be
+      // refused by the server once per selected SKU.
+      if((el && el.validity && el.validity.badInput)
+         || (v !== "" && !(/^\d+$/.test(v) && +v <= 30))){
+        toast("Extra handling is a whole number of days, 0 to 30");
+        return false;
+      }
+      return onSave(v === "" ? null : +v);
     });
 }
 
@@ -205,11 +215,14 @@ function _srcBufPick(v){
   _srcBufMark(el ? el.value : "");
 }
 
+/* The chosen segment is lit IN PLACE: rebuilding the buttons destroyed the one
+ * just pressed and dropped the keyboard focus out of the dialog. */
 function _srcBufMark(v){
   SRC_BUF_TOUCHED = true;
-  const host = document.getElementById("src_bufseg");
-  if(host) host.innerHTML = uiSeg(SRC_BUF_ITEMS, String(v).trim() === "" ? "d"
-                                  : String(parseInt(v, 10)), "_srcBufPick");
+  const key = String(v).trim() === "" ? "d" : String(parseInt(v, 10));
+  document.querySelectorAll("#src_bufseg .seg > button").forEach(function(b, i){
+    b.classList.toggle("on", !!SRC_BUF_ITEMS[i] && SRC_BUF_ITEMS[i].v === key);
+  });
 }
 
 async function sourcingBuffer(sku, btn){
@@ -219,17 +232,30 @@ async function sourcingBuffer(sku, btn){
       headers: {"Content-Type": "application/json"},
       body: _srcBody({sku: sku, rule: {handling_buffer_days: v}})})).json();
     if(!j.ok){ toast(j.error || "Could not save"); return false; }
-    toast("Extra handling: " + (v == null ? (sku ? "default (+" + acct + ")" : "+0")
-                                          : "+" + v) + (sku ? "" : " on every SKU"));
+    toast(sku ? ("Extra handling: " + (v == null ? "default (+" + acct + ")" : "+" + v))
+              : ("Default extra handling: +" + (v == null ? 0 : v)));
     await sourcingLoad(true);
     return true;
   };
   if(!sku){
-    _srcBufferModal("Extra handling — every SKU", acct, null, save);
+    // HOW FAR IT REACHES, said before Save: every SKU without a number of its
+    // own. A typo here moves every one of them at the next push.
+    const rows = SRC_ROWS || [];
+    const follow = rows.filter(function(r){
+      return r.own_rule != null && (r.own_rule || {}).handling_buffer_days == null;
+    }).length;
+    _srcBufferModal("Extra handling — account default", acct, null, save, false,
+      'Followed by <b>' + follow + '</b> of ' + rows.length + ' tracked SKUs; '
+      + 'the rest have their own.');
     return;
   }
   const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0] || {};
-  const own = (row.own_rule || {}).handling_buffer_days;
+  // own_rule null = the server could not say which numbers are the SKU's own.
+  // Open on the number in force rather than on "Default", so a Save without
+  // touching anything cannot wipe an own number it did not know about.
+  const own = (row.own_rule == null)
+            ? (+((row.rule || {}).handling_buffer_days) || 0)
+            : (row.own_rule || {}).handling_buffer_days;
   _srcBufferModal("Extra handling days", own == null ? null : own, acct, save);
 }
 

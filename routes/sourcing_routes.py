@@ -198,11 +198,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         _policy_days = _run.shipping_policy_days(CONFIG_PATH)
         # WHAT EACH SKU SET FOR ITSELF, so a setting can be marked "own" or
         # "default" -- the merged rule below cannot say which (owner, 27 Oct
-        # 2026). Once for the whole list.
-        try:
-            _own_rules = _repo.own_rules(CONFIG_PATH, wsid, mkt)
-        except Exception:
-            _own_rules = {}
+        # 2026). Read for the SAME (workspace, marketplace) as the rule each
+        # row is priced with -- rule_for(d["workspace_id"], d["marketplace"])
+        # -- once per pair, so a list that spans marketplaces cannot label a
+        # UK number with a DE row. A read that fails gives None ("unknown"),
+        # never {} ("nothing of its own"): the dialog would then open on
+        # Default and a Save could wipe a number it did not know about.
+        _own_by = {}
+
+        def _own_rule(ws, mk, sku):
+            k = (ws, mk)
+            if k not in _own_by:
+                try:
+                    _own_by[k] = _repo.own_rules(CONFIG_PATH, ws, mk)
+                except Exception:
+                    _own_by[k] = None
+            got = _own_by[k]
+            return None if got is None else got.get(sku, {})
         # WHAT EACH PRODUCT REALLY MADE, beside what the next sale would make
         # (owner, 12 Oct 2026). Once for the whole list, keyed by ASIN.
         try:
@@ -310,7 +322,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                          "real_30d": _real.get(
                              (_cat.look(idx, d["sku"]) or {}).get("asin") or ""),
                          "rule": _rule,
-                         "own_rule": _own_rules.get(d["sku"], {})})
+                         "own_rule": _own_rule(d["workspace_id"],
+                                               d["marketplace"], d["sku"])})
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "rows": rows, "counts": run["counts"],
                         "note": run["note"],

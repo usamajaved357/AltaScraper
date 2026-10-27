@@ -106,6 +106,7 @@ check("  FLOOR-ONLY has no number of its own",
       "handling_buffer_days" in own.get("FLOOR-ONLY", {}), False)
 check("  and the account's row is not a SKU", "" in own, False)
 check("  another account sees none of them", R.own_rules(CFG, "other", "UK"), {})
+check("  nor does another marketplace of the same account", R.own_rules(CFG, "ws", "DE"), {})
 
 print("\n=== the route: empty means 'follow the account' ===")
 import dashboard as D                                          # noqa: E402
@@ -140,8 +141,29 @@ check("the account default is set the same way (sku '')", r.status_code, 200)
 check("  and a SKU with none of its own follows it", buf("NEW"), 2)
 
 print("\n=== the Repricer list says which numbers are a SKU's own ===")
-SRC = open(os.path.join(_REPO, "routes", "sourcing_routes.py"), encoding="utf-8").read()
-truthy("each row carries own_rule, from own_rules", '"own_rule": _own_rules.get(' in SRC)
+# Real rows through the real route: two enrolled SKUs, one with its own +3.
+from domain import live_snapshots as LS                        # noqa: E402
+LS.save(CFG, "ws", "UK", [{"sku": k, "price": 20.0, "qty": 3, "handling": 1,
+                          "fulfillment": "DEFAULT", "status": "Active"}
+                         for k in ("LIST-OWN", "LIST-DEF")], report_source="test")
+for k in ("LIST-OWN", "LIST-DEF"):
+    R.enrol(CFG, "ws", "UK", k)
+    sid = R.add_source(CFG, "ws", "UK", k, "https://www.ebay.co.uk/itm/" + k)
+    R.record_check(CFG, sid, {"status": S.FETCHED, "price": 8.0, "shipping": 0.0,
+                              "currency": "GBP", "in_stock": True,
+                              "dispatch_days": 3, "checked_at": AT})
+R.save_rule(CFG, "ws", "UK", "LIST-OWN", {"handling_buffer_days": 3})
+R.save_rule(CFG, "ws", "DE", "LIST-DEF", {"handling_buffer_days": 9})   # another marketplace
+with app.test_client() as c:
+    j = c.get("/sourcing/list?account=ws&marketplace=UK").get_json() or {}
+rows = {r.get("sku"): r for r in (j.get("rows") or [])}
+check("the list answers for the account it was asked about", j.get("workspace"), "ws")
+check("LIST-OWN's own +3 is reported as its own",
+      (rows.get("LIST-OWN") or {}).get("own_rule", {}).get("handling_buffer_days"), 3)
+check("LIST-DEF has none of its own in UK (its DE +9 is not borrowed)",
+      "handling_buffer_days" in ((rows.get("LIST-DEF") or {}).get("own_rule") or {}), False)
+check("  and its rule in force is the account's +2",
+      ((rows.get("LIST-DEF") or {}).get("rule") or {}).get("handling_buffer_days"), 2)
 
 print("\n" + ("FAILURES: %s" % ", ".join(fails) if fails else "FAILURES: 0"))
 sys.exit(1 if fails else 0)

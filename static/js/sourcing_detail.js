@@ -444,10 +444,13 @@ function _rulePills(r){
   // OWN OR DEFAULT. rule is the account's Extra handling with this SKU's laid
   // over it, so the number alone cannot say which one is in force; own_rule
   // can (owner, 27 Oct 2026: override the default by selecting and changing).
-  const bufOwn = ((r.own_rule || {}).handling_buffer_days != null);
+  // own_rule null = the server could not say; shown without the marker rather
+  // than as "default", which would be a guess.
+  const bufOwn = (r.own_rule == null)
+               || ((r.own_rule || {}).handling_buffer_days != null);
   h += pill('Extra handling',
             '+' + (rule.handling_buffer_days || 0) + 'd'
-            + (bufOwn ? '' : ' <span class="rp-off">default</span>'),
+            + (bufOwn ? '' : ' <span class="rp-d" style="font-weight:400">default</span>'),
             'sourcingBuffer(' + S + ',this)',
             'Added on top of the calculated handling time. Use it for a '
             + 'supplier that does not dispatch when it says it will. '
@@ -523,7 +526,9 @@ function _statCards(j){
   // in now, which is also why no separate row of filter buttons was added:
   // that would be two controls for one idea.
   const card = function(key, n, label, tone, bar, why){
-    const on = (SRC_FILTER === key);
+    // "Tracked" is lit only when NOTHING filters the rows -- the Delivery
+    // filter included, or it reads as "all 6" beside "3 shown".
+    const on = key ? (SRC_FILTER === key) : (!SRC_FILTER && !SRC_DFILT.by);
     return '<button class="rp-mc' + (on ? ' rp-on' : '') + '" type="button" '
       + 'onclick="sourcingFilter(' + _sarg(key) + ')" '
       + 'aria-pressed="' + (on ? 'true' : 'false') + '" title="'

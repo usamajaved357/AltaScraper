@@ -91,7 +91,7 @@ function _srcSelBar(){
     + '<button class="db-chip" onclick="sourcingBulkBuffer()" title="'
     + 'Days added to the handling time of every selected SKU, or Default to '
     + 'follow the account’s Extra handling.">'
-    + '<i class="ti ti-clock-plus"></i> Extra handling</button>'
+    + '<i class="ti ti-clock-plus"></i> Set extra handling</button>'
     // THE ANSWER TO "it should not reduce my selling price", made reachable.
     // The held price did this all along; typing it into 67 SKUs by hand did not.
     + '<button class="db-chip" onclick="sourcingHoldAtCurrent()" title="'
@@ -155,8 +155,23 @@ async function sourcingSaveRuleQuiet(sku, rule, scope){
       headers: {"Content-Type": "application/json"},
       body: _srcBody({sku: sku, rule: rule}, scope)})).json();
     if(!j.ok) return j.error || "refused";
+    // A REPLY THAT LANDS AFTER A SWITCH paints nothing: SKUs are not unique
+    // across accounts, so the row found by this SKU could be the new
+    // account's (account-scope review, 27 Oct 2026). The reload after the loop
+    // draws the truth either way.
+    if(scope && typeof _srcStillIn === "function" && !_srcStillIn(scope)) return "";
     const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0];
-    if(row) row.rule = Object.assign({}, row.rule || {}, rule);
+    if(row){
+      row.rule = Object.assign({}, row.rule || {}, rule);
+      // What the SKU now holds as its OWN, so a pill opened before the reload
+      // lands says "own" or "default" correctly. null = back on the default.
+      if(row.own_rule){
+        row.own_rule = Object.assign({}, row.own_rule);
+        Object.keys(rule).forEach(function(k){
+          if(rule[k] == null) delete row.own_rule[k]; else row.own_rule[k] = rule[k];
+        });
+      }
+    }
     return "";
   }catch(e){ return String((e && e.message) || e); }
 }

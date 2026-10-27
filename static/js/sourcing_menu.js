@@ -52,29 +52,35 @@ function _srcVisible(){
  * the three the Delivery column shows, read off the decision's breakdown --
  * the same figures the repricer sends Amazon, never worked out again here.
  */
+// "Supplier", not "eBay": a supplier can be a website too (source_fetch reads
+// its delivery date the same way), and the number is the same either way.
 const SRC_DFILT_BY = [{v: "", label: "Any"},
                       {v: "total", label: "To buyer"},
                       {v: "handling", label: "Handling"},
-                      {v: "ebay", label: "eBay"}];
+                      {v: "supplier", label: "Supplier"}];
 
 function _srcDeliveryDays(r, by){
   const b = ((r || {}).decision || {}).breakdown || {};
   const v = (by === "total") ? b.buyer_days
           : (by === "handling") ? b.lead_days
-          : (by === "ebay") ? b.supplier_dispatch_days : null;
+          : (by === "supplier") ? b.supplier_dispatch_days : null;
   return (v == null || v === "") ? null : +v;
 }
 
 function _srcDeliveryBar(){
   const on = !!SRC_DFILT.by;
-  return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;'
-    + 'margin:-2px 0 10px;font-size:12px">'
+  return '<div id="src_dbar" style="display:flex;gap:8px;align-items:center;'
+    + 'flex-wrap:wrap;margin:-2px 0 10px;font-size:12px">'
     + '<span class="cc"><i class="ti ti-truck-delivery"></i> Delivery</span>'
     + uiSeg(SRC_DFILT_BY, SRC_DFILT.by, "sourcingDeliveryBy")
     + (on
         ? '<span class="cc">&le;</span>'
+          // APPLIED AS YOU TYPE (briefly debounced), not on change: a change
+          // event fires when a click elsewhere takes the focus, and redrawing
+          // then replaced the very row or tick that was being clicked.
           + '<input id="src_dmax" type="number" min="0" max="60" step="1" value="'
-          + (+SRC_DFILT.max) + '" onchange="sourcingDeliveryMax(this.value)" '
+          + (+SRC_DFILT.max) + '" oninput="sourcingDeliveryMax(this.value)" '
+          + 'onblur="if(!(parseInt(this.value,10)>=0))this.value=SRC_DFILT.max" '
           + 'aria-label="Most days" style="width:56px">'
           + '<span class="cc">days &middot; ' + _srcVisible().length + ' shown</span>'
         : '')
@@ -86,20 +92,40 @@ function sourcingDeliveryBy(v){
   _srcDeliveryRedraw();
 }
 
+let SRC_DMAX_T = null;
 function sourcingDeliveryMax(v){
   const n = parseInt(String(v), 10);
+  // A half-typed or cleared box changes nothing; leaving it puts the number
+  // in force back (the onblur above), so the box never shows one the filter
+  // is not using.
   if(!(n >= 0)) return;
-  SRC_DFILT.max = n;
-  _srcDeliveryRedraw();
+  clearTimeout(SRC_DMAX_T);
+  SRC_DMAX_T = setTimeout(function(){
+    SRC_DFILT.max = n;
+    _srcDeliveryRedraw();
+  }, 300);
 }
 
 /* Same as a card filter: the ticks go, because a selection made under one
- * filter would act on rows you can no longer see. */
+ * filter would act on rows you can no longer see.
+ *
+ * FOCUS STAYS WHERE IT WAS. The redraw replaces the bar, so whatever had the
+ * focus in it is put back -- the number box (with the caret at the end) or the
+ * chosen segment -- and nothing else is ever given the focus: pulling it into
+ * the box on a tap opened the phone keyboard over the table. Same idea as
+ * orders.js's _ordRefocus. */
 function _srcDeliveryRedraw(){
+  const a = document.activeElement;
+  const inBox = !!(a && a.id === "src_dmax");
+  const inBar = !!(a && !inBox && a.closest && a.closest("#src_dbar"));
   SRC_SEL = new Set();
   sourcingRender(SRC_LAST_J || {});
-  const el = document.getElementById("src_dmax");
-  if(el){ el.focus(); }
+  const el = inBox ? document.getElementById("src_dmax")
+           : inBar ? document.querySelector("#src_dbar .segbtn.on") : null;
+  if(el){
+    el.focus({preventScroll: true});
+    if(inBox){ try{ const n = String(el.value).length; el.setSelectionRange(n, n); }catch(e){} }
+  }
 }
 
 /* ONE line, only when there is something to act on.

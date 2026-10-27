@@ -447,7 +447,7 @@ function sourcingRender(j){
     //      on the supplier as this, but we have +1 handling time on these
     //      items ... But I don't want it to be like sentences" (27 Oct 2026)
     +  '<th title="Days to the buyer, and in brackets its handling + postage. '
-    +  'Under it: eBay&#39;s delivery days and any extra handling days.">Delivery</th>'
+    +  'Under it: the supplier&#39;s delivery days and any extra handling days.">Delivery</th>'
     +  '<th title="What it sells for on Amazon now, and what the rules say it '
     +  'should be">Price</th>'
     // "NOW", because the panel underneath answers the other question.
@@ -486,7 +486,8 @@ function sourcingRender(j){
   // failed to load.
   if(!shown.length && SRC_ROWS.length){
     h += '<div class="cc" style="font-size:12px;padding:14px 4px">'
-      +  'No SKU is in that state right now. '
+      +  (SRC_DFILT.by ? 'No SKU is within that delivery limit. '
+                       : 'No SKU is in that state right now. ')
       +  '<button class="db-chip" onclick="sourcingFilter(\'\')">'
       +  'Show all ' + SRC_ROWS.length + '</button></div>';
   }

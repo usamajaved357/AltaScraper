@@ -244,35 +244,43 @@ function _rpRowHist(r){
  *      the supplier as this, but we have +1 handling time on these items ...
  *      But I don't want it to be like sentences" (owner, 27 Oct 2026)
  *
- *     4d (2+2)    <- what the buyer is shown, and its handling + postage
- *     eBay 3d +1  <- the supplier's delivery days, and the extra days added
+ *     4d (2+2)        <- what the buyer is shown, and its handling + postage
+ *     Supplier 3d +1  <- the supplier's delivery days, and the extra days added
  *
- * The +N is gold when the SKU set it for itself and plain when it follows the
- * account's Extra handling. The sum is in the tooltip. Every number comes off
- * the decision's breakdown -- what the repricer sends Amazon -- so this cell
- * and the Delivery filter cannot disagree with it (Rule 12).
+ * The +N is plain when the SKU set it for itself and muted when it follows the
+ * account's Extra handling -- the pill's "default", in the same two weights.
+ * An own +0 is shown when the account's number is higher, because that SKU is
+ * then deliberately NOT following it. The sum is in the tooltip. Every number
+ * comes off the decision's breakdown -- what the repricer sends Amazon -- so
+ * this cell and the Delivery filter cannot disagree with it (Rule 12).
  */
 function _rpDelivery(r){
   const b = ((r || {}).decision || {}).breakdown || {};
-  const total = b.buyer_days, eb = b.supplier_dispatch_days, lead = b.lead_days;
+  const total = b.buyer_days, sup = b.supplier_dispatch_days, lead = b.lead_days;
   if(total == null){
-    return '<td class="rp-d" title="No delivery date from the supplier, so no '
-      + 'handling time is worked out for this SKU.">&mdash;</td>';
+    return '<td class="rp-d" title="No handling time is worked out for this '
+      + 'SKU right now. Open it to see why.">&mdash;</td>';
   }
   const buf = +b.buffer_days || 0;
-  const own = ((r.own_rule || {}).handling_buffer_days != null);
+  // own_rule null = unknown; drawn as own rather than guessed to be default.
+  const own = (r.own_rule == null)
+            || ((r.own_rule || {}).handling_buffer_days != null);
+  const acct = (typeof SRC_RULE !== "undefined" && SRC_RULE)
+             ? (+SRC_RULE.handling_buffer_days || 0) : 0;
+  const mark = buf || (own && acct > buf);
   const now = (r.current || {}).lead_days;
-  const tip = 'eBay ' + eb + 'd → handling ' + lead + 'd'
-    + (buf ? ' (incl. +' + buf + ' extra, '
-             + (own ? 'this SKU’s own' : 'account default') + ')' : '')
+  const tip = 'Supplier ' + sup + 'd → handling ' + lead + 'd'
+    + (mark ? ' (incl. +' + buf + ' extra, '
+              + (own ? 'this SKU’s own' : 'account default') + ')' : '')
     + ' + postage ' + b.shipping_policy_days + 'd = ' + total + 'd to the buyer'
     + ((now != null && +now !== +lead) ? '. On Amazon now: ' + now + 'd handling.' : '');
   return '<td title="' + _sesc(tip) + '" style="white-space:nowrap"><b>' + total + 'd</b>'
     + ' <span class="rp-d" style="font-size:10px">(' + lead + '+'
     + b.shipping_policy_days + ')</span>'
-    + '<div class="rp-d" style="font-size:10px">eBay '
-    + (eb == null ? '?' : eb) + 'd'
-    + (buf ? ' <b class="' + (own ? 'rp-y' : '') + '">+' + buf + '</b>' : '')
+    + '<div class="rp-d" style="font-size:10px">Supplier '
+    + (sup == null ? '?' : sup) + 'd'
+    + (mark ? (own ? ' <b style="color:var(--ink)">+' + buf + '</b>'
+                   : ' <span>+' + buf + '</span>') : '')
     + '</div></td>';
 }
 

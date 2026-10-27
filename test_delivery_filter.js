@@ -23,15 +23,16 @@ const pick = (src, re) => { const m = src.match(re); if (!m) { fails++; console.
 
 const s = { _sesc: (x) => String(x).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;") };
 vm.createContext(s);
-vm.runInContext("var SRC_ROWS = []; var SRC_FILTER = ''; var SRC_DFILT = {by: '', max: 3};\n"
+vm.runInContext("var SRC_ROWS = []; var SRC_FILTER = ''; var SRC_DFILT = {by: '', max: 3};"
+  + " var SRC_RULE = {handling_buffer_days: 1};\n"
   + pick(MENU, /function _srcVisible\(\)\{[\s\S]*?\n\}/) + "\n"
   + pick(MENU, /function _srcDeliveryDays\(r, by\)\{[\s\S]*?\n\}/) + "\n"
   + pick(ROW, /function _rpDelivery\(r\)\{[\s\S]*?\n\}/), s);
 
-// Three SKUs, postage 2 days:
-//   FAST  eBay 1d -> handling 0 + 1 default extra = 1 -> buyer 3
-//   MID   eBay 3d -> handling 1 + 2 own extra     = 3 -> buyer 5
-//   SLOW  eBay 6d -> handling 4                   = 4 -> buyer 6
+// Postage 2 days, the account's Extra handling +1:
+//   FAST  supplier 1d -> handling 0 + 1 default extra = 1 -> buyer 3
+//   MID   supplier 3d -> handling 1 + 2 own extra     = 3 -> buyer 5
+//   SLOW  supplier 6d -> handling 4 + own 0           = 4 -> buyer 6
 //   NONE  no delivery date at all
 const row = (sku, eb, lead, buf, own, mode, action) => ({
   sku, mode: mode || "dry_run", own_rule: own ? { handling_buffer_days: buf } : {},
@@ -40,7 +41,7 @@ const row = (sku, eb, lead, buf, own, mode, action) => ({
     supplier_dispatch_days: eb, lead_days: lead, buffer_days: buf,
     shipping_policy_days: 2, buyer_days: lead + 2 } } });
 const ROWS = [row("FAST", 1, 1, 1, false, "live"), row("MID", 3, 3, 2, true),
-              row("SLOW", 6, 4, 0, false, "live", "update"), row("NONE", null, null, 0, false)];
+              row("SLOW", 6, 4, 0, true, "live", "update"), row("NONE", null, null, 0, false)];
 const shown = (by, max, card) => {
   s.SRC_ROWS = ROWS; s.SRC_DFILT = { by, max }; s.SRC_FILTER = card || "";
   return vm.runInContext("_srcVisible().map(function(r){ return r.sku; }).join(',')", s);
@@ -51,7 +52,7 @@ check("off: every row", shown("", 3) === "FAST,MID,SLOW,NONE");
 check("to the buyer in 5 days or less: FAST and MID", shown("total", 5) === "FAST,MID");
 check("handling 3 days or less: FAST and MID", shown("handling", 3) === "FAST,MID");
 check("handling 1 day or less: FAST only", shown("handling", 1) === "FAST");
-check("eBay 3 days or less: FAST and MID", shown("ebay", 3) === "FAST,MID");
+check("supplier 3 days or less: FAST and MID", shown("supplier", 3) === "FAST,MID");
 check("a SKU with no delivery date is never counted as short", shown("total", 60).indexOf("NONE") < 0);
 check("it combines with the cards: armed AND to the buyer in 6 or less",
       shown("total", 6, "armed") === "FAST,SLOW");
@@ -59,7 +60,15 @@ check("  and with Would change", shown("handling", 9, "update") === "SLOW");
 check("'Tracked' (the empty card) clears it as well",
       /function sourcingFilter\(key\)\{[\s\S]*?if\(!key\) SRC_DFILT\.by = "";/.test(MENU));
 check("changing it clears the ticks, like a card does",
-      /function _srcDeliveryRedraw\(\)\{\s*SRC_SEL = new Set\(\);/.test(MENU));
+      /function _srcDeliveryRedraw\(\)\{[\s\S]*?SRC_SEL = new Set\(\);/.test(MENU));
+check("  and gives the focus back only to what had it (no phone keyboard on a tap)",
+      /const inBox = [\s\S]*?const inBar = [\s\S]*?inBox \? document\.getElementById\("src_dmax"\)\s*: inBar \? document\.querySelector\("#src_dbar \.segbtn\.on"\) : null;/.test(MENU));
+check("the number is applied as typed, not on the change a click fires",
+      /oninput="sourcingDeliveryMax\(this\.value\)"/.test(MENU) && !/onchange="sourcingDeliveryMax/.test(MENU));
+check("'Tracked' is lit only when neither filter is on",
+      /const on = key \? \(SRC_FILTER === key\) : \(!SRC_FILTER && !SRC_DFILT\.by\);/.test(DET));
+check("the empty table says when the delivery limit is the cause",
+      /SRC_DFILT\.by \? 'No SKU is within that delivery limit\. '/.test(MAIN));
 check("ONE control, from the shared segmented helper",
       /uiSeg\(SRC_DFILT_BY, SRC_DFILT\.by, "sourcingDeliveryBy"\)/.test(MENU));
 check("  drawn under the stat cards", /_statCards\(j\) \+ _srcDeliveryBar\(\)/.test(MAIN));
@@ -70,18 +79,28 @@ const cell = (r) => vm.runInContext("_rpDelivery(" + JSON.stringify(r) + ")", s)
 const fast = cell(ROWS[0]), mid = cell(ROWS[1]), slow = cell(ROWS[2]), none = cell(ROWS[3]);
 check("the total to the buyer leads", /<b>3d<\/b>/.test(fast) && /<b>5d<\/b>/.test(mid));
 check("  with its handling + postage beside it", /\(1\+2\)/.test(fast) && /\(3\+2\)/.test(mid));
-check("then the supplier's days", /eBay 1d/.test(fast) && /eBay 3d/.test(mid));
-check("an own +2 is gold", /<b class="rp-y">\+2<\/b>/.test(mid));
-check("an inherited +1 is plain", /<b class="">\+1<\/b>/.test(fast));
-check("no extra days, no +0 clutter", !/\+0/.test(slow));
+check("then the supplier's days -- 'Supplier', which may be a website", /Supplier 1d/.test(fast) && /Supplier 3d/.test(mid) && !/eBay/.test(fast + mid));
+check("an own +2 is in plain ink, bold", /<b style="color:var\(--ink\)">\+2<\/b>/.test(mid));
+check("an inherited +1 is muted, like the pill's 'default'", /<span>\+1<\/span><\/div>/.test(fast) && !/<b[^>]*>\+1/.test(fast));
+check("no colour that means 'caution' on this screen", !/rp-y/.test(fast + mid + slow));
+check("an own +0 under a +1 default is shown (it is opting out)", /<b style="color:var\(--ink\)">\+0<\/b>/.test(slow));
+s.SRC_RULE = {handling_buffer_days: 0};
+check("  but with no default above it, +0 is not drawn", !/\+0/.test(cell(ROWS[2])));
+s.SRC_RULE = {handling_buffer_days: 1};
 check("the sum is in the tooltip", /handling 3d \(incl\. \+2 extra, this SKU.s own\) \+ postage 2d = 5d/.test(mid));
 check("  and says when the extra is the account's", /account default/.test(fast));
 check("no delivery date: a dash, never a 0", /&mdash;/.test(none) && !/0d/.test(none));
+const unknownOwn = cell(Object.assign({}, ROWS[0], {own_rule: null}));
+check("own_rule unknown: drawn as own, never guessed to be default", /color:var\(--ink\)">\+1/.test(unknownOwn));
 check("the column has a heading", />Delivery<\/th>/.test(MAIN));
 check("the open panel still spans every column", /colspan="11"/.test(ROW) && !/colspan="10"/.test(ROW));
 
 console.log("\n=== setting the extra days ===");
-check("the selection bar has Extra handling", /onclick="sourcingBulkBuffer\(\)"/.test(BULK));
+check("the selection bar has Set extra handling", /onclick="sourcingBulkBuffer\(\)"[\s\S]*?Set extra handling<\/button>/.test(BULK));
+check("  a reply landing after an account switch paints nothing",
+      /if\(scope && typeof _srcStillIn === "function" && !_srcStillIn\(scope\)\) return "";/.test(BULK));
+check("  and a save updates what the row holds as its own",
+      /if\(rule\[k\] == null\) delete row\.own_rule\[k\]; else row\.own_rule\[k\] = rule\[k\];/.test(BULK));
 check("  saved through the same per-SKU route as every bulk setting",
       /_srcBulkRule\(\{handling_buffer_days: v\}/.test(BULK));
 check("the ⋯ menu has the account's Extra handling", /sourcingBuffer\(''\)/.test(MENU));
@@ -93,8 +112,52 @@ check("  offering +0 to +3 and Default",
 check("the bulk dialog opens with nothing chosen and will not save blind",
       /_srcBufferModal\([\s\S]*?\}, true\);/.test(BULK) && /if\(blank && !SRC_BUF_TOUCHED\)/.test(ACT));
 check("  where Default is sent as null (follow the account)",
-      /onSave\(v === "" \? null : v\)/.test(ACT));
-check("the pill says when it is following the default", /bufOwn \? '' : ' <span class="rp-off">default<\/span>'/.test(DET));
+      /onSave\(v === "" \? null : \+v\)/.test(ACT));
+check("the chosen segment is lit in place, not rebuilt (keeps the focus)",
+      /classList\.toggle\("on"/.test(pick(ACT, /function _srcBufMark\(v\)\{[\s\S]*?\n\}/))
+      && !/innerHTML/.test(pick(ACT, /function _srcBufMark\(v\)\{[\s\S]*?\n\}/)));
+check("the number box has a real label", /<label for="src_buf"/.test(ACT));
+check("the account dialog says how many SKUs follow it",
+      /'Followed by <b>' \+ follow \+ '<\/b> of ' \+ rows\.length/.test(ACT));
+check("the pill says when it is following the default, muted",
+      /bufOwn \? '' : ' <span class="rp-d" style="font-weight:400">default<\/span>'/.test(DET));
 
-console.log("\nFAILURES: " + fails);
-process.exit(fails ? 1 : 0);
+console.log("\n=== the dialog's Save, run for real ===");
+const d = { _srcModal: null, toast: (m) => { d.toasted = m; }, uiSeg: () => "", SRC_RULE: {} };
+d._srcModal = (title, body, onOk) => { d.onOk = onOk; };
+const box = { value: "", validity: { badInput: false } };
+d.document = { getElementById: (id) => (id === "src_buf" ? box : null), querySelectorAll: () => [] };
+vm.createContext(d);
+vm.runInContext("var SRC_BUF_ITEMS = []; var SRC_BUF_TOUCHED = false;\n"
+  + pick(ACT, /function _srcBufferModal\([\s\S]*?\n\}/) + "\n"
+  + pick(ACT, /function _srcBufMark\(v\)\{[\s\S]*?\n\}/), d);
+const save = async (typed, bad, blank, touch) => {
+  let sent = "not called"; d.toasted = "";
+  vm.runInContext("_srcBufferModal('t', null, 1, null, " + (blank ? "true" : "false") + ")", d);
+  box.value = typed; box.validity.badInput = !!bad;
+  if (touch) vm.runInContext("_srcBufMark(" + JSON.stringify(typed) + ")", d);
+  d.onSaveHook = (v) => { sent = v; return true; };
+  vm.runInContext("_srcBufferModal('t', null, 1, function(v){ return onSaveHook(v); }, "
+                  + (blank ? "true" : "false") + ")", d);
+  if (touch) vm.runInContext("_srcBufMark(" + JSON.stringify(typed) + ")", d);
+  const ok = await d.onOk();
+  return { ok, sent, toasted: d.toasted };
+};
+(async () => {
+  let r = await save("2", false, false, true);
+  check("'2' sends the number 2", r.sent === 2 && r.ok === true);
+  r = await save("", false, false, true);
+  check("an empty box sends null (Default)", r.sent === null);
+  r = await save("31", false, false, true);
+  check("31 is refused before anything is sent", r.sent === "not called" && r.ok === false && /0 to 30/.test(r.toasted));
+  r = await save("1.5", false, false, true);
+  check("1.5 is refused", r.sent === "not called" && r.ok === false);
+  r = await save("", true, false, true);
+  check("a box the browser cannot read is refused, not taken as Default", r.sent === "not called" && r.ok === false);
+  r = await save("", false, true, false);
+  check("the bulk dialog refuses a Save with nothing chosen", r.sent === "not called" && r.ok === false);
+  r = await save("3", false, true, true);
+  check("  and sends +3 once one is", r.sent === 3);
+  console.log("\nFAILURES: " + fails);
+  process.exit(fails ? 1 : 0);
+})();
