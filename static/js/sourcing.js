@@ -25,6 +25,9 @@ let SRC_MKT = "";
 let SRC_DEFAULT_TARGET = {};
 // Which stat card is filtering the table: "" | armed | update | out_of_stock.
 let SRC_FILTER = "";
+// The Delivery filter, on top of the card one: which number ("" = off |
+// "total" | "handling" | "ebay") and the most days it may be. See _srcVisible.
+let SRC_DFILT = {by: "", max: 3};
 // The last /sourcing/list answer, so a filter can redraw without refetching.
 let SRC_LAST_J = null;
 // Bumped by every sourcingLoad; only the newest one's reply is drawn.
@@ -396,7 +399,7 @@ function sourcingRender(j){
   h += _alertBar(j);
 
   // ---- the numbers ------------------------------------------------------
-  if(SRC_ROWS.length) h += _statCards(j);
+  if(SRC_ROWS.length) h += _statCards(j) + _srcDeliveryBar();
   h += sourcingUploadReport();
 
   if(j.note){
@@ -438,6 +441,13 @@ function sourcingRender(j){
     +  '<th style="width:44px"></th><th>Product</th>'
     +  '<th title="What the cheapest usable supplier charges for the item">Item</th>'
     +  '<th title="That supplier&#39;s postage to you">Post</th>'
+    // DELIVERY: what the buyer is shown, and what it is made of.
+    //
+    //     "It should be clear to me that these products have a handling time
+    //      on the supplier as this, but we have +1 handling time on these
+    //      items ... But I don't want it to be like sentences" (27 Oct 2026)
+    +  '<th title="Days to the buyer, and in brackets its handling + postage. '
+    +  'Under it: eBay&#39;s delivery days and any extra handling days.">Delivery</th>'
     +  '<th title="What it sells for on Amazon now, and what the rules say it '
     +  'should be">Price</th>'
     // "NOW", because the panel underneath answers the other question.

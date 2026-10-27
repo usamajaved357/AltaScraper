@@ -441,11 +441,18 @@ function _rulePills(r){
                       + 'hold is a floor ABOVE the computed one.'}[dcur]
             || '',
             (DIRW[dcur] || DIRW.up_only)[1]);
+  // OWN OR DEFAULT. rule is the account's Extra handling with this SKU's laid
+  // over it, so the number alone cannot say which one is in force; own_rule
+  // can (owner, 27 Oct 2026: override the default by selecting and changing).
+  const bufOwn = ((r.own_rule || {}).handling_buffer_days != null);
   h += pill('Extra handling',
-            '+' + (rule.handling_buffer_days || 0) + 'd',
+            '+' + (rule.handling_buffer_days || 0) + 'd'
+            + (bufOwn ? '' : ' <span class="rp-off">default</span>'),
             'sourcingBuffer(' + S + ',this)',
             'Added on top of the calculated handling time. Use it for a '
-            + 'supplier that does not dispatch when it says it will.',
+            + 'supplier that does not dispatch when it says it will. '
+            + (bufOwn ? 'This SKU’s own number.'
+                      : 'Following the account’s Extra handling (⋯ menu).'),
             (rule.handling_buffer_days ? '' : 'rp-off'));
   // WHOSE FEE FIGURE THIS IS, and it has to be legible without hovering.
   //

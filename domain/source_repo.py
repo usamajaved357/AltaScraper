@@ -762,6 +762,28 @@ def rule_for(config_path, workspace_id, marketplace, sku):
     return out
 
 
+def own_rules(config_path, workspace_id, marketplace):
+    """{sku: {setting: value}} -- only what each SKU set FOR ITSELF.
+
+    rule_for answers "what is in force" by laying the SKU's row over the
+    account's (sku=''), so from its answer a +1 the SKU chose and a +1 it
+    inherited look the same. The Repricer has to tell them apart to say
+    "default" or "own" beside a setting (owner, 27 Oct 2026: "I should be able
+    to override the default setting"). One query for the whole account, NULL
+    columns left out -- a NULL is exactly "follows the account".
+    """
+    conn = _db.get_db(config_path)
+    rows = conn.execute("SELECT * FROM sourcing_rules WHERE workspace_id=? AND "
+                        "marketplace=? AND sku<>''",
+                        (workspace_id, marketplace)).fetchall()
+    out = {}
+    for r in rows:
+        d = dict(r)
+        out[str(d.get("sku") or "")] = {k: v for k, v in d.items()
+                                        if k in _RULE_COLS and v is not None}
+    return out
+
+
 # ---- the audit log ---------------------------------------------------------
 
 def record_action(config_path, workspace_id, marketplace, sku, decision,

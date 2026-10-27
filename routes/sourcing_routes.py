@@ -196,6 +196,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         except Exception:
             _promos_by_sku = {}
         _policy_days = _run.shipping_policy_days(CONFIG_PATH)
+        # WHAT EACH SKU SET FOR ITSELF, so a setting can be marked "own" or
+        # "default" -- the merged rule below cannot say which (owner, 27 Oct
+        # 2026). Once for the whole list.
+        try:
+            _own_rules = _repo.own_rules(CONFIG_PATH, wsid, mkt)
+        except Exception:
+            _own_rules = {}
         # WHAT EACH PRODUCT REALLY MADE, beside what the next sale would make
         # (owner, 12 Oct 2026). Once for the whole list, keyed by ASIN.
         try:
@@ -302,7 +309,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                          "item": _cat.look(idx, d["sku"]),
                          "real_30d": _real.get(
                              (_cat.look(idx, d["sku"]) or {}).get("asin") or ""),
-                         "rule": _rule})
+                         "rule": _rule,
+                         "own_rule": _own_rules.get(d["sku"], {})})
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "rows": rows, "counts": run["counts"],
                         "note": run["note"],
@@ -1550,7 +1558,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         if "handling_buffer_days" in vals:
             v = vals["handling_buffer_days"]
             if v in (None, ""):
-                vals["handling_buffer_days"] = 0
+                # EMPTY MEANS "FOLLOW THE ACCOUNT", not 0. Stored as NULL, which
+                # rule_for reads as "use the account's Extra handling" (the
+                # sku='' row) -- so a SKU can be put back on the default after
+                # being given its own number (owner, 27 Oct 2026). On the
+                # account row itself NULL is DEFAULT_RULE's 0.
+                vals["handling_buffer_days"] = None
             else:
                 try:
                     v = int(float(str(v).strip()))

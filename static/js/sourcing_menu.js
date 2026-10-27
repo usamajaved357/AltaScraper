@@ -9,6 +9,8 @@
  */
 function sourcingFilter(key){
   SRC_FILTER = (SRC_FILTER === key) ? "" : String(key || "");
+  // "Tracked" promises everything, so it clears the Delivery filter too.
+  if(!key) SRC_DFILT.by = "";
   // A selection made under one filter would act on rows you can no longer see.
   // Cleared with the filter, so "12 selected" always means twelve visible rows.
   SRC_SEL = new Set();
@@ -21,14 +23,83 @@ function sourcingFilter(key){
  * labels it can never disagree about what "armed" means. */
 function _srcVisible(){
   const rows = SRC_ROWS || [];
-  if(!SRC_FILTER) return rows;
+  if(!SRC_FILTER && !SRC_DFILT.by) return rows;
   return rows.filter(function(r){
     const d = r.decision || {};
+    if(SRC_DFILT.by){
+      // UNKNOWN IS NOT SHORT. A row with no delivery date is left out rather
+      // than counted as 0 days -- "3 days or less" must not sweep in the SKUs
+      // the app knows nothing about.
+      const v = _srcDeliveryDays(r, SRC_DFILT.by);
+      if(v == null || v > SRC_DFILT.max) return false;
+    }
     if(SRC_FILTER === "armed") return r.mode === "live";
     if(SRC_FILTER === "update") return d.action === "update";
     if(SRC_FILTER === "out_of_stock") return d.action === "out_of_stock";
     return true;
   });
+}
+
+/* THE DELIVERY FILTER.
+ *
+ *     "Whenever I want to see the products that have a handling time of less
+ *      than 3 days, I should be able to filter them ... If I want to see the
+ *      items that have a collective shipping time of less than 5 days, I
+ *      should be able to see them ... but I don't want them to be hundreds of
+ *      buttons." (owner, 27 Oct 2026)
+ *
+ * ONE control: which number, and how many days at most. The three numbers are
+ * the three the Delivery column shows, read off the decision's breakdown --
+ * the same figures the repricer sends Amazon, never worked out again here.
+ */
+const SRC_DFILT_BY = [{v: "", label: "Any"},
+                      {v: "total", label: "To buyer"},
+                      {v: "handling", label: "Handling"},
+                      {v: "ebay", label: "eBay"}];
+
+function _srcDeliveryDays(r, by){
+  const b = ((r || {}).decision || {}).breakdown || {};
+  const v = (by === "total") ? b.buyer_days
+          : (by === "handling") ? b.lead_days
+          : (by === "ebay") ? b.supplier_dispatch_days : null;
+  return (v == null || v === "") ? null : +v;
+}
+
+function _srcDeliveryBar(){
+  const on = !!SRC_DFILT.by;
+  return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;'
+    + 'margin:-2px 0 10px;font-size:12px">'
+    + '<span class="cc"><i class="ti ti-truck-delivery"></i> Delivery</span>'
+    + uiSeg(SRC_DFILT_BY, SRC_DFILT.by, "sourcingDeliveryBy")
+    + (on
+        ? '<span class="cc">&le;</span>'
+          + '<input id="src_dmax" type="number" min="0" max="60" step="1" value="'
+          + (+SRC_DFILT.max) + '" onchange="sourcingDeliveryMax(this.value)" '
+          + 'aria-label="Most days" style="width:56px">'
+          + '<span class="cc">days &middot; ' + _srcVisible().length + ' shown</span>'
+        : '')
+    + '</div>';
+}
+
+function sourcingDeliveryBy(v){
+  SRC_DFILT.by = String(v || "");
+  _srcDeliveryRedraw();
+}
+
+function sourcingDeliveryMax(v){
+  const n = parseInt(String(v), 10);
+  if(!(n >= 0)) return;
+  SRC_DFILT.max = n;
+  _srcDeliveryRedraw();
+}
+
+/* Same as a card filter: the ticks go, because a selection made under one
+ * filter would act on rows you can no longer see. */
+function _srcDeliveryRedraw(){
+  SRC_SEL = new Set();
+  sourcingRender(SRC_LAST_J || {});
+  const el = document.getElementById("src_dmax");
+  if(el){ el.focus(); }
 }
 
 /* ONE line, only when there is something to act on.
@@ -325,6 +396,14 @@ function _srcMoreMenu(j){
           + 'this separately from the handling time, so the repricer takes it '
           + 'OFF the handling time rather than promising it twice.',
           ((j.shipping_policy_days != null ? j.shipping_policy_days : 2) + 'd'))
+    // EXTRA HANDLING FOR EVERY SKU -- the account's own row (sku ''), the same
+    // default-and-override shape as the profit target above: a SKU without
+    // its own number follows this one (owner, 27 Oct 2026).
+    + row('ti-clock-plus', 'Extra handling', "sourcingBuffer('')",
+          'Days added to every tracked SKU’s handling time. A SKU given its '
+          + 'own number, from its Extra handling pill or the selection bar, '
+          + 'keeps it.',
+          ('+' + (+((j.rule || {}).handling_buffer_days) || 0) + 'd'))
     // STOCK, kept apart from the two "new SKUs start at" rows below on purpose.
     //
     //     "there should be a separate default stock setting which is activated

@@ -569,6 +569,27 @@ def handling_sentence(lead, dispatch_days, rule=None,
     return s
 
 
+def buyer_days(lead, rule=None):
+    """Days from the order to the buyer's door: handling + postage. -> int|None
+
+        "If I want to see the items that have a collective shipping time of
+         less than 5 days, I should be able to see them: 2 days handling, 3
+         days shipping" (owner, 27 Oct 2026)
+
+    The OTHER half of handling_days(): that one takes the postage days off so
+    Amazon is not told them twice, this one puts them back to answer what the
+    buyer is actually shown. One definition, so the Repricer's Delivery column,
+    its filter and the stock screen's lead time cannot add the two up three
+    different ways (CLAUDE.md Rule 12).
+
+    None when the handling time is unknown -- a total built on a guess is a
+    delivery date built on a guess.
+    """
+    if lead is None:
+        return None
+    return int(lead) + policy_days((rule or {}).get("shipping_policy_days"))
+
+
 def _sort_key(pair, strategy):
     src, chk = pair
     cost = landed_cost(chk)
@@ -1199,6 +1220,9 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         # subtraction instead of a number that looks two days short.
         "shipping_policy_days": policy_days(rule.get("shipping_policy_days")),
         "lead_days": lead,
+        # Handling + postage: what the buyer is shown. The Repricer's Delivery
+        # column and filter read this rather than adding the two themselves.
+        "buyer_days": buyer_days(lead, rule),
         # Which floor actually decided the price. Without this the breakdown
         # says "1.00 profit" while the price is really being set by a 20% target,
         # and the sum on screen would not add up to the number beside it.

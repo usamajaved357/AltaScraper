@@ -88,6 +88,10 @@ function _srcSelBar(){
     + '<button class="db-chip" onclick="sourcingBulkDirection()" title="'
     + 'Whether these SKUs may have their price lowered as well as raised.">'
     + 'Set direction</button>'
+    + '<button class="db-chip" onclick="sourcingBulkBuffer()" title="'
+    + 'Days added to the handling time of every selected SKU, or Default to '
+    + 'follow the account’s Extra handling.">'
+    + '<i class="ti ti-clock-plus"></i> Extra handling</button>'
     // THE ANSWER TO "it should not reduce my selling price", made reachable.
     // The held price did this all along; typing it into 67 SKUs by hand did not.
     + '<button class="db-chip" onclick="sourcingHoldAtCurrent()" title="'
@@ -188,6 +192,23 @@ async function sourcingBulkDirection(){
          match_floor: 'Matching the floor'}[sel.value]);
       return true;
     });
+}
+
+/* Extra handling days for every selected SKU -- the same dialog as one SKU's
+ * pill (_srcBufferModal), saved through _srcBulkRule like every other bulk
+ * setting. "Default" puts them back on the account's number. */
+async function sourcingBulkBuffer(){
+  const n = _srcPicked().length;
+  if(!n) return;
+  const acct = +((SRC_RULE || {}).handling_buffer_days) || 0;
+  _srcBufferModal("Extra handling for " + n + " SKU" + (n === 1 ? "" : "s"),
+    null, acct,
+    async function(v){
+      await _srcBulkRule({handling_buffer_days: v},
+        v == null ? "Extra handling: default (+" + acct + ")"
+                  : "Extra handling: +" + v);
+      return true;
+    }, true);
 }
 
 async function sourcingBulkTarget(kind, btn){

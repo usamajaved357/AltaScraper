@@ -270,6 +270,25 @@ Format: **date — decision.** Owner's words. What it rules out. Source.
   Milestone 3, 28 Sep 2026 -- known-issues Suspected #3, test_scheduler_jobs.py.)
 - **31 Jul 2026 — Any seller-name scraping lives in its own module** behind a
   narrow interface, never inside checker logic. Source: memory asin-monitor.
+- **27 Oct 2026 — Repricer settings follow one rule: an account default, a
+  per-SKU override, and the same override for many SKUs at once.** "I should be
+  able to override the default setting by selecting and changing things in
+  it." "I want the features to make sense with each other." Settings (⋯ menu) =
+  the account's default; a product's pill = that product's own number, marked
+  "default" when it has none; the selection bar = the same override for every
+  ticked product; filter controls find the group. Things about the business
+  rather than a product (postage days, the auto-pricing switch) stay
+  Settings-only. First applied to Extra handling days (Delivery column,
+  Delivery filter, bulk Extra handling, account default); the tidy-up of the
+  other settings to this rule is a separate, later step. "I don't want it to be
+  like sentences and a lot of buttons." Source: owner messages in the Claude
+  session of 27 Oct 2026.
+- **27 Oct 2026 — Extra handling days can be set for a group of products.**
+  "I should have an option where it says, 'Items with shipping time 3 or less,'
+  so I can add +1, +2, or +3 of my own choice by bulk-selecting them." The
+  repricer's formula (`sourcing.handling_days`: eBay delivery days − postage
+  days + extra) is unchanged; nothing reaches Amazon until the owner sets a
+  number and an armed SKU is pushed. Source: as above.
 - **15 Sep 2026 — Repricer enrolment is automatic on go-live, in dry run.**
   Arming (not enrolment) is the blast-radius control; drafts are never enrolled.
   FBM only; eBay via its API, anything else via an isolated scraper; floor
