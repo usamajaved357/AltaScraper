@@ -45,8 +45,8 @@ const row = (sku, eb, lead, buf, own, mode, action) => ({
     shipping_policy_days: 2, buyer_days: lead + 2 } } });
 const ROWS = [row("FAST", 1, 1, 1, false, "live"), row("MID", 3, 3, 2, true),
               row("SLOW", 6, 4, 0, true, "live", "update"), row("NONE", null, null, 0, false)];
-const shown = (by, max, card) => {
-  s.SRC_ROWS = ROWS; s.SRC_DFILT = { by, max }; s.SRC_FILTER = card || "";
+const shown = (by, max, card, op) => {
+  s.SRC_ROWS = ROWS; s.SRC_DFILT = { by, max, op: op || "le" }; s.SRC_FILTER = card || "";
   return vm.runInContext("_srcVisible().map(function(r){ return r.sku; }).join(',')", s);
 };
 
@@ -56,6 +56,16 @@ check("to the buyer in 5 days or less: FAST and MID", shown("total", 5) === "FAS
 check("handling 3 days or less: FAST and MID", shown("handling", 3) === "FAST,MID");
 check("handling 1 day or less: FAST only", shown("handling", 1) === "FAST");
 check("supplier 3 days or less: FAST and MID", shown("supplier", 3) === "FAST,MID");
+check("handling EXACTLY 1: FAST only", shown("handling", 1, "", "eq") === "FAST");
+check("handling EXACTLY 3: MID only (up to 3 would add FAST)", shown("handling", 3, "", "eq") === "MID"
+      && shown("handling", 3) === "FAST,MID");
+check("handling exactly 2: nobody", shown("handling", 2, "", "eq") === "");
+check("exactly still leaves out a SKU with no delivery date", shown("total", 0, "", "eq").indexOf("NONE") < 0);
+check("up to / exactly is one more segmented control, not a row of buttons",
+      /uiSeg\(SRC_DFILT_OP, SRC_DFILT\.op === "eq" \? "eq" : "le", "sourcingDeliveryOp"\)/.test(MENU)
+      && /\{v: "le", label: "up to"\}, \{v: "eq", label: "exactly"\}/.test(MENU));
+check("  and the focus goes back to whichever of the two had it",
+      /a\.closest\("#src_dbar \.seg"\)/.test(MENU));
 check("a SKU with no delivery date is never counted as short", shown("total", 60).indexOf("NONE") < 0);
 check("it combines with the cards: armed AND to the buyer in 6 or less",
       shown("total", 6, "armed") === "FAST,SLOW");
@@ -65,7 +75,7 @@ check("'Tracked' (the empty card) clears it as well",
 check("changing it clears the ticks, like a card does",
       /function _srcDeliveryRedraw\(\)\{[\s\S]*?SRC_SEL = new Set\(\);/.test(MENU));
 check("  and gives the focus back only to what had it (no phone keyboard on a tap)",
-      /const inBox = [\s\S]*?const inBar = [\s\S]*?inBox \? document\.getElementById\("src_dmax"\)\s*: inBar \? document\.querySelector\("#src_dbar \.segbtn\.on"\) : null;/.test(MENU));
+      /const inBox = [\s\S]*?inBox \? document\.getElementById\("src_dmax"\)\s*: segNow \? segNow\.querySelector\("\.segbtn\.on"\) : null;/.test(MENU));
 check("the box is text with a number keypad, so the caret survives the redraw",
       /id="src_dmax" type="text" inputmode="numeric"/.test(MENU));
 check("the number is applied as typed, not on the change a click fires",
