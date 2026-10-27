@@ -26,8 +26,9 @@ let SRC_DEFAULT_TARGET = {};
 // Which stat card is filtering the table: "" | armed | update | out_of_stock.
 let SRC_FILTER = "";
 // The Delivery filter, on top of the card one: which number ("" = off |
-// "total" | "handling" | "ebay") and the most days it may be. See _srcVisible.
-let SRC_DFILT = {by: "", max: 3};
+// "total" | "handling" | "supplier"), "le" (up to) or "eq" (exactly), and the
+// number of days. See _srcVisible.
+let SRC_DFILT = {by: "", op: "le", max: 3};
 // The last /sourcing/list answer, so a filter can redraw without refetching.
 let SRC_LAST_J = null;
 // Bumped by every sourcingLoad; only the newest one's reply is drawn.

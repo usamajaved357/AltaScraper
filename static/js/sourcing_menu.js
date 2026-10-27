@@ -31,7 +31,8 @@ function _srcVisible(){
       // than counted as 0 days -- "3 days or less" must not sweep in the SKUs
       // the app knows nothing about.
       const v = _srcDeliveryDays(r, SRC_DFILT.by);
-      if(v == null || v > SRC_DFILT.max) return false;
+      if(v == null) return false;
+      if(SRC_DFILT.op === "eq" ? v !== SRC_DFILT.max : v > SRC_DFILT.max) return false;
     }
     if(SRC_FILTER === "armed") return r.mode === "live";
     if(SRC_FILTER === "update") return d.action === "update";
@@ -58,6 +59,13 @@ const SRC_DFILT_BY = [{v: "", label: "Any"},
                       {v: "total", label: "To buyer"},
                       {v: "handling", label: "Handling"},
                       {v: "supplier", label: "Supplier"}];
+// UP TO, OR EXACTLY.
+//
+//     "I want to see the items only by handling time. For example, I want to
+//      see which items have 0-day handling time." (owner, 27 Oct 2026)
+//
+// "Up to 1" also holds the 0s, so one group could not be looked at on its own.
+const SRC_DFILT_OP = [{v: "le", label: "up to"}, {v: "eq", label: "exactly"}];
 
 function _srcDeliveryDays(r, by){
   const b = ((r || {}).decision || {}).breakdown || {};
@@ -74,7 +82,7 @@ function _srcDeliveryBar(){
     + '<span class="cc"><i class="ti ti-truck-delivery"></i> Delivery</span>'
     + uiSeg(SRC_DFILT_BY, SRC_DFILT.by, "sourcingDeliveryBy")
     + (on
-        ? '<span class="cc">&le;</span>'
+        ? uiSeg(SRC_DFILT_OP, SRC_DFILT.op === "eq" ? "eq" : "le", "sourcingDeliveryOp")
           // APPLIED AS YOU TYPE (briefly debounced), not on change: a change
           // event fires when a click elsewhere takes the focus, and redrawing
           // then replaced the very row or tick that was being clicked.
@@ -85,7 +93,7 @@ function _srcDeliveryBar(){
           + 'maxlength="2" value="'
           + (+SRC_DFILT.max) + '" oninput="sourcingDeliveryMax(this.value)" '
           + 'onblur="if(!(parseInt(this.value,10)>=0))this.value=SRC_DFILT.max" '
-          + 'aria-label="Most days" style="width:56px">'
+          + 'aria-label="Days" style="width:56px">'
           + '<span class="cc">days &middot; ' + _srcVisible().length + ' shown</span>'
         : '')
     + '</div>';
@@ -93,6 +101,11 @@ function _srcDeliveryBar(){
 
 function sourcingDeliveryBy(v){
   SRC_DFILT.by = String(v || "");
+  _srcDeliveryRedraw();
+}
+
+function sourcingDeliveryOp(v){
+  SRC_DFILT.op = (v === "eq") ? "eq" : "le";
   _srcDeliveryRedraw();
 }
 
@@ -124,11 +137,16 @@ function sourcingDeliveryMax(v){
 function _srcDeliveryRedraw(){
   const a = document.activeElement;
   const inBox = !!(a && a.id === "src_dmax");
-  const inBar = !!(a && !inBox && a.closest && a.closest("#src_dbar"));
+  // WHICH of the bar's two segmented controls had it (which number / up to or
+  // exactly), so the focus goes back to the same one.
+  const seg = (a && !inBox && a.closest) ? a.closest("#src_dbar .seg") : null;
+  const segAt = seg ? Array.prototype.indexOf.call(
+      document.querySelectorAll("#src_dbar .seg"), seg) : -1;
   SRC_SEL = new Set();
   sourcingRender(SRC_LAST_J || {});
+  const segNow = (segAt >= 0) ? document.querySelectorAll("#src_dbar .seg")[segAt] : null;
   const el = inBox ? document.getElementById("src_dmax")
-           : inBar ? document.querySelector("#src_dbar .segbtn.on") : null;
+           : segNow ? segNow.querySelector(".segbtn.on") : null;
   if(el){
     el.focus({preventScroll: true});
     if(inBox){ try{ const n = String(el.value).length; el.setSelectionRange(n, n); }catch(e){} }
