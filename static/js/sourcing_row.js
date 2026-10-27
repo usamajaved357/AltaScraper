@@ -238,6 +238,51 @@ function _rpRowHist(r){
   return (pick || {}).history || [];
 }
 
+/* DELIVERY, IN NUMBERS NOT SENTENCES.
+ *
+ *     "It should be clear to me that these products have a handling time on
+ *      the supplier as this, but we have +1 handling time on these items ...
+ *      But I don't want it to be like sentences" (owner, 27 Oct 2026)
+ *
+ *     4d (2+2)        <- what the buyer is shown, and its handling + postage
+ *     Supplier 3d +1  <- the supplier's delivery days, and the extra days added
+ *
+ * The +N is plain when the SKU set it for itself and muted when it follows the
+ * account's Extra handling -- the pill's "default", in the same two weights.
+ * An own +0 is shown when the account's number is higher, because that SKU is
+ * then deliberately NOT following it. The sum is in the tooltip. Every number
+ * comes off the decision's breakdown -- what the repricer sends Amazon -- so
+ * this cell and the Delivery filter cannot disagree with it (Rule 12).
+ */
+function _rpDelivery(r){
+  const b = ((r || {}).decision || {}).breakdown || {};
+  const total = b.buyer_days, sup = b.supplier_dispatch_days, lead = b.lead_days;
+  if(total == null){
+    return '<td class="rp-d" title="No handling time is worked out for this '
+      + 'SKU right now. Open it to see why.">&mdash;</td>';
+  }
+  const buf = +b.buffer_days || 0;
+  // true / false, or null when the server could not say: drawn in the "own"
+  // weight then, but the tooltip claims neither (Rule 20).
+  const own = _srcBufOwn(r);
+  const mark = buf || (own === true && _srcAcctBuffer() > buf);
+  const now = (r.current || {}).lead_days;
+  const tip = 'Supplier ' + sup + 'd → handling ' + lead + 'd'
+    + (mark ? ' (incl. +' + buf + ' extra'
+              + (own === true ? ', this SKU’s own' : own === false ? ', account default' : '')
+              + ')' : '')
+    + ' + postage ' + b.shipping_policy_days + 'd = ' + total + 'd to the buyer'
+    + ((now != null && +now !== +lead) ? '. On Amazon now: ' + now + 'd handling.' : '');
+  return '<td title="' + _sesc(tip) + '" style="white-space:nowrap"><b>' + total + 'd</b>'
+    + ' <span class="rp-d" style="font-size:10px">(' + lead + '+'
+    + b.shipping_policy_days + ')</span>'
+    + '<div class="rp-d" style="font-size:10px">Supplier '
+    + (sup == null ? '?' : sup) + 'd'
+    + (mark ? (own !== false ? ' <b style="color:var(--ink)">+' + buf + '</b>'
+                   : ' <span>+' + buf + '</span>') : '')
+    + '</div></td>';
+}
+
 function sourcingRow(r, i){
   const d = r.decision || {}, cur = r.current || {}, g = r.glance || {};
   const b = d.breakdown || {};
@@ -398,6 +443,9 @@ function sourcingRow(r, i){
     + '<td class="rp-d" style="font-size:10.5px">'
     + (sh == null ? '&mdash;' : (sh > 0 ? _smoney(sh) : 'free')) + '</td>';
 
+  // 5b. DELIVERY -- see _rpDelivery.
+  h += _rpDelivery(r);
+
   // 6. price now, and where it is going.
   h += '<td>';
   const prop = _proposedPrice(r);
@@ -481,7 +529,7 @@ function sourcingRow(r, i){
   //
   // Hidden rather than absent, so opening one costs nothing and the browser
   // keeps the scroll position -- inserting rows on click made the page jump.
-  h += '<tr id="' + id + '" style="display:none"><td colspan="10" class="rp-detcell">'
+  h += '<tr id="' + id + '" style="display:none"><td colspan="11" class="rp-detcell">'
     + '<div class="rp-det">';
 
   // THE SKU IN FULL, once the row is open. It is the code every other part of

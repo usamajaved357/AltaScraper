@@ -144,44 +144,131 @@ async function sourcingDirection(sku, btn){
     });
 }
 
-/* EXTRA HANDLING DAYS, PER SKU.
+/* EXTRA HANDLING DAYS -- for one SKU, for the account, or for every ticked SKU.
  *
  *     "Label it 'Extra handling days' with a tooltip: 'Added on top of the
  *      calculated handling time. Use for slow suppliers.'"
+ *     "I can add +1, +2, or +3 of my own choice by bulk-selecting them"
+ *     "I should be able to override the default setting by selecting and
+ *      changing things in it" (owner, 27 Oct 2026)
  *
- * Zero by default. This is the only setting that makes a promise LONGER than
- * the supplier's own, so it says what it will cost you before you set it: a
- * longer handling time is a later delivery date on the listing.
+ * ONE DIALOG FOR ALL THREE, so the pill, the ⋯ menu and the selection bar
+ * offer the same choices and save the same way. A SKU's "Default" is a NULL
+ * on its own row -- it then follows the account's number (sku '' in
+ * sourcing_rules), which the server lays underneath it (source_repo.rule_for).
+ *
+ * This is the only setting that makes a promise LONGER than the supplier's
+ * own: each day is a day later delivery date on the listing.
  */
-async function sourcingBuffer(sku, btn){
-  const cur = (SRC_ROW_RULES[sku] || {}).handling_buffer_days || 0;
-  _srcModal("Extra handling days",
+/* THE TWO FACTS EVERY Extra handling control needs, read in ONE place each
+ * (Rule 12): the account's number (its sku '' row, SRC_RULE) and whether a
+ * row's number is its own -- true / false, or null when the server could not
+ * say (own_rule null), which every caller must show without claiming either. */
+function _srcAcctBuffer(){
+  return (typeof SRC_RULE !== "undefined" && SRC_RULE)
+       ? (+SRC_RULE.handling_buffer_days || 0) : 0;
+}
+
+function _srcBufOwn(r){
+  const o = (r || {}).own_rule;
+  if(o == null) return null;
+  return o.handling_buffer_days != null;
+}
+
+let SRC_BUF_ITEMS = [];
+// Whether anything was chosen since the dialog opened. See `blank` below.
+let SRC_BUF_TOUCHED = false;
+
+function _srcBufferModal(title, cur, dflt, onSave, blank, note){
+  // dflt is the account's number, or null when this IS the account's number
+  // (it has nothing under it to fall back to).
+  //
+  // `blank`: the selection bar's dialog opens with NOTHING chosen and will not
+  // save until something is. Opened on "Default", Save-without-looking would
+  // put thirty SKUs that each had their own number back on the account's.
+  SRC_BUF_ITEMS = (dflt == null ? [] : [{v: "d", label: "Default +" + dflt}])
+    .concat([0, 1, 2, 3].map(function(n){ return {v: String(n), label: "+" + n}; }));
+  SRC_BUF_TOUCHED = false;
+  _srcModal(title,
     '<div style="font-size:12.5px;line-height:1.6">'
-    + '<p>Added <b>on top of</b> the handling time the app works out. Use it for '
-    + 'a supplier that does not dispatch when it says it will.</p>'
-    + '<p class="cc" style="font-size:11.5px">The handling time already takes '
-    + 'off the days your postage takes, because Amazon counts those separately. '
-    + 'A supplier that dispatches in 3 days gives 1 day of handling; adding 2 '
-    + 'here makes it 3, and the buyer is shown a date 2 days later than the '
-    + 'supplier promised. That is a real cost to the listing, so leave it at 0 '
-    + 'unless a supplier has actually let you down.</p>'
-    + '<label class="cc" style="font-size:11.5px;display:block;margin-top:8px">'
-    + 'Extra days (0 to 30)</label>'
+    + (note ? '<div class="cc" style="font-size:11.5px;margin:-4px 0 8px">'
+              + note + '</div>' : '')
+    + '<div id="src_bufseg">'
+    + uiSeg(SRC_BUF_ITEMS, blank ? "" : (cur == null ? "d" : String(cur)), "_srcBufPick")
+    + '</div>'
+    + '<label for="src_buf" class="cc" style="font-size:11.5px;display:block;'
+    + 'margin-top:10px">Or any number of days, 0 to 30</label>'
     + '<input id="src_buf" type="number" min="0" max="30" step="1" value="'
-    + (+cur) + '" style="width:110px;margin-top:4px">'
+    + (cur == null ? '' : (+cur)) + '" placeholder="' + (dflt == null ? '0' : 'default')
+    + '" oninput="_srcBufMark(this.value)" style="width:110px;margin-top:4px">'
+    + '<p class="cc" style="font-size:11.5px;margin:10px 0 0">Added to the '
+    + 'handling time worked out from the supplier. Each day is a day later '
+    + 'delivery date on the listing.</p>'
     + '</div>',
     async function(){
+      if(blank && !SRC_BUF_TOUCHED){
+        toast("Choose Default, +0 to +3, or type a number of days");
+        return false;
+      }
       const el = document.getElementById("src_buf");
       const v = el ? String(el.value).trim() : "";
-      const j = await (await fetch("/sourcing/rules", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: _srcBody({sku: sku,
-                        rule: {handling_buffer_days: v === "" ? 0 : v}})})).json();
-      if(!j.ok){ toast(j.error || "Could not save"); return false; }
-      toast("Extra handling: +" + (v === "" ? 0 : v) + " day(s)");
-      await sourcingLoad(true);
-      return true;
+      // CHECKED ONCE, HERE, before anything is sent: a box the browser cannot
+      // read reports "" -- which would mean "Default" -- and 31 would be
+      // refused by the server once per selected SKU.
+      if((el && el.validity && el.validity.badInput)
+         || (v !== "" && !(/^\d+$/.test(v) && +v <= 30))){
+        toast("Extra handling is a whole number of days, 0 to 30");
+        return false;
+      }
+      return onSave(v === "" ? null : +v);
     });
+}
+
+function _srcBufPick(v){
+  const el = document.getElementById("src_buf");
+  if(el) el.value = (v === "d") ? "" : v;
+  _srcBufMark(el ? el.value : "");
+}
+
+/* The chosen segment is lit IN PLACE: rebuilding the buttons destroyed the one
+ * just pressed and dropped the keyboard focus out of the dialog. */
+function _srcBufMark(v){
+  SRC_BUF_TOUCHED = true;
+  const key = String(v).trim() === "" ? "d" : String(parseInt(v, 10));
+  document.querySelectorAll("#src_bufseg .seg > button").forEach(function(b, i){
+    b.classList.toggle("on", !!SRC_BUF_ITEMS[i] && SRC_BUF_ITEMS[i].v === key);
+  });
+}
+
+async function sourcingBuffer(sku, btn){
+  const acct = _srcAcctBuffer();
+  // Through sourcingSaveRule, the screen's one single-SKU save (it also keeps
+  // the row's own values right until the quiet reload lands).
+  const save = async function(v){
+    const err = await sourcingSaveRule(sku, {handling_buffer_days: v},
+      sku ? ("Extra handling: " + (v == null ? "default (+" + acct + ")" : "+" + v))
+          : ("Default extra handling: +" + (v == null ? 0 : v)));
+    if(err){ toast(err); return false; }
+    return true;
+  };
+  if(!sku){
+    // HOW FAR IT REACHES, said before Save: every SKU without a number of its
+    // own. A typo here moves every one of them at the next push.
+    const rows = SRC_ROWS || [];
+    const follow = rows.filter(function(r){ return _srcBufOwn(r) === false; });
+    const armed = follow.filter(function(r){ return r.mode === "live"; }).length;
+    _srcBufferModal("Extra handling — account default", acct, null, save, false,
+      'Followed by <b>' + follow.length + '</b> of ' + rows.length
+      + ' tracked SKUs (' + armed + ' armed); the rest have their own.');
+    return;
+  }
+  const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0] || {};
+  // Unknown (null): open on the number in force rather than on "Default", so a
+  // Save without touching anything cannot wipe an own number it did not know of.
+  const own = _srcBufOwn(row);
+  const cur = (own === null) ? (+((row.rule || {}).handling_buffer_days) || 0)
+            : own ? row.own_rule.handling_buffer_days : null;
+  _srcBufferModal("Extra handling days", cur, acct, save);
 }
 
 async function sourcingCheckNow(btn){

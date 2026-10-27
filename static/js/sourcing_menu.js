@@ -9,6 +9,8 @@
  */
 function sourcingFilter(key){
   SRC_FILTER = (SRC_FILTER === key) ? "" : String(key || "");
+  // "Tracked" promises everything, so it clears the Delivery filter too.
+  if(!key) SRC_DFILT.by = "";
   // A selection made under one filter would act on rows you can no longer see.
   // Cleared with the filter, so "12 selected" always means twelve visible rows.
   SRC_SEL = new Set();
@@ -21,14 +23,116 @@ function sourcingFilter(key){
  * labels it can never disagree about what "armed" means. */
 function _srcVisible(){
   const rows = SRC_ROWS || [];
-  if(!SRC_FILTER) return rows;
+  if(!SRC_FILTER && !SRC_DFILT.by) return rows;
   return rows.filter(function(r){
     const d = r.decision || {};
+    if(SRC_DFILT.by){
+      // UNKNOWN IS NOT SHORT. A row with no delivery date is left out rather
+      // than counted as 0 days -- "3 days or less" must not sweep in the SKUs
+      // the app knows nothing about.
+      const v = _srcDeliveryDays(r, SRC_DFILT.by);
+      if(v == null || v > SRC_DFILT.max) return false;
+    }
     if(SRC_FILTER === "armed") return r.mode === "live";
     if(SRC_FILTER === "update") return d.action === "update";
     if(SRC_FILTER === "out_of_stock") return d.action === "out_of_stock";
     return true;
   });
+}
+
+/* THE DELIVERY FILTER.
+ *
+ *     "Whenever I want to see the products that have a handling time of less
+ *      than 3 days, I should be able to filter them ... If I want to see the
+ *      items that have a collective shipping time of less than 5 days, I
+ *      should be able to see them ... but I don't want them to be hundreds of
+ *      buttons." (owner, 27 Oct 2026)
+ *
+ * ONE control: which number, and how many days at most. The three numbers are
+ * the three the Delivery column shows, read off the decision's breakdown --
+ * the same figures the repricer sends Amazon, never worked out again here.
+ */
+// "Supplier", not "eBay": a supplier can be a website too (source_fetch reads
+// its delivery date the same way), and the number is the same either way.
+const SRC_DFILT_BY = [{v: "", label: "Any"},
+                      {v: "total", label: "To buyer"},
+                      {v: "handling", label: "Handling"},
+                      {v: "supplier", label: "Supplier"}];
+
+function _srcDeliveryDays(r, by){
+  const b = ((r || {}).decision || {}).breakdown || {};
+  const v = (by === "total") ? b.buyer_days
+          : (by === "handling") ? b.lead_days
+          : (by === "supplier") ? b.supplier_dispatch_days : null;
+  return (v == null || v === "") ? null : +v;
+}
+
+function _srcDeliveryBar(){
+  const on = !!SRC_DFILT.by;
+  return '<div id="src_dbar" style="display:flex;gap:8px;align-items:center;'
+    + 'flex-wrap:wrap;margin:-2px 0 10px;font-size:12px">'
+    + '<span class="cc"><i class="ti ti-truck-delivery"></i> Delivery</span>'
+    + uiSeg(SRC_DFILT_BY, SRC_DFILT.by, "sourcingDeliveryBy")
+    + (on
+        ? '<span class="cc">&le;</span>'
+          // APPLIED AS YOU TYPE (briefly debounced), not on change: a change
+          // event fires when a click elsewhere takes the focus, and redrawing
+          // then replaced the very row or tick that was being clicked.
+          // TEXT WITH A NUMBER KEYPAD, not type=number: a number box does not
+          // let the caret be put back after the redraw, so it landed at the
+          // start and "1", pause, "0" became "01" (measured in Chromium).
+          + '<input id="src_dmax" type="text" inputmode="numeric" pattern="[0-9]*" '
+          + 'maxlength="2" value="'
+          + (+SRC_DFILT.max) + '" oninput="sourcingDeliveryMax(this.value)" '
+          + 'onblur="if(!(parseInt(this.value,10)>=0))this.value=SRC_DFILT.max" '
+          + 'aria-label="Most days" style="width:56px">'
+          + '<span class="cc">days &middot; ' + _srcVisible().length + ' shown</span>'
+        : '')
+    + '</div>';
+}
+
+function sourcingDeliveryBy(v){
+  SRC_DFILT.by = String(v || "");
+  _srcDeliveryRedraw();
+}
+
+let SRC_DMAX_T = null;
+function sourcingDeliveryMax(v){
+  const n = parseInt(String(v), 10);
+  // A half-typed or cleared box changes nothing; leaving it puts the number
+  // in force back (the onblur above), so the box never shows one the filter
+  // is not using.
+  if(!(n >= 0)) return;
+  clearTimeout(SRC_DMAX_T);
+  SRC_DMAX_T = setTimeout(function(){
+    // Nothing to redraw any more (an account switch cleared it): do nothing,
+    // rather than paint an empty shell over the new account's "Loading".
+    if(!SRC_LAST_J) return;
+    SRC_DFILT.max = n;
+    _srcDeliveryRedraw();
+  }, 300);
+}
+
+/* Same as a card filter: the ticks go, because a selection made under one
+ * filter would act on rows you can no longer see.
+ *
+ * FOCUS STAYS WHERE IT WAS. The redraw replaces the bar, so whatever had the
+ * focus in it is put back -- the number box (with the caret at the end) or the
+ * chosen segment -- and nothing else is ever given the focus: pulling it into
+ * the box on a tap opened the phone keyboard over the table. Same idea as
+ * orders.js's _ordRefocus. */
+function _srcDeliveryRedraw(){
+  const a = document.activeElement;
+  const inBox = !!(a && a.id === "src_dmax");
+  const inBar = !!(a && !inBox && a.closest && a.closest("#src_dbar"));
+  SRC_SEL = new Set();
+  sourcingRender(SRC_LAST_J || {});
+  const el = inBox ? document.getElementById("src_dmax")
+           : inBar ? document.querySelector("#src_dbar .segbtn.on") : null;
+  if(el){
+    el.focus({preventScroll: true});
+    if(inBox){ try{ const n = String(el.value).length; el.setSelectionRange(n, n); }catch(e){} }
+  }
 }
 
 /* ONE line, only when there is something to act on.
@@ -325,6 +429,14 @@ function _srcMoreMenu(j){
           + 'this separately from the handling time, so the repricer takes it '
           + 'OFF the handling time rather than promising it twice.',
           ((j.shipping_policy_days != null ? j.shipping_policy_days : 2) + 'd'))
+    // EXTRA HANDLING FOR EVERY SKU -- the account's own row (sku ''), the same
+    // default-and-override shape as the profit target above: a SKU without
+    // its own number follows this one (owner, 27 Oct 2026).
+    + row('ti-clock-plus', 'Extra handling', "sourcingBuffer('')",
+          'Days added to every tracked SKU’s handling time. A SKU given its '
+          + 'own number, from its Extra handling pill or the selection bar, '
+          + 'keeps it.',
+          ('+' + _srcAcctBuffer() + 'd'))
     // STOCK, kept apart from the two "new SKUs start at" rows below on purpose.
     //
     //     "there should be a separate default stock setting which is activated

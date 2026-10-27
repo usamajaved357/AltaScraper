@@ -196,6 +196,25 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         except Exception:
             _promos_by_sku = {}
         _policy_days = _run.shipping_policy_days(CONFIG_PATH)
+        # WHAT EACH SKU SET FOR ITSELF, so a setting can be marked "own" or
+        # "default" -- the merged rule below cannot say which (owner, 27 Oct
+        # 2026). Read for the SAME (workspace, marketplace) as the rule each
+        # row is priced with -- rule_for(d["workspace_id"], d["marketplace"])
+        # -- once per pair, so a list that spans marketplaces cannot label a
+        # UK number with a DE row. A read that fails gives None ("unknown"),
+        # never {} ("nothing of its own"): the dialog would then open on
+        # Default and a Save could wipe a number it did not know about.
+        _own_by = {}
+
+        def _own_rule(ws, mk, sku):
+            k = (ws, mk)
+            if k not in _own_by:
+                try:
+                    _own_by[k] = _repo.own_rules(CONFIG_PATH, ws, mk)
+                except Exception:
+                    _own_by[k] = None
+            got = _own_by[k]
+            return None if got is None else got.get(sku, {})
         # WHAT EACH PRODUCT REALLY MADE, beside what the next sale would make
         # (owner, 12 Oct 2026). Once for the whole list, keyed by ASIN.
         try:
@@ -302,7 +321,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                          "item": _cat.look(idx, d["sku"]),
                          "real_30d": _real.get(
                              (_cat.look(idx, d["sku"]) or {}).get("asin") or ""),
-                         "rule": _rule})
+                         "rule": _rule,
+                         "own_rule": _own_rule(d["workspace_id"],
+                                               d["marketplace"], d["sku"])})
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "rows": rows, "counts": run["counts"],
                         "note": run["note"],
@@ -1550,7 +1571,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         if "handling_buffer_days" in vals:
             v = vals["handling_buffer_days"]
             if v in (None, ""):
-                vals["handling_buffer_days"] = 0
+                # EMPTY MEANS "FOLLOW THE ACCOUNT", not 0. Stored as NULL, which
+                # rule_for reads as "use the account's Extra handling" (the
+                # sku='' row) -- so a SKU can be put back on the default after
+                # being given its own number (owner, 27 Oct 2026). On the
+                # account row itself NULL is DEFAULT_RULE's 0.
+                vals["handling_buffer_days"] = None
             else:
                 try:
                     v = int(float(str(v).strip()))

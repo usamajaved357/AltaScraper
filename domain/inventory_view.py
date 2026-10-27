@@ -375,7 +375,7 @@ def lead_times(config_path, workspace_id, marketplace):
                 best = d
         if best is not None:
             hand = _sourcing.handling_days(best, rule)
-            out[sku] = {"days": hand + policy,
+            out[sku] = {"days": _sourcing.buyer_days(hand, rule),
                         "known": True,
                         "dispatch_days": best, "buffer_days": buffer_days,
                         "handling_days": hand,

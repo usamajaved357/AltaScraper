@@ -101,7 +101,8 @@ bottom-right corner and must win. Each `<link>` carries its reason.
 |---|---|---|
 | Button | `button.primary`, `.ghost`, `.danger`, `.db-chip` (pill), `.mktbtn`, `.ib`, `.dotb` | primary = action fill + action-fg; `:active` pressed; danger = danger-solid. New UI copies the family already on that screen. |
 | Segmented | `.seg` tray (surface-2, radius-md) | Sales presets keep the gold `.on` (owner-locked) |
-| Stat tile | `uiStat` / `.ui-stat`, `.rp-mc`, `.dt-mc` | radius-lg, border, token focus ring; selectable tiles act as filters |
+| Stat tile | `uiStat` / `.ui-stat`, `.rp-mc`, `.dt-mc` | radius-lg, border, token focus ring; selectable tiles act as filters. A second filter beside them is ONE `uiSeg` plus a number box (Repricer Delivery: Any / To buyer / Handling / eBay ≤ N days), ANDed with the tile; the "everything" tile clears both |
+| Default vs own [decided 27 Oct 2026] | Repricer: ⋯ Settings row = account default; rule pill = the SKU's own, with a dim "default" when it has none; selection bar = the same override for every ticked SKU; one shared dialog for all three (`_srcBufferModal`) | a bulk dialog opens with nothing chosen and will not save until something is |
 | Card / panel | `.panelcard` = `.salespanel` (one definition), `uiPanel` | side-by-side cards inside a grid never take the stacking margin |
 | Table | datatable.css (`.lt`, `.rp-tbl`, `.stk-table`), `table.kv` | sticky header; wide tables scroll in their own box; long cells wrap rather than overprint (fixed layout) |
 | Menu (`···`) | `.tilemenu` + **`uiMenuKeys(menu, opener, close)`** (dialog.js) | role=menu/menuitem, focus first item, ↑↓ Home End, Esc returns focus to the opener, Tab closes; opens upward when there is no room |

@@ -441,11 +441,19 @@ function _rulePills(r){
                       + 'hold is a floor ABOVE the computed one.'}[dcur]
             || '',
             (DIRW[dcur] || DIRW.up_only)[1]);
+  // OWN OR DEFAULT. rule is the account's Extra handling with this SKU's laid
+  // over it, so the number alone cannot say which one is in force; own_rule
+  // can (owner, 27 Oct 2026: override the default by selecting and changing).
+  // null = the server could not say: no marker and no claim either way.
+  const bufOwn = _srcBufOwn(r);
   h += pill('Extra handling',
-            '+' + (rule.handling_buffer_days || 0) + 'd',
+            '+' + (rule.handling_buffer_days || 0) + 'd'
+            + (bufOwn === false ? ' <span class="rp-d" style="font-weight:400">default</span>' : ''),
             'sourcingBuffer(' + S + ',this)',
             'Added on top of the calculated handling time. Use it for a '
-            + 'supplier that does not dispatch when it says it will.',
+            + 'supplier that does not dispatch when it says it will.'
+            + (bufOwn === true ? ' This SKU’s own number.'
+               : bufOwn === false ? ' Following the account’s Extra handling (⋯ menu).' : ''),
             (rule.handling_buffer_days ? '' : 'rp-off'));
   // WHOSE FEE FIGURE THIS IS, and it has to be legible without hovering.
   //
@@ -516,7 +524,9 @@ function _statCards(j){
   // in now, which is also why no separate row of filter buttons was added:
   // that would be two controls for one idea.
   const card = function(key, n, label, tone, bar, why){
-    const on = (SRC_FILTER === key);
+    // "Tracked" is lit only when NOTHING filters the rows -- the Delivery
+    // filter included, or it reads as "all 6" beside "3 shown".
+    const on = key ? (SRC_FILTER === key) : (!SRC_FILTER && !SRC_DFILT.by);
     return '<button class="rp-mc' + (on ? ' rp-on' : '') + '" type="button" '
       + 'onclick="sourcingFilter(' + _sarg(key) + ')" '
       + 'aria-pressed="' + (on ? 'true' : 'false') + '" title="'

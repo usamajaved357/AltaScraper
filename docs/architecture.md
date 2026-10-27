@@ -312,6 +312,17 @@ Active live listings auto-enrol in dry run; drafts never. Floor price and
 "unknown is not out of stock" are load-bearing. It PATCHes price/qty/lead time
 only, never PUTs a listing.
 
+Repricer rules are two rows in `sourcing_rules`: the account default (`sku=''`)
+and the SKU's own, merged by `source_repo.rule_for` (a NULL column = follow the
+account). `source_repo.own_rules` returns only what each SKU set itself, so the
+screen can mark a setting "default" or "own" (`/sourcing/list` row field
+`own_rule`). An empty `handling_buffer_days` posted to `/sourcing/rules` is
+stored as NULL (follow the account's Extra handling), not 0 (27 Oct 2026).
+Handling time sent to Amazon = `sourcing.handling_days` (eBay delivery days −
+postage days, floor 0, + extra days); days to the buyer = `sourcing.buyer_days`
+(handling + postage), carried on the decision breakdown as `buyer_days` and
+used by the Repricer's Delivery column/filter and the stock screen's lead time.
+
 ## 10. External APIs
 
 - A URL that came from a user is fetched only through

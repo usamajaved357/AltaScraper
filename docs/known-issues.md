@@ -406,6 +406,38 @@ access is fixed). Owner decisions: docs/decisions.md, 12 Oct 2026.
   container; the app cannot reach Amazon from there). The PDP image preview
   WAS checked in a browser with seeded data.
 
+## Repricer Extra handling / Delivery filter — left open (27 Oct 2026 reviews, branch `dev`, NOT in production)
+
+Found by the reviewers of the Delivery column / Extra handling change. None was
+caused by it; each is older and left alone so that change stays small.
+
+- **READ — `/sourcing/list` and `/sourcing/rules` accept an empty marketplace.**
+  When `_where()` resolves the marketplace to `""` (an account with no default
+  marketplace, "All marketplaces" chosen), `enrolled()` returns rows from every
+  marketplace while the account default (⋯ Profit target, ⋯ Extra handling) is
+  saved and read under marketplace `''` -- a row the real per-marketplace rows
+  never consult. The menu then shows a default nothing follows. Other routes
+  (`sourcing_routes.py` ~1241, ~1264) already refuse an empty marketplace.
+  `own_rule` is now read per row's own marketplace, so the labels are right.
+- **READ — `/sourcing/list` with no account named and none open lists every
+  account's enrolled SKUs** (`enrolled()` skips its account filter for `""`;
+  the guard has no account to check). Rule 14. `own_rule` adds nothing to it.
+- **READ — `POST /sourcing/rules` answers 500 to "nan" / "inf"** in a number box
+  (`int(_v)` in the first number loop). Nothing is stored, so it fails safe.
+- **READ — `sourcing.handling_days` does not clamp the total after adding the
+  buffer** (`max(0, d - p) + buf`). A negative buffer can only come from a
+  direct database write or data saved before the 0–30 check; a final clamp would
+  change behaviour, so it is the owner's call.
+- **NOT VERIFIED (Rule 4) — the largest `lead_time_to_ship_max_days` Amazon
+  accepts has not been captured.** Extra handling allows 0–30 on top of the
+  supplier's days; a typo on the account default now reaches every SKU that
+  follows it (the dialog says how many). Capture the schema for the armed SKUs'
+  product types (`amazon-schema-first`).
+- **READ — UI, shared helpers (owner's call):** `uiSeg` buttons carry no
+  `aria-pressed`; `.seg` buttons are 28px tall at phone width (mobile.css lifts
+  `.db-chip` to 34px but not `.seg`). Fixing either changes every caller,
+  including the Sales presets.
+
 ## Fixed on the development branch, NOT yet in production
 
 On `claude-environment-setup` (local, not merged or deployed — production still

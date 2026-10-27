@@ -304,6 +304,8 @@ function _screenResetHeld(){
   try{ if(typeof SRC_ROWS !== "undefined") SRC_ROWS = []; }catch(e){}
   try{ if(typeof SRC_LAST_J !== "undefined") SRC_LAST_J = null; }catch(e){}
   try{ if(typeof SRC_FILTER !== "undefined") SRC_FILTER = ""; }catch(e){}
+  try{ if(typeof SRC_DFILT !== "undefined") SRC_DFILT.by = ""; }catch(e){}
+  try{ if(typeof SRC_DMAX_T !== "undefined") clearTimeout(SRC_DMAX_T); }catch(e){}
   try{ if(typeof SRC_LASTBULK !== "undefined") SRC_LASTBULK = null; }catch(e){}
   try{ if(typeof SRC_DEFAULT_TARGET !== "undefined") SRC_DEFAULT_TARGET = {}; }catch(e){}
   try{ if(typeof SRC_MKT !== "undefined") SRC_MKT = ""; }catch(e){}
