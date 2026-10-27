@@ -444,18 +444,16 @@ function _rulePills(r){
   // OWN OR DEFAULT. rule is the account's Extra handling with this SKU's laid
   // over it, so the number alone cannot say which one is in force; own_rule
   // can (owner, 27 Oct 2026: override the default by selecting and changing).
-  // own_rule null = the server could not say; shown without the marker rather
-  // than as "default", which would be a guess.
-  const bufOwn = (r.own_rule == null)
-               || ((r.own_rule || {}).handling_buffer_days != null);
+  // null = the server could not say: no marker and no claim either way.
+  const bufOwn = _srcBufOwn(r);
   h += pill('Extra handling',
             '+' + (rule.handling_buffer_days || 0) + 'd'
-            + (bufOwn ? '' : ' <span class="rp-d" style="font-weight:400">default</span>'),
+            + (bufOwn === false ? ' <span class="rp-d" style="font-weight:400">default</span>' : ''),
             'sourcingBuffer(' + S + ',this)',
             'Added on top of the calculated handling time. Use it for a '
-            + 'supplier that does not dispatch when it says it will. '
-            + (bufOwn ? 'This SKU’s own number.'
-                      : 'Following the account’s Extra handling (⋯ menu).'),
+            + 'supplier that does not dispatch when it says it will.'
+            + (bufOwn === true ? ' This SKU’s own number.'
+               : bufOwn === false ? ' Following the account’s Extra handling (⋯ menu).' : ''),
             (rule.handling_buffer_days ? '' : 'rp-off'));
   // WHOSE FEE FIGURE THIS IS, and it has to be legible without hovering.
   //

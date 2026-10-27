@@ -16,6 +16,7 @@ const read = (f) => fs.readFileSync(path.join(__dirname, "static", "js", f), "ut
 const MENU = read("sourcing_menu.js"), ROW = read("sourcing_row.js"),
       BULK = read("sourcing_bulk.js"), ACT = read("sourcing_row_actions.js"),
       DET = read("sourcing_detail.js"), MAIN = read("sourcing.js"),
+      ACTIONS = read("sourcing_actions.js"),
       STATE = read("screenstate.js");
 let fails = 0;
 const check = (label, ok) => { if (!ok) fails++; console.log("  %s %s", label.padEnd(66), ok ? "OK" : "FAIL"); };
@@ -27,6 +28,8 @@ vm.runInContext("var SRC_ROWS = []; var SRC_FILTER = ''; var SRC_DFILT = {by: ''
   + " var SRC_RULE = {handling_buffer_days: 1};\n"
   + pick(MENU, /function _srcVisible\(\)\{[\s\S]*?\n\}/) + "\n"
   + pick(MENU, /function _srcDeliveryDays\(r, by\)\{[\s\S]*?\n\}/) + "\n"
+  + pick(ACT, /function _srcAcctBuffer\(\)\{[\s\S]*?\n\}/) + "\n"
+  + pick(ACT, /function _srcBufOwn\(r\)\{[\s\S]*?\n\}/) + "\n"
   + pick(ROW, /function _rpDelivery\(r\)\{[\s\S]*?\n\}/), s);
 
 // Postage 2 days, the account's Extra handling +1:
@@ -63,6 +66,8 @@ check("changing it clears the ticks, like a card does",
       /function _srcDeliveryRedraw\(\)\{[\s\S]*?SRC_SEL = new Set\(\);/.test(MENU));
 check("  and gives the focus back only to what had it (no phone keyboard on a tap)",
       /const inBox = [\s\S]*?const inBar = [\s\S]*?inBox \? document\.getElementById\("src_dmax"\)\s*: inBar \? document\.querySelector\("#src_dbar \.segbtn\.on"\) : null;/.test(MENU));
+check("the box is text with a number keypad, so the caret survives the redraw",
+      /id="src_dmax" type="text" inputmode="numeric"/.test(MENU));
 check("the number is applied as typed, not on the change a click fires",
       /oninput="sourcingDeliveryMax\(this\.value\)"/.test(MENU) && !/onchange="sourcingDeliveryMax/.test(MENU));
 check("'Tracked' is lit only when neither filter is on",
@@ -92,15 +97,33 @@ check("  and says when the extra is the account's", /account default/.test(fast)
 check("no delivery date: a dash, never a 0", /&mdash;/.test(none) && !/0d/.test(none));
 const unknownOwn = cell(Object.assign({}, ROWS[0], {own_rule: null}));
 check("own_rule unknown: drawn as own, never guessed to be default", /color:var\(--ink\)">\+1/.test(unknownOwn));
+check("  and its tooltip claims neither own nor default",
+      /incl\. \+1 extra\)/.test(unknownOwn) && !/own|account default/.test(unknownOwn.split('"')[1]));
 check("the column has a heading", />Delivery<\/th>/.test(MAIN));
 check("the open panel still spans every column", /colspan="11"/.test(ROW) && !/colspan="10"/.test(ROW));
 
 console.log("\n=== setting the extra days ===");
 check("the selection bar has Set extra handling", /onclick="sourcingBulkBuffer\(\)"[\s\S]*?Set extra handling<\/button>/.test(BULK));
+check("  the single and the bulk save patch the held rows ONE way",
+      /_srcPatchRow\(sku, rule, scope\);/.test(BULK) && /_srcPatchRow\(sku, rule, scope\);/.test(ACTIONS));
+const pr = { inScope: true };
+vm.createContext(pr);
+vm.runInContext("var SRC_ROWS = []; function _srcStillIn(sc){ return inScope; }\n"
+  + pick(ACTIONS, /function _srcPatchRow\(sku, rule, scope\)\{[\s\S]*?\n\}/), pr);
+pr.SRC_ROWS = [{ sku: "A", rule: { handling_buffer_days: 1 }, own_rule: { handling_buffer_days: 1, min_price: 5 } }];
+vm.runInContext("_srcPatchRow('A', {handling_buffer_days: null}, {s: 1})", pr);
+check("  back to Default: the row's own number goes, its other own values stay",
+      !("handling_buffer_days" in pr.SRC_ROWS[0].own_rule) && pr.SRC_ROWS[0].own_rule.min_price === 5);
+vm.runInContext("_srcPatchRow('A', {handling_buffer_days: 2}, {s: 1})", pr);
+check("  +2: recorded as its own", pr.SRC_ROWS[0].own_rule.handling_buffer_days === 2);
+pr.inScope = false;
+vm.runInContext("_srcPatchRow('A', {handling_buffer_days: 9}, {s: 1})", pr);
 check("  a reply landing after an account switch paints nothing",
-      /if\(scope && typeof _srcStillIn === "function" && !_srcStillIn\(scope\)\) return "";/.test(BULK));
-check("  and a save updates what the row holds as its own",
-      /if\(rule\[k\] == null\) delete row\.own_rule\[k\]; else row\.own_rule\[k\] = rule\[k\];/.test(BULK));
+      pr.SRC_ROWS[0].rule.handling_buffer_days === 2 && pr.SRC_ROWS[0].own_rule.handling_buffer_days === 2);
+check("Stop tracking acts only on ticked rows that are on screen, like the rest of the bar",
+      /async function sourcingUnenrolSelected\(\)\{[\s\S]*?const skus = _srcPicked\(\);/.test(BULK));
+check("the typing timer is cancelled on an account switch", /clearTimeout\(SRC_DMAX_T\)/.test(STATE)
+      && /if\(!SRC_LAST_J\) return;/.test(MENU));
 check("  saved through the same per-SKU route as every bulk setting",
       /_srcBulkRule\(\{handling_buffer_days: v\}/.test(BULK));
 check("the ⋯ menu has the account's Extra handling", /sourcingBuffer\(''\)/.test(MENU));
@@ -117,10 +140,15 @@ check("the chosen segment is lit in place, not rebuilt (keeps the focus)",
       /classList\.toggle\("on"/.test(pick(ACT, /function _srcBufMark\(v\)\{[\s\S]*?\n\}/))
       && !/innerHTML/.test(pick(ACT, /function _srcBufMark\(v\)\{[\s\S]*?\n\}/)));
 check("the number box has a real label", /<label for="src_buf"/.test(ACT));
-check("the account dialog says how many SKUs follow it",
-      /'Followed by <b>' \+ follow \+ '<\/b> of ' \+ rows\.length/.test(ACT));
+check("the account dialog says how many SKUs follow it, and how many are armed",
+      /'Followed by <b>' \+ follow\.length \+ '<\/b> of ' \+ rows\.length[\s\S]*?armed\)/.test(ACT));
+check("pill, cell, menu and dialogs read the two facts from ONE helper each",
+      /_srcBufOwn\(r\)/.test(DET) && /_srcBufOwn\(r\)/.test(ROW) && /_srcAcctBuffer\(\)/.test(MENU)
+      && /_srcAcctBuffer\(\)/.test(BULK) && !/SRC_RULE \|\| \{\}\)\.handling_buffer_days/.test(ACT + BULK + MENU));
+check("the single-SKU save goes through the screen's one sourcingSaveRule",
+      /async function sourcingBuffer\(sku, btn\)\{[\s\S]*?await sourcingSaveRule\(sku, \{handling_buffer_days: v\}/.test(ACT));
 check("the pill says when it is following the default, muted",
-      /bufOwn \? '' : ' <span class="rp-d" style="font-weight:400">default<\/span>'/.test(DET));
+      /bufOwn === false \? ' <span class="rp-d" style="font-weight:400">default<\/span>' : ''/.test(DET));
 
 console.log("\n=== the dialog's Save, run for real ===");
 const d = { _srcModal: null, toast: (m) => { d.toasted = m; }, uiSeg: () => "", SRC_RULE: {} };

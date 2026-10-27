@@ -160,6 +160,21 @@ async function sourcingDirection(sku, btn){
  * This is the only setting that makes a promise LONGER than the supplier's
  * own: each day is a day later delivery date on the listing.
  */
+/* THE TWO FACTS EVERY Extra handling control needs, read in ONE place each
+ * (Rule 12): the account's number (its sku '' row, SRC_RULE) and whether a
+ * row's number is its own -- true / false, or null when the server could not
+ * say (own_rule null), which every caller must show without claiming either. */
+function _srcAcctBuffer(){
+  return (typeof SRC_RULE !== "undefined" && SRC_RULE)
+       ? (+SRC_RULE.handling_buffer_days || 0) : 0;
+}
+
+function _srcBufOwn(r){
+  const o = (r || {}).own_rule;
+  if(o == null) return null;
+  return o.handling_buffer_days != null;
+}
+
 let SRC_BUF_ITEMS = [];
 // Whether anything was chosen since the dialog opened. See `blank` below.
 let SRC_BUF_TOUCHED = false;
@@ -226,37 +241,34 @@ function _srcBufMark(v){
 }
 
 async function sourcingBuffer(sku, btn){
-  const acct = +((SRC_RULE || {}).handling_buffer_days) || 0;
+  const acct = _srcAcctBuffer();
+  // Through sourcingSaveRule, the screen's one single-SKU save (it also keeps
+  // the row's own values right until the quiet reload lands).
   const save = async function(v){
-    const j = await (await fetch("/sourcing/rules", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: _srcBody({sku: sku, rule: {handling_buffer_days: v}})})).json();
-    if(!j.ok){ toast(j.error || "Could not save"); return false; }
-    toast(sku ? ("Extra handling: " + (v == null ? "default (+" + acct + ")" : "+" + v))
-              : ("Default extra handling: +" + (v == null ? 0 : v)));
-    await sourcingLoad(true);
+    const err = await sourcingSaveRule(sku, {handling_buffer_days: v},
+      sku ? ("Extra handling: " + (v == null ? "default (+" + acct + ")" : "+" + v))
+          : ("Default extra handling: +" + (v == null ? 0 : v)));
+    if(err){ toast(err); return false; }
     return true;
   };
   if(!sku){
     // HOW FAR IT REACHES, said before Save: every SKU without a number of its
     // own. A typo here moves every one of them at the next push.
     const rows = SRC_ROWS || [];
-    const follow = rows.filter(function(r){
-      return r.own_rule != null && (r.own_rule || {}).handling_buffer_days == null;
-    }).length;
+    const follow = rows.filter(function(r){ return _srcBufOwn(r) === false; });
+    const armed = follow.filter(function(r){ return r.mode === "live"; }).length;
     _srcBufferModal("Extra handling — account default", acct, null, save, false,
-      'Followed by <b>' + follow + '</b> of ' + rows.length + ' tracked SKUs; '
-      + 'the rest have their own.');
+      'Followed by <b>' + follow.length + '</b> of ' + rows.length
+      + ' tracked SKUs (' + armed + ' armed); the rest have their own.');
     return;
   }
   const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0] || {};
-  // own_rule null = the server could not say which numbers are the SKU's own.
-  // Open on the number in force rather than on "Default", so a Save without
-  // touching anything cannot wipe an own number it did not know about.
-  const own = (row.own_rule == null)
-            ? (+((row.rule || {}).handling_buffer_days) || 0)
-            : (row.own_rule || {}).handling_buffer_days;
-  _srcBufferModal("Extra handling days", own == null ? null : own, acct, save);
+  // Unknown (null): open on the number in force rather than on "Default", so a
+  // Save without touching anything cannot wipe an own number it did not know of.
+  const own = _srcBufOwn(row);
+  const cur = (own === null) ? (+((row.rule || {}).handling_buffer_days) || 0)
+            : own ? row.own_rule.handling_buffer_days : null;
+  _srcBufferModal("Extra handling days", cur, acct, save);
 }
 
 async function sourcingCheckNow(btn){

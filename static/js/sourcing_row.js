@@ -262,16 +262,15 @@ function _rpDelivery(r){
       + 'SKU right now. Open it to see why.">&mdash;</td>';
   }
   const buf = +b.buffer_days || 0;
-  // own_rule null = unknown; drawn as own rather than guessed to be default.
-  const own = (r.own_rule == null)
-            || ((r.own_rule || {}).handling_buffer_days != null);
-  const acct = (typeof SRC_RULE !== "undefined" && SRC_RULE)
-             ? (+SRC_RULE.handling_buffer_days || 0) : 0;
-  const mark = buf || (own && acct > buf);
+  // true / false, or null when the server could not say: drawn in the "own"
+  // weight then, but the tooltip claims neither (Rule 20).
+  const own = _srcBufOwn(r);
+  const mark = buf || (own === true && _srcAcctBuffer() > buf);
   const now = (r.current || {}).lead_days;
   const tip = 'Supplier ' + sup + 'd → handling ' + lead + 'd'
-    + (mark ? ' (incl. +' + buf + ' extra, '
-              + (own ? 'this SKU’s own' : 'account default') + ')' : '')
+    + (mark ? ' (incl. +' + buf + ' extra'
+              + (own === true ? ', this SKU’s own' : own === false ? ', account default' : '')
+              + ')' : '')
     + ' + postage ' + b.shipping_policy_days + 'd = ' + total + 'd to the buyer'
     + ((now != null && +now !== +lead) ? '. On Amazon now: ' + now + 'd handling.' : '');
   return '<td title="' + _sesc(tip) + '" style="white-space:nowrap"><b>' + total + 'd</b>'
@@ -279,7 +278,7 @@ function _rpDelivery(r){
     + b.shipping_policy_days + ')</span>'
     + '<div class="rp-d" style="font-size:10px">Supplier '
     + (sup == null ? '?' : sup) + 'd'
-    + (mark ? (own ? ' <b style="color:var(--ink)">+' + buf + '</b>'
+    + (mark ? (own !== false ? ' <b style="color:var(--ink)">+' + buf + '</b>'
                    : ' <span>+' + buf + '</span>') : '')
     + '</div></td>';
 }

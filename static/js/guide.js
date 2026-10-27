@@ -140,7 +140,8 @@ const GUIDES = {
       {n: "3", h: "Cover against restock is the whole judgement",
        b: "<b>Cover</b> is how many days the listed quantity lasts at the rate "
         + "it has been selling. <b>Restock</b> is how long your fastest usable "
-        + "supplier takes to dispatch, plus the safety buffer.<br><br>"
+        + "supplier's parcel takes to reach the buyer, plus any extra handling "
+        + "days.<br><br>"
         + "A product is flagged when cover is shorter than restock — it will "
         + "run out before more can arrive. That is why 6 days of cover can be "
         + "fine on one product and urgent on another."},
@@ -280,7 +281,11 @@ const GUIDES = {
           ["Margin", "that profit over the SELLING PRICE"],
           ["ROI", "that profit over WHAT YOU PAID"],
           ["Units at source", "how many the supplier has"],
-          ["Handling", "supplier's dispatch estimate + your safety buffer"],
+          ["Delivery", "days to the buyer, with its handling + postage in "
+           + "brackets; under it the supplier's delivery days and any extra "
+           + "handling days (muted = the account default, plain = this SKU's own)"],
+          ["Handling", "the supplier's delivery days, minus your postage days "
+           + "(never below 0), plus any extra handling days"],
         ]),
       "<b>What the chips mean.</b>"
       + _gt([

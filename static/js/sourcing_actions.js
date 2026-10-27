@@ -65,20 +65,41 @@ async function sourcingArm(sku, live){
  * wants: a string keeps the editor open with the message under it.
  */
 async function sourcingSaveRule(sku, rule, okMsg){
+  const scope = _srcScopeNow();
   try{
     const j = await (await fetch("/sourcing/rules", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: _srcBody({sku: sku, rule: rule})})).json();
+      body: _srcBody({sku: sku, rule: rule}, scope)})).json();
     if(!j.ok) return j.error || "Could not save that.";
     // The model we are already holding, so the row is right even before the
     // quiet refresh lands.
-    const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0];
-    if(row){ row.rule = Object.assign({}, row.rule || {}, rule); }
-    if(SRC_ROW_RULES[sku]) Object.assign(SRC_ROW_RULES[sku], rule);
+    _srcPatchRow(sku, rule, scope);
+    if(SRC_ROW_RULES[sku] && _srcStillIn(scope)) Object.assign(SRC_ROW_RULES[sku], rule);
     if(okMsg) toast(okMsg);
     sourcingLoad(true);
     return "";
   }catch(e){ return String((e && e.message) || e); }
+}
+
+/* What a saved rule changes in the rows already held, until the quiet reload
+ * draws the truth -- shared by sourcingSaveRule and sourcingSaveRuleQuiet so
+ * the two cannot drift apart (change review, 27 Oct 2026).
+ *
+ * A REPLY THAT LANDS AFTER A SWITCH paints nothing: SKUs are not unique across
+ * accounts, so the row found by this SKU could be the new account's. And what
+ * the SKU now holds as its OWN is updated too, so a pill opened before the
+ * reload says "own" or "default" correctly (null = back on the default). */
+function _srcPatchRow(sku, rule, scope){
+  if(scope && !_srcStillIn(scope)) return;
+  const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0];
+  if(!row) return;
+  row.rule = Object.assign({}, row.rule || {}, rule);
+  if(row.own_rule){
+    row.own_rule = Object.assign({}, row.own_rule);
+    Object.keys(rule).forEach(function(k){
+      if(rule[k] == null) delete row.own_rule[k]; else row.own_rule[k] = rule[k];
+    });
+  }
 }
 
 /* THE FLOOR, EDITED WHERE THE BUTTON IS.

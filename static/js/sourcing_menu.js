@@ -78,7 +78,11 @@ function _srcDeliveryBar(){
           // APPLIED AS YOU TYPE (briefly debounced), not on change: a change
           // event fires when a click elsewhere takes the focus, and redrawing
           // then replaced the very row or tick that was being clicked.
-          + '<input id="src_dmax" type="number" min="0" max="60" step="1" value="'
+          // TEXT WITH A NUMBER KEYPAD, not type=number: a number box does not
+          // let the caret be put back after the redraw, so it landed at the
+          // start and "1", pause, "0" became "01" (measured in Chromium).
+          + '<input id="src_dmax" type="text" inputmode="numeric" pattern="[0-9]*" '
+          + 'maxlength="2" value="'
           + (+SRC_DFILT.max) + '" oninput="sourcingDeliveryMax(this.value)" '
           + 'onblur="if(!(parseInt(this.value,10)>=0))this.value=SRC_DFILT.max" '
           + 'aria-label="Most days" style="width:56px">'
@@ -101,6 +105,9 @@ function sourcingDeliveryMax(v){
   if(!(n >= 0)) return;
   clearTimeout(SRC_DMAX_T);
   SRC_DMAX_T = setTimeout(function(){
+    // Nothing to redraw any more (an account switch cleared it): do nothing,
+    // rather than paint an empty shell over the new account's "Loading".
+    if(!SRC_LAST_J) return;
     SRC_DFILT.max = n;
     _srcDeliveryRedraw();
   }, 300);
@@ -429,7 +436,7 @@ function _srcMoreMenu(j){
           'Days added to every tracked SKU’s handling time. A SKU given its '
           + 'own number, from its Extra handling pill or the selection bar, '
           + 'keeps it.',
-          ('+' + (+((j.rule || {}).handling_buffer_days) || 0) + 'd'))
+          ('+' + _srcAcctBuffer() + 'd'))
     // STOCK, kept apart from the two "new SKUs start at" rows below on purpose.
     //
     //     "there should be a separate default stock setting which is activated
